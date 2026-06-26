@@ -1,0 +1,156 @@
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { formatCurrency } from '@azit/utils';
+import { operacoesService } from '../services/operacoes.service';
+import { contratoService } from '../services/contrato.service';
+import { StatusBadge } from '../components/StatusBadge';
+import { ACORDO_STATUS_COLORS } from '../config/statusColors';
+
+const LABEL_STATUS: Record<string, string> = {
+  rascunho: 'Rascunho',
+  ativo: 'Ativo',
+  quitado: 'Quitado',
+  cancelado: 'Cancelado',
+};
+
+export function AcordosPage() {
+  const queryClient = useQueryClient();
+  const [ocupado, setOcupado] = useState(false);
+  const [contratoId, setContratoId] = useState('');
+  const [entrada, setEntrada] = useState('500');
+  const [nParcelas, setNParcelas] = useState('6');
+
+  const acordos = useQuery({ queryKey: ['acordos'], queryFn: () => operacoesService.acordos() });
+  const carteira = useQuery({ queryKey: ['contratos', 'lista'], queryFn: () => contratoService.listar({ limit: 50 }) });
+  const elegivel = useQuery({
+    queryKey: ['elegivel', contratoId],
+    queryFn: () => operacoesService.elegivel(contratoId),
+    enabled: !!contratoId,
+  });
+
+  const total = elegivel.data?.valorTotal ?? 0;
+  const entradaCent = Math.round(Number(entrada || 0) * 100);
+  const n = Math.max(1, Number(nParcelas || 1));
+  const valorParcelaNova = Math.max(1, Math.round((total - entradaCent) / n));
+
+  async function refetch() {
+    await new Promise((r) => setTimeout(r, 700));
+    await queryClient.invalidateQueries({ queryKey: ['acordos'] });
+    await queryClient.invalidateQueries({ queryKey: ['contratos'] });
+  }
+
+  async function criar() {
+    if (!contratoId || total <= 0) return;
+    setOcupado(true);
+    try {
+      await operacoesService.criarRenegociacao(contratoId, {
+        valorEntrada: entradaCent,
+        numeroParcelasNovas: n,
+        valorParcelaNova,
+      });
+      setContratoId('');
+      await refetch();
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function efetivar(acordoId: string) {
+    setOcupado(true);
+    try {
+      await operacoesService.simularEntrada(acordoId);
+      await refetch();
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-[16px]">
+      {/* Nova renegociação */}
+      <div className="rounded-card p-[18px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="mb-[12px] font-display text-[14px] font-bold">Nova renegociação</div>
+        <div className="flex flex-wrap items-end gap-[14px]">
+          <label className="flex flex-col gap-[4px]">
+            <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Contrato</span>
+            <select
+              value={contratoId}
+              onChange={(e) => setContratoId(e.target.value)}
+              className="h-[36px] w-[260px] rounded-[8px] px-[10px] text-[12.5px]"
+              style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
+            >
+              <option value="">Selecione…</option>
+              {carteira.data?.data
+                .filter((c) => c.status === 'Ativo' || c.status === 'Inadimplente' || c.status === 'Bloqueado')
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.numero} · {c.titular.nome}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-[4px]">
+            <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Entrada (R$)</span>
+            <input value={entrada} onChange={(e) => setEntrada(e.target.value)} className="h-[36px] w-[110px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+          </label>
+          <label className="flex flex-col gap-[4px]">
+            <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Nº parcelas</span>
+            <input value={nParcelas} onChange={(e) => setNParcelas(e.target.value)} className="h-[36px] w-[90px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+          </label>
+          <button
+            onClick={criar}
+            disabled={ocupado || !contratoId || total <= 0}
+            className="h-[36px] rounded-[8px] px-[16px] text-[12.5px] font-semibold"
+            style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado || !contratoId ? 0.6 : 1 }}
+          >
+            Criar acordo
+          </button>
+        </div>
+        {contratoId && (
+          <div className="mt-[12px] text-[12px]" style={{ color: 'var(--text-body)' }}>
+            Saldo em aberto: <b>{formatCurrency(total)}</b> · Parcela nova ≈ <b>{formatCurrency(valorParcelaNova)}</b> × {n}
+          </div>
+        )}
+      </div>
+
+      {/* Lista de acordos */}
+      <div className="rounded-card overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <table className="w-full border-collapse text-[12.5px]">
+          <thead>
+            <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
+              <th className="px-[18px] py-[12px] text-left font-semibold">Contrato</th>
+              <th className="px-[18px] py-[12px] text-left font-semibold">Cliente</th>
+              <th className="px-[18px] py-[12px] text-right font-semibold">Renegociado</th>
+              <th className="px-[18px] py-[12px] text-center font-semibold">Novas parcelas</th>
+              <th className="px-[18px] py-[12px] text-left font-semibold">Status</th>
+              <th className="px-[18px] py-[12px] text-right font-semibold">Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {acordos.data?.length === 0 && (
+              <tr><td colSpan={6} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>Nenhum acordo ainda.</td></tr>
+            )}
+            {acordos.data?.map((a) => (
+              <tr key={a.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                <td className="px-[18px] py-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{a.contratoNumero}</td>
+                <td className="px-[18px] py-[12px]" style={{ color: 'var(--text-body)' }}>{a.titular}</td>
+                <td className="px-[18px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>{formatCurrency(a.valorTotalRenegociado)}</td>
+                <td className="px-[18px] py-[12px] text-center tabular-nums" style={{ color: 'var(--text-body)' }}>{a.numeroParcelasNovas} × {formatCurrency(a.valorParcelaNova)}</td>
+                <td className="px-[18px] py-[12px]"><StatusBadge label={LABEL_STATUS[a.status] ?? a.status} colors={ACORDO_STATUS_COLORS} /></td>
+                <td className="px-[18px] py-[12px] text-right">
+                  {a.status === 'rascunho' ? (
+                    <button onClick={() => efetivar(a.id)} disabled={ocupado} className="rounded-[7px] px-[12px] py-[5px] text-[11.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>
+                      Simular entrada (dev)
+                    </button>
+                  ) : (
+                    <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
 import { contratoService } from '../services/contrato.service';
+import { operacoesService } from '../services/operacoes.service';
 import { StatusBadge } from '../components/StatusBadge';
 import {
   CONTRATO_STATUS_COLORS,
@@ -53,14 +54,49 @@ export function ContratoDetalhePage() {
     queryFn: () => contratoService.extrato(id),
   });
 
-  // Dev: simula pagamento da próxima parcela; a conciliação roda async (worker),
-  // então recarrega após um instante.
+  async function recarregar() {
+    await new Promise((r) => setTimeout(r, 1200));
+    await queryClient.invalidateQueries({ queryKey: ['contrato', id] });
+  }
+
+  // Dev: simula pagamento da próxima parcela; a conciliação roda async (worker).
   async function simularPagamento() {
     setSimulando(true);
     try {
       await contratoService.simularPagamento(id);
-      await new Promise((r) => setTimeout(r, 1500));
-      await queryClient.invalidateQueries({ queryKey: ['contrato', id] });
+      await recarregar();
+    } finally {
+      setSimulando(false);
+    }
+  }
+
+  // 6.6 — Quitação antecipada: simula (VP), confirma, aplica.
+  async function quitar() {
+    const sim = await operacoesService.simularQuitacao(id);
+    const ok = window.confirm(
+      `Quitação antecipada de ${sim.parcelas.length} parcela(s):\n` +
+        `Valor nominal: ${(sim.valorNominalTotal / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n` +
+        `Valor presente (quitação): ${(sim.valorQuitacao / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n` +
+        `Desconto: ${(sim.desconto / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n\nConfirmar?`,
+    );
+    if (!ok) return;
+    setSimulando(true);
+    try {
+      await operacoesService.quitar(id);
+      await recarregar();
+    } finally {
+      setSimulando(false);
+    }
+  }
+
+  // 6.7 — Sinistro: indenização amortiza o saldo (não quita automaticamente).
+  async function sinistro() {
+    const v = window.prompt('Valor da indenização recebida (R$):', '20000');
+    if (!v) return;
+    setSimulando(true);
+    try {
+      await operacoesService.registrarSinistro(id, Math.round(Number(v) * 100));
+      await recarregar();
     } finally {
       setSimulando(false);
     }
@@ -138,15 +174,33 @@ export function ContratoDetalhePage() {
             </button>
           ))}
         </div>
-        <button
-          onClick={simularPagamento}
-          disabled={simulando}
-          className="rounded-[8px] px-[14px] py-[7px] text-[12px] font-semibold"
-          style={{ background: 'var(--accent)', color: '#fff', opacity: simulando ? 0.6 : 1 }}
-          title="Dev: dispara a conciliação da próxima parcela via fila"
-        >
-          {simulando ? 'Conciliando…' : 'Simular pagamento (dev)'}
-        </button>
+        <div className="flex gap-[8px]">
+          <button
+            onClick={quitar}
+            disabled={simulando}
+            className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
+            style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)', opacity: simulando ? 0.6 : 1 }}
+          >
+            Quitação antecipada
+          </button>
+          <button
+            onClick={sinistro}
+            disabled={simulando}
+            className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
+            style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)', opacity: simulando ? 0.6 : 1 }}
+          >
+            Sinistro
+          </button>
+          <button
+            onClick={simularPagamento}
+            disabled={simulando}
+            className="rounded-[8px] px-[14px] py-[7px] text-[12px] font-semibold"
+            style={{ background: 'var(--accent)', color: '#fff', opacity: simulando ? 0.6 : 1 }}
+            title="Dev: dispara a conciliação da próxima parcela via fila"
+          >
+            {simulando ? '…' : 'Simular pagamento (dev)'}
+          </button>
+        </div>
       </div>
 
       {tab === 'cronograma' && (

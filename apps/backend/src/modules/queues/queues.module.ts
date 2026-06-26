@@ -11,6 +11,7 @@ export const QUEUE_NAMES = {
   GERAR_COBRANCA_ASAAS: 'gerar-cobranca-asaas',
   NOTIFICAR_CLIENTE: 'notificar-cliente',
   REGUA_STEP: 'regua-step',
+  EFETIVAR_ACORDO: 'efetivar-acordo',
 } as const;
 
 // Parse de REDIS_URL em opções de conexão (host/port/senha/db). Evita instanciar o
@@ -46,6 +47,7 @@ function redisConnectionFromUrl(url: string) {
       { name: QUEUE_NAMES.GERAR_COBRANCA_ASAAS },
       { name: QUEUE_NAMES.NOTIFICAR_CLIENTE },
       { name: QUEUE_NAMES.REGUA_STEP },
+      { name: QUEUE_NAMES.EFETIVAR_ACORDO },
     ),
   ],
   exports: [BullModule],

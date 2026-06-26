@@ -620,6 +620,8 @@ Estrutura transversal aplicável a:
 
 > ⚠️ **Placeholder:** Regras específicas de alçada (quem aprova o quê, limites de valor) a definir com Vicente. A estrutura deve ser configurável — não hardcoded.
 
+**Modelo `Alcada`** (adicionado no Bloco 6 — estrutura configurável; valores são placeholder/seed). Campos: `tipo` (renegociacao | reajuste | despesa), `role` (qual role pode aprovar), `limite_valor` (até quanto; null = ilimitado), `nivel` (escalonamento), `ativo`. A verificação é em runtime no banco (Doc 6 §4.1): dada uma operação (tipo + valor) e os roles do usuário, existe uma alçada ativa cujo role o usuário possui e cujo `limite_valor` cobre o valor? Se não, escala para o nível superior. **Nenhum limite é hardcoded** — tudo vem de registros `Alcada` configuráveis.
+
 ---
 
 ## 8. Fluxos Principais

@@ -2,10 +2,10 @@ import { createBrowserRouter } from 'react-router-dom';
 import { Shell } from './components/layout/Shell';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginPage } from './pages/auth/LoginPage';
-import { PlaceholderPage } from './pages/PlaceholderPage';
 import { CarteiraPage } from './pages/CarteiraPage';
 import { ContratoDetalhePage } from './pages/ContratoDetalhePage';
 import { ReguaPage } from './pages/ReguaPage';
+import { AcordosPage } from './pages/AcordosPage';
 
 // Rotas client-side — Doc 4 §5.1. /login é pública; o restante é protegido pela sessão.
 export const router = createBrowserRouter([
@@ -35,12 +35,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'acordos',
-        element: (
-          <PlaceholderPage
-            titulo="Renegociações"
-            descricao="Lista de acordos e modal de novação (Bloco 6)."
-          />
-        ),
+        element: <AcordosPage />,
       },
     ],
   },

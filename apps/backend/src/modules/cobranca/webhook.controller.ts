@@ -22,6 +22,8 @@ export class WebhookController {
     private readonly filaRecebido: Queue,
     @InjectQueue(QUEUE_NAMES.PAGAMENTO_VENCIDO)
     private readonly filaVencido: Queue,
+    @InjectQueue(QUEUE_NAMES.EFETIVAR_ACORDO)
+    private readonly filaAcordo: Queue,
   ) {}
 
   // Webhook nunca é síncrono (Regra nº 4): valida assinatura, responde 202 e
@@ -39,14 +41,26 @@ export class WebhookController {
       throw new UnauthorizedException({ erro: 'assinatura_invalida' });
     }
 
+    const ref = dto.payment.externalReference;
+    const recebido = dto.event === 'PAYMENT_RECEIVED' || dto.event === 'PAYMENT_CONFIRMED';
+
+    // externalReference com prefixo "acordo:" = pagamento de entrada de
+    // renegociação (Gatilho 6); sem prefixo = fatura normal.
+    if (recebido && ref.startsWith('acordo:')) {
+      await this.filaAcordo.add('efetivar', {
+        acordoId: ref.slice('acordo:'.length),
+        paymentDate: dto.payment.paymentDate ?? dto.payment.dueDate ?? '',
+      });
+      return { received: true };
+    }
+
     const evento = {
-      faturaId: dto.payment.externalReference,
+      faturaId: ref,
       paymentDate: dto.payment.paymentDate ?? dto.payment.dueDate ?? '',
       dueDate: dto.payment.dueDate ?? '',
       valor: dto.payment.value ?? 0,
     };
-
-    if (dto.event === 'PAYMENT_RECEIVED' || dto.event === 'PAYMENT_CONFIRMED') {
+    if (recebido) {
       await this.filaRecebido.add('conciliar', evento);
     } else if (dto.event === 'PAYMENT_OVERDUE') {
       await this.filaVencido.add('vencido', evento);

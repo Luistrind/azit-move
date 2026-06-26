@@ -181,6 +181,13 @@ enum StatusReajuste {
   CANCELADO
 }
 
+// Tipo de operação sujeita a alçada de aprovação (Doc 2 §7.9). Configurável.
+enum TipoAlcada {
+  RENEGOCIACAO
+  REAJUSTE
+  DESPESA
+}
+
 enum RoleUsuario {
   DIRETOR
   ADMIN
@@ -595,6 +602,25 @@ model ReajusteIPCA {
   @@index([contratoId])
   @@index([status])
   @@map("reajustes_ipca")
+}
+
+// Alçada de aprovação (Doc 2 §7.9 / Doc 6 §6). ESTRUTURA configurável: define que
+// um role pode aprovar operações de um tipo até um limite de valor, num nível de
+// escalonamento. Os VALORES (limites/níveis/quem aprova o quê) são placeholder —
+// definidos com Vicente — e entram como configuração (seed), não como código.
+model Alcada {
+  id          String      @id @default(cuid())
+  tipo        TipoAlcada
+  role        RoleUsuario
+  limiteValor Decimal?    @db.Decimal(12, 2) // null = sem limite (ilimitado)
+  nivel       Int         @default(1) // nível de escalonamento
+  ativo       Boolean     @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tipo])
+  @@map("alcadas")
 }
 
 // ============================================================

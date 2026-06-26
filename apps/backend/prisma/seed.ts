@@ -8,6 +8,7 @@ import {
   StatusAtivo,
   TipoOrigemCapital,
   Periodicidade,
+  TipoAlcada,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { gerarCronograma, centavosParaReaisString } from '@azit/utils';
@@ -366,6 +367,7 @@ async function seedContratos() {
           numeroParcelas: c.numeroParcelas,
           valorParcelaInicial: reais(c.valorParcelaInicial),
           periodicidade: PERIODICIDADE_PRISMA[c.periodicidade],
+          taxaDescontoQuitacao: '0.001000', // 0,1%/dia p/ VP de quitação antecipada
           status: 'ATIVO',
         },
       });
@@ -446,8 +448,25 @@ async function seedContratos() {
   console.log(`   Contratos com cronograma: ${criados}`);
 }
 
+// Alçadas PLACEHOLDER (valores provisórios até definição com Vicente — Doc 6 §6).
+// A estrutura é real; os limites são configuração, não código.
+async function seedAlcadas() {
+  await prisma.alcada.deleteMany({});
+  await prisma.alcada.createMany({
+    data: [
+      { tipo: TipoAlcada.RENEGOCIACAO, role: 'APROVADOR', limiteValor: '50000.00', nivel: 1 },
+      { tipo: TipoAlcada.RENEGOCIACAO, role: 'DIRETOR', limiteValor: null, nivel: 2 },
+      { tipo: TipoAlcada.REAJUSTE, role: 'APROVADOR', limiteValor: null, nivel: 1 },
+      { tipo: TipoAlcada.DESPESA, role: 'OPERADOR', limiteValor: '5000.00', nivel: 1 },
+      { tipo: TipoAlcada.DESPESA, role: 'APROVADOR', limiteValor: '50000.00', nivel: 2 },
+    ],
+  });
+  console.log('   Alçadas (placeholder): 5');
+}
+
 async function main() {
   await seedAdmin();
+  await seedAlcadas();
   await seedDadosBase();
   await seedContratos();
   console.log('✅ Seed concluído');
