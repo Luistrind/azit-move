@@ -66,6 +66,15 @@ export interface ParcelaCronograma {
   status: string;
 }
 
+export interface ExtratoEvento {
+  tipo: string;
+  label: string;
+  data: string;
+  valor: number;
+  encargo: number;
+  atraso: boolean;
+}
+
 export const contratoService = {
   async kpis(): Promise<ContratoKpis> {
     const { data } = await api.get<ContratoKpis>('/api/v1/contratos/kpis');
@@ -82,5 +91,13 @@ export const contratoService = {
   async cronograma(id: string): Promise<ParcelaCronograma[]> {
     const { data } = await api.get<ParcelaCronograma[]>(`/api/v1/contratos/${id}/cronograma`);
     return data;
+  },
+  async extrato(id: string): Promise<ExtratoEvento[]> {
+    const { data } = await api.get<ExtratoEvento[]>(`/api/v1/contratos/${id}/extrato`);
+    return data;
+  },
+  // Dev: simula o pagamento da próxima parcela (dispara a conciliação real).
+  async simularPagamento(id: string): Promise<void> {
+    await api.post(`/api/v1/dev/simular-pagamento/${id}`);
   },
 };

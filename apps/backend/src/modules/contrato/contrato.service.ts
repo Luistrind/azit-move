@@ -196,6 +196,41 @@ export class ContratoService {
         }),
       });
 
+      // Faturas no dia zero (item 4.1, §8.1 passo 6): uma por ciclo, status ABERTA,
+      // fechamento em D-5. Para uma conta com um contrato, 1 fatura por parcela.
+      let seqFatura = await tx.fatura.count({ where: { contaId: dto.contaId } });
+      for (const pc of parcelasCriadas) {
+        const cron = porNumero.get(pc.numero)!;
+        const venc = cron.dataVencimento;
+        const fechamento = new Date(venc.getTime() - 5 * 24 * 60 * 60 * 1000);
+        seqFatura += 1;
+        const fatura = await tx.fatura.create({
+          data: {
+            contaId: dto.contaId,
+            numero: seqFatura,
+            periodoReferencia: venc,
+            dataFechamento: fechamento,
+            dataVencimento: venc,
+            valorTotal: reais(cron.valorNominal),
+            status: 'ABERTA',
+          },
+        });
+        await tx.itemFatura.create({
+          data: {
+            faturaId: fatura.id,
+            parcelaId: pc.id,
+            tipo: 'PRINCIPAL',
+            descricao: `Parcela ${cron.display}`,
+            valor: reais(cron.valorNominal),
+            credor: 'AZIT',
+          },
+        });
+        await tx.parcela.update({
+          where: { id: pc.id },
+          data: { faturaId: fatura.id },
+        });
+      }
+
       return criado;
     });
 
