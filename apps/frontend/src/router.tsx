@@ -1,13 +1,22 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { Shell } from './components/layout/Shell';
+import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { LoginPage } from './pages/auth/LoginPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
-// Rotas client-side — Doc 4 §5.1. Shell envolve as páginas autenticadas.
-// O guard de rota e a tela de login entram no Bloco 1 (autenticação).
+// Rotas client-side — Doc 4 §5.1. /login é pública; o restante é protegido pela sessão.
 export const router = createBrowserRouter([
   {
+    path: '/login',
+    element: <LoginPage />,
+  },
+  {
     path: '/',
-    element: <Shell />,
+    element: (
+      <ProtectedRoute>
+        <Shell />
+      </ProtectedRoute>
+    ),
     children: [
       {
         index: true,

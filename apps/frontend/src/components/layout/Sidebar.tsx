@@ -1,8 +1,16 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../stores/authStore';
+import { authService } from '../../services/auth.service';
 
 // Sidebar 236px navy — Doc 3 §7.2. Logo (fallback bloco âmbar "a" até o SVG oficial),
 // nav e footer de usuário. Os itens reais entram conforme as telas dos blocos seguintes.
 type NavItemDef = { to: string; label: string };
+
+// Iniciais do nome para o avatar (ex: "Administrador Azit" -> "AA").
+function iniciais(nome: string): string {
+  const partes = nome.trim().split(/\s+/);
+  return ((partes[0]?.[0] ?? '') + (partes[1]?.[0] ?? '')).toUpperCase() || 'A';
+}
 
 const NAV_ITEMS: NavItemDef[] = [
   { to: '/', label: 'Carteira' },
@@ -11,6 +19,16 @@ const NAV_ITEMS: NavItemDef[] = [
 ];
 
 export function Sidebar() {
+  const navigate = useNavigate();
+  const usuario = useAuthStore((s) => s.usuario);
+  const limpar = useAuthStore((s) => s.limpar);
+
+  async function onLogout() {
+    await authService.logout();
+    limpar();
+    navigate('/login', { replace: true });
+  }
+
   return (
     <aside
       className="flex h-full w-[236px] flex-none flex-col"
@@ -70,14 +88,24 @@ export function Sidebar() {
             color: 'var(--navy)',
           }}
         >
-          A
+          {iniciais(usuario?.nome ?? 'Azit')}
         </div>
-        <div className="leading-tight">
-          <div className="text-[12.5px] font-semibold">Operador Azit</div>
-          <div className="text-[11px]" style={{ color: 'var(--navy-text-meta)' }}>
-            Console operacional
+        <div className="min-w-0 flex-1 leading-tight">
+          <div className="truncate text-[12.5px] font-semibold">
+            {usuario?.nome ?? 'Operador Azit'}
+          </div>
+          <div className="truncate text-[11px]" style={{ color: 'var(--navy-text-meta)' }}>
+            {usuario?.email ?? 'Console operacional'}
           </div>
         </div>
+        <button
+          onClick={onLogout}
+          title="Sair"
+          className="rounded-[8px] px-[8px] py-[6px] text-[11px] font-semibold transition-colors"
+          style={{ color: 'var(--navy-text)', background: 'rgba(255,255,255,.06)' }}
+        >
+          Sair
+        </button>
       </div>
     </aside>
   );

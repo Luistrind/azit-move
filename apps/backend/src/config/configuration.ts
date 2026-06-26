@@ -5,7 +5,7 @@ export interface AppConfig {
   frontendUrl: string;
   databaseUrl: string;
   redisUrl: string;
-  jwt: { secret: string; expiresIn: string };
+  jwt: { secret: string; accessExpiresIn: string; refreshExpiresInDays: number };
   asaas: { apiUrl: string; apiKey: string; webhookSecret: string };
   pophub: { webhookSecret: string };
   zapi: { instanceId: string; token: string; clientToken: string };
@@ -19,7 +19,9 @@ export default (): AppConfig => ({
   redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
   jwt: {
     secret: process.env.JWT_SECRET ?? '',
-    expiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
+    // Access token curto (Doc 6 §3.1); refresh longo e revogável (§3.2).
+    accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN ?? '15m',
+    refreshExpiresInDays: parseInt(process.env.JWT_REFRESH_EXPIRES_IN_DAYS ?? '7', 10),
   },
   asaas: {
     apiUrl: process.env.ASAAS_API_URL ?? '',
