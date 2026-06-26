@@ -102,6 +102,19 @@ export function ContratoDetalhePage() {
     }
   }
 
+  // 6.8 — Reajuste IPCA (gera -> aprova -> aplica nas parcelas futuras).
+  async function reajustar() {
+    const v = window.prompt('Índice IPCA acumulado (%):', '4.5');
+    if (!v) return;
+    setSimulando(true);
+    try {
+      await operacoesService.reajustar(id, Number(v));
+      await recarregar();
+    } finally {
+      setSimulando(false);
+    }
+  }
+
   const c = detalhe.data;
 
   return (
@@ -190,6 +203,14 @@ export function ContratoDetalhePage() {
             style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)', opacity: simulando ? 0.6 : 1 }}
           >
             Sinistro
+          </button>
+          <button
+            onClick={reajustar}
+            disabled={simulando}
+            className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
+            style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)', opacity: simulando ? 0.6 : 1 }}
+          >
+            Reajuste IPCA
           </button>
           <button
             onClick={simularPagamento}

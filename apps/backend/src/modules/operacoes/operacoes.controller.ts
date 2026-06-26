@@ -16,6 +16,7 @@ import { QUEUE_NAMES } from '../queues/queues.module';
 import { RenegociacaoService } from './renegociacao.service';
 import { QuitacaoService } from './quitacao.service';
 import { SinistroService } from './sinistro.service';
+import { ReajusteService } from './reajuste.service';
 import {
   criarRenegociacaoSchema,
   CriarRenegociacaoBody,
@@ -23,6 +24,8 @@ import {
   QuitacaoBody,
   sinistroSchema,
   SinistroBody,
+  reajusteSchema,
+  ReajusteBody,
 } from './dto/operacoes.dto';
 
 @Controller()
@@ -31,6 +34,7 @@ export class OperacoesController {
     private readonly renegociacao: RenegociacaoService,
     private readonly quitacao: QuitacaoService,
     private readonly sinistro: SinistroService,
+    private readonly reajuste: ReajusteService,
     @InjectQueue(QUEUE_NAMES.EFETIVAR_ACORDO) private readonly filaAcordo: Queue,
   ) {}
 
@@ -97,5 +101,35 @@ export class OperacoesController {
     @Body(new ZodValidationPipe(sinistroSchema)) dto: SinistroBody,
   ) {
     return this.sinistro.registrar(id, dto.valorIndenizacao);
+  }
+
+  // --- Reajuste IPCA (6.8) ---
+  @Get('contratos/:id/reajustes')
+  reajustes(@Param('id') id: string) {
+    return this.reajuste.listar(id);
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('contratos/:id/reajuste')
+  @HttpCode(201)
+  gerarReajuste(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(reajusteSchema)) dto: ReajusteBody,
+  ) {
+    return this.reajuste.gerar(id, dto.indicePercentual);
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.APROVADOR)
+  @Post('reajustes/:id/aprovar')
+  @HttpCode(200)
+  aprovarReajuste(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.reajuste.aprovar(id, user.id, user.roles);
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('reajustes/:id/aplicar')
+  @HttpCode(200)
+  aplicarReajuste(@Param('id') id: string) {
+    return this.reajuste.aplicar(id);
   }
 }

@@ -56,4 +56,11 @@ export const operacoesService = {
     const { data } = await api.post(`/api/v1/contratos/${contratoId}/sinistro`, { valorIndenizacao });
     return data;
   },
+  // 6.8 — Reajuste IPCA: gera (pendente) -> aprova (alçada) -> aplica nas parcelas
+  // futuras. Aqui encadeado para o operador disparar o ciclo.
+  async reajustar(contratoId: string, indicePercentual: number): Promise<void> {
+    const { data } = await api.post<{ id: string }>(`/api/v1/contratos/${contratoId}/reajuste`, { indicePercentual });
+    await api.post(`/api/v1/reajustes/${data.id}/aprovar`);
+    await api.post(`/api/v1/reajustes/${data.id}/aplicar`);
+  },
 };

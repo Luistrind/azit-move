@@ -18,3 +18,8 @@ export const sinistroSchema = z.object({
   valorIndenizacao: z.coerce.number().int().min(0),
 });
 export type SinistroBody = z.infer<typeof sinistroSchema>;
+
+export const reajusteSchema = z.object({
+  indicePercentual: z.coerce.number().min(0).max(100), // ex: 4.5 = 4,5%
+});
+export type ReajusteBody = z.infer<typeof reajusteSchema>;
