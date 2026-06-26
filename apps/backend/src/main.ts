@@ -17,7 +17,13 @@ async function bootstrap() {
   const port = configService.get<number>('port', 3001);
   const frontendUrl = configService.get<string>('frontendUrl');
 
-  app.enableCors({ origin: frontendUrl, credentials: true });
+  // Métodos explícitos: o default do adapter não incluía PATCH/DELETE, e o
+  // preflight do navegador bloqueava essas operações (curl não faz preflight).
+  app.enableCors({
+    origin: frontendUrl,
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+  });
   app.setGlobalPrefix('api/v1');
 
   await app.listen(port, '0.0.0.0');
