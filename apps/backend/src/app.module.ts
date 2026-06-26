@@ -6,6 +6,9 @@ import { QueuesModule } from './modules/queues/queues.module';
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { TitularModule } from './modules/titular/titular.module';
+import { ContaModule } from './modules/conta/conta.module';
+import { AtivoModule } from './modules/ativo/ativo.module';
+import { OrigemCapitalModule } from './modules/origem-capital/origem-capital.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -19,6 +22,9 @@ import { RolesGuard } from './common/guards/roles.guard';
     HealthModule,
     AuthModule,
     TitularModule,
+    ContaModule,
+    AtivoModule,
+    OrigemCapitalModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
