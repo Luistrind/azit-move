@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Read(./apps/backend/.env)",
+      "Read(./apps/frontend/.env)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Edit(./**/.env)",
+      "Edit(./**/.env.*)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Bash(rm -rf*)",
+      "Bash(git push --force*)",
+      "Bash(pnpm db:reset*)"
+    ],
+    "ask": [
+      "Bash(git push*)",
+      "Bash(pnpm db:migrate:dev*)",
+      "Bash(docker*)"
+    ],
+    "allow": [
+      "Bash(pnpm install)",
+      "Bash(pnpm dev*)",
+      "Bash(pnpm build)",
+      "Bash(pnpm test*)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm db:studio)",
+      "Bash(pnpm db:seed)",
+      "Bash(pnpm --filter*)",
+      "Bash(npx prisma generate*)",
+      "Bash(npx prisma validate*)",
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git checkout*)",
+      "Bash(ls*)",
+      "Bash(cat*)",
+      "Bash(grep*)",
+      "Bash(find*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_FILE_PATHS\" | grep -qE '\\.(ts|tsx|js|jsx|json|md)$'; then pnpm prettier --write $CLAUDE_FILE_PATHS 2>/dev/null || true; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

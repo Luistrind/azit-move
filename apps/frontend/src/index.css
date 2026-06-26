@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tokens de design — Doc 3 §2.2–§2.3. O accent é configurável (Doc 3 §10.1). */
+:root {
+  --navy: #001029;
+  --accent: #fa8e0d;
+
+  --bg: #eef1f5;
+  --surface: #ffffff;
+  --surface-muted: #f8fafc;
+  --surface-input: #f1f4f8;
+  --border: #e4e9ef;
+  --border-light: #eef1f5;
+  --border-lighter: #f4f6f9;
+
+  --text-primary: #001029;
+  --text-body: #5b6b7f;
+  --text-secondary: #6b7a8c;
+  --text-muted: #9aa7b5;
+  --text-label: #8694a4;
+
+  --navy-text: #aebccd;
+  --navy-text-muted: #67809a;
+  --navy-text-meta: #9fb0c4;
+  --navy-text-body: #c2cedb;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: 'Manrope', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar e seleção — Doc 3 §3.5 */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cdd6e0;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::selection {
+  background: var(--accent);
+  color: var(--navy);
+}
+
+@keyframes azFade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

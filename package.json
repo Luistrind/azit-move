@@ -1,0 +1,21 @@
+{
+  "name": "azit-v3",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "dev:backend": "pnpm --filter backend dev",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "db:migrate": "pnpm --filter backend db:migrate",
+    "db:migrate:dev": "pnpm --filter backend db:migrate:dev",
+    "db:studio": "pnpm --filter backend db:studio",
+    "db:seed": "pnpm --filter backend db:seed",
+    "db:reset": "pnpm --filter backend db:reset"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

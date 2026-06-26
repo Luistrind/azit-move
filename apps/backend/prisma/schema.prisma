@@ -1,0 +1,649 @@
+// Azit Move V3 — Prisma Schema (Doc 5).
+// Decisões: cuid() para PKs; Decimal(12,2) para dinheiro (nunca Float); soft delete via deletedAt;
+// StatusParcela só com estados ARMAZENÁVEIS (Em aberto/Vence hoje/Vencida são runtime).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Enums
+// ============================================================
+
+enum TipoPessoa {
+  PF
+  PJ
+}
+
+enum StatusTitular {
+  ATIVO
+  INATIVO
+  BLOQUEADO
+}
+
+enum StatusConta {
+  ATIVA
+  SUSPENSA
+  ENCERRADA
+}
+
+enum TipoAtivo {
+  VEICULO
+  OUTRO
+}
+
+enum StatusAtivo {
+  DISPONIVEL
+  EM_CONTRATO
+  QUITADO
+  RECUPERADO
+  SINISTRADO
+}
+
+enum TipoCombustivel {
+  FLEX
+  GASOLINA
+  ELETRICO
+  DIESEL
+  HIBRIDO
+}
+
+enum OrigemAtivo {
+  LOCADORA
+  PARTICULAR
+  CONCESSIONARIA
+}
+
+enum TipoOrigemCapital {
+  CAPITAL_PROPRIO
+  EMPRESTIMO
+  INVESTIDOR_ATIVO
+  FUNDO
+}
+
+enum StatusOrigemCapital {
+  ATIVO
+  ENCERRADO
+}
+
+enum ModeloInvestimento {
+  ATIVO_ESPECIFICO
+  FUNDO_COLETIVO
+  FUNDO_EXCLUSIVO
+}
+
+enum StatusContratoInvestimento {
+  ATIVO
+  ENCERRADO
+}
+
+enum Periodicidade {
+  SEMANAL
+  QUINZENAL
+  MENSAL
+}
+
+enum StatusContratoCredito {
+  RASCUNHO
+  AGUARDANDO_ASSINATURA
+  AGUARDANDO_PAGAMENTO_INICIAL
+  AGUARDANDO_ENTREGA_VEICULO
+  ATIVO
+  INADIMPLENTE
+  BLOQUEADO
+  SUSPENSO
+  EM_RECUPERACAO_VEICULO
+  CANCELADO
+  RESCINDIDO
+  QUITADO_AGUARDANDO_TRANSFERENCIA
+  QUITADO_TRANSFERENCIA_EFETIVADA
+}
+
+enum MotivoEncerramento {
+  QUITACAO
+  RESCISAO
+  CANCELAMENTO
+}
+
+enum NaturezaProduto {
+  RECORRENTE
+  PARCELADO
+}
+
+// De onde o item nasceu. Diferencia produtos vendidos de créditos de renegociação.
+enum OrigemItemContratado {
+  VENDA
+  RENEGOCIACAO
+}
+
+enum Credor {
+  AZIT
+  INVESTIDOR
+  TERCEIRO
+}
+
+enum StatusItemContratado {
+  ATIVO
+  ENCERRADO
+  CANCELADO
+}
+
+// Apenas estados ARMAZENÁVEIS.
+// Em aberto / Vence hoje / Vencida são calculados em runtime — nunca gravados.
+enum StatusParcela {
+  PAGA
+  PAGA_EM_ATRASO
+  PAGA_ANTECIPADA
+  RENEGOCIADA
+  CANCELADA
+  ESTORNADA
+  SUSPENSA
+}
+
+enum StatusFatura {
+  ABERTA
+  FECHADA
+  VENCIDA
+  PAGA
+  PAGA_EM_ATRASO
+  RENEGOCIADA
+}
+
+enum TipoItemFatura {
+  PRINCIPAL
+  SERVICO
+  ENCARGO
+}
+
+enum StatusRecebivel {
+  ESPERADO
+  REALIZADO
+  RENEGOCIADO
+  CANCELADO
+}
+
+enum StatusAcordo {
+  RASCUNHO
+  ATIVO
+  QUITADO
+  CANCELADO
+}
+
+enum StatusReajuste {
+  PENDENTE
+  APROVADO
+  APLICADO
+  CANCELADO
+}
+
+enum RoleUsuario {
+  DIRETOR
+  ADMIN
+  APROVADOR
+  OPERADOR
+  FINANCEIRO
+}
+
+// ============================================================
+// Modelos — camada do titular
+// ============================================================
+
+model Titular {
+  id              String        @id @default(cuid())
+  nome            String
+  tipoPessoa      TipoPessoa
+  cpfCnpj         String        @unique
+  rg              String?
+  estadoCivil     String?
+  profissao       String?
+  whatsapp        String
+  email           String?
+  endereco        String?
+  bairro          String?
+  cidade          String?
+  estado          String?
+  cep             String?
+  asaasCustomerId String?       @unique
+  status          StatusTitular @default(ATIVO)
+
+  conta                   Conta?
+  intervenienteGarantidor IntervenienteGarantidor?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([cpfCnpj])
+  @@index([asaasCustomerId])
+  @@map("titulares")
+}
+
+model IntervenienteGarantidor {
+  id        String  @id @default(cuid())
+  titularId String  @unique
+  nome      String
+  cpf       String
+  rg        String?
+  whatsapp  String?
+  email     String?
+  endereco  String?
+  bairro    String?
+  cidade    String?
+  estado    String?
+  cep       String?
+
+  titular Titular @relation(fields: [titularId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("intervenientes_garantidores")
+}
+
+model Conta {
+  id           String      @id @default(cuid())
+  titularId    String      @unique
+  dataAbertura DateTime    @default(now())
+  status       StatusConta @default(ATIVA)
+
+  titular               Titular                @relation(fields: [titularId], references: [id])
+  contratosCredito      ContratoCredito[]
+  contratosInvestimento ContratoInvestimento[]
+  faturas               Fatura[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("contas")
+}
+
+// ============================================================
+// Modelos — camada do ativo e capital
+// ============================================================
+
+model Ativo {
+  id                   String           @id @default(cuid())
+  tipo                 TipoAtivo        @default(VEICULO)
+  descricao            String
+  marca                String?
+  modelo               String?
+  anoFabricacao        Int?
+  anoModelo            Int?
+  cor                  String?
+  placa                String?          @unique
+  chassi               String?          @unique
+  renavam              String?
+  origem               OrigemAtivo?
+  combustivel          TipoCombustivel?
+  quilometragemEntrada Int?
+  valorAquisicao       Decimal?         @db.Decimal(12, 2)
+  status               StatusAtivo      @default(DISPONIVEL)
+
+  origemCapital   OrigemCapital?
+  contratoCredito ContratoCredito?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([chassi])
+  @@index([placa])
+  @@map("ativos")
+}
+
+model OrigemCapital {
+  id                     String              @id @default(cuid())
+  ativoId                String              @unique
+  tipo                   TipoOrigemCapital
+  contratoInvestimentoId String?
+  valorAportado          Decimal             @db.Decimal(12, 2)
+  taxaRetorno            Decimal?            @db.Decimal(8, 6)
+  dataAporte             DateTime
+  status                 StatusOrigemCapital @default(ATIVO)
+
+  ativo                Ativo                 @relation(fields: [ativoId], references: [id])
+  contratoInvestimento ContratoInvestimento? @relation(fields: [contratoInvestimentoId], references: [id])
+  recebiveis           Recebivel[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([contratoInvestimentoId])
+  @@map("origens_capital")
+}
+
+model ContratoInvestimento {
+  id                  String                     @id @default(cuid())
+  numero              String                     @unique
+  contaId             String
+  modelo              ModeloInvestimento
+  valorAportado       Decimal                    @db.Decimal(12, 2)
+  taxaRetorno         Decimal?                   @db.Decimal(8, 6)
+  dataAporte          DateTime
+  dataInicio          DateTime
+  dataVencimento      DateTime?
+  capitalAmortizado   Decimal                    @default(0) @db.Decimal(12, 2)
+  rendimentoAcumulado Decimal                    @default(0) @db.Decimal(12, 2)
+  status              StatusContratoInvestimento @default(ATIVO)
+
+  conta          Conta           @relation(fields: [contaId], references: [id])
+  origensCapital OrigemCapital[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([contaId])
+  @@index([modelo])
+  @@index([status])
+  @@map("contratos_investimento")
+}
+
+// ============================================================
+// Modelos — cobrança e financeiro
+// ============================================================
+
+model ContratoCredito {
+  id                   String                @id @default(cuid())
+  numero               String                @unique
+  contaId              String
+  ativoId              String                @unique
+  pophubId             String?
+  dataAssinatura       DateTime
+  dataPrimeiraParcela  DateTime
+  valorTotal           Decimal               @db.Decimal(12, 2)
+  valorEntrada         Decimal               @default(0) @db.Decimal(12, 2)
+  saldoDevedor         Decimal               @db.Decimal(12, 2)
+  numeroParcelas       Int
+  valorParcelaInicial  Decimal               @db.Decimal(12, 2)
+  periodicidade        Periodicidade         @default(SEMANAL)
+  indiceReajuste       String?
+  taxaMultaAtraso      Decimal               @default(2.0) @db.Decimal(5, 2)
+  taxaJurosAtraso      Decimal               @default(1.0) @db.Decimal(5, 2)
+  taxaDescontoQuitacao Decimal?              @db.Decimal(8, 6)
+  status               StatusContratoCredito @default(RASCUNHO)
+  dataEncerramento     DateTime?
+  motivoEncerramento   MotivoEncerramento?
+  asaasSubscriptionId  String?
+
+  conta            Conta            @relation(fields: [contaId], references: [id])
+  ativo            Ativo            @relation(fields: [ativoId], references: [id])
+  itensContratados ItemContratado[]
+  parcelas         Parcela[]
+  recebiveis       Recebivel[]
+  acordos          Acordo[]
+  reajustes        ReajusteIPCA[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([contaId])
+  @@index([numero])
+  @@index([status])
+  @@index([pophubId])
+  @@map("contratos_credito")
+}
+
+model ItemContratado {
+  id             String               @id @default(cuid())
+  contratoId     String
+  descricao      String
+  natureza       NaturezaProduto
+  origem         OrigemItemContratado @default(VENDA)
+  acordoOrigemId String?              @unique
+  credor         Credor               @default(AZIT)
+  credorId       String?
+  valor          Decimal              @db.Decimal(12, 2)
+  numeroParcelas Int?
+  periodicidade  Periodicidade?
+  dataInicio     DateTime
+  dataFim        DateTime?
+  status         StatusItemContratado @default(ATIVO)
+
+  contrato     ContratoCredito @relation(fields: [contratoId], references: [id])
+  acordoOrigem Acordo?         @relation("ItemGeradoPorAcordo", fields: [acordoOrigemId], references: [id])
+  parcelas     Parcela[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([contratoId])
+  @@index([origem])
+  @@map("itens_contratados")
+}
+
+model Parcela {
+  id               String         @id @default(cuid())
+  contratoId       String
+  itemContratadoId String
+  numero           Int
+  totalParcelas    Int
+  display          String
+  valorNominal     Decimal        @db.Decimal(12, 2)
+  dataVencimento   DateTime
+  dataPagamento    DateTime?
+  valorPago        Decimal?       @db.Decimal(12, 2)
+  valorEncargo     Decimal?       @db.Decimal(12, 2)
+  // status NULL = em aberto/vence hoje/vencida (calculado em runtime pela data)
+  status           StatusParcela?
+  faturaId         String?
+  // acordoId: preenchido SOMENTE nas parcelas ANTIGAS extintas por um acordo (status = RENEGOCIADA).
+  acordoId         String?
+
+  contrato         ContratoCredito @relation(fields: [contratoId], references: [id])
+  itemContratado   ItemContratado  @relation(fields: [itemContratadoId], references: [id])
+  fatura           Fatura?         @relation(fields: [faturaId], references: [id])
+  acordoRenegociou Acordo?         @relation("ParcelasRenegociadas", fields: [acordoId], references: [id])
+  recebivel        Recebivel?
+  itensFatura      ItemFatura[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([contratoId])
+  @@index([itemContratadoId])
+  @@index([faturaId])
+  @@index([dataVencimento])
+  @@index([status])
+  @@map("parcelas")
+}
+
+model Fatura {
+  id                String       @id @default(cuid())
+  contaId           String
+  numero            Int
+  periodoReferencia DateTime
+  dataFechamento    DateTime
+  dataVencimento    DateTime
+  dataPagamento     DateTime?
+  valorTotal        Decimal      @default(0) @db.Decimal(12, 2)
+  valorPago         Decimal?     @db.Decimal(12, 2)
+  status            StatusFatura @default(ABERTA)
+  asaasChargeId     String?
+  acordoId          String?
+
+  conta       Conta        @relation(fields: [contaId], references: [id])
+  itensFatura ItemFatura[]
+  parcelas    Parcela[]
+  acordo      Acordo?      @relation(fields: [acordoId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([contaId])
+  @@index([status])
+  @@index([dataVencimento])
+  @@index([asaasChargeId])
+  @@map("faturas")
+}
+
+model ItemFatura {
+  id        String         @id @default(cuid())
+  faturaId  String
+  parcelaId String
+  tipo      TipoItemFatura
+  descricao String
+  valor     Decimal        @db.Decimal(12, 2)
+  credor    Credor         @default(AZIT)
+  credorId  String?
+
+  fatura  Fatura  @relation(fields: [faturaId], references: [id])
+  parcela Parcela @relation(fields: [parcelaId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([faturaId])
+  @@index([parcelaId])
+  @@map("itens_fatura")
+}
+
+model Recebivel {
+  id                   String          @id @default(cuid())
+  contratoId           String
+  parcelaId            String          @unique
+  origemCapitalId      String
+  dataPrevista         DateTime
+  valorPrevisto        Decimal         @db.Decimal(12, 2)
+  dataRealizada        DateTime?
+  valorRealizado       Decimal?        @db.Decimal(12, 2)
+  status               StatusRecebivel @default(ESPERADO)
+  // Breakdown PLACEHOLDER — fórmula pendente (Sebastião / estrutura do fundo)
+  breakdownCapital     Decimal?        @db.Decimal(12, 2)
+  breakdownRendimento  Decimal?        @db.Decimal(12, 2)
+  breakdownTaxaServico Decimal?        @db.Decimal(12, 2)
+
+  contrato      ContratoCredito @relation(fields: [contratoId], references: [id])
+  parcela       Parcela         @relation(fields: [parcelaId], references: [id])
+  origemCapital OrigemCapital   @relation(fields: [origemCapitalId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([contratoId])
+  @@index([origemCapitalId])
+  @@index([status])
+  @@index([dataPrevista])
+  @@map("recebiveis")
+}
+
+// ============================================================
+// Modelos — renegociação e reajuste
+// ============================================================
+
+model Acordo {
+  id                    String       @id @default(cuid())
+  contratoId            String
+  operadorId            String
+  dataCriacao           DateTime     @default(now())
+  dataEfetivacao        DateTime?
+  valorTotalRenegociado Decimal      @db.Decimal(12, 2)
+  valorEntrada          Decimal      @db.Decimal(12, 2)
+  numeroParcelasNovas   Int
+  valorParcelaNova      Decimal      @db.Decimal(12, 2)
+  asaasChargeIdEntrada  String?
+  status                StatusAcordo @default(RASCUNHO)
+  observacao            String?
+
+  contrato             ContratoCredito @relation(fields: [contratoId], references: [id])
+  operador             Usuario         @relation(fields: [operadorId], references: [id])
+  // Parcelas ANTIGAS extintas por este acordo (marcadas como RENEGOCIADA)
+  parcelasRenegociadas Parcela[]       @relation("ParcelasRenegociadas")
+  // Item de crédito NOVO gerado por este acordo (origem RENEGOCIACAO).
+  itemGerado           ItemContratado? @relation("ItemGeradoPorAcordo")
+  faturas              Fatura[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([contratoId])
+  @@index([status])
+  @@index([operadorId])
+  @@map("acordos")
+}
+
+model ReajusteIPCA {
+  id                     String         @id @default(cuid())
+  contratoId             String
+  dataAniversario        DateTime
+  indiceAplicado         Decimal        @db.Decimal(8, 4)
+  valorParcelaAnterior   Decimal        @db.Decimal(12, 2)
+  valorParcelaNovo       Decimal        @db.Decimal(12, 2)
+  status                 StatusReajuste @default(PENDENTE)
+  aprovadoPor            String?
+  dataAprovacao          DateTime?
+  dataAplicacao          DateTime?
+  dataNotificacaoCliente DateTime?
+
+  contrato ContratoCredito @relation(fields: [contratoId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([contratoId])
+  @@index([status])
+  @@map("reajustes_ipca")
+}
+
+// ============================================================
+// Modelos — operação e autenticação
+// ============================================================
+
+model Usuario {
+  id        String  @id @default(cuid())
+  nome      String
+  email     String  @unique
+  senhaHash String
+  ativo     Boolean @default(true)
+
+  roles         UsuarioRole[]
+  acordos       Acordo[]
+  refreshTokens RefreshToken[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([email])
+  @@map("usuarios")
+}
+
+model UsuarioRole {
+  usuarioId String
+  role      RoleUsuario
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@id([usuarioId, role])
+  @@map("usuario_roles")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  usuarioId String
+  token     String   @unique
+  expiraEm  DateTime
+  revogado  Boolean  @default(false)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([usuarioId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
