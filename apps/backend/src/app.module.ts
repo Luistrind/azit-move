@@ -9,6 +9,7 @@ import { TitularModule } from './modules/titular/titular.module';
 import { ContaModule } from './modules/conta/conta.module';
 import { AtivoModule } from './modules/ativo/ativo.module';
 import { OrigemCapitalModule } from './modules/origem-capital/origem-capital.module';
+import { ContratoModule } from './modules/contrato/contrato.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -25,6 +26,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     ContaModule,
     AtivoModule,
     OrigemCapitalModule,
+    ContratoModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

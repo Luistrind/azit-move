@@ -4,3 +4,4 @@ export * from './status-parcela';
 export * from './money';
 export * from './formatters';
 export * from './documento';
+export * from './cronograma';

@@ -7,8 +7,10 @@ import {
   TipoCombustivel,
   StatusAtivo,
   TipoOrigemCapital,
+  Periodicidade,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { gerarCronograma, centavosParaReaisString } from '@azit/utils';
 
 // Seed (Doc 4 §7.4, Doc 7 itens 1.1 e 2.5). Idempotente via upsert.
 // Banco guarda dinheiro em Decimal (reais); o domínio/API trafega centavos.
@@ -178,9 +180,137 @@ async function seedDadosBase() {
   console.log(`   Ativos + origens de capital: ${ATIVOS.length}`);
 }
 
+// Contratos de crédito completos com cronograma (item 3.6). Valores em CENTAVOS.
+const CONTRATOS = [
+  {
+    titularCpf: '52998224725', // Samuel
+    ativoChassi: '9BHBG51CAPP100001', // Hyundai
+    dataAssinatura: '2026-02-01',
+    dataPrimeiraParcela: '2026-03-01',
+    valorTotal: 9_000_000,
+    valorEntrada: 1_000_000,
+    numeroParcelas: 24,
+    valorParcelaInicial: 333_333,
+    periodicidade: 'mensal' as const,
+  },
+  {
+    titularCpf: '39053344705', // Joana
+    ativoChassi: '9BGKS48R0PB200002', // Chevrolet Onix
+    dataAssinatura: '2026-03-10',
+    dataPrimeiraParcela: '2026-03-17',
+    valorTotal: 8_200_000,
+    valorEntrada: 800_000,
+    numeroParcelas: 52,
+    valorParcelaInicial: 142_307,
+    periodicidade: 'semanal' as const,
+  },
+];
+
+const PERIODICIDADE_PRISMA: Record<'semanal' | 'quinzenal' | 'mensal', Periodicidade> =
+  { semanal: 'SEMANAL', quinzenal: 'QUINZENAL', mensal: 'MENSAL' };
+
+async function seedContratos() {
+  let criados = 0;
+  for (const c of CONTRATOS) {
+    const ativo = await prisma.ativo.findUnique({
+      where: { chassi: c.ativoChassi },
+      include: { origemCapital: true, contratoCredito: true },
+    });
+    if (!ativo || !ativo.origemCapital) continue;
+    if (ativo.contratoCredito) continue; // idempotente: ativo já tem contrato
+
+    const titular = await prisma.titular.findUnique({
+      where: { cpfCnpj: c.titularCpf },
+      include: { conta: true },
+    });
+    if (!titular?.conta) continue;
+    const conta = titular.conta.id;
+
+    const saldoDevedor = c.valorTotal - c.valorEntrada;
+    const cronograma = gerarCronograma({
+      numeroParcelas: c.numeroParcelas,
+      valorParcela: c.valorParcelaInicial,
+      valorTotal: saldoDevedor,
+      dataPrimeiraParcela: c.dataPrimeiraParcela,
+      periodicidade: c.periodicidade,
+    });
+    const ano = new Date(c.dataAssinatura).getUTCFullYear();
+    const mes = String(new Date(c.dataAssinatura).getUTCMonth() + 1).padStart(2, '0');
+    const prefixo = `${ano}${mes}`;
+    const count = await prisma.contratoCredito.count({
+      where: { numero: { startsWith: prefixo } },
+    });
+    const numero = `${prefixo}${String(count + 1).padStart(4, '0')}`;
+    const reais = centavosParaReaisString;
+
+    await prisma.$transaction(async (tx) => {
+      const contrato = await tx.contratoCredito.create({
+        data: {
+          numero,
+          contaId: conta,
+          ativoId: ativo.id,
+          dataAssinatura: new Date(c.dataAssinatura),
+          dataPrimeiraParcela: new Date(c.dataPrimeiraParcela),
+          valorTotal: reais(c.valorTotal),
+          valorEntrada: reais(c.valorEntrada),
+          saldoDevedor: reais(saldoDevedor),
+          numeroParcelas: c.numeroParcelas,
+          valorParcelaInicial: reais(c.valorParcelaInicial),
+          periodicidade: PERIODICIDADE_PRISMA[c.periodicidade],
+          status: 'ATIVO',
+        },
+      });
+      const item = await tx.itemContratado.create({
+        data: {
+          contratoId: contrato.id,
+          descricao: 'Parcelamento do veículo',
+          natureza: 'PARCELADO',
+          origem: 'VENDA',
+          credor: 'AZIT',
+          valor: reais(saldoDevedor),
+          numeroParcelas: c.numeroParcelas,
+          periodicidade: PERIODICIDADE_PRISMA[c.periodicidade],
+          dataInicio: new Date(c.dataPrimeiraParcela),
+        },
+      });
+      await tx.parcela.createMany({
+        data: cronograma.map((p) => ({
+          contratoId: contrato.id,
+          itemContratadoId: item.id,
+          numero: p.numero,
+          totalParcelas: p.totalParcelas,
+          display: p.display,
+          valorNominal: reais(p.valorNominal),
+          dataVencimento: p.dataVencimento,
+        })),
+      });
+      const parcelas = await tx.parcela.findMany({
+        where: { contratoId: contrato.id },
+        select: { id: true, numero: true },
+      });
+      const porNumero = new Map(cronograma.map((p) => [p.numero, p]));
+      await tx.recebivel.createMany({
+        data: parcelas.map((pc) => {
+          const cron = porNumero.get(pc.numero)!;
+          return {
+            contratoId: contrato.id,
+            parcelaId: pc.id,
+            origemCapitalId: ativo.origemCapital!.id,
+            dataPrevista: cron.dataVencimento,
+            valorPrevisto: reais(cron.valorNominal),
+          };
+        }),
+      });
+    });
+    criados++;
+  }
+  console.log(`   Contratos com cronograma: ${criados}`);
+}
+
 async function main() {
   await seedAdmin();
   await seedDadosBase();
+  await seedContratos();
   console.log('✅ Seed concluído');
 }
 

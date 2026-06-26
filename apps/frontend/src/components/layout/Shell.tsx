@@ -12,7 +12,9 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
 
 export function Shell() {
   const { pathname } = useLocation();
-  const meta = TITULOS[pathname] ?? { title: 'Azit Move', subtitle: '' };
+  const meta = pathname.startsWith('/contratos/')
+    ? { title: 'Detalhe do contrato', subtitle: 'Cronograma e posição' }
+    : TITULOS[pathname] ?? { title: 'Azit Move', subtitle: '' };
 
   return (
     <div className="flex h-full w-full overflow-hidden">
