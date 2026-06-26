@@ -15,6 +15,7 @@ import { CobrancaModule } from './modules/cobranca/cobranca.module';
 import { ReguaModule } from './modules/regua/regua.module';
 import { AlcadaModule } from './modules/alcada/alcada.module';
 import { OperacoesModule } from './modules/operacoes/operacoes.module';
+import { OriginacaoModule } from './modules/originacao/originacao.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -37,6 +38,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     ReguaModule,
     AlcadaModule,
     OperacoesModule,
+    OriginacaoModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
