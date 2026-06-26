@@ -5,6 +5,7 @@ import { LoginPage } from './pages/auth/LoginPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { CarteiraPage } from './pages/CarteiraPage';
 import { ContratoDetalhePage } from './pages/ContratoDetalhePage';
+import { ReguaPage } from './pages/ReguaPage';
 
 // Rotas client-side — Doc 4 §5.1. /login é pública; o restante é protegido pela sessão.
 export const router = createBrowserRouter([
@@ -30,12 +31,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'regua',
-        element: (
-          <PlaceholderPage
-            titulo="Régua de Cobrança"
-            descricao="Kanban de 5 estágios D+1 a D+12 (Bloco 5)."
-          />
-        ),
+        element: <ReguaPage />,
       },
       {
         path: 'acordos',

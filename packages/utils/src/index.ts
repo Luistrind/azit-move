@@ -5,3 +5,4 @@ export * from './money';
 export * from './formatters';
 export * from './documento';
 export * from './cronograma';
+export * from './regua';
