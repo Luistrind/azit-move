@@ -2,7 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    // Emite CommonJS: os enums são valores em runtime e este pacote é consumido
+    // pelo backend (NestJS/CommonJS), direto e via @azit/utils. Vite lida com CJS.
+    "module": "CommonJS",
+    "moduleResolution": "node"
   },
   "include": ["src"]
 }

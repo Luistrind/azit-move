@@ -3,7 +3,11 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
-    "types": ["vitest/globals"]
+    "types": ["vitest/globals"],
+    // Emite CommonJS: este pacote tem funções usadas em runtime pelo backend
+    // (NestJS/CommonJS). O bundler do frontend consome CJS sem problema.
+    "module": "CommonJS",
+    "moduleResolution": "node"
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.ts"]
