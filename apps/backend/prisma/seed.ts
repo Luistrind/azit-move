@@ -9,6 +9,7 @@ import {
   TipoOrigemCapital,
   Periodicidade,
   TipoAlcada,
+  ModeloInvestimento,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { gerarCronograma, centavosParaReaisString } from '@azit/utils';
@@ -464,11 +465,36 @@ async function seedAlcadas() {
   console.log('   Alçadas (placeholder): 5');
 }
 
+// Contrato de investimento (item 8.1) — torna Samuel também INVESTIDOR, além de
+// cliente (papel derivado, Regra nº 8), para demonstrar a visão consolidada.
+async function seedInvestimentos() {
+  const samuel = await prisma.titular.findUnique({
+    where: { cpfCnpj: '52998224725' },
+    include: { conta: true },
+  });
+  if (!samuel?.conta) return;
+  const existe = await prisma.contratoInvestimento.findFirst({ where: { contaId: samuel.conta.id } });
+  if (existe) return;
+  await prisma.contratoInvestimento.create({
+    data: {
+      numero: 'INV2026010001',
+      contaId: samuel.conta.id,
+      modelo: ModeloInvestimento.ATIVO_ESPECIFICO,
+      valorAportado: '50000.00',
+      taxaRetorno: '0.015000', // 1,5% — placeholder
+      dataAporte: new Date('2026-01-20'),
+      dataInicio: new Date('2026-01-20'),
+    },
+  });
+  console.log('   Contratos de investimento: 1');
+}
+
 async function main() {
   await seedAdmin();
   await seedAlcadas();
   await seedDadosBase();
   await seedContratos();
+  await seedInvestimentos();
   console.log('✅ Seed concluído');
 }
 
