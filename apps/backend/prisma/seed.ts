@@ -166,6 +166,8 @@ const ATIVOS = [
     combustivel: TipoCombustivel.FLEX,
     quilometragemEntrada: 3000,
     valorAquisicao: '92000.00',
+    valorVenda: '99000.00', // disponível p/ originação: base da precificação (7.3)
+    pacoteOfertaId: 'PACOTE-LEGADO-A', // andaime: demonstra a oferta por pacote genérico
     capital: { tipo: TipoOrigemCapital.CAPITAL_PROPRIO, valorAportado: '92000.00' },
   },
   // Ativos dos contratos-demo da régua (vencimentos recentes p/ espalhar o kanban).
@@ -369,6 +371,8 @@ async function seedContratos() {
           status: 'ATIVO',
         },
       });
+      // Regra de estoque: ativo contratado sai do estoque disponível.
+      await tx.ativo.update({ where: { id: ativo.id }, data: { status: StatusAtivo.EM_CONTRATO } });
       const item = await tx.itemContratado.create({
         data: {
           contratoId: contrato.id,

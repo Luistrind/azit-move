@@ -6,3 +6,5 @@ export * from './formatters';
 export * from './documento';
 export * from './cronograma';
 export * from './regua';
+export * from './precificacao';
+export * from './templates';

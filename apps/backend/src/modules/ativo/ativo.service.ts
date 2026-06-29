@@ -54,6 +54,11 @@ export class AtivoService {
           dto.valorAquisicao !== undefined
             ? valorAquisicaoParaPrisma(dto.valorAquisicao)
             : undefined,
+        valorVenda:
+          dto.valorVenda !== undefined
+            ? valorAquisicaoParaPrisma(dto.valorVenda)
+            : undefined,
+        pacoteOfertaId: dto.pacoteOfertaId,
       },
     });
     return ativoParaApi(ativo);
@@ -137,6 +142,11 @@ export class AtivoService {
           ? null
           : valorAquisicaoParaPrisma(dto.valorAquisicao);
     }
+    if (dto.valorVenda !== undefined) {
+      data.valorVenda =
+        dto.valorVenda === null ? null : valorAquisicaoParaPrisma(dto.valorVenda);
+    }
+    if (dto.pacoteOfertaId !== undefined) data.pacoteOfertaId = dto.pacoteOfertaId;
     if (dto.placa !== undefined) {
       if (dto.placa) await this.garantirPlacaLivre(dto.placa, id);
       data.placa = dto.placa;

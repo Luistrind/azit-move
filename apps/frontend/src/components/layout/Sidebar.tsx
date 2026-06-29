@@ -14,6 +14,7 @@ function iniciais(nome: string): string {
 
 const NAV_ITEMS: NavItemDef[] = [
   { to: '/', label: 'Carteira' },
+  { to: '/originacao', label: 'Originação' },
   { to: '/regua', label: 'Régua' },
   { to: '/acordos', label: 'Renegociações' },
 ];

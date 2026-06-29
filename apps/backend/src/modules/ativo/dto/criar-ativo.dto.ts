@@ -19,6 +19,10 @@ export const criarAtivoSchema = z.object({
     .optional(),
   quilometragemEntrada: z.coerce.number().int().min(0).optional(),
   valorAquisicao: z.coerce.number().int().min(0).optional(),
+  // valorVenda (centavos): base da precificação individualizada na simulação (Doc 2 §4.4).
+  valorVenda: z.coerce.number().int().min(0).optional(),
+  // vínculo opcional a pacote/oferta genérica (andaime de transição, legado PopHub).
+  pacoteOfertaId: z.string().trim().min(1).optional(),
 });
 
 export type CriarAtivoDto = z.infer<typeof criarAtivoSchema>;

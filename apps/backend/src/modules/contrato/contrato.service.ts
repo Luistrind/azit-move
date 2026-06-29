@@ -5,7 +5,11 @@ import {
   BadRequestException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { Prisma, StatusParcela as StatusParcelaPrisma } from '@prisma/client';
+import {
+  Prisma,
+  StatusParcela as StatusParcelaPrisma,
+  StatusContratoCredito as StatusContratoCreditoPrisma,
+} from '@prisma/client';
 import { StatusContratoCredito, Credor } from '@azit/types';
 import { gerarCronograma, centavosParaReaisString } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
@@ -32,7 +36,10 @@ const reais = (centavos: number) => centavosParaReaisString(centavos);
 export class ContratoService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async criar(dto: CriarContratoDto): Promise<ContratoApi & { totalParcelasGeradas: number }> {
+  async criar(
+    dto: CriarContratoDto,
+    statusInicial: StatusContratoCreditoPrisma = 'ATIVO',
+  ): Promise<ContratoApi & { totalParcelasGeradas: number }> {
     // Pré-condições (fora da transação, leituras).
     const conta = await this.prisma.db.conta.findFirst({
       where: { id: dto.contaId },
@@ -136,8 +143,15 @@ export class ContratoService {
           taxaMultaAtraso: dto.taxaMultaAtraso,
           taxaJurosAtraso: dto.taxaJurosAtraso,
           taxaDescontoQuitacao: dto.taxaDescontoQuitacao,
-          status: 'ATIVO',
+          status: statusInicial,
         },
+      });
+
+      // Regra de estoque (Doc 2 §4.4): o ativo passa a EM_CONTRATO — sai do estoque
+      // disponível para novas simulações.
+      await tx.ativo.update({
+        where: { id: dto.ativoId },
+        data: { status: 'EM_CONTRATO' },
       });
 
       // Item âncora de financiamento (parcelado) — dono das parcelas do cronograma.

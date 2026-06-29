@@ -99,6 +99,8 @@ export interface AtivoApi {
   combustivel: CombustivelApi | null;
   quilometragemEntrada: number | null;
   valorAquisicao: number | null; // centavos
+  valorVenda: number | null; // centavos — base da precificação
+  pacoteOfertaId: string | null;
   status: StatusApi;
   createdAt: string;
   updatedAt: string;
@@ -124,6 +126,9 @@ export function ativoParaApi(a: Ativo): AtivoApi {
       a.valorAquisicao !== null
         ? reaisParaCentavos(a.valorAquisicao.toString())
         : null,
+    valorVenda:
+      a.valorVenda !== null ? reaisParaCentavos(a.valorVenda.toString()) : null,
+    pacoteOfertaId: a.pacoteOfertaId,
     status: status.paraApi[a.status],
     createdAt: a.createdAt.toISOString(),
     updatedAt: a.updatedAt.toISOString(),

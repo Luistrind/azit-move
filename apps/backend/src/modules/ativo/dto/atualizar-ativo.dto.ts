@@ -18,6 +18,8 @@ export const atualizarAtivoSchema = z.object({
     .nullish(),
   quilometragemEntrada: z.coerce.number().int().min(0).nullish(),
   valorAquisicao: z.coerce.number().int().min(0).nullish(),
+  valorVenda: z.coerce.number().int().min(0).nullish(),
+  pacoteOfertaId: z.string().trim().min(1).nullish(),
   status: z
     .enum(['disponivel', 'em_contrato', 'quitado', 'recuperado', 'sinistrado'])
     .optional(),
