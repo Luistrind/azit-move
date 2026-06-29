@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { Prisma, RoleUsuario } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { centavosParaReaisString } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AlcadaService } from '../alcada/alcada.service';
@@ -56,8 +56,8 @@ export class ReajusteService {
     return { id: reajuste.id, status: 'pendente', valorParcelaAnterior: anterior, valorParcelaNovo: novo };
   }
 
-  // Aprovação humana via alçada (tipo REAJUSTE).
-  async aprovar(reajusteId: string, aprovadorId: string, roles: RoleUsuario[]) {
+  // Aprovação humana via alçada (tipo reajuste).
+  async aprovar(reajusteId: string, aprovadorId: string) {
     const reajuste = await this.prisma.db.reajusteIPCA.findFirst({ where: { id: reajusteId } });
     if (!reajuste) {
       throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Reajuste não encontrado' });
@@ -65,7 +65,7 @@ export class ReajusteService {
     if (reajuste.status !== 'PENDENTE') {
       throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: 'Reajuste não está pendente' });
     }
-    const alcada = await this.alcada.verificar('REAJUSTE', cent(reajuste.valorParcelaNovo), roles);
+    const alcada = await this.alcada.verificar(aprovadorId, 'reajuste', cent(reajuste.valorParcelaNovo));
     if (!alcada.aprovado) {
       throw new ForbiddenException({ erro: 'fora_da_alcada', mensagem: alcada.motivo });
     }
@@ -73,7 +73,7 @@ export class ReajusteService {
       where: { id: reajusteId },
       data: { status: 'APROVADO', aprovadoPor: aprovadorId, dataAprovacao: new Date() },
     });
-    return { resultado: 'aprovado', nivelAlcada: alcada.nivel };
+    return { resultado: 'aprovado', limiteAlcada: alcada.limiteMaximo };
   }
 
   // Aplica o reajuste nas parcelas FUTURAS (status null, vencimento > hoje) e
@@ -97,7 +97,7 @@ export class ReajusteService {
     let parcelasAtualizadas = 0;
     await this.prisma.db.$transaction(async (tx) => {
       const futuras = await tx.parcela.findMany({
-        where: { contratoId: reajuste.contrato.id, status: null, dataVencimento: { gt: hoje } },
+        where: { contratoId: reajuste.contrato.id, status: null, dataVencimento: { gt: hoje }, acordoId: null },
         select: { id: true, valorNominal: true },
       });
       for (const p of futuras) {

@@ -17,7 +17,6 @@ export const criarContratoSchema = z.object({
   contaId: z.string().min(1, 'contaId é obrigatório'),
   ativoId: z.string().min(1, 'ativoId é obrigatório'),
   numero: z.string().trim().min(1).optional(), // gerado se ausente
-  pophubId: z.string().trim().min(1).optional(),
   dataAssinatura: z.coerce.date(),
   dataPrimeiraParcela: z.coerce.date(),
   valorTotal: z.coerce.number().int().min(0),

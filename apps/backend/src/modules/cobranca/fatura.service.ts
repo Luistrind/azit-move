@@ -150,7 +150,7 @@ export class FaturaService {
       // estava inadimplente e regularizou, volta a Ativo.
       for (const contratoId of contratosTocados) {
         const emAberto = await tx.parcela.count({
-          where: { contratoId, status: null },
+          where: { contratoId, status: null, acordoId: null },
         });
         if (emAberto === 0) {
           await tx.contratoCredito.update({

@@ -3,6 +3,7 @@ import { useAuthStore } from '../stores/authStore';
 // Permissões de UI por role (espelham os @Roles + alçadas do backend). Doc 6 §5/§6.
 export const ROLE_OPERACAO = ['ADMIN', 'OPERADOR']; // cobrança, bloqueio, quitação, sinistro
 export const ROLE_RENEGOCIACAO = ['ADMIN', 'OPERADOR', 'APROVADOR', 'DIRETOR'];
+export const ROLE_NOVACAO = ['ADMIN', 'APROVADOR', 'DIRETOR']; // recuperação radical (mais sensível)
 export const ROLE_REAJUSTE = ['ADMIN']; // ciclo gerar->aprovar->aplicar só fecha solo no ADMIN
 
 // Hook reativo: retorna uma função pode(rolesAlvo) -> boolean.

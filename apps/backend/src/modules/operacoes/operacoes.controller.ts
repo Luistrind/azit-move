@@ -14,9 +14,11 @@ import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { RenegociacaoService } from './renegociacao.service';
+import { NovacaoService } from './novacao.service';
 import { QuitacaoService } from './quitacao.service';
 import { SinistroService } from './sinistro.service';
 import { ReajusteService } from './reajuste.service';
+import { novacaoSchema, NovacaoBody } from './dto/novacao.dto';
 import {
   criarRenegociacaoSchema,
   CriarRenegociacaoBody,
@@ -32,6 +34,7 @@ import {
 export class OperacoesController {
   constructor(
     private readonly renegociacao: RenegociacaoService,
+    private readonly novacao: NovacaoService,
     private readonly quitacao: QuitacaoService,
     private readonly sinistro: SinistroService,
     private readonly reajuste: ReajusteService,
@@ -52,7 +55,7 @@ export class OperacoesController {
     @Body(new ZodValidationPipe(criarRenegociacaoSchema)) dto: CriarRenegociacaoBody,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.renegociacao.criar(id, dto, user.id, user.roles);
+    return this.renegociacao.criar(id, dto, user.id);
   }
 
   @Get('acordos')
@@ -72,7 +75,24 @@ export class OperacoesController {
     return { enfileirado: true, acordoId };
   }
 
-  // --- Quitação antecipada (6.6) ---
+  // --- Novação (6.6) — recuperação radical ---
+  @Get('novacoes')
+  novacoes() {
+    return this.novacao.listar();
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
+  @Post('contratos/:id/novacao')
+  @HttpCode(201)
+  novar(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(novacaoSchema)) dto: NovacaoBody,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.novacao.novar(id, dto, user.id);
+  }
+
+  // --- Quitação antecipada (6.7) ---
   @Post('contratos/:id/quitacao/simular')
   @HttpCode(200)
   simularQuitacao(
@@ -123,7 +143,7 @@ export class OperacoesController {
   @Post('reajustes/:id/aprovar')
   @HttpCode(200)
   aprovarReajuste(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
-    return this.reajuste.aprovar(id, user.id, user.roles);
+    return this.reajuste.aprovar(id, user.id);
   }
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)

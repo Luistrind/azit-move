@@ -25,7 +25,7 @@ export class QuitacaoService {
     if (!contrato) {
       throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Contrato não encontrado' });
     }
-    const where: Prisma.ParcelaWhereInput = { contratoId, status: null };
+    const where: Prisma.ParcelaWhereInput = { contratoId, status: null, acordoId: null };
     if (parcelaIds?.length) where.id = { in: parcelaIds };
     const parcelas = await this.prisma.db.parcela.findMany({
       where,
@@ -84,7 +84,7 @@ export class QuitacaoService {
         }
       }
       // Quitação total -> contrato Quitado (aguardando transferência).
-      const restantes = await tx.parcela.count({ where: { contratoId, status: null } });
+      const restantes = await tx.parcela.count({ where: { contratoId, status: null, acordoId: null } });
       if (restantes === 0) {
         await tx.contratoCredito.update({
           where: { id: contratoId },

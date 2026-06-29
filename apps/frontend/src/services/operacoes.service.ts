@@ -14,6 +14,15 @@ export interface Acordo {
   dataEfetivacao: string | null;
 }
 
+export interface Novacao {
+  id: string;
+  status: string;
+  contratoOrigem: string;
+  contratoNovo: string;
+  saldoLiquidado: number;
+  dataEfetivacao: string | null;
+}
+
 export interface Elegivel {
   parcelas: { id: string; display: string; dataVencimento: string; valorNominal: number }[];
   valorTotal: number;
@@ -44,6 +53,24 @@ export const operacoesService = {
   },
   async simularEntrada(acordoId: string): Promise<void> {
     await api.post(`/api/v1/dev/simular-entrada-acordo/${acordoId}`);
+  },
+  // 6.6 — Novação (recuperação radical): liquida o contrato origem e gera um novo.
+  async novacoes(): Promise<Novacao[]> {
+    const { data } = await api.get<Novacao[]>('/api/v1/novacoes');
+    return data;
+  },
+  async novar(
+    contratoId: string,
+    body: {
+      dataPrimeiraParcela: string;
+      valorTotal: number;
+      numeroParcelas: number;
+      valorParcelaInicial: number;
+      periodicidade: 'semanal' | 'quinzenal' | 'mensal';
+    },
+  ): Promise<{ id: string; contratoOrigem: string; contratoNovo: string; saldoLiquidado: number }> {
+    const { data } = await api.post(`/api/v1/contratos/${contratoId}/novacao`, body);
+    return data;
   },
   async simularQuitacao(contratoId: string): Promise<SimulacaoQuitacao> {
     const { data } = await api.post(`/api/v1/contratos/${contratoId}/quitacao/simular`, {});

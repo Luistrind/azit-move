@@ -46,14 +46,28 @@ export class ContratoService {
     });
     if (!ativo) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Ativo não encontrado' });
 
+    // Regra "1 ativo = 1 contrato ATIVO" (Doc 2 §4.4): bloqueia só se já houver um
+    // contrato NÃO-terminal. Contratos liquidados/quitados/cancelados liberam o ativo
+    // (ex: novação gera um contrato novo sobre o mesmo ativo).
     const jaContratado = await this.prisma.db.contratoCredito.findFirst({
-      where: { ativoId: dto.ativoId },
+      where: {
+        ativoId: dto.ativoId,
+        status: {
+          notIn: [
+            'LIQUIDADO_POR_NOVACAO',
+            'CANCELADO',
+            'RESCINDIDO',
+            'QUITADO_AGUARDANDO_TRANSFERENCIA',
+            'QUITADO_TRANSFERENCIA_EFETIVADA',
+          ],
+        },
+      },
       select: { id: true },
     });
     if (jaContratado) {
       throw new ConflictException({
         erro: 'ativo_indisponivel',
-        mensagem: 'Ativo já vinculado a um contrato de crédito',
+        mensagem: 'Ativo já vinculado a um contrato de crédito ativo',
       });
     }
 
@@ -110,7 +124,6 @@ export class ContratoService {
           numero,
           contaId: dto.contaId,
           ativoId: dto.ativoId,
-          pophubId: dto.pophubId,
           dataAssinatura: dto.dataAssinatura,
           dataPrimeiraParcela: dto.dataPrimeiraParcela,
           valorTotal: reais(dto.valorTotal),
@@ -267,7 +280,8 @@ export class ContratoService {
       }),
       this.prisma.db.parcela.groupBy({
         by: ['contratoId'],
-        where: { contratoId: { in: ids }, status: null },
+        // saldo em aberto: exclui parcelas cobertas por acordo (acordoId).
+        where: { contratoId: { in: ids }, status: null, acordoId: null },
         _sum: { valorNominal: true },
       }),
     ]);
@@ -299,7 +313,7 @@ export class ContratoService {
       _count: { _all: true },
     });
     const saldo = await this.prisma.db.parcela.aggregate({
-      where: { status: null },
+      where: { status: null, acordoId: null },
       _sum: { valorNominal: true },
     });
     return {
@@ -327,13 +341,13 @@ export class ContratoService {
         where: { contratoId: id, status: { in: PARCELA_PAGA } },
       }),
       this.prisma.db.parcela.findFirst({
-        where: { contratoId: id, status: null },
+        where: { contratoId: id, status: null, acordoId: null },
         orderBy: { dataVencimento: 'asc' },
         select: { numero: true, dataVencimento: true, valorNominal: true },
       }),
     ]);
     const saldoAtual = await this.prisma.db.parcela.aggregate({
-      where: { contratoId: id, status: null },
+      where: { contratoId: id, status: null, acordoId: null },
       _sum: { valorNominal: true },
     });
 

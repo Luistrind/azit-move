@@ -48,7 +48,8 @@ export class ReguaService {
     const ids = contratos.map((c) => c.id);
     const vencidas = await this.prisma.db.parcela.groupBy({
       by: ['contratoId'],
-      where: { contratoId: { in: ids }, status: null, dataVencimento: { lt: hoje } },
+      // parcelas vencidas não cobertas por acordo (acordoId) entram na régua.
+      where: { contratoId: { in: ids }, status: null, dataVencimento: { lt: hoje }, acordoId: null },
       _min: { dataVencimento: true },
       _sum: { valorNominal: true },
       _count: { _all: true },
@@ -161,7 +162,7 @@ export class ReguaService {
     }
     const hoje = this.hojeUTC();
     const maisAntiga = await this.prisma.db.parcela.aggregate({
-      where: { contratoId, status: null, dataVencimento: { lt: hoje } },
+      where: { contratoId, status: null, dataVencimento: { lt: hoje }, acordoId: null },
       _min: { dataVencimento: true },
     });
     const dv = maisAntiga._min.dataVencimento;

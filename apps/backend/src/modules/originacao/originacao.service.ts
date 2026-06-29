@@ -26,9 +26,9 @@ export class OriginacaoService {
   ) {}
 
   async originar(p: OriginarDto) {
-    // 1. Idempotência por numero_origem (pophubId).
+    // 1. Idempotência por numero_origem (usado como numero do contrato).
     const dup = await this.prisma.db.contratoCredito.findFirst({
-      where: { pophubId: p.contrato.numero_origem },
+      where: { numero: p.contrato.numero_origem },
       select: { id: true },
     });
     if (dup) {
@@ -136,8 +136,7 @@ export class OriginacaoService {
     const criado = await this.contrato.criar({
       contaId: conta.id,
       ativoId: ativo.id,
-      numero: undefined,
-      pophubId: p.contrato.numero_origem,
+      numero: p.contrato.numero_origem,
       dataAssinatura: p.contrato.data_assinatura,
       dataPrimeiraParcela: p.contrato.data_primeira_parcela,
       valorTotal: saldoDevedor + valorEntrada,

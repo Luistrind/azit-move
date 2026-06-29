@@ -8,7 +8,6 @@ import {
   StatusAtivo,
   TipoOrigemCapital,
   Periodicidade,
-  TipoAlcada,
   ModeloInvestimento,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
@@ -323,10 +322,10 @@ async function seedContratos() {
   for (const c of CONTRATOS) {
     const ativo = await prisma.ativo.findUnique({
       where: { chassi: c.ativoChassi },
-      include: { origemCapital: true, contratoCredito: true },
+      include: { origemCapital: true, contratosCredito: true },
     });
     if (!ativo || !ativo.origemCapital) continue;
-    if (ativo.contratoCredito) continue; // idempotente: ativo já tem contrato
+    if (ativo.contratosCredito.length) continue; // idempotente: ativo já tem contrato
 
     const titular = await prisma.titular.findUnique({
       where: { cpfCnpj: c.titularCpf },
@@ -447,26 +446,40 @@ async function seedContratos() {
   console.log(`   Contratos com cronograma: ${criados}`);
 }
 
-// Alçadas PLACEHOLDER (valores provisórios até definição com Vicente — Doc 6 §6).
-// A estrutura é real; os limites são configuração, não código.
+// Alçadas PLACEHOLDER por USUÁRIO (Doc 6 §9.1; valores provisórios — Vicente).
+// limiteMaximo em REAIS (coluna Decimal). "Ilimitado" do diretor = teto alto.
+const ILIMITADO = '99999999.00';
+const ALCADAS: { email: string; tipoOperacao: string; limiteMaximo: string }[] = [
+  // Acordo (recuperação branda): cada aprovador tem um teto — demonstra a alçada por valor.
+  { email: 'operador@azit.com.br', tipoOperacao: 'acordo', limiteMaximo: '20000.00' },
+  { email: 'admin@azit.com.br', tipoOperacao: 'acordo', limiteMaximo: '30000.00' },
+  { email: 'aprovador@azit.com.br', tipoOperacao: 'acordo', limiteMaximo: '50000.00' },
+  { email: 'diretor@azit.com.br', tipoOperacao: 'acordo', limiteMaximo: ILIMITADO },
+  // Reajuste IPCA: aprovação por admin/aprovador/diretor.
+  { email: 'admin@azit.com.br', tipoOperacao: 'reajuste', limiteMaximo: ILIMITADO },
+  { email: 'aprovador@azit.com.br', tipoOperacao: 'reajuste', limiteMaximo: ILIMITADO },
+  { email: 'diretor@azit.com.br', tipoOperacao: 'reajuste', limiteMaximo: ILIMITADO },
+  // Novação (recuperação radical): mais sensível — admin/aprovador/diretor.
+  { email: 'admin@azit.com.br', tipoOperacao: 'novacao', limiteMaximo: '30000.00' },
+  { email: 'aprovador@azit.com.br', tipoOperacao: 'novacao', limiteMaximo: '50000.00' },
+  { email: 'diretor@azit.com.br', tipoOperacao: 'novacao', limiteMaximo: ILIMITADO },
+  // Despesa.
+  { email: 'operador@azit.com.br', tipoOperacao: 'despesa', limiteMaximo: '5000.00' },
+  { email: 'aprovador@azit.com.br', tipoOperacao: 'despesa', limiteMaximo: '50000.00' },
+];
+
 async function seedAlcadas() {
   await prisma.alcada.deleteMany({});
-  await prisma.alcada.createMany({
-    data: [
-      // Renegociação: cada papel aprova até um teto (demonstra a alçada por valor).
-      { tipo: TipoAlcada.RENEGOCIACAO, role: 'OPERADOR', limiteValor: '20000.00', nivel: 1 },
-      { tipo: TipoAlcada.RENEGOCIACAO, role: 'ADMIN', limiteValor: '30000.00', nivel: 1 },
-      { tipo: TipoAlcada.RENEGOCIACAO, role: 'APROVADOR', limiteValor: '50000.00', nivel: 2 },
-      { tipo: TipoAlcada.RENEGOCIACAO, role: 'DIRETOR', limiteValor: null, nivel: 3 },
-      // Reajuste: aprovação por ADMIN/APROVADOR/DIRETOR (sem teto).
-      { tipo: TipoAlcada.REAJUSTE, role: 'ADMIN', limiteValor: null, nivel: 1 },
-      { tipo: TipoAlcada.REAJUSTE, role: 'APROVADOR', limiteValor: null, nivel: 1 },
-      { tipo: TipoAlcada.REAJUSTE, role: 'DIRETOR', limiteValor: null, nivel: 2 },
-      { tipo: TipoAlcada.DESPESA, role: 'OPERADOR', limiteValor: '5000.00', nivel: 1 },
-      { tipo: TipoAlcada.DESPESA, role: 'APROVADOR', limiteValor: '50000.00', nivel: 2 },
-    ],
-  });
-  console.log('   Alçadas (placeholder, por role): 9');
+  let criadas = 0;
+  for (const a of ALCADAS) {
+    const usuario = await prisma.usuario.findUnique({ where: { email: a.email }, select: { id: true } });
+    if (!usuario) continue;
+    await prisma.alcada.create({
+      data: { usuarioId: usuario.id, tipoOperacao: a.tipoOperacao, limiteMaximo: a.limiteMaximo },
+    });
+    criadas++;
+  }
+  console.log(`   Alçadas (placeholder, por usuário): ${criadas}`);
 }
 
 // Contrato de investimento (item 8.1) — torna Samuel também INVESTIDOR, além de

@@ -25,7 +25,7 @@ export class SinistroService {
     }
 
     const abertas = await this.prisma.db.parcela.findMany({
-      where: { contratoId, status: null },
+      where: { contratoId, status: null, acordoId: null },
       orderBy: { dataVencimento: 'asc' },
       select: { id: true, valorNominal: true, faturaId: true },
     });
@@ -58,7 +58,7 @@ export class SinistroService {
         }
       }
       const saldoRestante = await tx.parcela.aggregate({
-        where: { contratoId, status: null },
+        where: { contratoId, status: null, acordoId: null },
         _sum: { valorNominal: true },
       });
       // Saldo zerado -> contrato Quitado; senão permanece (dívida não é perdoada).

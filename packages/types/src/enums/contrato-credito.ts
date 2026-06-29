@@ -29,9 +29,10 @@ export enum StatusItemContratado {
 }
 
 export enum TipoItemFatura {
-  PRINCIPAL = 'principal',
-  SERVICO   = 'servico',
-  ENCARGO   = 'encargo',
+  PRINCIPAL    = 'principal',
+  INTERMEDIARIA = 'intermediaria', // parcela-balão da entrada parcelada
+  SERVICO      = 'servico',
+  ENCARGO      = 'encargo',
 }
 
 export enum StatusRecebivel {

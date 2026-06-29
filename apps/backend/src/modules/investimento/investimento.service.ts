@@ -101,7 +101,7 @@ export class InvestimentoService {
     const creditoIds = creditos.map((c) => c.id);
     const saldo = creditoIds.length
       ? await this.prisma.db.parcela.aggregate({
-          where: { contratoId: { in: creditoIds }, status: null },
+          where: { contratoId: { in: creditoIds }, status: null, acordoId: null },
           _sum: { valorNominal: true },
         })
       : { _sum: { valorNominal: null } };

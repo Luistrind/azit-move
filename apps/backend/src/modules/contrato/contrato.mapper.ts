@@ -41,7 +41,6 @@ export interface ContratoApi {
   numero: string;
   contaId: string;
   ativoId: string;
-  pophubId: string | null;
   dataAssinatura: string;
   dataPrimeiraParcela: string;
   valorTotal: number;
@@ -67,7 +66,6 @@ export function contratoParaApi(c: ContratoCredito): ContratoApi {
     numero: c.numero,
     contaId: c.contaId,
     ativoId: c.ativoId,
-    pophubId: c.pophubId,
     dataAssinatura: c.dataAssinatura.toISOString(),
     dataPrimeiraParcela: c.dataPrimeiraParcela.toISOString(),
     valorTotal: dec(c.valorTotal)!,
@@ -141,11 +139,16 @@ export interface ParcelaApi {
 }
 
 export function parcelaParaApi(p: Parcela): ParcelaApi {
-  // Status calculado em runtime: nunca lido do banco quando é em aberto/vencida.
-  const statusLabel = resolverStatusParcela({
-    status: p.status ? StatusParcela[p.status] : null,
-    dataVencimento: p.dataVencimento,
-  });
+  // Parcela coberta por acordo: vínculo via acordoId (status real continua null).
+  // Para EXIBIÇÃO mostramos o rótulo "Renegociada" — sem gravar esse status (Regra 5).
+  const statusLabel =
+    p.acordoId && !p.status
+      ? StatusParcela.RENEGOCIADA
+      : // Status calculado em runtime: nunca lido do banco quando é em aberto/vencida.
+        resolverStatusParcela({
+          status: p.status ? StatusParcela[p.status] : null,
+          dataVencimento: p.dataVencimento,
+        });
   return {
     id: p.id,
     contratoId: p.contratoId,

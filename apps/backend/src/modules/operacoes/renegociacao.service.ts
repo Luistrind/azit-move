@@ -5,7 +5,7 @@ import {
   ForbiddenException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { Prisma, RoleUsuario } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { Periodicidade } from '@azit/types';
 import { gerarCronograma, centavosParaReaisString } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
@@ -33,10 +33,20 @@ export class RenegociacaoService {
     private readonly alcada: AlcadaService,
   ) {}
 
-  // 6.2 — Obrigações em aberto elegíveis + soma do saldo.
+  private hojeUTC(): Date {
+    return new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
+  }
+
+  // 6.2 — Obrigações EM ATRASO elegíveis para acordo (não cobertas por outro acordo).
+  // O Acordo dilui o que está vencido; parcelas futuras não entram.
   async elegiveis(contratoId: string) {
     const parcelas = await this.prisma.db.parcela.findMany({
-      where: { contratoId, status: null },
+      where: {
+        contratoId,
+        status: null,
+        dataVencimento: { lt: this.hojeUTC() },
+        acordoId: null,
+      },
       orderBy: { numero: 'asc' },
       select: { id: true, display: true, dataVencimento: true, valorNominal: true },
     });
@@ -54,12 +64,7 @@ export class RenegociacaoService {
 
   // 6.3 — Cria o acordo em RASCUNHO e gera a cobrança da entrada no Asaas.
   // Passa pela alçada (placeholder configurável).
-  async criar(
-    contratoId: string,
-    dto: CriarRenegociacaoDto,
-    operadorId: string,
-    roles: RoleUsuario[],
-  ) {
+  async criar(contratoId: string, dto: CriarRenegociacaoDto, operadorId: string) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id: contratoId },
       select: { id: true, numero: true },
@@ -77,7 +82,7 @@ export class RenegociacaoService {
     }
 
     // Gate de alçada (Doc 6 §6 — estrutura configurável).
-    const alcada = await this.alcada.verificar('RENEGOCIACAO', valorTotal, roles);
+    const alcada = await this.alcada.verificar(operadorId, 'acordo', valorTotal);
     if (!alcada.aprovado) {
       throw new ForbiddenException({ erro: 'fora_da_alcada', mensagem: alcada.motivo });
     }
@@ -105,7 +110,7 @@ export class RenegociacaoService {
       data: { asaasChargeIdEntrada: cobranca.id },
     });
 
-    return { id: acordo.id, status: 'rascunho', valorTotalRenegociado: valorTotal, nivelAlcada: alcada.nivel };
+    return { id: acordo.id, status: 'rascunho', valorTotalRenegociado: valorTotal, limiteAlcada: alcada.limiteMaximo };
   }
 
   // 6.4 — Efetivação via webhook da entrada (Gatilho 6): NOVAÇÃO.
@@ -139,17 +144,20 @@ export class RenegociacaoService {
       periodicidade: periodicidadeApi,
     });
 
+    const hoje = this.hojeUTC();
     await this.prisma.db.$transaction(async (tx) => {
-      // 1. Parcelas antigas em aberto -> RENEGOCIADA (acordoId); suas faturas -> RENEGOCIADA.
-      const antigas = await tx.parcela.findMany({
-        where: { contratoId: acordo.contrato.id, status: null },
+      // 1. Parcelas EM ATRASO cobertas recebem VÍNCULO de acordo (acordoId) —
+      //    NÃO o status RENEGOCIADA (Doc 2 §4.14). Ficam excluídas da cobrança
+      //    pelo filtro acordoId. As faturas correspondentes vão a RENEGOCIADA.
+      const cobertas = await tx.parcela.findMany({
+        where: { contratoId: acordo.contrato.id, status: null, dataVencimento: { lt: hoje }, acordoId: null },
         select: { faturaId: true },
       });
       await tx.parcela.updateMany({
-        where: { contratoId: acordo.contrato.id, status: null },
-        data: { status: 'RENEGOCIADA', acordoId: acordo.id },
+        where: { contratoId: acordo.contrato.id, status: null, dataVencimento: { lt: hoje }, acordoId: null },
+        data: { acordoId: acordo.id },
       });
-      const faturaIds = [...new Set(antigas.map((p) => p.faturaId).filter((x): x is string => !!x))];
+      const faturaIds = [...new Set(cobertas.map((p) => p.faturaId).filter((x): x is string => !!x))];
       if (faturaIds.length) {
         await tx.fatura.updateMany({
           where: { id: { in: faturaIds }, status: { notIn: ['PAGA', 'PAGA_EM_ATRASO'] } },
@@ -157,13 +165,13 @@ export class RenegociacaoService {
         });
       }
 
-      // 2. ItemContratado NOVO de origem RENEGOCIACAO (dono das parcelas novas).
+      // 2. ItemContratado NOVO de origem ACORDO (dono das parcelas novas).
       const item = await tx.itemContratado.create({
         data: {
           contratoId: acordo.contrato.id,
-          descricao: 'Crédito de renegociação',
+          descricao: 'Crédito de acordo',
           natureza: 'PARCELADO',
-          origem: 'RENEGOCIACAO',
+          origem: 'ACORDO',
           acordoOrigemId: acordo.id,
           credor: 'AZIT',
           valor: reais(saldoNovo),
@@ -230,18 +238,16 @@ export class RenegociacaoService {
         await tx.parcela.update({ where: { id: pc.id }, data: { faturaId: fatura.id } });
       }
 
-      // 4. Acordo -> ATIVO; contrato volta a ATIVO (obrigações cobertas).
+      // 4. Acordo -> ATIVO. O contrato NÃO é liquidado nem volta a Ativo: o Acordo
+      //    é recuperação branda; o cliente segue inadimplente (contábil) até cumprir
+      //    o acordo (Doc 2 §4.14, §7.7).
       await tx.acordo.update({
         where: { id: acordo.id },
         data: { status: 'ATIVO', dataEfetivacao },
       });
-      await tx.contratoCredito.update({
-        where: { id: acordo.contrato.id },
-        data: { status: 'ATIVO' },
-      });
     });
 
-    this.logger.log(`Acordo ${acordoId} efetivado (novação): ${cronograma.length} parcelas novas`);
+    this.logger.log(`Acordo ${acordoId} efetivado: ${cronograma.length} parcelas novas (contrato segue inadimplente)`);
     return { resultado: 'efetivado', parcelasNovas: cronograma.length };
   }
 

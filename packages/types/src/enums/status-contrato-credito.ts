@@ -13,6 +13,7 @@ export enum StatusContratoCredito {
   EM_RECUPERACAO_VEICULO           = 'Em recuperação de veículo',
   CANCELADO                        = 'Cancelado',
   RESCINDIDO                       = 'Rescindido',
+  LIQUIDADO_POR_NOVACAO            = 'Liquidado por novação',
   QUITADO_AGUARDANDO_TRANSFERENCIA = 'Quitado (aguardando transferência)',
   QUITADO_TRANSFERENCIA_EFETIVADA  = 'Quitado (transferência efetivada)',
 }

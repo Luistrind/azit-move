@@ -43,7 +43,7 @@ export class CobrancaController {
   @HttpCode(202)
   async simularPagamento(@Param('contratoId') contratoId: string) {
     const parcela = await this.prisma.db.parcela.findFirst({
-      where: { contratoId, status: null, faturaId: { not: null } },
+      where: { contratoId, status: null, faturaId: { not: null }, acordoId: null },
       orderBy: { dataVencimento: 'asc' },
       select: { faturaId: true, dataVencimento: true },
     });

@@ -1,6 +1,6 @@
 // De onde o ItemContratado nasceu — Doc 2 §4.9 / Doc 5 §3.
-// RENEGOCIACAO: crédito gerado por um acordo (novação das parcelas antigas).
+// ACORDO: crédito gerado por um Acordo (dilui parcelas em atraso; NÃO liquida o contrato).
 export enum OrigemItemContratado {
-  VENDA        = 'venda',
-  RENEGOCIACAO = 'renegociacao',
+  VENDA  = 'venda',
+  ACORDO = 'acordo',
 }

@@ -1,55 +1,57 @@
 import { Injectable } from '@nestjs/common';
-import { RoleUsuario, TipoAlcada } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 
 export interface ResultadoAlcada {
   aprovado: boolean;
-  nivel: number | null;
+  limiteMaximo: number | null; // centavos do limite que cobriu (informativo)
   motivo?: string;
 }
 
-// 6.1 — Verificação de alçada em runtime no banco (Doc 6 §4.1, §6). A estrutura é
-// configurável; os limites vêm de registros Alcada (placeholder até Vicente).
-// Nenhum limite é hardcoded.
+// 6.1 — Verificação de alçada em runtime no banco (Doc 6 §6, §9.1). Estrutura
+// PER USUÁRIO: cada aprovador tem um limite por tipo de operação. Os valores
+// vêm de registros Alcada (placeholder/seed até Vicente). Nenhum limite hardcoded.
 @Injectable()
 export class AlcadaService {
   constructor(private readonly prisma: PrismaService) {}
 
   async verificar(
-    tipo: TipoAlcada,
+    usuarioId: string,
+    tipoOperacao: string,
     valorCentavos: number,
-    roles: RoleUsuario[],
   ): Promise<ResultadoAlcada> {
     const alcadas = await this.prisma.db.alcada.findMany({
-      where: { tipo, ativo: true, role: { in: roles } },
-      orderBy: { nivel: 'asc' },
+      where: { usuarioId, tipoOperacao, ativo: true },
+      orderBy: { limiteMaximo: 'desc' },
     });
-    // Cobre quando não há limite (ilimitado) ou o valor cabe no limite.
-    const cobre = alcadas.filter(
-      (a) =>
-        a.limiteValor === null ||
-        valorCentavos <= Math.round(Number(a.limiteValor.toString()) * 100),
+    const cobre = alcadas.find(
+      (a) => valorCentavos <= Math.round(Number(a.limiteMaximo.toString()) * 100),
     );
-    if (cobre.length > 0) {
-      return { aprovado: true, nivel: cobre[0].nivel };
+    if (cobre) {
+      return {
+        aprovado: true,
+        limiteMaximo: Math.round(Number(cobre.limiteMaximo.toString()) * 100),
+      };
     }
     return {
       aprovado: false,
-      nivel: null,
-      motivo: 'Operação excede a alçada dos roles do usuário — requer aprovação superior',
+      limiteMaximo: null,
+      motivo:
+        'Operação excede a alçada do usuário para este tipo — requer aprovação superior',
     };
   }
 
-  async listar() {
+  async listar(usuarioId?: string) {
     const alcadas = await this.prisma.db.alcada.findMany({
-      orderBy: [{ tipo: 'asc' }, { nivel: 'asc' }],
+      where: usuarioId ? { usuarioId } : undefined,
+      orderBy: [{ usuarioId: 'asc' }, { tipoOperacao: 'asc' }],
+      include: { usuario: { select: { nome: true, email: true } } },
     });
     return alcadas.map((a) => ({
       id: a.id,
-      tipo: a.tipo.toLowerCase(),
-      role: a.role,
-      limiteValor: a.limiteValor ? Math.round(Number(a.limiteValor.toString()) * 100) : null,
-      nivel: a.nivel,
+      usuarioId: a.usuarioId,
+      usuario: a.usuario.nome,
+      tipoOperacao: a.tipoOperacao,
+      limiteMaximo: Math.round(Number(a.limiteMaximo.toString()) * 100),
       ativo: a.ativo,
     }));
   }

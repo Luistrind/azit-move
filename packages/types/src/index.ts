@@ -7,6 +7,8 @@ export * from './enums/status-fatura';
 export * from './enums/status-contrato-credito';
 export * from './enums/status-contrato-investimento';
 export * from './enums/status-acordo';
+export * from './enums/status-novacao';
+export * from './enums/originacao';
 export * from './enums/modelo-investimento';
 export * from './enums/origem-capital';
 export * from './enums/origem-item-contratado';
