@@ -39,7 +39,7 @@ Estes cinco conceitos atravessam todos os documentos. Tê-los claros acelera a l
 
 **Asaas executa, Azit controla.** O Asaas é meio de pagamento. Toda a lógica vive no sistema.
 
-**Renegociação é novação.** Parcelas antigas são extintas; um novo crédito (ItemContratado de origem RENEGOCIACAO) nasce para substituí-las — exatamente como num banco.
+**Acordo ≠ Novação.** O Acordo dilui parcelas em atraso sem liquidar o contrato (ItemContratado de origem ACORDO); a Novação liquida o contrato inteiro e cria um novo. Mecanismos distintos — como num banco.
 
 ---
 

@@ -18,32 +18,30 @@ import { gerarCronograma, centavosParaReaisString } from '@azit/utils';
 // Banco guarda dinheiro em Decimal (reais); o domínio/API trafega centavos.
 const prisma = new PrismaClient();
 
-async function seedAdmin() {
-  const email = 'admin@azit.com.br';
-  const senhaPlana = 'azit123';
-  const senhaHash = await bcrypt.hash(senhaPlana, 12); // cost 12 (Doc 6 §2.1)
+// Um usuário por role (Doc 6 §5.2) — senha única azit123 — para exercitar o RBAC.
+const USUARIOS: { nome: string; email: string; role: RoleUsuario }[] = [
+  { nome: 'Diretoria Azit', email: 'diretor@azit.com.br', role: RoleUsuario.DIRETOR },
+  { nome: 'Administrador Azit', email: 'admin@azit.com.br', role: RoleUsuario.ADMIN },
+  { nome: 'Aprovador Azit', email: 'aprovador@azit.com.br', role: RoleUsuario.APROVADOR },
+  { nome: 'Operador Azit', email: 'operador@azit.com.br', role: RoleUsuario.OPERADOR },
+  { nome: 'Financeiro Azit', email: 'financeiro@azit.com.br', role: RoleUsuario.FINANCEIRO },
+];
 
-  // Diretor que também administra e aprova — RBAC acumulativo (Doc 6 §5.1).
-  const roles: RoleUsuario[] = [
-    RoleUsuario.DIRETOR,
-    RoleUsuario.ADMIN,
-    RoleUsuario.APROVADOR,
-  ];
-
-  const usuario = await prisma.usuario.upsert({
-    where: { email },
-    update: { senhaHash, ativo: true },
-    create: { nome: 'Administrador Azit', email, senhaHash },
-  });
-
-  for (const role of roles) {
+async function seedUsuarios() {
+  const senhaHash = await bcrypt.hash('azit123', 12); // cost 12 (Doc 6 §2.1)
+  for (const u of USUARIOS) {
+    const usuario = await prisma.usuario.upsert({
+      where: { email: u.email },
+      update: { senhaHash, ativo: true },
+      create: { nome: u.nome, email: u.email, senhaHash },
+    });
     await prisma.usuarioRole.upsert({
-      where: { usuarioId_role: { usuarioId: usuario.id, role } },
+      where: { usuarioId_role: { usuarioId: usuario.id, role: u.role } },
       update: {},
-      create: { usuarioId: usuario.id, role },
+      create: { usuarioId: usuario.id, role: u.role },
     });
   }
-  console.log(`   Admin: ${email} / ${senhaPlana} (${roles.join(', ')})`);
+  console.log(`   Usuários (1 por role, senha azit123): ${USUARIOS.map((u) => u.role).join(', ')}`);
 }
 
 // Titulares fictícios + conta de cada um (1:1).
@@ -455,14 +453,20 @@ async function seedAlcadas() {
   await prisma.alcada.deleteMany({});
   await prisma.alcada.createMany({
     data: [
-      { tipo: TipoAlcada.RENEGOCIACAO, role: 'APROVADOR', limiteValor: '50000.00', nivel: 1 },
-      { tipo: TipoAlcada.RENEGOCIACAO, role: 'DIRETOR', limiteValor: null, nivel: 2 },
+      // Renegociação: cada papel aprova até um teto (demonstra a alçada por valor).
+      { tipo: TipoAlcada.RENEGOCIACAO, role: 'OPERADOR', limiteValor: '20000.00', nivel: 1 },
+      { tipo: TipoAlcada.RENEGOCIACAO, role: 'ADMIN', limiteValor: '30000.00', nivel: 1 },
+      { tipo: TipoAlcada.RENEGOCIACAO, role: 'APROVADOR', limiteValor: '50000.00', nivel: 2 },
+      { tipo: TipoAlcada.RENEGOCIACAO, role: 'DIRETOR', limiteValor: null, nivel: 3 },
+      // Reajuste: aprovação por ADMIN/APROVADOR/DIRETOR (sem teto).
+      { tipo: TipoAlcada.REAJUSTE, role: 'ADMIN', limiteValor: null, nivel: 1 },
       { tipo: TipoAlcada.REAJUSTE, role: 'APROVADOR', limiteValor: null, nivel: 1 },
+      { tipo: TipoAlcada.REAJUSTE, role: 'DIRETOR', limiteValor: null, nivel: 2 },
       { tipo: TipoAlcada.DESPESA, role: 'OPERADOR', limiteValor: '5000.00', nivel: 1 },
       { tipo: TipoAlcada.DESPESA, role: 'APROVADOR', limiteValor: '50000.00', nivel: 2 },
     ],
   });
-  console.log('   Alçadas (placeholder): 5');
+  console.log('   Alçadas (placeholder, por role): 9');
 }
 
 // Contrato de investimento (item 8.1) — torna Samuel também INVESTIDOR, além de
@@ -490,7 +494,7 @@ async function seedInvestimentos() {
 }
 
 async function main() {
-  await seedAdmin();
+  await seedUsuarios();
   await seedAlcadas();
   await seedDadosBase();
   await seedContratos();

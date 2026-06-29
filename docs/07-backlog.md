@@ -13,7 +13,7 @@ Este é o backlog completo da V3, do primeiro ao último item. **Não é "fase 1
 
 **Princípio de ordenação:** dependência de baixo para cima. Fundação → dados base → núcleo do negócio → ciclo de cobrança → régua → operações sobre contratos → originação real → camadas externas.
 
-**Estratégia de dados:** o núcleo é desenvolvido e validado sobre **dados semeados** (seed). A originação via API do PopHub entra depois que o ciclo de cobrança estiver validado, desacoplando o desenvolvimento do núcleo de uma dependência externa.
+**Estratégia de dados:** o núcleo é desenvolvido e validado sobre **dados semeados** (seed). A originação nativa (telas do funil) entra depois que o ciclo de cobrança estiver validado, desacoplando o desenvolvimento do núcleo de uma camada que depende de todo o resto.
 
 Cada item lista o que entrega e de que depende. A coluna "Depende de" referencia os números dos itens anteriores.
 
@@ -119,31 +119,44 @@ Depende de faturas vencendo sem pagamento.
 
 ## Bloco 6 — Operações sobre contratos
 
-Renegociação, quitação, sinistro, reajuste. Dependem do contrato e do ciclo de cobrança maduros.
+Acordo, novação, quitação, sinistro, reajuste. Dependem do contrato e do ciclo de cobrança maduros.
 
 | # | Item | Entrega | Depende de |
 |---|---|---|---|
 | 6.1 | Estrutura de alçadas | Modelo Alcada configurável, verificação de limite no banco | 1.5 |
-| 6.2 | Renegociação — seleção | Módulo: seleção de obrigações em aberto por item ou fatura, soma do saldo | 4.6, 6.1 |
-| 6.3 | Renegociação — acordo | Acordo em rascunho, geração de cobrança da entrada no Asaas | 6.2, 4.3 |
-| 6.4 | Renegociação — efetivação | Webhook da entrada → novação: parcelas antigas renegociadas, ItemContratado de origem RENEGOCIACAO gerado, novas parcelas criadas | 6.3, 4.5 |
-| 6.5 | Tela de acordos | Lista de acordos, modal de renegociação em 3 etapas | 6.4, 1.7 |
-| 6.6 | Quitação antecipada | Três variantes (parcelas específicas, total, encerramento) usando VP | 4.6, 0.3 |
-| 6.7 | Sinistro | Registro de sinistro, amortização por indenização, saldo remanescente | 4.6 |
-| 6.8 | Reajuste IPCA | Reajuste anual com aprovação humana via alçada | 6.1, 3.3 |
+| 6.2 | Acordo — seleção | Módulo: seleção de obrigações em atraso por item ou fatura, soma do saldo | 4.6, 6.1 |
+| 6.3 | Acordo — registro | Acordo em rascunho, geração de cobrança da entrada no Asaas | 6.2, 4.3 |
+| 6.4 | Acordo — efetivação | Webhook da entrada → parcelas cobertas recebem vínculo de acordo (NÃO status RENEGOCIADA), ItemContratado de origem ACORDO gerado, novas parcelas criadas; contrato NÃO liquidado | 6.3, 4.5 |
+| 6.5 | Tela de acordos | Lista de acordos, modal de acordo em etapas | 6.4, 1.7 |
+| 6.6 | Novação | Mecanismo radical: liquida o contrato (LIQUIDADO_POR_NOVACAO), gera contrato novo completo, registro Novacao vincula origem e novo | 6.4 |
+| 6.7 | Quitação antecipada | Três variantes (parcelas específicas, total, encerramento) usando VP | 4.6, 0.3 |
+| 6.8 | Sinistro | Registro de sinistro, amortização por indenização, saldo remanescente | 4.6 |
+| 6.9 | Reajuste IPCA | Reajuste anual com aprovação humana via alçada | 6.1, 3.3 |
+
+> **Acordo ≠ Novação.** O Acordo (6.2–6.5) é a recuperação branda: dilui parcelas em atraso sem liquidar o contrato — é o que estava modelado antes sob o nome errado de "novação". A Novação (6.6) é o mecanismo radical que liquida o contrato inteiro e cria outro. São itens distintos (correção validada com Vicente em 26/06).
 
 ---
 
-## Bloco 7 — Originação real (PopHub)
+## Bloco 7 — Originação nativa (absorção do PopHub)
 
-Agora que o núcleo está validado sobre seed, conecta a entrada de dados reais.
+A originação acontece **dentro do sistema**, em telas operadas pelo operador — não via API do PopHub (que é absorvido, não integrado). O dado nasce na tela. Este bloco constrói o funil completo: do lead ao contrato ativo. Cada item de backend acompanha sua tela.
 
 | # | Item | Entrega | Depende de |
 |---|---|---|---|
-| 7.1 | Contrato de integração PopHub | Definição do payload exato com a equipe do PopHub | 3.3 |
-| 7.2 | Endpoint de originação | `POST` que recebe contrato + titular + ativo, identifica/cria, gera cronograma | 7.1, 3.3, 2.5 |
-| 7.3 | Conciliação de entrada | Registro e conciliação da entrada já paga no Asaas | 7.2, 4.3 |
-| 7.4 | Migração do legado | Importação dos 76 contratos legados via a mesma API de originação | 7.2 |
+| 7.1 | Cadastro/estoque de Ativo | CRUD do ativo com valorVenda e vínculo opcional a pacote; listagem com filtro de status; regra 1 ativo = 1 contrato ativo | 2.x |
+| 7.2 | Lead e pré-cadastro | Modelo Lead; Tela 1 (início): CPF novo cria Lead, CPF conhecido recupera Titular; reconciliação por CPF | 2.2 |
+| 7.3 | Simulação e ofertas | Modelos Simulacao/Oferta; Tela 2: seleção de ativo, parâmetros (entrada, prazo em semanas), cálculo de ofertas (pacote e/ou valor de venda), intermediárias (mín. 60% à vista, até 40% diluído); simulação descartável, guarda oferta escolhida | 7.1, 7.2 |
+| 7.4 | Fórmula de precificação provisória | Função isolada (Price, 0,5%/semana parametrizável) marcada "PROVISÓRIA — substituir (Vicente)"; coberta por teste | 7.3 |
+| 7.5 | Proposta — criação | Modelo Proposta; conversão da oferta escolhida em proposta (status Pendente); Tela 3 (lista/Kanban com regras de arrasto) | 7.3 |
+| 7.6 | Promoção Lead → Titular | Coleta do cadastro pleno na proposta; reconciliação por CPF (cria ou reaproveita Titular) | 7.5 |
+| 7.7 | Papéis e vínculos | VinculoPapel: comprador principal, secundário, garantidor como papéis de Titular; CPF único entre papéis | 7.6 |
+| 7.8 | Análise documental | Modelos DocumentoProposta/Parecer; Tela 5 (stepper): anexo digital de documentos por papel, parecer (aprovado/ressalva/reprovado); modal de detalhes (Tela 4) | 7.7 |
+| 7.9 | Motor de templates | Serviço transversal: templates com placeholders versionados, funções de formatação (extenso, datas), geração que não quebra o fluxo | 7.8 |
+| 7.10 | Formalização | Tela 6: snapshot congelado, geração do documento via templates, nasce ContratoCredito em Aguardando assinatura; assinatura MOCK (baixar/subir) marcada provisória | 7.9, 3.3 |
+| 7.11 | Ativação | Tela 7: primeira Fatura (entrada) como cobrança avulsa no Asaas, ID vinculado ao Titular; pagamento → webhook → ativa contrato + cadastra cliente no Asaas | 7.10, 4.3 |
+| 7.12 | Migração do legado | Importação dos 76 contratos legados pela mesma lógica de originação (criar Titular/Conta/Ativo/Contrato com cronograma); sem "produto oculto" | 7.11 |
+
+> **Ordem por dependência:** o motor de templates (7.9) é transversal e também serve a notificação extrajudicial (Bloco 5) e termo de quitação (Bloco 6) — por isso, embora listado aqui, pode ser antecipado se esses consumidores precisarem antes. Engatilhado para desenvolvimento; priorizado na esteira por dependência real.
 
 ---
 
@@ -156,11 +169,13 @@ Investidor e portal do titular. Dependem de todo o núcleo financeiro funcionand
 | 8.1 | ContratoInvestimento | Modelo e CRUD do contrato de investimento na conta do titular | 2.2 |
 | 8.2 | Breakdown de recebível | Cálculo amortização + rendimento + taxa (depende da fórmula do fundo) | 4.6, 8.1 |
 | 8.3 | Split de pagamento | Configuração de split no Asaas por origem de capital | 8.2, 4.4 |
-| 8.4 | Visão investidor de ativo | Tela de performance do contrato de investimento (ativo específico) | 8.2, 1.7 |
-| 8.5 | Visão investidor de fundo | Tela consolidada do fundo | 8.2, 1.7 |
+| 8.4 | Visão investidor de ativo | Tela de performance do contrato de investimento (ativo específico); **sem dados pessoais do cliente** | 8.2, 1.7 |
+| 8.5 | Visão investidor de fundo | Tela consolidada do fundo; **sem dados pessoais do cliente** | 8.2, 1.7 |
 | 8.6 | Autenticação do titular | Fluxo de login do titular (CPF + fator), resolução de módulos | 2.2 |
 | 8.7 | Portal do titular | Telas do módulo cliente e investidor que o titular acessa | 8.6, 4.9 |
 | 8.8 | Produto capital protegido | Reembolso de principal não recuperado ao investidor (produto futuro) | 8.2 |
+
+> **Privacidade do investidor (8.4/8.5):** o investidor vê o fluxo financeiro (recebíveis, rendimentos, performance) mas **nunca dados pessoais do cliente** (LGPD + proteção do negócio como intermediário). Regra detalhada no Doc 6.
 
 ---
 
@@ -171,11 +186,13 @@ Alguns itens dependem de decisões ou entregas de fora do desenvolvimento. Regis
 | Item bloqueado | Depende de | Responsável |
 |---|---|---|
 | 6.1 Alçadas (regras) | Definição de limites e níveis | Vicente |
-| 6.7 Sinistro (detalhes) | Fluxo já decidido em 23/06 — apenas implementar | — |
-| 7.1 Integração PopHub | Payload exato do lado PopHub | Equipe PopHub |
+| 7.4 Fórmula de precificação | Fórmula definitiva (provisória em uso) | Vicente |
+| 7.10 Assinatura | Qual sistema de assinatura digital integrar (mock em uso) | Luís |
 | 8.2 Breakdown de recebível | Estrutura jurídica do fundo | Sebastião |
 | 8.3 Split / 8.5 Fundo | Estrutura jurídica do fundo | Sebastião |
 | 8.8 Capital protegido | Definição do produto | Vicente |
+
+> Todos os itens bloqueados têm **padrão funcional provisório** que permite o sistema rodar e ser testado de ponta a ponta. A definição final substitui o provisório sem refazer a estrutura.
 
 ---
 
@@ -191,9 +208,9 @@ Pontos naturais onde o sistema tem valor demonstrável de ponta a ponta:
 
 **Marco D — Régua operante (fim do Bloco 5):** uma fatura vencida percorre a régua e dispara bloqueio. A gestão de inadimplência funciona.
 
-**Marco E — Operações completas (fim do Bloco 6):** renegociação, quitação e sinistro funcionam sobre dados semeados. O sistema cobre o ciclo de vida completo de um contrato.
+**Marco E — Operações completas (fim do Bloco 6):** acordo, novação, quitação e sinistro funcionam sobre dados semeados. O sistema cobre o ciclo de vida completo de um contrato.
 
-**Marco F — Dados reais (fim do Bloco 7):** contratos reais entram via PopHub e o legado é migrado. O sistema opera de verdade.
+**Marco F — Originação ponta a ponta (fim do Bloco 7):** um operador cria um lead, simula sobre um ativo, gera proposta, faz a análise documental, formaliza (snapshot + contrato), e ativa via pagamento da entrada — tudo em tela. O legado é migrado pela mesma lógica. O sistema origina e cobra de verdade.
 
 **Marco G — Plataforma de crédito (fim do Bloco 8):** investidores e titulares acessam suas visões. A visão de banco se materializa.
 

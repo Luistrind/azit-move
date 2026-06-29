@@ -32,7 +32,7 @@ Estas decisões foram validadas antes da geração do schema e devem ser respeit
 
 | Estratégia | Entidades |
 |---|---|
-| **Soft delete** (campo `deletedAt`) | Titular, Conta, ContratoCredito, ContratoInvestimento, Fatura, Parcela, Acordo, Ativo, ItemContratado, Recebível |
+| **Soft delete** (campo `deletedAt`) | Titular, Conta, ContratoCredito, ContratoInvestimento, Proposta, Fatura, Parcela, Acordo, Novacao, Ativo, ItemContratado, Recebível |
 | **Hard delete** (remoção real) | RefreshToken, logs, registros efêmeros |
 
 Toda query nas entidades com soft delete deve filtrar `deletedAt: null`. Recomenda-se usar a extensão de query do Prisma para aplicar esse filtro globalmente e evitar esquecimento.
@@ -57,9 +57,14 @@ Chaves primárias usam `cuid()` — identificadores únicos, ordenáveis e segur
 
 Todas as entidades têm `createdAt` e `updatedAt` automáticos. As entidades com soft delete adicionam `deletedAt` nullable.
 
-### 1.6 Renegociação como novação
+### 1.6 Acordo e Novação (dois mecanismos distintos)
 
-A renegociação segue o modelo bancário de novação: as parcelas antigas são extintas (marcadas como `RENEGOCIADA`) e o acordo gera um **ItemContratado novo** de origem `RENEGOCIACAO` que contém as parcelas novas. A renegociação não altera as parcelas antigas nem cria parcelas soltas — cria um novo crédito que as quita. Detalhamento completo na seção 11.5.
+Recuperação de crédito tem **dois mecanismos**, não um:
+
+- **Acordo** (brando): dilui parcelas em atraso sem liquidar o contrato. As parcelas cobertas recebem vínculo de acordo (não usam o status `RENEGOCIADA` como marca do vínculo) e o acordo gera um `ItemContratado` de origem `ACORDO` com as novas parcelas. O contrato principal **não** é liquidado; as demais parcelas seguem inalteradas.
+- **Novação** (radical): liquida o `ContratoCredito` inteiro (estado terminal `LIQUIDADO_POR_NOVACAO`) e gera um `ContratoCredito` novo completo.
+
+Detalhamento na seção 11.5.
 
 ---
 
@@ -167,6 +172,7 @@ enum StatusContratoCredito {
   EM_RECUPERACAO_VEICULO
   CANCELADO
   RESCINDIDO
+  LIQUIDADO_POR_NOVACAO
   QUITADO_AGUARDANDO_TRANSFERENCIA
   QUITADO_TRANSFERENCIA_EFETIVADA
 }
@@ -182,10 +188,10 @@ enum NaturezaProduto {
   PARCELADO
 }
 
-// De onde o item nasceu. Diferencia produtos vendidos de créditos de renegociação.
+// De onde o item nasceu. Diferencia produtos vendidos de créditos de acordo.
 enum OrigemItemContratado {
-  VENDA           // produto vendido na originação ou pós-venda (veículo, proteção, crédito avulso)
-  RENEGOCIACAO    // crédito gerado por um acordo (novação das parcelas antigas)
+  VENDA    // produto vendido na originação ou pós-venda (veículo, proteção, crédito avulso)
+  ACORDO   // crédito gerado por um Acordo (dilui parcelas em atraso; NÃO liquida o contrato)
 }
 
 enum Credor {
@@ -223,6 +229,7 @@ enum StatusFatura {
 
 enum TipoItemFatura {
   PRINCIPAL
+  INTERMEDIARIA   // parcela-balão da entrada parcelada
   SERVICO
   ENCARGO
 }
@@ -241,11 +248,66 @@ enum StatusAcordo {
   CANCELADO
 }
 
+enum StatusNovacao {
+  RASCUNHO
+  ATIVO
+  CANCELADO
+}
+
 enum StatusReajuste {
   PENDENTE
   APROVADO
   APLICADO
   CANCELADO
+}
+
+// ----- Camada de originação -----
+
+enum CanalOrigem {
+  OPERADOR_INTERNO
+  LANDING_PAGE
+  OUTRO
+}
+
+enum StatusProposta {
+  PENDENTE
+  EM_ANALISE
+  APROVADA
+  REPROVADA
+  CANCELADA
+  EM_FORMALIZACAO
+  CONVERTIDA
+}
+
+enum ModalidadeContrato {
+  ASSINATURA
+  COMPRA_PARCELADA
+  COMPRA_VISTA
+}
+
+enum PapelTitular {
+  COMPRADOR_PRINCIPAL
+  COMPRADOR_SECUNDARIO
+  GARANTIDOR
+}
+
+enum TipoDocumentoProposta {
+  CNH
+  COMPROVANTE_ENDERECO
+  COMPROVANTE_RENDA
+  RELATORIO_BRICK
+  OUTRO
+}
+
+enum ResultadoParecer {
+  APROVADO
+  APROVADO_COM_RESSALVAS
+  REPROVADO
+}
+
+enum OrigemCalculoOferta {
+  PACOTE_GENERICO
+  VALOR_VENDA_ATIVO
 }
 
 enum RoleUsuario {
@@ -284,8 +346,12 @@ model Titular {
   asaasCustomerId String?       @unique
   status          StatusTitular @default(ATIVO)
 
-  conta                   Conta?
-  intervenienteGarantidor IntervenienteGarantidor?
+  conta          Conta?
+  leads          Lead[]           // leads reconciliados a este titular (por CPF)
+  simulacoes     Simulacao[]
+  propostas      Proposta[]       // como comprador principal
+  vinculosPapel  VinculoPapel[]   // papéis que exerce em propostas/contratos
+  documentos     DocumentoProposta[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -296,27 +362,9 @@ model Titular {
   @@map("titulares")
 }
 
-model IntervenienteGarantidor {
-  id        String  @id @default(cuid())
-  titularId String  @unique
-  nome      String
-  cpf       String
-  rg        String?
-  whatsapp  String?
-  email     String?
-  endereco  String?
-  bairro    String?
-  cidade    String?
-  estado    String?
-  cep       String?
-
-  titular Titular @relation(fields: [titularId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("intervenientes_garantidores")
-}
+// DEPRECADO — garantidor agora é PapelTitular via VinculoPapel.
+// Mantido apenas como referência histórica; não usar em novo desenvolvimento.
+// O garantidor é um Titular que exerce o papel GARANTIDOR num contrato (ver VinculoPapel).
 
 model Conta {
   id           String      @id @default(cuid())
@@ -334,6 +382,161 @@ model Conta {
   deletedAt DateTime?
 
   @@map("contas")
+}
+```
+
+---
+
+## 4-A. Modelos — camada de originação
+
+Entidades do funil que antecede e gera o ContratoCredito. O dado nasce na tela (entrada humana).
+
+```prisma
+// Registro leve de pré-cadastro. Pode duplicar; promovido a Titular ao avançar.
+model Lead {
+  id             String      @id @default(cuid())
+  nome           String
+  cpf            String
+  dataNascimento DateTime?
+  canalOrigem    CanalOrigem @default(OPERADOR_INTERNO)
+  // Quando promovido, aponta para o Titular resultante (reconciliação por CPF)
+  titularId      String?
+
+  titular    Titular?    @relation(fields: [titularId], references: [id])
+  simulacoes Simulacao[]
+
+  createdAt DateTime @default(now())
+
+  @@index([cpf])
+  @@index([titularId])
+  @@map("leads")
+}
+
+// Sessão de exploração de condições para um Ativo específico. Descartável.
+model Simulacao {
+  id              String   @id @default(cuid())
+  leadId          String?
+  titularId       String?
+  ativoId         String
+  valorEntrada    Decimal  @db.Decimal(12, 2)
+  prazoSemanas    Int
+  periodicidade   Periodicidade @default(SEMANAL)
+  observacoes     String?  // observações internas, não exibidas ao cliente
+
+  lead    Lead?    @relation(fields: [leadId], references: [id])
+  titular Titular? @relation(fields: [titularId], references: [id])
+  ativo   Ativo    @relation(fields: [ativoId], references: [id])
+  ofertas Oferta[]
+  proposta Proposta?
+
+  createdAt DateTime @default(now())
+
+  @@index([ativoId])
+  @@index([leadId])
+  @@map("simulacoes")
+}
+
+// Opção concreta calculada na simulação. Guarda-se a selecionada.
+model Oferta {
+  id               String              @id @default(cuid())
+  simulacaoId      String
+  origemCalculo    OrigemCalculoOferta
+  valorEntrada     Decimal             @db.Decimal(12, 2)
+  entradaParcelada Boolean             @default(false)
+  prazoSemanas     Int
+  valorParcela     Decimal             @db.Decimal(12, 2)
+  numeroParcelas   Int
+  selecionada      Boolean             @default(false)
+
+  simulacao Simulacao @relation(fields: [simulacaoId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([simulacaoId])
+  @@map("ofertas")
+}
+
+// Pedido de crédito formalizado. Máquina de estados própria. Gera o ContratoCredito.
+model Proposta {
+  id              String             @id @default(cuid())
+  simulacaoId     String?            @unique
+  titularId       String             // comprador principal (após promoção do lead)
+  ativoId         String
+  modalidade      ModalidadeContrato @default(COMPRA_PARCELADA)
+  valorEntrada    Decimal            @db.Decimal(12, 2)
+  prazoSemanas    Int
+  valorParcela    Decimal            @db.Decimal(12, 2)
+  numeroParcelas  Int
+  status          StatusProposta     @default(PENDENTE)
+  contratoGeradoId String?           @unique  // ContratoCredito gerado na conversão
+
+  simulacao    Simulacao?          @relation(fields: [simulacaoId], references: [id])
+  titular      Titular             @relation(fields: [titularId], references: [id])
+  ativo        Ativo               @relation(fields: [ativoId], references: [id])
+  vinculos     VinculoPapel[]
+  documentos   DocumentoProposta[]
+  parecer      Parecer?
+  contratoGerado ContratoCredito?  @relation("PropostaContrato", fields: [contratoGeradoId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([titularId])
+  @@index([status])
+  @@map("propostas")
+}
+
+// Vínculo de um Titular a uma proposta/contrato com um papel. Garantidor é papel, não cadastro.
+model VinculoPapel {
+  id                String       @id @default(cuid())
+  titularId         String
+  papel             PapelTitular
+  propostaId        String?
+  contratoCreditoId String?
+
+  titular         Titular          @relation(fields: [titularId], references: [id])
+  proposta        Proposta?        @relation(fields: [propostaId], references: [id])
+  contratoCredito ContratoCredito? @relation(fields: [contratoCreditoId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  // Mesmo titular não pode ocupar dois papéis na mesma proposta
+  @@unique([titularId, propostaId])
+  @@index([propostaId])
+  @@index([contratoCreditoId])
+  @@map("vinculos_papel")
+}
+
+// Documento digital anexado ao cadastro de uma pessoa no contexto de uma proposta.
+model DocumentoProposta {
+  id         String                @id @default(cuid())
+  propostaId String
+  titularId  String                // a quem o documento pertence (por papel)
+  tipo       TipoDocumentoProposta
+  arquivoRef String                // referência do arquivo armazenado
+  dataAnexo  DateTime              @default(now())
+
+  proposta Proposta @relation(fields: [propostaId], references: [id])
+  titular  Titular  @relation(fields: [titularId], references: [id])
+
+  @@index([propostaId])
+  @@map("documentos_proposta")
+}
+
+// Resultado da análise de crédito. Independe de origem (manual hoje; bureau/regras no futuro).
+model Parecer {
+  id                String           @id @default(cuid())
+  propostaId        String           @unique
+  resultado         ResultadoParecer
+  motivoReprovacao  String?          // quando reprovado
+  exigeGarantidor   Boolean          @default(false)
+  analistaId        String?          // nulo quando automático (futuro)
+  data              DateTime         @default(now())
+
+  proposta Proposta @relation(fields: [propostaId], references: [id])
+
+  @@map("pareceres")
 }
 ```
 
@@ -358,10 +561,14 @@ model Ativo {
   combustivel          TipoCombustivel?
   quilometragemEntrada Int?
   valorAquisicao       Decimal?         @db.Decimal(12, 2)
+  valorVenda           Decimal?         @db.Decimal(12, 2)  // base da precificação individualizada
+  pacoteOfertaId       String?          // vínculo opcional a pacote/oferta genérica (legado PopHub)
   status               StatusAtivo      @default(DISPONIVEL)
 
   origemCapital   OrigemCapital?
   contratoCredito ContratoCredito?
+  simulacoes      Simulacao[]
+  propostas       Proposta[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -369,6 +576,7 @@ model Ativo {
 
   @@index([chassi])
   @@index([placa])
+  @@index([status])
   @@map("ativos")
 }
 
@@ -435,7 +643,8 @@ model ContratoCredito {
   numero               String                 @unique
   contaId              String
   ativoId              String                 @unique
-  pophubId             String?
+  snapshotJson         Json?                  // fotografia congelada na formalização (fonte da geração documental)
+  snapshotLockedAt     DateTime?              // quando o snapshot foi congelado
   dataAssinatura       DateTime
   dataPrimeiraParcela  DateTime
   valorTotal           Decimal                @db.Decimal(12, 2)
@@ -460,6 +669,10 @@ model ContratoCredito {
   recebiveis       Recebivel[]
   acordos          Acordo[]
   reajustes        ReajusteIPCA[]
+  vinculosPapel    VinculoPapel[]
+  propostaOrigem   Proposta?        @relation("PropostaContrato")
+  novacaoComoOrigem Novacao?        @relation("NovacaoOrigem")  // quando este contrato foi liquidado por novação
+  novacaoComoNovo   Novacao?        @relation("NovacaoNovo")    // quando este contrato nasceu de uma novação
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -468,7 +681,6 @@ model ContratoCredito {
   @@index([contaId])
   @@index([numero])
   @@index([status])
-  @@index([pophubId])
   @@map("contratos_credito")
 }
 
@@ -516,15 +728,16 @@ model Parcela {
   // status NULL = em aberto/vence hoje/vencida (calculado em runtime pela data)
   status           StatusParcela?
   faturaId         String?
-  // acordoId: preenchido SOMENTE nas parcelas ANTIGAS extintas por um acordo (status = RENEGOCIADA).
-  // As parcelas NOVAS do acordo não usam este campo — elas pertencem ao ItemContratado
-  // de origem RENEGOCIACAO que o acordo gerou.
+  // acordoId: preenchido nas parcelas em atraso COBERTAS por um acordo (vínculo de acordo).
+  // NÃO usar o status RENEGOCIADA como marca do vínculo (ver Doc 2, 4.14).
+  // As parcelas NOVAS do acordo não usam este campo — pertencem ao ItemContratado
+  // de origem ACORDO que o acordo gerou.
   acordoId         String?
 
   contrato         ContratoCredito @relation(fields: [contratoId], references: [id])
   itemContratado   ItemContratado @relation(fields: [itemContratadoId], references: [id])
   fatura           Fatura?        @relation(fields: [faturaId], references: [id])
-  acordoRenegociou Acordo?        @relation("ParcelasRenegociadas", fields: [acordoId], references: [id])
+  acordoCobertura  Acordo?        @relation("ParcelasCobertas", fields: [acordoId], references: [id])
   recebivel        Recebivel?
   itensFatura      ItemFatura[]
 
@@ -573,15 +786,15 @@ model Fatura {
 model ItemFatura {
   id        String         @id @default(cuid())
   faturaId  String
-  parcelaId String
+  parcelaId String?        // opcional: intermediárias e serviços podem não ter parcela
   tipo      TipoItemFatura
   descricao String
   valor     Decimal        @db.Decimal(12, 2)
   credor    Credor         @default(AZIT)
   credorId  String?
 
-  fatura  Fatura  @relation(fields: [faturaId], references: [id])
-  parcela Parcela @relation(fields: [parcelaId], references: [id])
+  fatura  Fatura   @relation(fields: [faturaId], references: [id])
+  parcela Parcela? @relation(fields: [parcelaId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -624,9 +837,10 @@ model Recebivel {
 
 ---
 
-## 7. Modelos — renegociação e reajuste
+## 7. Modelos — acordo, novação e reajuste
 
 ```prisma
+// Acordo: recuperação BRANDA. Dilui parcelas em atraso; NÃO liquida o contrato.
 model Acordo {
   id                   String       @id @default(cuid())
   contratoId           String
@@ -643,9 +857,10 @@ model Acordo {
 
   contrato             ContratoCredito @relation(fields: [contratoId], references: [id])
   operador             Usuario         @relation(fields: [operadorId], references: [id])
-  // Parcelas ANTIGAS extintas por este acordo (marcadas como RENEGOCIADA)
-  parcelasRenegociadas Parcela[]       @relation("ParcelasRenegociadas")
-  // Item de crédito NOVO gerado por este acordo (origem RENEGOCIACAO).
+  // Parcelas em atraso cobertas por este acordo (recebem vínculo de acordo).
+  // NÃO usam o status RENEGOCIADA como marca do vínculo — ver Doc 2, 4.14.
+  parcelasCobertas     Parcela[]       @relation("ParcelasCobertas")
+  // Item de crédito NOVO gerado por este acordo (origem ACORDO).
   // As parcelas novas do acordo pertencem a este item, não diretamente ao acordo.
   itemGerado           ItemContratado? @relation("ItemGeradoPorAcordo")
   faturas              Fatura[]
@@ -658,6 +873,29 @@ model Acordo {
   @@index([status])
   @@index([operadorId])
   @@map("acordos")
+}
+
+// Novação: recuperação RADICAL. Liquida o contrato inteiro e gera um novo.
+model Novacao {
+  id                String        @id @default(cuid())
+  contratoOrigemId  String        @unique  // contrato liquidado
+  contratoNovoId    String        @unique  // contrato gerado
+  operadorId        String
+  dataEfetivacao    DateTime?
+  saldoLiquidado    Decimal       @db.Decimal(12, 2)
+  status            StatusNovacao @default(RASCUNHO)
+  observacao        String?
+
+  contratoOrigem ContratoCredito @relation("NovacaoOrigem", fields: [contratoOrigemId], references: [id])
+  contratoNovo   ContratoCredito @relation("NovacaoNovo", fields: [contratoNovoId], references: [id])
+  operador       Usuario         @relation("NovacaoOperador", fields: [operadorId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([operadorId])
+  @@map("novacoes")
 }
 
 model ReajusteIPCA {
@@ -700,6 +938,7 @@ model Usuario {
   // A estrutura definitiva de roles/permissões e alçadas vem no Doc 6 (com Vini).
   roles         UsuarioRole[]
   acordos       Acordo[]
+  novacoes      Novacao[]      @relation("NovacaoOperador")
   refreshTokens RefreshToken[]
 
   createdAt DateTime  @default(now())
@@ -754,7 +993,10 @@ Os índices foram definidos com base nas queries mais frequentes do sistema.
 | `titulares` | `asaasCustomerId` | Webhook do Asaas → identificar titular |
 | `ativos` | `chassi`, `placa` | Identificação do veículo na originação |
 | `contratos_credito` | `status` | Painel de carteira filtrado por status |
-| `contratos_credito` | `pophubId` | Originação via API do PopHub |
+| `propostas` | `status` | Kanban de propostas filtrado por status |
+| `propostas` | `titularId` | Propostas de um titular |
+| `leads` | `cpf` | Reconciliação Lead → Titular por CPF |
+| `ativos` | `status` | Estoque de ativos disponíveis para simulação |
 | `contratos_investimento` | `contaId`, `modelo`, `status` | Visão de investimentos do titular |
 | `parcelas` | `dataVencimento` | Job de fechamento de fatura (D-5) |
 | `parcelas` | `status` | Listagem de parcelas pagas/pendentes |
@@ -785,7 +1027,7 @@ O schema acima deve ser montado em um único arquivo `apps/backend/prisma/schema
 
 1. Bloco `generator` e `datasource` (seção 2)
 2. Todos os `enum` (seção 3)
-3. Todos os `model` (seções 4 a 8)
+3. Todos os `model` (seções 4, 4-A, 5, 6, 7 e 8)
 
 Após montar, rodar:
 
@@ -834,36 +1076,48 @@ Esta função vive em `@azit/utils` para ser compartilhada entre backend e front
 
 ### 11.3 Geração do cronograma na originação
 
-Quando um contrato chega via API, o sistema gera todas as parcelas e faturas futuras de uma vez. Esse é o maior insert do sistema — um contrato de 157 parcelas gera 157 parcelas + recebíveis + distribui em faturas. Usar `createMany` em transação para garantir atomicidade.
+Quando um contrato é formalizado, o sistema gera todas as parcelas e faturas futuras de uma vez. Esse é o maior insert do sistema — um contrato de 157 parcelas gera 157 parcelas + recebíveis + distribui em faturas. Usar `createMany` em transação para garantir atomicidade.
 
 ### 11.4 Precisão de taxas
 
 `taxaRetorno` e `taxaDescontoQuitacao` usam `Decimal(8, 6)` — permite taxas como `0.001000` (0,1% ao dia) com precisão suficiente para o cálculo de valor presente.
 
-### 11.5 Relacionamento Acordo ↔ Parcela (novação)
+### 11.5 Relacionamento Acordo ↔ Parcela e o mecanismo de Novação
 
-A renegociação segue o modelo bancário de **novação**: a obrigação antiga é extinta e substituída por uma nova. Isso se traduz em duas relações distintas e bem definidas entre Acordo e Parcela.
+São **dois mecanismos distintos** de recuperação. Não confundir.
 
-**Parcelas antigas (extintas pelo acordo).** São as parcelas vencidas que o operador selecionou. Recebem `status = RENEGOCIADA` e apontam para o acordo via `acordoId`, na relação nomeada `ParcelasRenegociadas`. Continuam existindo para auditoria, mas não são mais cobráveis.
+#### Acordo (recuperação branda)
 
-**Parcelas novas (geradas pelo acordo).** Não se vinculam diretamente ao acordo. Em vez disso, o acordo gera um **ItemContratado novo** com `origem = RENEGOCIACAO`, e as parcelas novas pertencem a esse item — exatamente como qualquer outro produto da cesta. O acordo se vincula a esse item pela relação `ItemGeradoPorAcordo` (via `acordoOrigemId` no ItemContratado).
+Dilui parcelas em atraso sem liquidar o contrato. Duas relações entre Acordo e Parcela:
 
-Isso traz três benefícios:
+**Parcelas cobertas pelo acordo.** São as parcelas vencidas que o operador selecionou. Recebem um **vínculo de acordo** via `acordoId` (relação `ParcelasCobertas`). **Não** usam o status `RENEGOCIADA` como marca do vínculo — "renegociação" já é status de parcela e geraria ambiguidade (decisão do Vicente, Doc 2 §4.14). Continuam existindo para auditoria.
 
-- O campo `itemContratadoId` em Parcela permanece **obrigatório** — toda parcela sempre tem um item de origem, sem exceção.
-- A rastreabilidade é total: a partir do acordo chega-se às parcelas antigas (o que foi extinto) e ao item novo com suas parcelas (o que foi criado).
-- O crédito de renegociação se comporta como qualquer outro item parcelado da cesta, reutilizando toda a lógica de geração de cronograma, faturamento e recebíveis. Nenhum caminho de código especial.
+**Parcelas novas (geradas pelo acordo).** Não se vinculam diretamente ao acordo. O acordo gera um **ItemContratado novo** com `origem = ACORDO`, e as parcelas novas pertencem a esse item — como qualquer outro produto da cesta. O acordo se vincula a esse item pela relação `ItemGeradoPorAcordo`.
 
-**Fluxo na efetivação do acordo** (status Rascunho → Ativo, após webhook da entrada):
+Benefícios:
+- `itemContratadoId` em Parcela permanece **obrigatório** — toda parcela tem item de origem.
+- Rastreabilidade total: do acordo chega-se às parcelas cobertas e ao item novo com suas parcelas.
+- O crédito de acordo se comporta como qualquer item parcelado, reutilizando geração de cronograma, faturamento e recebíveis. Nenhum caminho de código especial.
+- **O contrato principal NÃO é liquidado.** As demais parcelas seguem inalteradas; o cliente permanece inadimplente para fins contábeis até cumprir o acordo.
 
-1. Marcar as parcelas selecionadas como `RENEGOCIADA`, preenchendo `acordoId`
-2. Criar um `ItemContratado` com `origem = RENEGOCIACAO` e `acordoOrigemId` apontando para o acordo
+**Fluxo na efetivação do acordo** (Rascunho → Ativo, após webhook da entrada):
+1. Vincular as parcelas selecionadas ao acordo (`acordoId`), sem alterar seu status para RENEGOCIADA
+2. Criar um `ItemContratado` com `origem = ACORDO` e `acordoOrigemId` apontando para o acordo
 3. Gerar as novas parcelas vinculadas a esse item, com numeração própria (1/12, 2/12...)
-4. As novas parcelas entram nas próximas faturas abertas pelo fluxo normal
+4. As novas parcelas entram nas próximas faturas pelo fluxo normal
 
-O exemplo do banco que motivou esta modelagem: ao renegociar parcelas de um financiamento, o banco não altera as parcelas antigas — ele cria um novo crédito que as quita. A linha "Renegociação contrato nº X" no extrato é justamente esse ItemContratado de origem RENEGOCIACAO.
+#### Novação (recuperação radical)
+
+Mecanismo distinto, usado quando os acordos não recuperam o cliente. **Liquida o ContratoCredito inteiro** e gera um novo:
+
+1. O contrato origem vai para `status = LIQUIDADO_POR_NOVACAO` (terminal, preservado para auditoria)
+2. Cria-se um `ContratoCredito` novo completo, com cronograma novo gerado no D0
+3. Um registro `Novacao` vincula os dois contratos (`contratoOrigemId` e `contratoNovoId`) e guarda o `saldoLiquidado`
+
+O modelo bancário: o Acordo é o pequeno acordo sobre parcelas atrasadas (o banco faz até por boleto, sem mexer no contrato); a Novação é a substituição integral do contrato por um novo. São coisas diferentes, e o sistema as trata como tal.
 
 ---
 
-*Doc 5 — Prisma Schema · Azit Move V3 · v1.0 · jun/2025*
-*Documentos relacionados: Doc 2 — Spec de Domínio · Doc 4 — Setup · Doc 6 — Autenticação (pendente)*
+*Doc 5 — Prisma Schema · Azit Move V3 · v2.0 · jun/2026*
+*v2.0: camada de originação (Lead, Simulação, Oferta, Proposta, DocumentoProposta, Parecer, VinculoPapel); Acordo vs Novação; Ativo com valorVenda; snapshot no ContratoCredito; intermediárias em ItemFatura.*
+*Documentos relacionados: Doc 2 — Spec de Domínio · Doc 4 — Setup · Doc 6 — Autenticação*

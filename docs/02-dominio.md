@@ -29,25 +29,35 @@ O sistema é a **fonte única da verdade** da operação. O Asaas é a camada de
 ## 3. Hierarquia de Entidades
 
 ```
+ORIGINAÇÃO (funil que antecede e gera o contrato)
+  Lead (pré-cadastro leve) ──promovido──► Titular
+  Simulação (sobre um Ativo) ──► Oferta escolhida ──► Proposta ──► Análise/Parecer
+  Proposta aprovada ──gera──► ContratoCredito
+
 Titular (cadastro único — pessoa física ou jurídica, identificada por CPF/CNPJ)
-└── Conta (relacionamento financeiro com a Azit)
+└── Conta (relacionamento financeiro com a Azit — NÃO é conta corrente)
     ├── ContratoCredito (o que o titular DEVE — financiamento, crédito avulso)
-    │   ├── ItemContratado (produtos da cesta)
+    │   ├── Vínculo de Papel (Titulares: comprador principal, secundário, garantidor)
+    │   ├── ItemContratado (produtos da cesta; origem venda ou acordo)
     │   ├── Parcela (cronograma de pagamento)
-    │   ├── Fatura (cobrança semanal)
-    │   │   └── ItemFatura (itens agregados na fatura)
+    │   ├── Fatura (cobrança — agrega itens de vários produtos/contratos)
+    │   │   └── ItemFatura (itens agregados: parcela, intermediária, serviço, encargo)
     │   ├── Recebível (direito financeiro)
-    │   └── Acordo (renegociação)
+    │   ├── Acordo (recuperação branda — dilui parcelas, não liquida o contrato)
+    │   └── Novação (recuperação radical — liquida o contrato, gera um novo)
     └── ContratoInvestimento (o que a Azit DEVE ao titular — aporte)
         └── OrigemCapital (liga o aporte aos ativos/contratos que financia)
 
-Ativo
+Ativo (com valor de venda próprio; base da precificação)
 └── vinculado a um ContratoCredito; financiado por uma OrigemCapital
+
+Produtos apartados (ex: Seguro) — contratos próprios por razão jurídica/tributária,
+  mas convergindo na mesma Fatura do titular
 ```
 
 **Princípio:** a Conta não tem "tipo". Um mesmo titular pode, na mesma conta, ter contratos de crédito (devendo) e contratos de investimento (recebendo). O que o titular acessa é consequência do que a conta possui — não de um atributo que a classifica. Cliente e Investidor são **papéis** que um titular exerce, não entidades de identidade separadas.
 
-> Espelha a lógica bancária: existe um cadastro único de pessoa (CPF), uma conta/relacionamento, e produtos pendurados nela — crédito de um lado, investimento do outro, no mesmo extrato consolidado.
+> Espelha a lógica bancária: existe um cadastro único de pessoa (CPF), uma conta/relacionamento, e produtos pendurados nela — crédito de um lado, investimento do outro, no mesmo extrato consolidado. A "conta" aqui é visão unificada de relacionamento, **não** conta corrente.
 
 ---
 
@@ -76,25 +86,17 @@ Cadastro único de uma pessoa física ou jurídica que tem relacionamento financ
 
 **Relacionamentos:**
 - tem uma `Conta`
-- pode ser `IntervenienteGarantidor` de outro titular
+- pode exercer papéis (comprador, garantidor) em propostas/contratos via Vínculo de Papel (ver 4-A.7)
 
 > **Papéis:** um titular é "cliente" quando sua conta tem ContratoCredito; é "investidor" quando sua conta tem ContratoInvestimento. Pode ser os dois simultaneamente. O papel é derivado do que a conta possui, não armazenado como tipo.
 
 ---
 
-### 4.2 IntervenienteGarantidor
+### 4.2 IntervenienteGarantidor *(deprecado — ver Vínculo de Papel)*
 
-Pessoa que assume responsabilidade solidária pelo cumprimento das obrigações de um titular. Presente em alguns contratos de crédito.
-
-**Campos:**
-- `id`
-- `titular_id` — titular ao qual está vinculado
-- `nome`
-- `cpf`
-- `rg`
-- `whatsapp`
-- `email`
-- `endereco`, `bairro`, `cidade`, `estado`, `cep`
+> **Substituído pelo modelo de papéis.** O garantidor não é mais uma entidade de pessoa separada. Ele é um **Titular** (cadastro único por CPF) que exerce o **papel** de garantidor num contrato específico, via o **Vínculo de Papel** (4-A.7). Isso mantém a coerência com o princípio de que comprador/garantidor/investidor são papéis, não cadastros distintos — e evita um cadastro de segunda classe (o garantidor de hoje pode ser comprador amanhã, sem recadastro).
+>
+> A responsabilidade solidária pelo cumprimento das obrigações permanece como o significado do papel "garantidor"; muda apenas a forma de modelar (papel de Titular, não entidade própria).
 
 ---
 
@@ -115,6 +117,126 @@ Relacionamento financeiro entre o titular e a Azit. É o ponto central da visão
 - Expõe extrato unificado ao titular
 
 > Um titular que financiou um veículo e também aporta no fundo tem **uma única conta** com um ContratoCredito e um ContratoInvestimento. O acesso a cada módulo (cliente / investidor) é determinado pela presença de cada tipo de contrato.
+
+> **Conta ≠ conta corrente.** A Conta deste modelo é uma **visão unificada de relacionamento/cadastro**, não um produto de conta corrente. Em nenhum lugar (sistema, documento, interface) a Conta deve sugerir conta corrente — isso traria obrigações regulatórias (prevenção à lavagem de dinheiro) e risco que estão fora do escopo. É apenas o agregador que unifica os contratos do titular.
+
+---
+
+## 4-A. Camada de Originação
+
+As entidades a seguir compõem o funil que **antecede e gera** o ContratoCredito. A originação acontece **dentro do sistema**, operada em tela (canal interno do operador) ou, futuramente, em parte pelo próprio cliente (canal público). Substitui o que antes vinha via API do PopHub.
+
+**Funil:** Lead/Titular → Simulação → Oferta escolhida → Proposta → Análise → (aprovação) → Formalização → ContratoCredito → Ativação.
+
+### 4-A.1 Lead
+
+Registro **leve** de uma pessoa que iniciou um atendimento mas ainda não tem cadastro pleno. Criado no pré-cadastro com o mínimo para liberar a simulação. Pode duplicar (mesma pessoa pode gerar vários leads ao longo do tempo) e pode nunca avançar.
+
+**Campos:**
+- `id`
+- `nome`
+- `cpf`
+- `data_nascimento`
+- `canal_origem` — ex: operador interno, landing page
+- `data_criacao`
+
+> **Lead vs Titular.** O Lead é só para quem **ainda não existe** no sistema. Se o CPF já pertence a um Titular, não se cria Lead — recupera-se o Titular. Quando a proposta avança e o cadastro completo é coletado, o Lead é **promovido a Titular**, com **reconciliação por CPF** (se já houver Titular com aquele CPF, reaproveita; leads anteriores do mesmo CPF são reconciliados, não duplicados).
+
+### 4-A.2 Simulação
+
+Sessão de exploração de condições para um **Ativo específico**. É **descartável** — não se guarda o histórico de toda simulação; persiste apenas a oferta que o cliente escolheu ao avançar.
+
+**Campos:**
+- `id`
+- `lead_id` ou `titular_id` — pode existir solta no início; vincula-se ao avançar
+- `ativo_id` — o ativo específico sendo simulado
+- `valor_entrada` — valor (ou percentual) de entrada explorado
+- `prazo_semanas` — prazo explorado
+- `periodicidade` — semanal (padrão, parametrizável)
+- `observacoes_internas` — notas do operador, não exibidas ao cliente
+- `data_criacao`
+
+> A precificação parte do **Ativo individual** (com seu valor de venda), não de um produto-catálogo genérico. As ofertas exibidas dependem do que o ativo tem: se está vinculado a um **pacote/oferta genérica** (legado), o pacote aparece; se tem **valor de venda** cadastrado, aparece a opção individualizada calculada pela fórmula de precificação. Um ativo pode ter uma, outra ou ambas.
+
+### 4-A.3 Oferta
+
+Uma opção concreta calculada na simulação — combinação de entrada × prazo que resulta num valor de parcela. O cliente compara ofertas e escolhe uma. **Guarda-se a oferta escolhida** (não as exploradas).
+
+**Campos:**
+- `id`
+- `simulacao_id`
+- `origem_calculo` — pacote_generico | valor_venda_ativo
+- `valor_entrada`
+- `entrada_parcelada` — booleano; se a entrada é dividida em intermediárias
+- `prazo_semanas`
+- `valor_parcela`
+- `numero_parcelas`
+- `selecionada` — booleano
+
+> **Intermediárias (entrada parcelada):** quando a entrada é parcelada, no **mínimo 60%** vai numa única parcela à vista (a primeira), e o **restante (até 40%)** é diluído em parcelas-balão que concorrem com as parcelas do contrato (entram nas faturas seguintes como ItemFatura — ver 4.12).
+
+### 4-A.4 Proposta
+
+A oferta escolhida formalizada como pedido de crédito. É o que **persiste** e tem **máquina de estados própria** (distinta da do ContratoCredito). A proposta aprovada **gera** o ContratoCredito.
+
+**Campos:**
+- `id`
+- `simulacao_id` / `oferta_id` — a oferta que originou a proposta
+- `titular_id` — comprador principal (após promoção do lead)
+- `ativo_id`
+- `modalidade` — assinatura | compra_parcelada | compra_vista
+- `valor_entrada`, `prazo_semanas`, `valor_parcela`, `numero_parcelas` — condições da oferta escolhida
+- `status` — pendente | em_análise | aprovada | reprovada | cancelada | em_formalização | convertida
+- `parecer_id` — resultado da análise
+- `data_criacao`
+
+**Relacionamentos:**
+- vincula um ou mais `Titular` com **papel** (ver 4-A.7) — comprador principal, comprador secundário, garantidor
+- referencia um `Ativo`
+- gera um `ContratoCredito` na conversão
+
+> **Status e transições:** Pendente → Em Análise → Aprovada/Reprovada → Em Formalização → Convertida (ou Cancelada). Aprovada/Reprovada só ocorrem **dentro do fluxo de análise documental** (com parecer), não por movimentação livre. Convertida significa que o ContratoCredito já foi gerado.
+
+### 4-A.5 DocumentoProposta
+
+Documento **digital anexado** ao cadastro de uma pessoa no contexto de uma proposta. A análise é manual quanto ao julgamento, mas a coleta é 100% digital — nada de papel físico.
+
+**Campos:**
+- `id`
+- `proposta_id`
+- `titular_id` — a quem o documento pertence (por papel)
+- `tipo` — cnh | comprovante_endereco | comprovante_renda | relatorio_brick | outro
+- `arquivo_ref` — referência do arquivo armazenado
+- `data_anexo`
+
+> Documentos obrigatórios do comprador principal (conhecimento herdado do PopHub): **CNH**, **comprovante de endereço**, **comprovante de renda** (extratos de plataformas como Uber, 99, InDrive, etc.), **relatório Brick**. Comprador secundário, quando incluído, exige conjunto equivalente.
+
+### 4-A.6 Parecer
+
+Resultado da análise de crédito de uma proposta. Modelado como **resultado** independente de origem — hoje preenchido por um analista (manual), no futuro podendo vir de bureau de crédito ou regras automáticas, sem refazer a estrutura.
+
+**Campos:**
+- `id`
+- `proposta_id`
+- `resultado` — aprovado | aprovado_com_ressalvas | reprovado
+- `motivo_reprovacao` — de uma lista, quando reprovado
+- `exige_garantidor` — booleano (aprovação com ressalvas pode exigir)
+- `analista_id` — quem emitiu (nulo quando automático, no futuro)
+- `data`
+
+> Estrutura **preparada para evoluir**: integração futura com bureaus (Serasa/SPC) e lista própria de parâmetros de aprovação automatizados. Não entra na primeira versão completa, mas o modelo não fecha portas.
+
+### 4-A.7 Vínculo de Papel (Titular ↔ ContratoCredito / Proposta)
+
+Não é uma entidade de pessoa — é o **vínculo** que dá a um Titular um papel num contrato/proposta específico. "Comprador" e "garantidor" são papéis, não cadastros separados (mesma lógica de cliente/investidor).
+
+**Campos:**
+- `id`
+- `proposta_id` ou `contrato_credito_id`
+- `titular_id`
+- `papel` — comprador_principal | comprador_secundario | garantidor
+
+> **CPF único entre papéis:** como o Titular já é único por CPF, basta impedir que o mesmo Titular ocupe dois papéis no mesmo contrato. O garantidor não é cadastro de segunda classe — se amanhã quiser financiar, já é Titular.
 
 ---
 
@@ -137,12 +259,16 @@ O bem objeto do contrato — hoje predominantemente veículos.
 - `origem` — locadora | particular | concessionaria
 - `combustivel` — flex | gasolina | eletrico
 - `quilometragem_entrada`
-- `valor_aquisicao`
+- `valor_aquisicao` — custo de aquisição (quanto a Azit pagou pelo veículo)
+- `valor_venda` — valor de venda do ativo, cadastrado manualmente; **base da precificação individualizada** na simulação
+- `pacote_oferta_id` — vínculo opcional a um pacote/oferta genérica (legado PopHub); quando presente, o pacote aparece como opção na simulação
 - `status` — disponivel | em_contrato | quitado | recuperado | sinistrado
 
 **Relacionamentos:**
 - tem uma `OrigemCapital`
 - vinculado a um `ContratoCredito`
+
+> **Precificação centrada no ativo.** Cada ativo (veículo usado) tem custo próprio, por isso a precificação parte do **valor de venda do ativo individual**, não de um produto-catálogo genérico — corrige o erro do PopHub, onde o produto genérico ignorava o custo de aquisição real e prejudicava a rastreabilidade para o investidor. A oferta genérica (via `pacote_oferta_id`) **coexiste temporariamente** como andaime de transição; a direção definitiva é o modelo por ativo. Regra de estoque: **1 ativo = 1 contrato ativo** (ativo "em_contrato" não aparece como disponível para nova simulação).
 
 ---
 
@@ -229,21 +355,29 @@ Representação do acordo comercial entre a Azit e o titular para um produto de 
 
 ### 4.8 TipoProduto
 
-Catálogo de produtos disponíveis para contratação.
+Catálogo de produtos/serviços que a Azit oferece. Cada produto pode ter seu próprio contrato, ou compor a cesta de um contrato — conforme a configuração.
 
 | Produto | Natureza | Credor Padrão | Observação |
 |---|---|---|---|
-| Parcelamento do veículo | parcelado | azit ou investidor | Produto âncora |
-| Proteção veicular | recorrente | azit ou terceiro | Valor alterável sem impactar parcelas |
+| Parcelamento do veículo | parcelado | azit ou investidor | Produto âncora do ContratoCredito |
+| Proteção veicular / Seguro | recorrente | azit ou terceiro | **Apartado** por questões jurídicas/tributárias (ver nota) |
 | Rastreador | recorrente | azit ou terceiro | Valor alterável sem impactar parcelas |
 | Taxa de serviço | recorrente | azit | |
 | Crédito avulso | parcelado | azit | Para manutenção, pneus, despesas, débitos |
+
+> **Produtos configuráveis e contratos apartados.** A Azit oferece múltiplos produtos do lado do consumo. Alguns precisam ser **apartados por razões jurídicas e tributárias** — notadamente o **seguro/proteção veicular**, que **não pode ser misturado** ao contrato de compra e venda do veículo. O contrato de compra e venda é só isso; seguro é contrato próprio.
+>
+> O princípio é a **configurabilidade**: assim como os templates de documento são configuráveis (não se programa um a cada produto), a estrutura de contrato também é. Não se modela uma entidade nova a cada produto — existe a noção de Produto, e o contrato é configurável (específico de um produto ou genérico servindo vários), com características preenchidas por **placeholders configuráveis**.
+>
+> **Cobrança independe da separação contratual:** um titular pode ter vários produtos/contratos, e todos convergem para **uma fatura**. A Fatura agrega ItemFatura de origens diferentes (financiamento, seguro, outros) num único documento — o modelo de Fatura/ItemFatura já suporta isso.
+>
+> *Nível de cravamento:* o princípio é firme; a estrutura detalhada (quais produtos, quais características, genérico vs específico) fica **preparada mas não cravada**, a amadurecer.
 
 ---
 
 ### 4.9 ItemContratado
 
-Cada produto da cesta vinculado ao contrato. É a origem rastreável de cada cobrança. Pode nascer de uma venda (produto contratado) ou de uma renegociação (crédito que substitui parcelas extintas — ver 7.7 e 8.3).
+Cada produto da cesta vinculado ao contrato. É a origem rastreável de cada cobrança. Pode nascer de uma **venda** (produto contratado) ou de um **acordo** (crédito que dilui parcelas em atraso — ver 4.14 e 7.7).
 
 **Campos:**
 - `id`
@@ -251,8 +385,8 @@ Cada produto da cesta vinculado ao contrato. É a origem rastreável de cada cob
 - `tipo_produto_id`
 - `descricao`
 - `natureza` — recorrente | parcelado
-- `origem` — venda | renegociacao
-- `acordo_origem_id` — quando origem = renegociacao, o acordo que gerou este item
+- `origem` — venda | acordo
+- `acordo_origem_id` — quando origem = acordo, o acordo que gerou este item
 - `credor` — azit | investidor | terceiro
 - `credor_id` — quando credor = investidor ou terceiro
 - `valor`
@@ -262,7 +396,7 @@ Cada produto da cesta vinculado ao contrato. É a origem rastreável de cada cob
 - `data_fim` — quando natureza = recorrente, equivale ao encerramento do contrato
 - `status` — ativo | encerrado | cancelado
 
-> **Origem = renegociacao:** quando um acordo é efetivado, ele gera um ItemContratado próprio (tipo "Crédito de renegociação") com natureza parcelada. As novas parcelas do acordo pertencem a este item — não são parcelas soltas. Isso segue o modelo bancário de novação: a dívida antiga é extinta e um novo crédito nasce para substituí-la.
+> **Origem = acordo:** quando um Acordo é efetivado, ele gera um ItemContratado próprio (tipo "Crédito de acordo") com natureza parcelada. As novas parcelas do acordo pertencem a este item — não são parcelas soltas. O contrato principal **não** é liquidado (isso seria Novação, mecanismo distinto — ver 4.16). O Acordo apenas dilui as parcelas em atraso num novo item de crédito.
 
 ---
 
@@ -313,17 +447,19 @@ Cobrança periódica que agrega os itens vencidos de todos os contratos ativos d
 
 ### 4.12 ItemFatura
 
-Cada item agregado dentro de uma fatura. É o vínculo entre a fatura e sua origem contratual.
+Cada item agregado dentro de uma fatura. É o vínculo entre a fatura e sua origem contratual. Uma fatura agrega itens de **origens diferentes** (parcela do financiamento, intermediária da entrada, serviços recorrentes, encargos) e até de **múltiplos produtos/contratos** do mesmo titular num único documento de cobrança.
 
 **Campos:**
 - `id`
 - `fatura_id`
-- `parcela_id` — origem da cobrança
-- `tipo` — principal | servico | encargo
+- `parcela_id` — origem da cobrança (quando aplicável)
+- `tipo` — principal | intermediaria | servico | encargo
 - `descricao`
 - `valor`
 - `credor` — azit | investidor | terceiro
 - `credor_id`
+
+> **Intermediárias:** as parcelas-balão da entrada parcelada (1/3, 2/3, 3/3) não têm vencimento próprio — entram como `ItemFatura` de tipo **intermediaria** nas faturas dos períodos correspondentes, ao lado da parcela regular. A **entrada** (primeira parcela, mín. 60%) é o primeiro ItemFatura da primeira Fatura do contrato (ver fluxo de ativação 8.1).
 
 ---
 
@@ -349,7 +485,11 @@ Direito financeiro gerado pelo contrato. Nasce no dia zero. Representa o que o s
 
 ### 4.14 Acordo
 
-Registro formal de uma renegociação. Tem ciclo de vida próprio e é a entidade onde vive o histórico do acordo — não no contrato.
+Mecanismo **brando** de recuperação de crédito: renegocia **parcelas específicas em atraso** sem liquidar o contrato principal. O contrato segue existindo com suas demais parcelas inalteradas. É o primeiro recurso da operação quando um cliente atrasa.
+
+> **Acordo ≠ Novação.** O Acordo mitiga apenas o que está atrasado (poucas parcelas no universo do contrato); as parcelas futuras não mudam, não há aditivo no documento, o contrato principal **não é liquidado**. A Novação (4.16) é o mecanismo radical que liquida o contrato inteiro. Sequência operacional: começa-se com **Acordos**; se não funciona, **Novação**; se não funciona, retomada do veículo.
+
+**Detalhe contábil:** mesmo com Acordo firmado, o cliente **continua inadimplente para efeitos de contabilidade** até cumprir o acordo (sai de cadastros de proteção ao crédito por estar negociando, mas a inadimplência persiste até a quitação do acordo).
 
 **Campos:**
 - `id`
@@ -366,13 +506,39 @@ Registro formal de uma renegociação. Tem ciclo de vida próprio e é a entidad
 - `observacao`
 
 **Relacionamentos:**
-- vinculado a um `ContratoCredito`
-- referencia as `Parcela` cobertas (renegociadas)
-- gera novas `Parcela`
+- vinculado a um `ContratoCredito` (que **não** é liquidado)
+- referencia as `Parcela` cobertas (que recebem vínculo de acordo — ver nota sobre status)
+- gera um `ItemContratado` de origem ACORDO, que contém as novas `Parcela`
+
+> **Status da parcela coberta:** a parcela antiga **não** usa o status "Renegociada" como marca do vínculo — "renegociação" já é um status de parcela e geraria ambiguidade. A parcela coberta recebe um vínculo de **acordo** (registra-se que ela foi objeto de um acordo) e as novas parcelas nascem como frutos desse acordo, num ItemContratado próprio. A mecânica é a mesma já modelada (origem do ItemContratado dedicada ao acordo, cronograma nascendo no D0); apenas o **nome** muda de "novação" para "acordo".
 
 ---
 
-### 4.15 ReajusteIPCA
+### 4.16 Novação
+
+Mecanismo **radical** de recuperação: **liquida o ContratoCredito inteiro** e faz nascer um **ContratoCredito novo completo** em seu lugar, com novas condições. É a alternativa quando os Acordos brandos não recuperam o cliente, antes da retomada do veículo.
+
+> Diferença essencial para o Acordo: o Acordo mexe em **parcelas** (poucas, pontuais) e preserva o contrato; a Novação extingue o **contrato inteiro** (todas as parcelas, todo o saldo) e cria outro. Juridicamente é novação no sentido pleno — a obrigação antiga é extinta e substituída por uma nova.
+
+**Campos:**
+- `id`
+- `contrato_origem_id` — o ContratoCredito liquidado
+- `contrato_novo_id` — o ContratoCredito gerado
+- `operador_id`
+- `data_efetivacao`
+- `saldo_liquidado` — saldo do contrato extinto
+- `status` — rascunho | ativo | cancelado
+- `observacao`
+
+**Relacionamentos:**
+- liquida um `ContratoCredito` (origem — vai para estado terminal próprio)
+- gera um `ContratoCredito` novo (com cronograma novo nascido no D0)
+
+> **Status do contrato origem:** o contrato liquidado por novação vai para um estado terminal específico (ver 5.2), preservado para auditoria. O contrato novo começa sua máquina de estados normalmente.
+
+---
+
+### 4.17 ReajusteIPCA
 
 Evento de reajuste anual das parcelas por IPCA. Precisa de aprovação humana antes de ser aplicado.
 
@@ -430,7 +596,7 @@ Evento de reajuste anual das parcelas por IPCA. Precisa de aprovação humana an
 | Ativo | Em dia, parcelas em andamento |
 | Inadimplente | Uma ou mais parcelas vencidas |
 | Bloqueado | Veículo bloqueado por inadimplência ou regra operacional |
-| Suspenso | Pausado temporariamente por situação especial |
+| Suspenso / Pausado | Pausado temporariamente por situação especial |
 | Em recuperação de veículo | Processo de retomada do veículo em andamento |
 
 **Encerramento:**
@@ -438,10 +604,11 @@ Evento de reajuste anual das parcelas por IPCA. Precisa de aprovação humana an
 |---|---|
 | Cancelado | Encerrado antes da ativação ou por erro/distrato |
 | Rescindido | Encerrado por inadimplência grave após retomada do veículo |
+| Liquidado por novação | Extinto por novação (substituído por um contrato novo); preservado para auditoria |
 | Quitado (aguardando transferência) | Obrigações pagas, transferência do ativo pendente |
 | Quitado (transferência efetivada) | Obrigações pagas e ativo transferido ao cliente |
 
-> **Nota:** O contrato não tem status "Renegociado". A renegociação é um evento registrado no `Acordo`. O contrato volta para Ativo quando todas as obrigações estão pagas ou cobertas por acordo.
+> **Nota:** O contrato não tem status "Renegociado". O **Acordo** (recuperação branda) é um evento registrado na entidade `Acordo` e não muda o status do contrato (que segue como está, inadimplente até o acordo ser cumprido). A **Novação** (recuperação radical) leva o contrato origem a "Liquidado por novação" e cria um contrato novo. Acordo e Novação são mecanismos distintos (ver 4.14, 4.16, 7.7, 7.7b).
 
 ---
 
@@ -492,19 +659,23 @@ Evento de reajuste anual das parcelas por IPCA. Precisa de aprovação humana an
 - Contrato: Inadimplente → **Bloqueado**
 - Ação: bloqueio remoto do veículo (manual via sistema)
 
-### Gatilho 5 — Operador registra renegociação
+### Gatilho 5 — Operador registra acordo
 - Acordo: nasce em **Rascunho**
 - Fatura: permanece em estado atual *(ainda não mudou)*
 - Parcelas: permanecem em estado atual
-- Contrato: permanece em estado atual
+- Contrato: permanece em estado atual (NÃO é liquidado)
 - Ação: sistema gera cobrança da entrada no Asaas
 
-### Gatilho 6 — Entrada da renegociação confirmada via webhook
+### Gatilho 6 — Entrada do acordo confirmada via webhook
 - Acordo: Rascunho → **Ativo**
-- Faturas cobertas: Vencida → **Renegociada** *(permanente)*
-- Parcelas cobertas: Vencida → **Renegociada** *(permanente)*
-- Novas parcelas: nascem com status **Em aberto**
-- Contrato: Inadimplente/Bloqueado → **Ativo** *(se todas obrigações cobertas)*
+- Parcelas cobertas: recebem **vínculo de acordo** *(não usar status "Renegociada" como marca — gera ambiguidade; registra-se que a parcela foi objeto de acordo)*
+- Novas parcelas: nascem com status **Em aberto**, num `ItemContratado` de origem ACORDO
+- Contrato: permanece o mesmo (NÃO liquidado); para fins contábeis, inadimplência persiste até o acordo ser cumprido
+
+### Gatilho 6b — Novação efetivada
+- Contrato origem: → estado terminal **Liquidado por novação** *(preservado para auditoria)*
+- Contrato novo: criado, cronograma novo no D0, inicia sua máquina de estados
+- Registro de `Novação`: vincula origem e novo
 
 ### Gatilho 7 — Quitação antecipada de parcelas específicas confirmada
 - Parcelas selecionadas: Em aberto → **Paga antecipada**
@@ -589,17 +760,25 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 
 > Desbloqueio após pagamento é sempre **manual** — o operador confirma a regularização antes de liberar.
 
-### 7.7 Renegociação
-- Operador seleciona obrigações em aberto por item (parcela) ou por fatura
-- Sistema soma o saldo e permite estruturar novo acordo
+### 7.7 Acordo (recuperação branda)
+- Operador seleciona obrigações em atraso por parcela ou fatura
+- Sistema soma o saldo e permite estruturar o acordo
 - Acordo nasce em **Rascunho** — não tem efeito até pagamento da entrada
 - Pagamento da entrada via webhook do Asaas é o aceite formal do cliente
-- Após confirmação (novação):
-  - Faturas e parcelas originais → **Renegociadas** (permanente)
-  - O acordo gera um `ItemContratado` de origem **renegociacao**
+- Após confirmação:
+  - As parcelas cobertas recebem **vínculo de acordo** (não usar o status "Renegociada" como marca do vínculo — "renegociação" já é status de parcela)
+  - O acordo gera um `ItemContratado` de origem **ACORDO**
   - As novas parcelas pertencem a esse item e nascem Em aberto
+  - O **contrato principal NÃO é liquidado**; as demais parcelas seguem inalteradas
 - Novas parcelas entram na próxima fatura aberta
-- Renegociações passam pela estrutura de alçadas de aprovação
+- O cliente permanece inadimplente para fins contábeis até cumprir o acordo
+- Acordos passam pela estrutura de alçadas de aprovação
+
+### 7.7b Novação (recuperação radical)
+- Mecanismo distinto do Acordo: **liquida o ContratoCredito inteiro** e gera um **ContratoCredito novo** completo
+- Usado quando os Acordos brandos não recuperam o cliente, antes da retomada do veículo
+- O contrato origem vai para estado terminal de novação (preservado para auditoria); o contrato novo nasce com cronograma novo no D0
+- Passa pela estrutura de alçadas (operação mais sensível que o Acordo)
 
 ### 7.8 Tratamento de Sinistro
 - A dívida do cliente não é automaticamente perdoada em caso de sinistro, furto, roubo ou perda total
@@ -611,8 +790,8 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 
 ### 7.9 Alçadas de Aprovação
 Estrutura transversal aplicável a:
-- Renegociações
-- Repactuações radicais
+- Acordos (recuperação branda)
+- Novações (recuperação radical)
 - Financiamento de despesas de clientes
 - Reajuste IPCA
 - Venda de produtos e crédito avulso
@@ -620,21 +799,43 @@ Estrutura transversal aplicável a:
 
 > ⚠️ **Placeholder:** Regras específicas de alçada (quem aprova o quê, limites de valor) a definir com Vicente. A estrutura deve ser configurável — não hardcoded.
 
-**Modelo `Alcada`** (adicionado no Bloco 6 — estrutura configurável; valores são placeholder/seed). Campos: `tipo` (renegociacao | reajuste | despesa), `role` (qual role pode aprovar), `limite_valor` (até quanto; null = ilimitado), `nivel` (escalonamento), `ativo`. A verificação é em runtime no banco (Doc 6 §4.1): dada uma operação (tipo + valor) e os roles do usuário, existe uma alçada ativa cujo role o usuário possui e cujo `limite_valor` cobre o valor? Se não, escala para o nível superior. **Nenhum limite é hardcoded** — tudo vem de registros `Alcada` configuráveis.
-
 ---
 
 ## 8. Fluxos Principais
 
-### 8.1 Originação de ContratoCredito
-1. Contrato e dados do titular chegam via API do PopHub no momento da assinatura
-2. Sistema identifica o ativo correspondente e vincula automaticamente
-3. Sistema cria ou identifica o `Titular` (pelo CPF/CNPJ) e sua `Conta`
-4. Entrada já foi paga no PopHub/Asaas — sistema concilia e registra
-5. Sistema gera cronograma completo de `Parcela` a partir do saldo devedor pós-entrada
-6. Sistema cria `Fatura` futuras com itens previstos
-7. Sistema cria `Recebível` para cada parcela
-8. ContratoCredito entra em status **Ativo**
+### 8.1 Originação de ContratoCredito (funil em tela)
+
+A originação acontece **dentro do sistema**, operada em tela — não mais via API do PopHub. O dado nasce na tela (entrada humana); apenas a confirmação de pagamento (Asaas) e, no futuro, a assinatura digital, vêm de integração externa.
+
+**Pré-cadastro e simulação:**
+1. Operador inicia o atendimento: CPF novo → cria `Lead`; CPF conhecido → recupera `Titular`
+2. Seleciona um `Ativo` disponível e simula condições (entrada, prazo em semanas)
+3. Sistema calcula as `Oferta` (a partir do valor de venda do ativo e/ou pacote genérico vinculado); operador e cliente comparam e escolhem uma
+4. Se a entrada é parcelada, configura **intermediárias** (mín. 60% à vista, até 40% diluído)
+
+**Proposta e análise:**
+5. Oferta escolhida vira `Proposta` (status Pendente)
+6. Coleta do cadastro completo → **promoção do Lead a Titular** (reconciliação por CPF)
+7. Anexo dos documentos digitais (`DocumentoProposta`) por papel (comprador principal, secundário, garantidor); análise documental emite o `Parecer`
+8. Proposta: Pendente → Em Análise → Aprovada/Reprovada (decisão de crédito ocorre no fluxo de análise)
+
+**Formalização:**
+9. Proposta aprovada → operador formaliza
+10. Sistema **congela o snapshot** (fotografia imutável de pessoas/papéis, ativo, condições, valores, oferta) — fonte da geração documental
+11. Motor de **templates gera o documento** do contrato a partir do snapshot
+12. Nasce o `ContratoCredito` em **Aguardando assinatura**
+13. **Assinatura** (provisória/mock): operador baixa o contrato, cliente assina por fora, operador sobe o assinado e marca como assinado. *(Estrutura preparada para integração de assinatura digital futura, via webhook.)*
+
+**Ativação:**
+14. Contrato assinado → sistema gera a **primeira Fatura** (a entrada), cobrada como **cobrança avulsa no Asaas** (cliente ainda não cadastrado lá)
+15. O **ID da cobrança avulsa é guardado e vinculado ao Titular** (referência que não pode se perder — senão a entrada fica órfã no espelho de pagamento)
+16. Cliente paga a primeira cobrança da entrada → **webhook do Asaas confirma** (gatilho da ativação)
+17. Confirmação dispara: **ativa o ContratoCredito** + **cadastra o cliente no Asaas** (cliente pleno) + registra o pagamento no espelho do titular
+18. Na ativação, o cronograma completo já existe (gerado no D0): `Parcela`, `Fatura` futuras e `Recebível` para cada parcela
+
+> **Snapshot vs cadastro vivo.** O documento do contrato é gerado a partir do **snapshot** congelado na formalização, não do cadastro vivo do Titular. Garante fidelidade ao momento da assinatura e reprodutibilidade (regerar idêntico anos depois). O cadastro vivo segue como fonte única da verdade para o uso operacional — sem cópia de campos soltos.
+
+> **Migração de legados:** os contratos legados são importados pela mesma lógica de originação (criar Titular/Conta/Ativo/ContratoCredito com cronograma), não por uma cadeia paralela. Sem "produto oculto" como no PopHub.
 
 ### 8.2 Ciclo Semanal de Fatura
 1. Faturas existem desde a originação com status **Aberta**
@@ -645,18 +846,27 @@ Estrutura transversal aplicável a:
 6. Pagamento confirmado via webhook → sistema concilia → baixa na fatura e parcelas → breakdown de recebíveis calculado
 7. Sem pagamento → fatura → **Vencida** → régua de cobrança ativada
 
-### 8.3 Renegociação
-1. Operador acessa módulo de renegociação e seleciona obrigações em aberto
+### 8.3 Acordo (recuperação branda)
+1. Operador acessa o módulo e seleciona obrigações em atraso
 2. Sistema soma o saldo total
 3. Operador estrutura o acordo (valor entrada, número de parcelas, valor da parcela)
 4. Acordo passa pela estrutura de alçadas
 5. Após aprovação: sistema cria `Acordo` em **Rascunho** e gera cobrança da entrada no Asaas
 6. Cliente paga a entrada → webhook confirma
-7. Sistema efetiva a renegociação (novação):
+7. Sistema efetiva o acordo:
    - `Acordo`: Rascunho → **Ativo**
-   - Faturas/parcelas cobertas → **Renegociadas** (permanente)
-   - Sistema cria um `ItemContratado` de origem **renegociacao**, vinculado ao acordo
+   - Parcelas cobertas recebem **vínculo de acordo** (contrato principal NÃO liquidado; demais parcelas inalteradas)
+   - Sistema cria um `ItemContratado` de origem **ACORDO**, vinculado ao acordo
    - Novas parcelas nascem vinculadas a esse item, com numeração própria (1/12, 2/12...), e entram na próxima fatura aberta
+   - Cliente permanece inadimplente para fins contábeis até cumprir o acordo
+
+### 8.3b Novação (recuperação radical)
+1. Operador identifica que os acordos não recuperaram o cliente
+2. Estrutura a novação (novas condições do contrato substituto)
+3. Passa pela estrutura de alçadas
+4. Após aprovação e aceite: sistema **liquida o ContratoCredito origem** (estado terminal de novação, preservado para auditoria)
+5. Sistema gera um **ContratoCredito novo** completo, com cronograma novo nascido no D0
+6. Registro de `Novação` vincula os dois contratos (origem e novo)
 
 ### 8.4 Quitação Antecipada
 1. Operador ou cliente solicita simulação de quitação
@@ -703,16 +913,16 @@ Estrutura transversal aplicável a:
 
 ## 11. Integrações
 
-### 11.1 PopHub (Entrada)
-- **Direção:** PopHub → Azit Move
-- **Gatilho:** assinatura do contrato
-- **Dados recebidos:** contrato completo + dados do cliente + identificação do ativo
-- **Formato:** API REST (payload a especificar no Doc 2)
+### 11.1 PopHub (Absorvido — não é mais integração)
+- O PopHub **deixa de existir como sistema separado**. Sua função (originação: cadastro, simulação, proposta, análise, geração de contrato) é **absorvida** para dentro deste sistema, operada em tela.
+- Não há mais "entrada via API do PopHub". A originação nasce na tela (ver fluxo 8.1).
+- O **conhecimento de negócio** do PopHub foi preservado (documentos obrigatórios, fórmula de precificação como referência histórica, máquina de estados da proposta); a estrutura técnica antiga e suas gambiarras (produto-catálogo genérico, "produto oculto" de legado, dados desnormalizados) foram **descartadas**.
 
 ### 11.2 Asaas (Execução de Pagamentos)
 - **Direção:** bidirecional
 - **Azit → Asaas:** criação de cobranças (avulsas, nunca assinaturas)
 - **Asaas → Azit:** webhooks de confirmação de pagamento
+- **Fluxo de ativação:** a primeira cobrança (entrada) é **avulsa** — o cliente só é cadastrado no Asaas **após** a confirmação do pagamento que ativa o contrato. O `asaas_charge_id` da cobrança avulsa é vinculado ao Titular para não perder a referência no espelho de pagamento.
 - **Regra:** uma cobrança ativa por contrato por vez, gerada em D-5
 - **Juros/multas:** calculados automaticamente pelo Asaas no momento do pagamento; sistema recalcula internamente para conciliação
 
@@ -720,21 +930,28 @@ Estrutura transversal aplicável a:
 - **Direção:** Azit → Cliente
 - **Uso:** notificação de vencimento, cobrança na régua, comunicados operacionais
 
+### 11.4 Assinatura Digital (provisória — mock manual)
+- Hoje a assinatura é **manual**: o sistema gera o documento, o operador baixa, o cliente assina por fora, o operador sobe o assinado.
+- Estrutura preparada para **integração de assinatura digital** futura (a Azit possui um sistema, a definir qual), que confirmará a assinatura provavelmente via webhook — mesma natureza do Asaas. Quando entrar, substitui o baixar/subir sem mudar os estados ao redor.
+
 ---
 
 ## 12. Placeholders — A Definir
 
 | Item | Descrição | Responsável |
 |---|---|---|
+| Fórmula de precificação da parcela | Cálculo da oferta a partir do valor de venda do ativo + entrada + prazo. **Provisória em uso** (Tabela Price, taxa 0,5%/semana parametrizável), substituível sem refazer estrutura | Vicente |
 | Fórmula de breakdown do recebível | Como calcular exatamente a divisão entre amortização de capital, rendimento do investidor e taxa de serviço por pagamento | Vicente / Sebastião (depende da estrutura jurídica do fundo) |
 | Regras de alçadas de aprovação | Quem aprova o quê, limites de valor por tipo de operação e perfil de usuário | Vicente |
-| Aceite rápido para novos itens | Fluxo detalhado do mecanismo de aceite do cliente para novos produtos/despesas financiadas | Vicente / Luís |
-| Regra de split em atraso >30 dias | Como distribuir juros e multas entre operação e investidor em atrasos prolongados | Vicente |
+| Regra de split em atraso >30 dias | Como distribuir juros e multas entre operação e investidor em atrasos prolongados. Input do Vicente: primeiras semanas com a Azit, após ~1 mês compartilhar com investidor | Vicente |
 | Estrutura jurídica do fundo | Modelo legal para repasse ao investidor pessoa física | Sebastião |
-| Visão do investidor | Fluxos e interface de acompanhamento de performance para investidores | Stand-by |
+| Sistema de assinatura digital | Qual ferramenta de assinatura será integrada (hoje mock manual) | Luís |
+| Estrutura detalhada de produtos configuráveis | Quais produtos, quais características, genérico vs específico | A amadurecer |
 | Oferta ao investidor | Produto de capital protegido/garantido, fundo de reserva, mecanismos de proteção | Vicente |
+
+> **Princípio dos placeholders:** todo placeholder tem um **padrão funcional provisório** que roda de verdade — nunca um buraco que quebra. Cenários reais devem ser simuláveis de ponta a ponta mesmo nas áreas cuja regra final ainda não foi definida. A regra definitiva substitui o provisório sem refazer a estrutura ao redor.
 
 ---
 
-*Documento vivo — atualizar a cada decisão validada com Vicente.*
-*Versão 1.0 — 2026-06-23*
+*Documento vivo — atualizar a cada decisão validada.*
+*Versão 2.0 — 2026-06-27 — expansão de escopo: originação absorvida do PopHub, distinção Acordo/Novação, telas do operador, refinamentos da reunião de 26/06 com Vicente.*

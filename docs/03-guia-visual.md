@@ -272,6 +272,22 @@ Os status marcados com `*` são **calculados em tempo de execução**, não arma
 | Quitado | `#eafaf1` | `#1f9d5b` |
 | Cancelado | `#fdeceb` | `#e0413c` |
 
+### 4.4b Status de Proposta (originação)
+
+Usado nos badges e nas colunas do Kanban de propostas. Segue a ordem do funil.
+
+| Status | Background | Foreground |
+|---|---|---|
+| Pendente | `#f1f4f8` | `#8694a4` |
+| Em Análise | `#fef6e9` | `#c98a0a` |
+| Aprovada | `#eafaf1` | `#1f9d5b` |
+| Reprovada | `#fdeceb` | `#e0413c` |
+| Cancelada | `#f1f4f8` | `#5b6b7f` |
+| Em Formalização | `#eaf2fe` | `#2f6fde` |
+| Convertida | `#ede9fb` | `#6b4fd6` |
+
+> Esses valores vão em `statusColors.ts`, junto com os demais mapas de status. O Kanban de propostas reutiliza o mesmo componente de coluna/card da Régua (5.6, 5.7).
+
 ### 4.5 Estágios da régua de cobrança
 
 Os estágios abaixo são posições na régua operacional — **não são status de entidade**. São usados exclusivamente nos cards e colunas do kanban da Régua.
@@ -725,7 +741,7 @@ Header destaque escuro (`border-radius: 18px`):
 
 Grid 3 colunas (métricas): Saldo devedor total · Parcelas pagas (`12/157`) · Valor p/ quitar hoje (verde `#1f9d5b`)
 
-Lista "Meus contratos": ícone 38×38px + label + sub + valor/posição alinhados à direita. Cada linha corresponde a um ItemContratado ativo do cliente — incluindo os itens de origem "renegociacao", que aparecem como uma linha própria (ex: "Crédito de renegociação · Acordo nº X") ao lado dos produtos de venda.
+Lista "Meus contratos": ícone 38×38px + label + sub + valor/posição alinhados à direita. Cada linha corresponde a um ItemContratado ativo do cliente — incluindo os itens de origem "acordo", que aparecem como uma linha própria (ex: "Crédito de acordo · Acordo nº X") ao lado dos produtos de venda.
 
 ### 8.5 Investidor de Ativo Específico
 
@@ -770,17 +786,78 @@ O fluxo de sinistro foi definido na reunião de 23/06 com Vicente e deve ser sup
 
 ---
 
-## 9. Tela de Acordos / Renegociações
+## 8-A. Telas de originação (operador)
+
+O funil de originação acontece em tela, operado pelo operador. Reutiliza os componentes base (cards, badges, Kanban, modal, stepper). Detalhamento de fluxo no Doc 2 (8.1) e no documento de decisões (Parte C). A tela pública do cliente é um subconjunto, a desenhar depois.
+
+### 8-A.1 Início / pré-cadastro (Tela 1)
+
+Tela enxuta de entrada do funil. Campos: Nome, CPF, Data de nascimento. Ao digitar o CPF, verificação de reconciliação:
+- **CPF novo:** segue para criar Lead e iniciar simulação.
+- **CPF conhecido:** mostra o que já existe (Titular pleno ou Lead anterior) e oferece "Continuar com cadastro existente".
+
+Ação primária: "Iniciar simulação".
+
+### 8-A.2 Simulação e ofertas (Tela 2)
+
+Três blocos, herdando o padrão da tela de simulação do PopHub mas centrado no **Ativo**:
+- **Bloco Ativo:** seleção do ativo específico do estoque (busca por placa/modelo). Mostra o ativo escolhido em destaque.
+- **Bloco Parâmetros:** valor de entrada (ou %), prazo em semanas. Controle de **intermediárias**: ao informar a entrada, habilita parcelá-la (mín. 60% à vista numa parcela, até 40% diluído).
+- **Bloco Ofertas:** cards de oferta calculados — cada card com valor da parcela + periodicidade, prazo, entrada. As ofertas vêm do pacote (se o ativo está flegado) e/ou do valor de venda do ativo. Card selecionável (destaca o escolhido).
+
+Campo de Observações Internas (não exibido ao cliente). Ações: "Criar Simulação" (habilitado após selecionar oferta), "Criar Proposta", "WhatsApp" (compartilhar).
+
+> Os valores das parcelas usam a fórmula provisória — exibir discretamente que são condições sujeitas a confirmação.
+
+### 8-A.3 Propostas — Lista e Kanban (Tela 3)
+
+Reutiliza `KanbanBoard` e a tabela de listagem. Alternância Lista ⇄ Kanban preservando filtros e busca.
+
+- **Filtro de status** (badges da seção 4.4b) + busca por cliente.
+- **Lista:** Cliente · Veículo · Prazo · Parcela · Status · Criado em · Ações. Menu de ações: "Ver detalhes" e "Análise documental".
+- **Kanban:** uma coluna por status do funil, contador por coluna. Card resumido (cliente, veículo, parcela, prazo, data).
+- **Arrasto:** livre entre Pendente e Em Análise (frente e trás); Aprovada/Reprovada só pelo fluxo de análise; estados de consequência não-reversíveis por arrasto; transições inválidas bloqueadas visualmente. Persiste no backend.
+
+### 8-A.4 Modal de detalhes da proposta (Tela 4)
+
+Resumo somente-leitura, três blocos (cabeçalho com Cliente/Veículo/Status/data; Condições Financeiras; Oferta Selecionada com a parcela em destaque). Única ação: Fechar. Reutiliza o componente Modal (5.8).
+
+### 8-A.5 Análise documental — stepper (Tela 5)
+
+Stepper de 5 passos: **Proposta → Principal → Análise → Revisão → Conclusão**. Status da proposta no topo.
+- **Proposta:** conferência da oferta (somente-leitura).
+- **Principal:** dados pessoais do comprador (este é o momento da promoção Lead → Titular) + anexo digital de documentos (CNH, comprovante de endereço, comprovante de renda, relatório Brick), cada um com botão "Anexar" e indicador de pendência. Toggle "Incluir comprador secundário". Garantidor quando a ressalva exigir.
+- **Análise / Revisão / Conclusão:** avaliação e parecer (aprovado / ressalva / reprovado). Avanço só habilita com obrigatórios completos.
+
+### 8-A.6 Formalização (Tela 6)
+
+Resumo final consolidado (titulares e papéis, ativo, oferta, condições, valores) para conferência. Ação "Formalizar / Gerar contrato": congela o snapshot, gera o documento, cria o ContratoCredito.
+- **Assinatura (mock):** área para **baixar** o contrato gerado e **subir** o assinado, com marcação visual de que é provisório.
+
+### 8-A.7 Ativação (Tela 7)
+
+Mostra o status do contrato aguardando o pagamento da entrada. Quando o webhook confirma o pagamento da primeira cobrança (avulsa), o contrato ativa e a tela reflete a transição para Ativo. Ponto de passagem da originação para o ciclo financeiro (carteira).
+
+### 8-A.8 Telas de apoio
+
+- **Cadastro/estoque de Ativo:** formulário do ativo (campos do veículo + valor de venda + vínculo opcional a pacote + origem de capital). Listagem com busca por placa/chassi e filtro por status; ativos "em contrato" não aparecem como disponíveis.
+- **Cadastro de Titular:** visão consolidada do cadastro pleno, com a Conta e os contratos pendurados.
+
+---
+
+## 9. Tela de Acordos e Novações
 
 ### 9.1 Separação da Régua
 
-A seção "Renegociações" no nav é uma tela distinta da Régua de cobrança. Usam o mesmo componente `KanbanBoard`, mas com configurações diferentes passadas via props.
+A seção "Acordos" no nav é uma tela distinta da Régua de cobrança. Usam o mesmo componente `KanbanBoard`, mas com configurações diferentes passadas via props.
 
 **Régua:** recebe os estágios D+1 a D+12 com contratos inadimplentes.
 
 **Acordos (se usar kanban):** recebe os status do Acordo (Rascunho, Ativo, Quitado). Alternativamente, pode ser uma listagem tabular — mais simples e suficiente para o volume atual.
 
-> **Como a renegociação aparece no contrato do cliente:** quando um acordo é efetivado, ele gera um item de crédito próprio dentro do contrato (origem "renegociacao"), no modelo de novação bancária. No extrato e no cronograma do contrato, esse acordo aparece como uma **linha de crédito própria** — por exemplo "Crédito de renegociação · Acordo nº X" — com suas parcelas numeradas 1/12, 2/12. As parcelas antigas extintas aparecem marcadas como "Renegociada". A interface deve deixar visível que a dívida nova é um item distinto, não uma alteração das parcelas originais.
+> **Como o Acordo aparece no contrato do cliente:** quando um acordo é efetivado, ele gera um item de crédito próprio dentro do contrato (origem "acordo"). No extrato e no cronograma, esse acordo aparece como uma **linha de crédito própria** — por exemplo "Crédito de acordo · Acordo nº X" — com suas parcelas numeradas 1/12, 2/12. As parcelas em atraso cobertas aparecem com **vínculo de acordo** (não como "Renegociada" — esse status não é usado como marca do vínculo). A interface deixa visível que a dívida nova é um item distinto, não uma alteração das parcelas originais. **O contrato principal não é liquidado.**
+
+> **Acordo ≠ Novação.** O Acordo dilui parcelas em atraso sem liquidar o contrato. A **Novação** é o mecanismo radical: liquida o contrato inteiro e gera um novo. Na interface, uma novação aparece como o encerramento do contrato origem (status "Liquidado por novação") e a criação de um contrato novo vinculado a ele.
 
 ### 9.2 Tela: Lista de Acordos
 
@@ -793,10 +870,10 @@ Tabela de Acordos (full width)
 **Tabela — colunas:**
 `Cliente (1.4) · Contrato (.8) · Tipo (1.0) · Entrada (1.0) · Parcelas do acordo (.9) · Status (.9) · Criado em (.8)`
 
-- Coluna "Tipo": "Renegociação menor" ou "Repactuação radical"
+- Coluna "Tipo": "Acordo" (branda) ou "Novação" (radical)
 - Coluna "Status": badge do **status do Acordo** (seção 4.4)
 
-### 9.3 Modal de renegociação *(acessado a partir do detalhe de contrato)*
+### 9.3 Modal de acordo *(acessado a partir do detalhe de contrato)*
 
 Tamanho: `width: 520px`. Estrutura em 3 etapas com barra de progresso do wizard.
 
@@ -807,8 +884,8 @@ Tamanho: `width: 520px`. Estrutura em 3 etapas com barra de progresso do wizard.
 
 **Etapa 2 — Configurar acordo:**
 - Tipo: 2 radio cards
-  - "Renegociação menor" — parcelas atrasadas diluídas em novas parcelas
-  - "Repactuação radical" — liquida contrato antigo e cria novo
+  - "Acordo" — parcelas atrasadas diluídas em novas parcelas (contrato NÃO liquidado)
+  - "Novação" — liquida o contrato inteiro e cria um novo
 - Entrada: input numérico com validação mínimo 30% do saldo
 - Parcelas do acordo: seletor (6 / 12 / 24 / 36)
 - Resumo dinâmico calculado em tempo real

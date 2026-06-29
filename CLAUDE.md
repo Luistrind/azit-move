@@ -22,22 +22,26 @@ Nunca contrarie sem validação humana explícita:
 2. **Recebível nasce no dia zero.** Cronograma completo gerado na criação do contrato.
 3. **A dívida independe do ativo.** Sinistro/furto não extingue obrigação. Parcela não é apagada.
 4. **Webhook nunca é síncrono.** Responde 202 e enfileira via BullMQ.
-5. **Renegociação é novação.** Parcelas antigas viram RENEGOCIADA; um ItemContratado de origem RENEGOCIACAO nasce com as parcelas novas. Nunca alterar parcelas antigas nem criar parcelas soltas.
+5. **Acordo ≠ Novação.** O *Acordo* (recuperação branda) dilui parcelas em atraso sem liquidar o contrato: as parcelas cobertas recebem vínculo de acordo (NÃO o status RENEGOCIADA como marca), e um ItemContratado de origem ACORDO nasce com as parcelas novas. A *Novação* (radical) liquida o contrato inteiro (LIQUIDADO_POR_NOVACAO) e cria um novo. São mecanismos distintos — nunca confundir.
 6. **D+3 bloqueio é absoluto.** Sem exceção. Desbloqueio sempre manual.
 7. **Status calculados não são gravados.** Em aberto/Vence hoje/Vencida são runtime. Só estados reais vão ao banco.
 8. **Titular é o cadastro único.** Cliente e investidor são papéis derivados do que a conta possui — não entidades nem tipos de login.
 9. **Sem cor ou status hardcoded.** Cor vem de `statusColors.ts`, status dos enums de `@azit/types`.
 10. **Decimal para dinheiro, sempre.** Nunca Float.
+11. **Conta ≠ conta corrente.** A Conta é visão unificada de relacionamento, não produto de conta corrente. Nunca sugerir conta corrente (risco regulatório).
+12. **Placeholder é funcional, nunca buraco.** Toda regra "a definir" (precificação, alçadas, split) tem padrão provisório que roda e é testável, isolado e marcado como substituível. O sistema simula de ponta a ponta mesmo sem a regra final.
+13. **Originação é nativa, em telas.** O dado nasce na tela (Lead → Simulação → Proposta → Análise → Formalização → Ativação), não via API do PopHub (absorvido). Só Asaas e (futuramente) assinatura digital vêm de fora.
+14. **Investidor não vê dados pessoais do cliente.** A visão do investidor é financeira e anonimizada (LGPD + proteção do negócio) — a projeção de dados exclui campos pessoais do cliente na origem.
 
 ## Como conduzir
 
-Siga a esteira do `07-backlog.md` na ordem (é por dependência técnica). Não pule blocos nem construa item cujas dependências não existem. Núcleo é desenvolvido sobre seed; originação PopHub só no Bloco 7. Frontend só depois do endpoint que consome. Cada item entregue testado.
+Siga a esteira do `07-backlog.md` na ordem (é por dependência técnica). Não pule blocos nem construa item cujas dependências não existem. Núcleo é desenvolvido sobre seed; a originação nativa (telas do funil) é o Bloco 7, construída após o núcleo financeiro validado. Frontend só depois do endpoint que consome. Cada item entregue testado.
 
 ## Pare e peça validação humana
 
 - Ao atingir cada **marco** (A–G do backlog) — apresente o construído e como testar; não avance sem confirmação.
 - Antes de qualquer decisão de domínio não coberta pelos docs.
-- Antes de construir sobre um placeholder (breakdown de recebível, alçadas, payload PopHub).
+- Antes de construir sobre um placeholder (precificação, breakdown de recebível, alçadas, split, assinatura digital) — use o padrão provisório e marque-o; não invente a regra final.
 
 Nesses casos, descreva a ambiguidade e proponha opções — não escolha sozinho.
 

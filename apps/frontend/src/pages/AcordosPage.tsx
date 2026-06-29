@@ -5,6 +5,7 @@ import { operacoesService } from '../services/operacoes.service';
 import { contratoService } from '../services/contrato.service';
 import { StatusBadge } from '../components/StatusBadge';
 import { ACORDO_STATUS_COLORS } from '../config/statusColors';
+import { usePodeRole, ROLE_RENEGOCIACAO, mensagemErro } from '../lib/permissoes';
 
 const LABEL_STATUS: Record<string, string> = {
   rascunho: 'Rascunho',
@@ -15,6 +16,8 @@ const LABEL_STATUS: Record<string, string> = {
 
 export function AcordosPage() {
   const queryClient = useQueryClient();
+  const pode = usePodeRole();
+  const podeRenegociar = pode(ROLE_RENEGOCIACAO);
   const [ocupado, setOcupado] = useState(false);
   const [contratoId, setContratoId] = useState('');
   const [entrada, setEntrada] = useState('500');
@@ -50,6 +53,8 @@ export function AcordosPage() {
       });
       setContratoId('');
       await refetch();
+    } catch (e) {
+      alert(mensagemErro(e));
     } finally {
       setOcupado(false);
     }
@@ -60,6 +65,8 @@ export function AcordosPage() {
     try {
       await operacoesService.simularEntrada(acordoId);
       await refetch();
+    } catch (e) {
+      alert(mensagemErro(e));
     } finally {
       setOcupado(false);
     }
@@ -67,7 +74,8 @@ export function AcordosPage() {
 
   return (
     <div className="flex flex-col gap-[16px]">
-      {/* Nova renegociação */}
+      {/* Nova renegociação (apenas papéis com alçada de renegociação) */}
+      {podeRenegociar && (
       <div className="rounded-card p-[18px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <div className="mb-[12px] font-display text-[14px] font-bold">Nova renegociação</div>
         <div className="flex flex-wrap items-end gap-[14px]">
@@ -112,6 +120,7 @@ export function AcordosPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* Lista de acordos */}
       <div className="rounded-card overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
@@ -138,7 +147,7 @@ export function AcordosPage() {
                 <td className="px-[18px] py-[12px] text-center tabular-nums" style={{ color: 'var(--text-body)' }}>{a.numeroParcelasNovas} × {formatCurrency(a.valorParcelaNova)}</td>
                 <td className="px-[18px] py-[12px]"><StatusBadge label={LABEL_STATUS[a.status] ?? a.status} colors={ACORDO_STATUS_COLORS} /></td>
                 <td className="px-[18px] py-[12px] text-right">
-                  {a.status === 'rascunho' ? (
+                  {a.status === 'rascunho' && podeRenegociar ? (
                     <button onClick={() => efetivar(a.id)} disabled={ocupado} className="rounded-[7px] px-[12px] py-[5px] text-[11.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>
                       Simular entrada (dev)
                     </button>

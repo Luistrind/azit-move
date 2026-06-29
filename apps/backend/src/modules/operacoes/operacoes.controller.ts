@@ -44,7 +44,7 @@ export class OperacoesController {
     return this.renegociacao.elegiveis(id);
   }
 
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.APROVADOR)
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
   @Post('contratos/:id/renegociacao')
   @HttpCode(201)
   criarRenegociacao(
@@ -61,7 +61,7 @@ export class OperacoesController {
   }
 
   // Dev: simula o pagamento da entrada (enfileira efetivação, como o webhook).
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.APROVADOR)
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
   @Post('dev/simular-entrada-acordo/:acordoId')
   @HttpCode(202)
   async simularEntrada(@Param('acordoId') acordoId: string) {
@@ -119,7 +119,7 @@ export class OperacoesController {
     return this.reajuste.gerar(id, dto.indicePercentual);
   }
 
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.APROVADOR)
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
   @Post('reajustes/:id/aprovar')
   @HttpCode(200)
   aprovarReajuste(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {

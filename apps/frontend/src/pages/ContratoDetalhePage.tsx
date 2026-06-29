@@ -9,6 +9,7 @@ import {
   CONTRATO_STATUS_COLORS,
   PARCELA_STATUS_COLORS,
 } from '../config/statusColors';
+import { usePodeRole, ROLE_OPERACAO, ROLE_REAJUSTE, mensagemErro } from '../lib/permissoes';
 
 const ORIGEM_CAPITAL_LABEL: Record<string, string> = {
   CAPITAL_PROPRIO: 'Capital próprio',
@@ -41,6 +42,9 @@ export function ContratoDetalhePage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const pode = usePodeRole();
+  const podeOperar = pode(ROLE_OPERACAO);
+  const podeReajustar = pode(ROLE_REAJUSTE);
   const [tab, setTab] = useState<'cronograma' | 'extrato'>('cronograma');
   const [simulando, setSimulando] = useState(false);
 
@@ -65,6 +69,8 @@ export function ContratoDetalhePage() {
     try {
       await contratoService.simularPagamento(id);
       await recarregar();
+    } catch (e) {
+      alert(mensagemErro(e));
     } finally {
       setSimulando(false);
     }
@@ -84,6 +90,8 @@ export function ContratoDetalhePage() {
     try {
       await operacoesService.quitar(id);
       await recarregar();
+    } catch (e) {
+      alert(mensagemErro(e));
     } finally {
       setSimulando(false);
     }
@@ -97,6 +105,8 @@ export function ContratoDetalhePage() {
     try {
       await operacoesService.registrarSinistro(id, Math.round(Number(v) * 100));
       await recarregar();
+    } catch (e) {
+      alert(mensagemErro(e));
     } finally {
       setSimulando(false);
     }
@@ -110,6 +120,8 @@ export function ContratoDetalhePage() {
     try {
       await operacoesService.reajustar(id, Number(v));
       await recarregar();
+    } catch (e) {
+      alert(mensagemErro(e));
     } finally {
       setSimulando(false);
     }
@@ -188,39 +200,47 @@ export function ContratoDetalhePage() {
           ))}
         </div>
         <div className="flex gap-[8px]">
-          <button
-            onClick={quitar}
-            disabled={simulando}
-            className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
-            style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)', opacity: simulando ? 0.6 : 1 }}
-          >
-            Quitação antecipada
-          </button>
-          <button
-            onClick={sinistro}
-            disabled={simulando}
-            className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
-            style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)', opacity: simulando ? 0.6 : 1 }}
-          >
-            Sinistro
-          </button>
-          <button
-            onClick={reajustar}
-            disabled={simulando}
-            className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
-            style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)', opacity: simulando ? 0.6 : 1 }}
-          >
-            Reajuste IPCA
-          </button>
-          <button
-            onClick={simularPagamento}
-            disabled={simulando}
-            className="rounded-[8px] px-[14px] py-[7px] text-[12px] font-semibold"
-            style={{ background: 'var(--accent)', color: '#fff', opacity: simulando ? 0.6 : 1 }}
-            title="Dev: dispara a conciliação da próxima parcela via fila"
-          >
-            {simulando ? '…' : 'Simular pagamento (dev)'}
-          </button>
+          {podeOperar && (
+            <button
+              onClick={quitar}
+              disabled={simulando}
+              className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
+              style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)', opacity: simulando ? 0.6 : 1 }}
+            >
+              Quitação antecipada
+            </button>
+          )}
+          {podeOperar && (
+            <button
+              onClick={sinistro}
+              disabled={simulando}
+              className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
+              style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)', opacity: simulando ? 0.6 : 1 }}
+            >
+              Sinistro
+            </button>
+          )}
+          {podeReajustar && (
+            <button
+              onClick={reajustar}
+              disabled={simulando}
+              className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
+              style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)', opacity: simulando ? 0.6 : 1 }}
+            >
+              Reajuste IPCA
+            </button>
+          )}
+          {podeOperar && (
+            <button
+              onClick={simularPagamento}
+              disabled={simulando}
+              className="rounded-[8px] px-[14px] py-[7px] text-[12px] font-semibold"
+              style={{ background: 'var(--accent)', color: '#fff', opacity: simulando ? 0.6 : 1 }}
+              title="Dev: dispara a conciliação da próxima parcela via fila"
+            >
+              {simulando ? '…' : 'Simular pagamento (dev)'}
+            </button>
+          )}
         </div>
       </div>
 

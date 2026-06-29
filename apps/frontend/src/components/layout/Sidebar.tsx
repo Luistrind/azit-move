@@ -94,8 +94,8 @@ export function Sidebar() {
           <div className="truncate text-[12.5px] font-semibold">
             {usuario?.nome ?? 'Operador Azit'}
           </div>
-          <div className="truncate text-[11px]" style={{ color: 'var(--navy-text-meta)' }}>
-            {usuario?.email ?? 'Console operacional'}
+          <div className="truncate text-[11px]" style={{ color: 'var(--accent)' }}>
+            {usuario?.roles?.join(' · ') ?? 'Console operacional'}
           </div>
         </div>
         <button

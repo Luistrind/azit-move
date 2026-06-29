@@ -18,21 +18,36 @@ Data: 2026-06-23
 
 ---
 
-## 2. API de Originação — PopHub → Azit Move
+## 2. API de Originação (nativa, operada em telas)
 
-Esta é a integração principal. O PopHub envia o contrato no momento da assinatura e o sistema Azit Move processa tudo a partir daí.
+A originação acontece **dentro do sistema**, operada pelo operador em telas — não via API do PopHub (absorvido, não integrado). O funil completo (Lead → Simulação → Oferta → Proposta → Análise → Formalização → Ativação) é exposto por endpoints internos. Esta seção cobre os principais; o detalhamento das telas está no Doc 3 (seção 8-A) e no Doc 2 (fluxo 8.1).
 
-### POST `/api/v1/contratos/originar`
+### Endpoints do funil (resumo)
 
-Recebe um contrato completo do PopHub e executa:
-- Criação ou identificação do cliente e conta
-- Vínculo do ativo ao contrato
-- Conciliação da entrada
-- Geração do cronograma completo de parcelas e recebíveis
-- Criação das faturas futuras
-- Ativação do contrato
+| Método | Rota | Função |
+|---|---|---|
+| `POST` | `/api/v1/leads` | Cria um Lead (pré-cadastro: nome, CPF, nascimento). Verifica reconciliação por CPF |
+| `POST` | `/api/v1/simulacoes` | Cria uma simulação sobre um ativo; retorna ofertas calculadas |
+| `POST` | `/api/v1/propostas` | Converte a oferta escolhida em proposta (status Pendente) |
+| `PATCH` | `/api/v1/propostas/:id/status` | Move a proposta no funil (respeitando transições válidas) |
+| `POST` | `/api/v1/propostas/:id/documentos` | Anexa documento digital (por papel) |
+| `POST` | `/api/v1/propostas/:id/parecer` | Registra o parecer da análise (aprovado/ressalva/reprovado) |
+| `POST` | `/api/v1/propostas/:id/formalizar` | Congela snapshot, gera contrato, cria ContratoCredito em Aguardando assinatura |
+| `POST` | `/api/v1/contratos/:id/ativar` | Gera a primeira fatura (entrada) como cobrança avulsa no Asaas |
 
-#### Request Body
+> **Reconciliação por CPF (Lead → Titular):** ao criar lead ou avançar proposta, o sistema verifica se já existe Titular com o CPF. Se sim, reaproveita; se não, na promoção cria o Titular. Leads são leves e podem duplicar; o Titular é único por CPF.
+
+### POST `/api/v1/propostas/:id/formalizar`
+
+Etapa que materializa o contrato a partir da proposta aprovada. Executa:
+- Congela o **snapshot** (fotografia imutável de pessoas/papéis, ativo, condições, valores, oferta)
+- Gera o documento do contrato via motor de templates (a partir do snapshot)
+- Cria o `ContratoCredito` em **Aguardando assinatura**
+- Gera o cronograma completo (parcelas, faturas futuras, recebíveis) no D0
+
+O snapshot abaixo é a estrutura congelada (exemplo). Os mesmos dados que antes "chegavam do PopHub" agora nascem das telas e são consolidados aqui:
+
+#### Snapshot de formalização (exemplo)
 
 ```json
 {
@@ -66,7 +81,9 @@ Recebe um contrato completo do PopHub e executa:
     "asaas_customer_id": "cus_000167350365"
   },
 
-  "interveniente_garantidor": null,
+  "papeis": [
+    { "papel": "comprador_principal", "titular_id": "..." }
+  ],
 
   "ativo": {
     "chassi": "9BHCP41AARP521695",
@@ -115,7 +132,7 @@ Recebe um contrato completo do PopHub e executa:
 ```
 
 #### Campos Obrigatórios
-- `contrato.numero_origem` — identificador único vindo do PopHub
+- `contrato.numero_origem` — identificador único do contrato (gerado na formalização)
 - `contrato.data_assinatura`
 - `contrato.data_primeira_parcela`
 - `cliente.cpf_cnpj` — chave primária de identificação
@@ -124,12 +141,11 @@ Recebe um contrato completo do PopHub e executa:
 - `ativo.chassi` — chave primária de identificação do ativo
 - `itens_contratados` — mínimo um item do tipo `parcelamento_veiculo`
 
-> **Nota de nomenclatura:** o bloco `cliente` no payload designa o **titular** no papel de comprador. Internamente, o sistema cria ou identifica um `Titular` (pelo CPF/CNPJ) e sua `Conta`, e gera um `ContratoCredito`. O nome do bloco no payload é mantido como `cliente` por ser o termo que o PopHub usa na originação; o contrato de integração final (a definir com a equipe do PopHub) pode alinhar esse nome para `titular`.
+> **Nota de nomenclatura:** o bloco `cliente` no snapshot designa o **titular** no papel de comprador principal. Internamente, o sistema trabalha com `Titular` (único por CPF/CNPJ), sua `Conta` e o `ContratoCredito`. O nome `cliente` é mantido no snapshot por clareza de leitura; a entidade é sempre o Titular com seu papel.
 
 #### Campos Opcionais
-- `interveniente_garantidor` — presente apenas quando o contrato tem garantidor
-- `cliente.asaas_customer_id` — se não informado, sistema busca pelo CPF no Asaas
-- `entrada.asaas_payment_id` — referência do pagamento da entrada no Asaas
+- `papeis[]` com papel `garantidor` — presente apenas quando o contrato tem garantidor
+- `cliente.asaas_customer_id` — preenchido **após** a ativação (cliente só é cadastrado no Asaas ao pagar a entrada)
 - `itens_contratados[].credor_id` — obrigatório quando `credor = investidor` ou `credor = terceiro`
 
 #### Response — 201 Created
@@ -164,30 +180,41 @@ Recebe um contrato completo do PopHub e executa:
 
 ---
 
-### POST `/api/v1/contratos/originar` — Com Interveniente Garantidor
+### Garantidor como papel
 
-Mesmo endpoint. Quando há garantidor, o campo `interveniente_garantidor` é preenchido:
+Quando há garantidor, ele é um **Titular** vinculado à proposta/contrato com o papel `garantidor` (via VinculoPapel) — não uma entidade separada. No snapshot de formalização, o bloco do garantidor aparece preenchido com os dados daquele Titular no momento da assinatura:
 
 ```json
 {
-  "interveniente_garantidor": {
-    "nome": "Vania Teodoro Moreira",
-    "cpf": "07305936650",
-    "rg": "07305936650",
-    "estado_civil": "casado",
-    "profissao": "Cozinheira",
-    "whatsapp": "5531973047609",
-    "email": "vaniapedra6@gmail.com",
-    "endereco": "Rua Ceará",
-    "numero": "454",
-    "complemento": "Casa",
-    "bairro": "Morada da Barra",
-    "cidade": "Vila Velha",
-    "estado": "ES",
-    "cep": "29126529"
-  }
+  "papeis": [
+    { "papel": "comprador_principal", "titular_id": "..." },
+    { "papel": "garantidor", "titular_id": "...",
+      "snapshot": {
+        "nome": "Vania Teodoro Moreira",
+        "cpf": "07305936650",
+        "whatsapp": "5531973047609",
+        "cidade": "Vila Velha",
+        "estado": "ES"
+      }
+    }
+  ]
 }
 ```
+
+> O mesmo Titular nunca ocupa dois papéis no mesmo contrato (CPF único entre papéis).
+
+---
+
+### POST `/api/v1/contratos/:id/ativar` — sequência de ativação
+
+A ativação é disparada pelo **pagamento da primeira cobrança da entrada**. Sequência:
+
+1. Contrato assinado → sistema gera a **primeira Fatura** (a entrada), cobrada como **cobrança avulsa no Asaas** (o cliente ainda **não** está cadastrado no Asaas neste momento).
+2. O `asaas_charge_id` da cobrança avulsa é **guardado e vinculado ao Titular** — referência que não pode se perder (senão a entrada fica órfã no espelho de pagamento).
+3. Cliente paga → **webhook** `PAYMENT_RECEIVED` confirma.
+4. A confirmação dispara: **ativa o ContratoCredito** (→ Ativo) + **cadastra o cliente no Asaas** (cliente pleno, agora) + registra o pagamento no espelho do titular.
+
+> A entrada é a **primeira Fatura** do contrato (não uma cobrança à parte). Intermediárias (até 40%) entram como itens das faturas seguintes. No Asaas, só essa primeira é avulsa; as demais são cobradas com o cliente já cadastrado.
 
 ---
 
@@ -258,20 +285,19 @@ Content-Type: application/json
 3. Atualiza contrato → Inadimplente
 4. Ativa régua de cobrança para esta fatura
 
-#### Evento: Entrada de Renegociação Paga — `PAYMENT_RECEIVED` (acordo)
+#### Evento: Entrada de Acordo Paga — `PAYMENT_RECEIVED` (acordo)
 
 Mesmo evento de pagamento confirmado. O `externalReference` diferencia:
 - `fatura_uuid` → pagamento de fatura normal
-- `acordo_uuid` → pagamento de entrada de renegociação
+- `acordo_uuid` → pagamento de entrada de acordo
 
 **Processamento para acordo:**
 1. Identifica o acordo pelo `externalReference`
-2. Efetiva a renegociação:
+2. Efetiva o acordo:
    - Acordo: Rascunho → Ativo
-   - Faturas cobertas → Renegociadas
-   - Parcelas cobertas → Renegociadas
-   - Novas parcelas → Em aberto
-   - Contrato → Ativo (se todas obrigações cobertas)
+   - Parcelas em atraso cobertas → recebem vínculo de acordo (NÃO status RENEGOCIADA)
+   - ItemContratado de origem ACORDO gerado, com as novas parcelas → Em aberto
+   - Contrato NÃO é liquidado; permanece com as demais parcelas inalteradas
 
 #### Response Esperado pelo Asaas
 ```json
@@ -326,7 +352,6 @@ Detalhes completos de um contrato.
 {
   "id": "uuid",
   "numero": "2026040001",
-  "pophub_id": "2026040001",
   "status": "ativo",
   "data_assinatura": "2026-04-06",
   "data_primeira_parcela": "2026-04-08",
@@ -509,10 +534,10 @@ Registra o desbloqueio do veículo após regularização (ação manual do opera
 
 ---
 
-### 4.4 Renegociação
+### 4.4 Acordo e Novação
 
 #### GET `/api/v1/contratos/:id/obrigacoes-abertas`
-Lista todas as obrigações em aberto do contrato para seleção na renegociação.
+Lista todas as obrigações em atraso do contrato para seleção no acordo.
 
 **Response:**
 ```json
@@ -535,7 +560,7 @@ Lista todas as obrigações em aberto do contrato para seleção na renegociaç�
 ```
 
 #### POST `/api/v1/acordos`
-Cria um acordo de renegociação em rascunho.
+Cria um acordo (recuperação branda) em rascunho. Dilui parcelas em atraso sem liquidar o contrato.
 
 **Body:**
 ```json
@@ -576,6 +601,29 @@ Detalhes de um acordo.
 
 #### PATCH `/api/v1/acordos/:id/cancelar`
 Cancela um acordo em rascunho.
+
+#### POST `/api/v1/novacoes`
+Cria uma **novação** (recuperação radical) — mecanismo distinto do acordo. Liquida o contrato inteiro e gera um novo.
+
+**Body:**
+```json
+{
+  "contrato_origem_id": "uuid",
+  "operador_id": "uuid",
+  "saldo_liquidado": 280000,
+  "novas_condicoes": {
+    "numero_parcelas": 160,
+    "valor_parcela": 2100,
+    "data_primeira_parcela": "2026-07-01"
+  },
+  "observacao": "Acordos não recuperaram; novação antes da retomada."
+}
+```
+
+**Efeito na efetivação:**
+- Contrato origem → `LIQUIDADO_POR_NOVACAO` (terminal, preservado para auditoria)
+- Novo ContratoCredito criado, com cronograma novo no D0
+- Registro `Novacao` vincula origem e novo
 
 ---
 
@@ -723,7 +771,7 @@ Atualiza dados do ativo (ex: quilometragem, status).
 ```json
 {
   "erro": "estado_invalido",
-  "mensagem": "Não é possível renegociar um contrato em rascunho",
+  "mensagem": "Não é possível criar acordo em um contrato em rascunho",
   "status_atual": "rascunho"
 }
 ```
@@ -851,14 +899,14 @@ Uma cobrança avulsa por fatura, gerada no fechamento (D-5). **Nunca usar assina
 
 ### 6.3 Cancelamento de Cobrança
 
-Necessário em situações como: renegociação aprovada (cancela cobranças das faturas cobertas), erro de geração, estorno de contrato.
+Necessário em situações como: acordo efetivado (cancela cobranças das faturas cobertas), erro de geração, estorno de contrato.
 
 **DELETE** `https://api.asaas.com/v3/payments/{asaas_charge_id}`
 
 **Response:** `200 OK` com `{ "deleted": true }`
 
 **Quando executar:**
-- Renegociação efetivada → cancelar cobranças das faturas cobertas no Asaas
+- Acordo efetivado → cancelar cobranças das faturas cobertas no Asaas
 - Contrato cancelado → cancelar todas as cobranças pendentes
 - Fatura corrigida antes do vencimento → cancelar e recriar com valor correto
 

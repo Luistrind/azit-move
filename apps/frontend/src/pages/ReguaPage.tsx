@@ -3,9 +3,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency, ESTAGIOS_REGUA, ROTULO_ESTAGIO } from '@azit/utils';
 import { reguaService, type ReguaItem } from '../services/regua.service';
 import { REGUA_STAGE_COLORS } from '../config/statusColors';
+import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
 
-function Card({ item, onAcao, ocupado }: { item: ReguaItem; onAcao: (acao: 'bloquear' | 'desbloquear', id: string) => void; ocupado: boolean }) {
-  const podeBloquear = !item.bloqueado && item.diasAtraso >= 3;
+function Card({ item, onAcao, ocupado, podeOperar }: { item: ReguaItem; onAcao: (acao: 'bloquear' | 'desbloquear', id: string) => void; ocupado: boolean; podeOperar: boolean }) {
+  const podeBloquear = podeOperar && !item.bloqueado && item.diasAtraso >= 3;
   return (
     <div
       className="rounded-[10px] p-[12px]"
@@ -40,7 +41,7 @@ function Card({ item, onAcao, ocupado }: { item: ReguaItem; onAcao: (acao: 'bloq
           {item.diasAtraso}d · {item.parcelasVencidas}p
         </div>
       </div>
-      {(podeBloquear || item.bloqueado) && (
+      {(podeBloquear || (item.bloqueado && podeOperar)) && (
         <button
           onClick={() => onAcao(item.bloqueado ? 'desbloquear' : 'bloquear', item.id)}
           disabled={ocupado}
@@ -61,6 +62,8 @@ function Card({ item, onAcao, ocupado }: { item: ReguaItem; onAcao: (acao: 'bloq
 export function ReguaPage() {
   const queryClient = useQueryClient();
   const [ocupado, setOcupado] = useState(false);
+  const pode = usePodeRole();
+  const podeOperar = pode(ROLE_OPERACAO);
   const regua = useQuery({ queryKey: ['regua'], queryFn: () => reguaService.listar() });
 
   async function comRefetch(fn: () => Promise<void>) {
@@ -69,6 +72,8 @@ export function ReguaPage() {
       await fn();
       await new Promise((r) => setTimeout(r, 600));
       await queryClient.invalidateQueries({ queryKey: ['regua'] });
+    } catch (e) {
+      alert(mensagemErro(e));
     } finally {
       setOcupado(false);
     }
@@ -82,15 +87,17 @@ export function ReguaPage() {
         <div className="text-[12.5px]" style={{ color: 'var(--text-body)' }}>
           {itens.length} contrato(s) em régua de cobrança
         </div>
-        <button
-          onClick={() => comRefetch(() => reguaService.rodar())}
-          disabled={ocupado}
-          className="rounded-[8px] px-[14px] py-[7px] text-[12px] font-semibold"
-          style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}
-          title="Dev: varre inadimplência e dispara cobrança automática (D+1/D+2)"
-        >
-          {ocupado ? 'Processando…' : 'Rodar régua (dev)'}
-        </button>
+        {podeOperar && (
+          <button
+            onClick={() => comRefetch(() => reguaService.rodar())}
+            disabled={ocupado}
+            className="rounded-[8px] px-[14px] py-[7px] text-[12px] font-semibold"
+            style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}
+            title="Dev: varre inadimplência e dispara cobrança automática (D+1/D+2)"
+          >
+            {ocupado ? 'Processando…' : 'Rodar régua (dev)'}
+          </button>
+        )}
       </div>
 
       <div className="flex flex-1 gap-[13px] overflow-x-auto pb-[8px]">
@@ -121,7 +128,7 @@ export function ReguaPage() {
                   </div>
                 )}
                 {cards.map((item) => (
-                  <Card key={item.id} item={item} ocupado={ocupado} onAcao={(acao, id) =>
+                  <Card key={item.id} item={item} ocupado={ocupado} podeOperar={podeOperar} onAcao={(acao, id) =>
                     comRefetch(() => (acao === 'bloquear' ? reguaService.bloquear(id) : reguaService.desbloquear(id)))
                   } />
                 ))}

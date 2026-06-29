@@ -695,8 +695,8 @@ export enum StatusParcela {
 **Exemplo — enums/origem-item-contratado.ts:**
 ```typescript
 export enum OrigemItemContratado {
-  VENDA        = 'venda',         // produto vendido (veículo, proteção, crédito avulso)
-  RENEGOCIACAO = 'renegociacao',  // crédito gerado por um acordo (novação)
+  VENDA  = 'venda',   // produto vendido (veículo, proteção, crédito avulso)
+  ACORDO = 'acordo',  // crédito gerado por um Acordo (dilui parcelas; NÃO liquida o contrato)
 }
 ```
 

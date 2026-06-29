@@ -275,6 +275,18 @@ Se tem os dois, ambos os módulos aparecem como abas/seções dentro da mesma se
 
 Note que **não há roles** no token do titular — o que ele acessa é derivado da conta, consultada quando necessário. O campo `tipo: "titular"` distingue do token de Usuario interno, impedindo que um token cruze de um mundo para o outro.
 
+### 8.5 Privacidade do investidor (regra de anonimização)
+
+Quando um titular acessa o **módulo investidor**, ele vê o **fluxo financeiro** dos ativos/fundo sob sua gestão — recebíveis, rendimentos, performance, valores. Mas **nunca vê dados pessoais do cliente** que financiou o ativo: nome, CPF, contato, ou qualquer identificação.
+
+Fundamentos:
+- **LGPD:** o cliente não consentiu em expor seus dados ao investidor.
+- **Proteção do negócio:** a Azit é intermediária; expor as partes uma à outra arrisca a desintermediação (analogia da imobiliária que blinda locador e locatário).
+
+Implicação técnica: as queries que alimentam as visões do investidor (Bloco 8 do backlog — 8.4, 8.5) devem projetar **apenas dados financeiros e do ativo** (ex: "Veículo Onix 2022 · rendeu R$ X este mês"), **nunca** juntar dados do Titular-cliente. A camada de serviço do módulo investidor não tem permissão de ler campos pessoais do cliente. Mesmo que o investidor e o cliente estejam na mesma base de Titulares, o investidor enxerga o ativo e o fluxo, não a pessoa do outro lado.
+
+> Esta é uma regra de **autorização a nível de dado**, não apenas de rota. Não basta proteger o endpoint — a projeção de dados precisa excluir os campos pessoais do cliente na origem.
+
 ---
 
 ## 9. Modelos de dados
@@ -319,7 +331,7 @@ A estrutura de alçada precisa de modelos próprios, ainda a definir em detalhe.
 model Alcada {
   id            String   @id @default(cuid())
   usuarioId     String   // o aprovador
-  tipoOperacao  String   // renegociacao | despesa | venda | ...
+  tipoOperacao  String   // acordo | novacao | despesa | venda | ...
   limiteMaximo  Decimal  @db.Decimal(12, 2)
   ativo         Boolean  @default(true)
   // histórico via createdAt/updatedAt
