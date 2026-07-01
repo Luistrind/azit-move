@@ -7,7 +7,13 @@ import { ContratoDetalhePage } from './pages/ContratoDetalhePage';
 import { ReguaPage } from './pages/ReguaPage';
 import { AcordosPage } from './pages/AcordosPage';
 import { OriginacaoPage } from './pages/OriginacaoPage';
+import { SimulacoesPage } from './pages/SimulacoesPage';
+import { PropostasPage } from './pages/PropostasPage';
 import { PropostaDetalhePage } from './pages/PropostaDetalhePage';
+import { AtivoPage } from './pages/AtivoPage';
+import { ProdutosPage } from './pages/ProdutosPage';
+import { TitularPage } from './pages/TitularPage';
+import { TitularDetalhePage } from './pages/TitularDetalhePage';
 
 // Rotas client-side — Doc 4 §5.1. /login é pública; o restante é protegido pela sessão.
 export const router = createBrowserRouter([
@@ -44,8 +50,32 @@ export const router = createBrowserRouter([
         element: <OriginacaoPage />,
       },
       {
-        path: 'originacao/propostas/:id',
+        path: 'simulacoes',
+        element: <SimulacoesPage />,
+      },
+      {
+        path: 'propostas',
+        element: <PropostasPage />,
+      },
+      {
+        path: 'propostas/:id',
         element: <PropostaDetalhePage />,
+      },
+      {
+        path: 'ativos',
+        element: <AtivoPage />,
+      },
+      {
+        path: 'produtos',
+        element: <ProdutosPage />,
+      },
+      {
+        path: 'titulares',
+        element: <TitularPage />,
+      },
+      {
+        path: 'titulares/:id',
+        element: <TitularDetalhePage />,
       },
     ],
   },

@@ -24,6 +24,7 @@ import {
       { name: QUEUE_NAMES.GERAR_COBRANCA_ASAAS },
       { name: QUEUE_NAMES.NOTIFICAR_CLIENTE },
       { name: QUEUE_NAMES.EFETIVAR_ACORDO },
+      { name: QUEUE_NAMES.ATIVAR_CONTRATO },
     ),
   ],
   controllers: [WebhookController, CobrancaController],

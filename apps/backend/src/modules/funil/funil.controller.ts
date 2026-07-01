@@ -1,6 +1,7 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, StreamableFile, UseGuards } from '@nestjs/common';
 import { RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { LeadService } from './lead.service';
@@ -25,6 +26,10 @@ import {
   AnexarDocumentoDto,
   registrarParecerSchema,
   RegistrarParecerDto,
+  assinarSchema,
+  AssinarDto,
+  adicionarProdutoSchema,
+  AdicionarProdutoDto,
 } from './dto/proposta.dto';
 
 // Bloco 7 — Funil de originação nativa (Lead → Simulação → Proposta → ...).
@@ -52,6 +57,11 @@ export class FunilController {
   }
 
   // --- 7.3 Simulação / ofertas ---
+  @Get('simulacoes')
+  listarSimulacoes() {
+    return this.simulacao.listar();
+  }
+
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('simulacoes')
   @HttpCode(201)
@@ -106,6 +116,23 @@ export class FunilController {
     return this.proposta.adicionarVinculo(id, dto);
   }
 
+  // --- Carrinho de produtos da proposta ---
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('propostas/:id/produtos')
+  @HttpCode(201)
+  adicionarProduto(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(adicionarProdutoSchema)) dto: AdicionarProdutoDto,
+  ) {
+    return this.proposta.adicionarProduto(id, dto.produtoId, dto.valor);
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Delete('propostas/:id/produtos/:itemId')
+  removerProduto(@Param('id') id: string, @Param('itemId') itemId: string) {
+    return this.proposta.removerProduto(id, itemId);
+  }
+
   // --- 7.8 Análise documental ---
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('propostas/:id/documentos')
@@ -115,6 +142,13 @@ export class FunilController {
     @Body(new ZodValidationPipe(anexarDocumentoSchema)) dto: AnexarDocumentoDto,
   ) {
     return this.proposta.anexarDocumento(id, dto);
+  }
+
+  // Download do arquivo anexado.
+  @Get('propostas/documentos/:docId/download')
+  async baixarDocumento(@Param('docId') docId: string): Promise<StreamableFile> {
+    const { nome, buffer } = await this.proposta.arquivoDocumento(docId);
+    return new StreamableFile(buffer, { disposition: `attachment; filename="${encodeURIComponent(nome)}"` });
   }
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
@@ -136,7 +170,29 @@ export class FunilController {
     return this.formalizacao.formalizar(id);
   }
 
-  // --- 7.11 Ativação ---
+  // --- Assinatura (titular + Azit) e status do contrato ---
+  @Get('contratos/:id/status-formalizacao')
+  statusContrato(@Param('id') id: string) {
+    return this.formalizacao.statusContrato(id);
+  }
+
+  // Status do pacote de contratos da proposta (veículo + apartados).
+  @Get('propostas/:id/status-pacote')
+  statusPacote(@Param('id') id: string) {
+    return this.formalizacao.statusPacote(id);
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('contratos/:id/assinar')
+  @HttpCode(200)
+  assinar(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(assinarSchema)) dto: AssinarDto,
+  ) {
+    return this.formalizacao.assinar(id, dto.parte);
+  }
+
+  // --- 7.11 Ativação (cobrança da entrada; exige assinaturas) ---
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('contratos/:id/ativar')
   @HttpCode(200)
@@ -146,6 +202,7 @@ export class FunilController {
 
   // Dev: simula o pagamento da entrada (webhook) → ativa o contrato.
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @UseGuards(DevOnlyGuard)
   @Post('dev/simular-pagamento-ativacao/:id')
   @HttpCode(200)
   simularPagamentoAtivacao(@Param('id') id: string) {

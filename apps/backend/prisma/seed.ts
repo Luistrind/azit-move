@@ -9,6 +9,8 @@ import {
   TipoOrigemCapital,
   Periodicidade,
   ModeloInvestimento,
+  NaturezaProduto,
+  Credor,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { gerarCronograma, centavosParaReaisString } from '@azit/utils';
@@ -17,13 +19,21 @@ import { gerarCronograma, centavosParaReaisString } from '@azit/utils';
 // Banco guarda dinheiro em Decimal (reais); o domínio/API trafega centavos.
 const prisma = new PrismaClient();
 
-// Um usuário por role (Doc 6 §5.2) — senha única azit123 — para exercitar o RBAC.
-const USUARIOS: { nome: string; email: string; role: RoleUsuario }[] = [
-  { nome: 'Diretoria Azit', email: 'diretor@azit.com.br', role: RoleUsuario.DIRETOR },
-  { nome: 'Administrador Azit', email: 'admin@azit.com.br', role: RoleUsuario.ADMIN },
-  { nome: 'Aprovador Azit', email: 'aprovador@azit.com.br', role: RoleUsuario.APROVADOR },
-  { nome: 'Operador Azit', email: 'operador@azit.com.br', role: RoleUsuario.OPERADOR },
-  { nome: 'Financeiro Azit', email: 'financeiro@azit.com.br', role: RoleUsuario.FINANCEIRO },
+// Usuários (Doc 6 §5.2) — senha única azit123. O ADMIN é super-usuário (TODOS os
+// papéis) para teste livre; os demais têm 1 papel cada para exercitar o RBAC.
+const TODOS_PAPEIS: RoleUsuario[] = [
+  RoleUsuario.ADMIN,
+  RoleUsuario.DIRETOR,
+  RoleUsuario.APROVADOR,
+  RoleUsuario.OPERADOR,
+  RoleUsuario.FINANCEIRO,
+];
+const USUARIOS: { nome: string; email: string; roles: RoleUsuario[] }[] = [
+  { nome: 'Administrador Azit', email: 'admin@azit.com.br', roles: TODOS_PAPEIS },
+  { nome: 'Diretoria Azit', email: 'diretor@azit.com.br', roles: [RoleUsuario.DIRETOR] },
+  { nome: 'Aprovador Azit', email: 'aprovador@azit.com.br', roles: [RoleUsuario.APROVADOR] },
+  { nome: 'Operador Azit', email: 'operador@azit.com.br', roles: [RoleUsuario.OPERADOR] },
+  { nome: 'Financeiro Azit', email: 'financeiro@azit.com.br', roles: [RoleUsuario.FINANCEIRO] },
 ];
 
 async function seedUsuarios() {
@@ -31,16 +41,18 @@ async function seedUsuarios() {
   for (const u of USUARIOS) {
     const usuario = await prisma.usuario.upsert({
       where: { email: u.email },
-      update: { senhaHash, ativo: true },
+      update: { senhaHash, ativo: true, nome: u.nome },
       create: { nome: u.nome, email: u.email, senhaHash },
     });
-    await prisma.usuarioRole.upsert({
-      where: { usuarioId_role: { usuarioId: usuario.id, role: u.role } },
-      update: {},
-      create: { usuarioId: usuario.id, role: u.role },
-    });
+    for (const role of u.roles) {
+      await prisma.usuarioRole.upsert({
+        where: { usuarioId_role: { usuarioId: usuario.id, role } },
+        update: {},
+        create: { usuarioId: usuario.id, role },
+      });
+    }
   }
-  console.log(`   Usuários (1 por role, senha azit123): ${USUARIOS.map((u) => u.role).join(', ')}`);
+  console.log(`   Usuários (senha azit123): admin = TODOS os papéis; demais 1 papel`);
 }
 
 // Titulares fictícios + conta de cada um (1:1).
@@ -454,17 +466,19 @@ async function seedContratos() {
 // limiteMaximo em REAIS (coluna Decimal). "Ilimitado" do diretor = teto alto.
 const ILIMITADO = '99999999.00';
 const ALCADAS: { email: string; tipoOperacao: string; limiteMaximo: string }[] = [
+  // ADMIN: super-usuário — alçada ILIMITADA em todas as operações (teste livre).
+  { email: 'admin@azit.com.br', tipoOperacao: 'acordo', limiteMaximo: ILIMITADO },
+  { email: 'admin@azit.com.br', tipoOperacao: 'reajuste', limiteMaximo: ILIMITADO },
+  { email: 'admin@azit.com.br', tipoOperacao: 'novacao', limiteMaximo: ILIMITADO },
+  { email: 'admin@azit.com.br', tipoOperacao: 'despesa', limiteMaximo: ILIMITADO },
   // Acordo (recuperação branda): cada aprovador tem um teto — demonstra a alçada por valor.
   { email: 'operador@azit.com.br', tipoOperacao: 'acordo', limiteMaximo: '20000.00' },
-  { email: 'admin@azit.com.br', tipoOperacao: 'acordo', limiteMaximo: '30000.00' },
   { email: 'aprovador@azit.com.br', tipoOperacao: 'acordo', limiteMaximo: '50000.00' },
   { email: 'diretor@azit.com.br', tipoOperacao: 'acordo', limiteMaximo: ILIMITADO },
-  // Reajuste IPCA: aprovação por admin/aprovador/diretor.
-  { email: 'admin@azit.com.br', tipoOperacao: 'reajuste', limiteMaximo: ILIMITADO },
+  // Reajuste IPCA: aprovação por aprovador/diretor.
   { email: 'aprovador@azit.com.br', tipoOperacao: 'reajuste', limiteMaximo: ILIMITADO },
   { email: 'diretor@azit.com.br', tipoOperacao: 'reajuste', limiteMaximo: ILIMITADO },
-  // Novação (recuperação radical): mais sensível — admin/aprovador/diretor.
-  { email: 'admin@azit.com.br', tipoOperacao: 'novacao', limiteMaximo: '30000.00' },
+  // Novação (recuperação radical): mais sensível — aprovador/diretor.
   { email: 'aprovador@azit.com.br', tipoOperacao: 'novacao', limiteMaximo: '50000.00' },
   { email: 'diretor@azit.com.br', tipoOperacao: 'novacao', limiteMaximo: ILIMITADO },
   // Despesa.
@@ -510,9 +524,39 @@ async function seedInvestimentos() {
   console.log('   Contratos de investimento: 1');
 }
 
+// Catálogo de produtos do §4.8 (idempotente por nome).
+const PRODUTOS = [
+  { nome: 'Parcelamento do veículo', natureza: NaturezaProduto.PARCELADO, credorPadrao: Credor.AZIT, ancora: true },
+  { nome: 'Proteção veicular / Seguro', natureza: NaturezaProduto.RECORRENTE, credorPadrao: Credor.TERCEIRO, apartado: true, valorPadrao: '150.00', periodicidade: Periodicidade.SEMANAL },
+  { nome: 'Rastreador', natureza: NaturezaProduto.RECORRENTE, credorPadrao: Credor.TERCEIRO, valorPadrao: '30.00', periodicidade: Periodicidade.SEMANAL },
+  { nome: 'Taxa de serviço', natureza: NaturezaProduto.RECORRENTE, credorPadrao: Credor.AZIT, valorPadrao: '20.00', periodicidade: Periodicidade.SEMANAL },
+  { nome: 'Crédito avulso', natureza: NaturezaProduto.PARCELADO, credorPadrao: Credor.AZIT },
+];
+
+async function seedProdutos() {
+  let n = 0;
+  for (const p of PRODUTOS) {
+    if (await prisma.produto.findFirst({ where: { nome: p.nome } })) continue;
+    await prisma.produto.create({
+      data: {
+        nome: p.nome,
+        natureza: p.natureza,
+        credorPadrao: p.credorPadrao,
+        apartado: 'apartado' in p ? p.apartado : false,
+        ancora: 'ancora' in p ? p.ancora : false,
+        valorPadrao: 'valorPadrao' in p ? p.valorPadrao : null,
+        periodicidade: 'periodicidade' in p ? p.periodicidade : null,
+      },
+    });
+    n++;
+  }
+  console.log(`   Produtos (catálogo §4.8): ${n}`);
+}
+
 async function main() {
   await seedUsuarios();
   await seedAlcadas();
+  await seedProdutos();
   await seedDadosBase();
   await seedContratos();
   await seedInvestimentos();

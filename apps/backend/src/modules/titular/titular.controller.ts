@@ -70,6 +70,18 @@ export class TitularController {
     return this.titularService.buscarPorId(id);
   }
 
+  // Ficha completa (cadastro vivo + conta + contratos pendurados).
+  @Get(':id/ficha')
+  ficha(@Param('id') id: string) {
+    return this.titularService.ficha(id);
+  }
+
+  // Detalhe completo (tela dedicada): dados pessoais + docs + resumo financeiro + contratos.
+  @Get(':id/detalhe')
+  detalhe(@Param('id') id: string) {
+    return this.titularService.detalhe(id);
+  }
+
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Patch(':id')
   atualizar(

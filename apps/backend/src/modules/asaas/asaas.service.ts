@@ -26,12 +26,56 @@ export class AsaasService {
     return !this.config.get<string>('asaas.apiKey');
   }
 
+  private async call<T>(path: string, body: unknown): Promise<T> {
+    const resp = await fetch(`${this.config.get('asaas.apiUrl')}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        access_token: this.config.get<string>('asaas.apiKey') ?? '',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      const txt = await resp.text().catch(() => '');
+      throw new Error(`Asaas ${path} retornou ${resp.status}: ${txt.slice(0, 300)}`);
+    }
+    return (await resp.json()) as T;
+  }
+
+  // Cadastro do cliente no Asaas (POST /customers). No modo simulado devolve um id
+  // determinístico. Pré-requisito para criar qualquer cobrança real.
+  async criarCliente(params: {
+    titularId: string;
+    nome: string;
+    cpfCnpj: string;
+    email?: string | null;
+    telefone?: string | null;
+  }): Promise<string> {
+    if (this.simulado) {
+      const id = `cus_sim_${params.titularId.slice(0, 8)}`;
+      this.logger.log(`[simulado] cliente ${id} (${params.nome})`);
+      return id;
+    }
+    const data = await this.call<{ id: string }>('/customers', {
+      name: params.nome,
+      cpfCnpj: params.cpfCnpj.replace(/\D/g, ''),
+      email: params.email ?? undefined,
+      mobilePhone: params.telefone ? params.telefone.replace(/\D/g, '') : undefined,
+      externalReference: params.titularId,
+    });
+    this.logger.log(`Cliente Asaas criado ${data.id} (${params.nome})`);
+    return data.id;
+  }
+
   async criarCobranca(params: {
-    externalReference: string; // id da fatura
+    externalReference: string; // id da fatura (ou ativacao:/acordo:)
     valor: number; // centavos
     vencimento: Date;
     descricao: string;
     customerId?: string;
+    // Encargo nativo do Asaas (Regra de domínio escolhida): multa (% única) e juros (% a.m.).
+    multaPct?: number;
+    jurosPct?: number;
   }): Promise<CobrancaAsaas> {
     if (this.simulado) {
       const id = `pay_sim_${params.externalReference}`;
@@ -47,26 +91,19 @@ export class AsaasService {
       };
     }
 
-    // Modo real (sandbox/prod) — exercido quando ASAAS_API_KEY existir.
-    const resp = await fetch(`${this.config.get('asaas.apiUrl')}/payments`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        access_token: this.config.get<string>('asaas.apiKey') ?? '',
-      },
-      body: JSON.stringify({
-        customer: params.customerId,
-        billingType: 'UNDEFINED',
-        value: Number(centavosParaReaisString(params.valor)),
-        dueDate: params.vencimento.toISOString().slice(0, 10),
-        externalReference: params.externalReference,
-        description: params.descricao,
-      }),
+    // Modo real (sandbox/prod) — exercido quando ASAAS_API_KEY existir. O Asaas
+    // calcula multa+juros sobre o atraso (opção 2): o valor pago no webhook já vem
+    // com o encargo embutido.
+    const data = await this.call<{ id: string; status: string }>('/payments', {
+      customer: params.customerId,
+      billingType: 'UNDEFINED',
+      value: Number(centavosParaReaisString(params.valor)),
+      dueDate: params.vencimento.toISOString().slice(0, 10),
+      externalReference: params.externalReference,
+      description: params.descricao,
+      ...(params.multaPct ? { fine: { value: params.multaPct, type: 'PERCENTAGE' } } : {}),
+      ...(params.jurosPct ? { interest: { value: params.jurosPct } } : {}),
     });
-    if (!resp.ok) {
-      throw new Error(`Asaas retornou ${resp.status} ao criar cobrança`);
-    }
-    const data = (await resp.json()) as { id: string; status: string };
     return {
       id: data.id,
       externalReference: params.externalReference,

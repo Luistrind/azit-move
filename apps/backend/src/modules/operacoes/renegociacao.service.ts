@@ -67,7 +67,10 @@ export class RenegociacaoService {
   async criar(contratoId: string, dto: CriarRenegociacaoDto, operadorId: string) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id: contratoId },
-      select: { id: true, numero: true },
+      select: {
+        id: true, numero: true, taxaMultaAtraso: true, taxaJurosAtraso: true,
+        conta: { select: { titular: { select: { asaasCustomerId: true } } } },
+      },
     });
     if (!contrato) {
       throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Contrato não encontrado' });
@@ -104,6 +107,9 @@ export class RenegociacaoService {
       valor: dto.valorEntrada,
       vencimento: new Date(Date.now() + 3 * DIA_MS),
       descricao: `Entrada renegociação ${contrato.numero}`,
+      customerId: contrato.conta?.titular?.asaasCustomerId ?? undefined,
+      multaPct: Number(contrato.taxaMultaAtraso.toString()),
+      jurosPct: Number(contrato.taxaJurosAtraso.toString()),
     });
     await this.prisma.db.acordo.update({
       where: { id: acordo.id },

@@ -5,11 +5,13 @@ import {
   HttpCode,
   Param,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { QUEUE_NAMES } from '../queues/queues.module';
@@ -65,6 +67,7 @@ export class OperacoesController {
 
   // Dev: simula o pagamento da entrada (enfileira efetivação, como o webhook).
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
+  @UseGuards(DevOnlyGuard)
   @Post('dev/simular-entrada-acordo/:acordoId')
   @HttpCode(202)
   async simularEntrada(@Param('acordoId') acordoId: string) {

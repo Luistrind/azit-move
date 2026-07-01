@@ -27,6 +27,11 @@ export interface ContratoKpis {
   totalContratos: number;
   porStatus: { status: string; total: number }[];
   saldoDevedorTotal: number;
+  carteiraSobGestao: number;
+  contratosAtivos: number;
+  inadimplentes: number;
+  inadimplenciaPct: number;
+  recebidoNaSemana: number;
 }
 
 export interface ContratoDetalhe {
@@ -51,6 +56,7 @@ export interface ContratoDetalhe {
   resumo: {
     parcelasPagas: number;
     totalParcelas: number;
+    valorPago: number;
     saldoDevedorAtual: number;
     proximaParcela: { numero: number; dataVencimento: string; valorNominal: number } | null;
   };
@@ -64,6 +70,7 @@ export interface ParcelaCronograma {
   valorNominal: number;
   dataVencimento: string;
   status: string;
+  composicao: string | null;
 }
 
 export interface ExtratoEvento {
@@ -94,6 +101,10 @@ export const contratoService = {
   },
   async extrato(id: string): Promise<ExtratoEvento[]> {
     const { data } = await api.get<ExtratoEvento[]>(`/api/v1/contratos/${id}/extrato`);
+    return data;
+  },
+  async documento(id: string): Promise<{ numero: string; texto: string; disponivel: boolean }> {
+    const { data } = await api.get(`/api/v1/contratos/${id}/documento`);
     return data;
   },
   // Dev: simula o pagamento da próxima parcela (dispara a conciliação real).

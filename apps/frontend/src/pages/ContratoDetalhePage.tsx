@@ -5,6 +5,7 @@ import { formatCurrency } from '@azit/utils';
 import { contratoService } from '../services/contrato.service';
 import { operacoesService } from '../services/operacoes.service';
 import { StatusBadge } from '../components/StatusBadge';
+import { Modal } from '../components/Modal';
 import {
   CONTRATO_STATUS_COLORS,
   PARCELA_STATUS_COLORS,
@@ -47,6 +48,22 @@ export function ContratoDetalhePage() {
   const podeReajustar = pode(ROLE_REAJUSTE);
   const [tab, setTab] = useState<'cronograma' | 'extrato'>('cronograma');
   const [simulando, setSimulando] = useState(false);
+  const [docOpen, setDocOpen] = useState(false);
+
+  const documento = useQuery({
+    queryKey: ['contrato', id, 'documento'],
+    queryFn: () => contratoService.documento(id),
+    enabled: docOpen,
+  });
+
+  function baixarDocumento() {
+    const texto = documento.data?.texto;
+    if (!texto) return;
+    const url = URL.createObjectURL(new Blob([texto], { type: 'text/plain;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `contrato-${documento.data?.numero ?? id}.txt`; a.click();
+    URL.revokeObjectURL(url);
+  }
 
   const detalhe = useQuery({ queryKey: ['contrato', id], queryFn: () => contratoService.detalhe(id) });
   const cronograma = useQuery({
@@ -181,6 +198,27 @@ export function ContratoDetalhePage() {
         )}
       </div>
 
+      {/* Resumo financeiro + documento do contrato */}
+      {c && (
+        <div className="rounded-card flex flex-wrap items-center justify-between gap-[12px] p-[16px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div className="flex flex-wrap gap-[28px]">
+            <div>
+              <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>Valor do contrato</div>
+              <div className="mt-[3px] font-display text-[16px] font-bold tabular-nums">{formatCurrency(c.valorTotal)}</div>
+            </div>
+            <div>
+              <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>Valor pago</div>
+              <div className="mt-[3px] font-display text-[16px] font-bold tabular-nums" style={{ color: '#1f9d5b' }}>{formatCurrency(c.resumo.valorPago)}</div>
+            </div>
+            <div>
+              <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>Em aberto</div>
+              <div className="mt-[3px] font-display text-[16px] font-bold tabular-nums">{formatCurrency(c.resumo.saldoDevedorAtual)}</div>
+            </div>
+          </div>
+          <button onClick={() => setDocOpen(true)} className="h-[34px] rounded-[8px] px-[14px] text-[12px] font-semibold" style={{ background: 'var(--navy)', color: '#fff' }}>Ver documento do contrato</button>
+        </div>
+      )}
+
       {/* Tabs + ação dev de simular pagamento */}
       <div className="flex items-center justify-between">
         <div className="flex gap-[6px]">
@@ -230,13 +268,13 @@ export function ContratoDetalhePage() {
               Reajuste IPCA
             </button>
           )}
-          {podeOperar && (
+          {podeOperar && import.meta.env.DEV && (
             <button
               onClick={simularPagamento}
               disabled={simulando}
               className="rounded-[8px] px-[14px] py-[7px] text-[12px] font-semibold"
               style={{ background: 'var(--accent)', color: '#fff', opacity: simulando ? 0.6 : 1 }}
-              title="Dev: dispara a conciliação da próxima parcela via fila"
+              title="Dev: dispara a conciliação da próxima fatura via fila"
             >
               {simulando ? '…' : 'Simular pagamento (dev)'}
             </button>
@@ -255,7 +293,7 @@ export function ContratoDetalhePage() {
                 <th className="px-[18px] py-[11px] text-left font-semibold">Parcela</th>
                 <th className="px-[18px] py-[11px] text-left font-semibold">Vencimento</th>
                 <th className="px-[18px] py-[11px] text-right font-semibold">Valor</th>
-                <th className="px-[18px] py-[11px] text-left font-semibold">Composição</th>
+                <th className="px-[18px] py-[11px] text-left font-semibold">Contrato</th>
                 <th className="px-[18px] py-[11px] text-left font-semibold">Status</th>
               </tr>
             </thead>
@@ -271,9 +309,9 @@ export function ContratoDetalhePage() {
                   <td className="px-[18px] py-[11px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>
                     {formatCurrency(p.valorNominal)}
                   </td>
-                  {/* Placeholder de breakdown (guia visual §tab cronograma) */}
-                  <td className="px-[18px] py-[11px]" style={{ color: 'var(--text-muted)' }}>
-                    Principal + serviços
+                  {/* Natureza do contrato/produto que origina a parcela */}
+                  <td className="px-[18px] py-[11px]" style={{ color: 'var(--text-body)' }}>
+                    {p.composicao ?? '—'}
                   </td>
                   <td className="px-[18px] py-[11px]">
                     <StatusBadge label={p.status} colors={PARCELA_STATUS_COLORS} />
@@ -330,6 +368,23 @@ export function ContratoDetalhePage() {
           </table>
         </div>
       )}
+
+      {/* Documento do contrato (instrumento) — visualizar + baixar */}
+      <Modal open={docOpen} onClose={() => setDocOpen(false)} title={`Documento — ${c?.numero ?? ''}`}>
+        {documento.isLoading ? (
+          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
+        ) : (
+          <div className="flex flex-col gap-[12px]">
+            {documento.data && !documento.data.disponivel && (
+              <div className="rounded-[8px] p-[10px] text-[11.5px]" style={{ background: '#fef6e9', color: '#8a5a0a' }}>
+                Instrumento não disponível (contrato migrado do legado).
+              </div>
+            )}
+            <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap rounded-[8px] p-[12px] text-[11.5px]" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>{documento.data?.texto}</pre>
+            <button onClick={baixarDocumento} disabled={!documento.data?.texto} className="h-[34px] self-start rounded-[8px] px-[14px] text-[12px] font-semibold" style={{ background: 'var(--accent)', color: '#fff' }}>Baixar (.txt)</button>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -10,7 +10,9 @@ import {
   ModalidadeContrato,
   PapelTitular,
 } from '@prisma/client';
-import { limparDocumento, reaisParaCentavos } from '@azit/utils';
+import { promises as fs } from 'fs';
+import { join } from 'path';
+import { limparDocumento, reaisParaCentavos, centavosParaReaisString } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { TitularService } from '../titular/titular.service';
 import { ContaService } from '../conta/conta.service';
@@ -26,6 +28,8 @@ import {
 } from '@prisma/client';
 
 const cent = (d: Prisma.Decimal): number => reaisParaCentavos(d.toString());
+// Diretório de uploads (documentos da proposta) — dev/local.
+const UPLOADS_DIR = join(process.cwd(), 'uploads', 'documentos');
 
 // Cadastro pleno é igual ao CriarTitularDto (validação de CPF embutida no service).
 type Cadastro = NonNullable<CriarPropostaDto['comprador']>;
@@ -41,6 +45,23 @@ const TRANSICOES: Record<string, StatusProposta[]> = {
   CONVERTIDA: [],
   CANCELADA: [],
 };
+
+// Documentos obrigatórios por papel (Doc 2 §4-A.5). Principal e secundário exigem
+// o conjunto completo; garantidor não é exigido aqui (entra por ressalva da análise).
+export const DOCS_OBRIGATORIOS: TipoDocumentoProposta[] = [
+  'CNH',
+  'COMPROVANTE_ENDERECO',
+  'COMPROVANTE_RENDA',
+  'RELATORIO_BRICK',
+];
+const PAPEIS_QUE_EXIGEM_DOCS: PapelTitular[] = ['COMPRADOR_PRINCIPAL', 'COMPRADOR_SECUNDARIO'];
+
+export interface PendenciaDoc {
+  titularId: string;
+  papel: string;
+  nome: string;
+  faltando: string[];
+}
 
 // 7.5/7.6/7.7 — Proposta: converte a oferta escolhida em pedido de crédito,
 // promove Lead→Titular (reconciliação por CPF) e vincula papéis.
@@ -146,6 +167,36 @@ export class PropostaService {
     return this.detalhe(propostaId);
   }
 
+  // Carrinho: adiciona um produto do catálogo à proposta (snapshot do produto).
+  async adicionarProduto(propostaId: string, produtoId: string, valorOverride?: number) {
+    const proposta = await this.prisma.db.proposta.findFirst({ where: { id: propostaId }, select: { status: true } });
+    if (!proposta) throw this.naoEncontrada();
+    if (proposta.status === 'convertida'.toUpperCase()) {
+      throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: 'Proposta já convertida' });
+    }
+    const produto = await this.prisma.db.produto.findFirst({ where: { id: produtoId } });
+    if (!produto) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Produto não encontrado' });
+    const valorCent = valorOverride ?? (produto.valorPadrao ? reaisParaCentavos(produto.valorPadrao.toString()) : 0);
+    await this.prisma.db.itemProposta.create({
+      data: {
+        propostaId,
+        produtoId: produto.id,
+        nome: produto.nome,
+        natureza: produto.natureza,
+        apartado: produto.apartado,
+        credor: produto.credorPadrao,
+        valor: centavosParaReaisString(valorCent),
+        periodicidade: produto.periodicidade,
+      },
+    });
+    return this.detalhe(propostaId);
+  }
+
+  async removerProduto(propostaId: string, itemId: string) {
+    await this.prisma.db.itemProposta.deleteMany({ where: { id: itemId, propostaId } });
+    return this.detalhe(propostaId);
+  }
+
   // 7.8 — anexa documento digital a um titular que tem papel na proposta.
   async anexarDocumento(propostaId: string, dto: AnexarDocumentoDto) {
     const proposta = await this.prisma.db.proposta.findFirst({
@@ -159,15 +210,34 @@ export class PropostaService {
         mensagem: 'O documento deve pertencer a um titular com papel na proposta',
       });
     }
-    await this.prisma.db.documentoProposta.create({
+    const doc = await this.prisma.db.documentoProposta.create({
       data: {
         propostaId,
         titularId: dto.titularId,
         tipo: dto.tipo.toUpperCase() as TipoDocumentoProposta,
-        arquivoRef: dto.arquivoRef,
+        arquivoRef: dto.arquivoNome ?? 'documento',
       },
     });
+    // Upload real: grava o conteúdo (base64) em disco, indexado pelo id do documento.
+    if (dto.arquivoConteudo) {
+      const base64 = dto.arquivoConteudo.includes(',') ? dto.arquivoConteudo.split(',')[1] : dto.arquivoConteudo;
+      await fs.mkdir(UPLOADS_DIR, { recursive: true });
+      await fs.writeFile(join(UPLOADS_DIR, doc.id), Buffer.from(base64, 'base64'));
+    }
     return this.detalhe(propostaId);
+  }
+
+  // Lê o arquivo salvo de um documento (para download).
+  async arquivoDocumento(docId: string): Promise<{ nome: string; buffer: Buffer }> {
+    const doc = await this.prisma.db.documentoProposta.findFirst({ where: { id: docId } });
+    if (!doc) throw this.naoEncontrada();
+    const caminho = join(UPLOADS_DIR, doc.id);
+    try {
+      const buffer = await fs.readFile(caminho);
+      return { nome: doc.arquivoRef, buffer };
+    } catch {
+      throw new NotFoundException({ erro: 'arquivo_ausente', mensagem: 'Arquivo não encontrado em disco' });
+    }
   }
 
   // 7.8 — registra o parecer; decide o status da proposta (decisão de crédito).
@@ -184,6 +254,16 @@ export class PropostaService {
       throw new UnprocessableEntityException({
         erro: 'motivo_obrigatorio',
         mensagem: 'Reprovação exige motivo',
+      });
+    }
+    // Gate: documentos obrigatórios completos antes do parecer (Doc 2 §4-A.5 / §8-A.5).
+    const pendencias = await this.pendenciasProposta(propostaId);
+    if (pendencias.length) {
+      throw new UnprocessableEntityException({
+        erro: 'documentos_pendentes',
+        mensagem: `Documentos obrigatórios pendentes: ${pendencias
+          .map((p) => `${p.nome} (${p.faltando.join(', ')})`)
+          .join('; ')}`,
       });
     }
     const aprovada = dto.resultado !== 'reprovado';
@@ -258,9 +338,11 @@ export class PropostaService {
         vinculos: { include: { titular: { select: { id: true, nome: true, cpfCnpj: true } } } },
         documentos: true,
         parecer: true,
+        itens: { orderBy: { createdAt: 'asc' } },
       },
     });
     if (!p) throw this.naoEncontrada();
+    const pendencias = this.calcPendencias(p.vinculos, p.documentos);
     return {
       id: p.id,
       status: p.status.toLowerCase(),
@@ -272,6 +354,10 @@ export class PropostaService {
       numeroParcelas: p.numeroParcelas,
       prazoSemanas: p.prazoSemanas,
       contratoGeradoId: p.contratoGeradoId,
+      // Documentos obrigatórios (Doc 2 §4-A.5) — para a UI exibir pendência e travar avanço.
+      documentosObrigatorios: DOCS_OBRIGATORIOS.map((t) => t.toLowerCase()),
+      pendenciasDocumentos: pendencias,
+      documentosCompletos: pendencias.length === 0,
       papeis: p.vinculos.map((v) => ({
         id: v.id,
         papel: v.papel.toLowerCase(),
@@ -290,7 +376,49 @@ export class PropostaService {
             motivoReprovacao: p.parecer.motivoReprovacao,
           }
         : null,
+      // Carrinho: produtos adicionados à proposta (além do âncora financiamento).
+      itens: p.itens.map((it) => ({
+        id: it.id,
+        produtoId: it.produtoId,
+        nome: it.nome,
+        natureza: it.natureza.toLowerCase(),
+        apartado: it.apartado,
+        credor: it.credor.toLowerCase(),
+        valor: cent(it.valor),
+        periodicidade: it.periodicidade ? it.periodicidade.toLowerCase() : null,
+      })),
     };
+  }
+
+  // Pendências de documentos obrigatórios por papel (principal/secundário).
+  private calcPendencias(
+    vinculos: { titularId: string; papel: PapelTitular; titular: { nome: string } }[],
+    documentos: { titularId: string; tipo: TipoDocumentoProposta }[],
+  ): PendenciaDoc[] {
+    const pend: PendenciaDoc[] = [];
+    for (const v of vinculos.filter((x) => PAPEIS_QUE_EXIGEM_DOCS.includes(x.papel))) {
+      const tipos = new Set(documentos.filter((d) => d.titularId === v.titularId).map((d) => d.tipo));
+      const faltando = DOCS_OBRIGATORIOS.filter((t) => !tipos.has(t));
+      if (faltando.length) {
+        pend.push({
+          titularId: v.titularId,
+          papel: v.papel.toLowerCase(),
+          nome: v.titular.nome,
+          faltando: faltando.map((t) => t.toLowerCase()),
+        });
+      }
+    }
+    return pend;
+  }
+
+  // Carrega e verifica pendências — usado nos gates (parecer/formalização).
+  async pendenciasProposta(propostaId: string): Promise<PendenciaDoc[]> {
+    const p = await this.prisma.db.proposta.findFirst({
+      where: { id: propostaId },
+      include: { vinculos: { include: { titular: { select: { nome: true } } } }, documentos: true },
+    });
+    if (!p) throw this.naoEncontrada();
+    return this.calcPendencias(p.vinculos, p.documentos);
   }
 
   private naoEncontrada() {

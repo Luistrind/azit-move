@@ -50,4 +50,10 @@ export class ContratoController {
   cronograma(@Param('id') id: string) {
     return this.contratoService.cronograma(id);
   }
+
+  // Instrumento do contrato (texto) — para visualizar/baixar.
+  @Get(':id/documento')
+  documento(@Param('id') id: string) {
+    return this.contratoService.documento(id);
+  }
 }

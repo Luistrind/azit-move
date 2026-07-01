@@ -246,7 +246,7 @@ export function AcordosPage() {
                 <td className="px-[18px] py-[12px] text-center tabular-nums" style={{ color: 'var(--text-body)' }}>{a.numeroParcelasNovas} × {formatCurrency(a.valorParcelaNova)}</td>
                 <td className="px-[18px] py-[12px]"><StatusBadge label={LABEL_STATUS[a.status] ?? a.status} colors={ACORDO_STATUS_COLORS} /></td>
                 <td className="px-[18px] py-[12px] text-right">
-                  {a.status === 'rascunho' && podeRenegociar ? (
+                  {a.status === 'rascunho' && podeRenegociar && import.meta.env.DEV ? (
                     <button onClick={() => efetivar(a.id)} disabled={ocupado} className="rounded-[7px] px-[12px] py-[5px] text-[11.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>
                       Simular entrada (dev)
                     </button>

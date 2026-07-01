@@ -5,6 +5,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
 import { resolverEstagioRegua } from '@azit/utils';
@@ -77,6 +78,14 @@ export class ReguaService {
         };
       })
       .filter((c) => c.estagio !== null);
+  }
+
+  // Job agendado: varre a régua diariamente (madrugada). Em dev o operador também
+  // pode disparar via /dev/varrer-regua.
+  @Cron(CronExpression.EVERY_DAY_AT_4AM)
+  async cronRegua(): Promise<void> {
+    await this.rodar();
+    this.logger.log('[cron] régua varrida');
   }
 
   // 5.1 + 5.3 — Varre faturas vencidas (marca inadimplência) e dispara as ações

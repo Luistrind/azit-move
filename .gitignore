@@ -7,5 +7,8 @@ build/
 .DS_Store
 coverage/
 
+# Uploads de documentos gerados em runtime/teste (não versionar)
+uploads/
+
 # Config local/pessoal do Claude Code (settings.json compartilhado é versionado)
 .claude/settings.local.json

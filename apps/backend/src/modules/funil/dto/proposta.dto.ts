@@ -41,13 +41,26 @@ export const adicionarVinculoSchema = z.object({
 });
 export type AdicionarVinculoDto = z.infer<typeof adicionarVinculoSchema>;
 
-// 7.8 — anexo de documento digital por papel. arquivoRef é mock (sem upload real).
+// 7.8 — anexo de documento digital por papel. Aceita upload real: nome do arquivo
+// + conteúdo (base64). O arquivo é salvo em disco; arquivoRef guarda o nome.
 export const anexarDocumentoSchema = z.object({
   titularId: z.string().min(1),
   tipo: z.enum(['cnh', 'comprovante_endereco', 'comprovante_renda', 'relatorio_brick', 'outro']),
-  arquivoRef: z.string().trim().min(1).default('mock://documento'),
+  arquivoNome: z.string().trim().min(1).optional(),
+  arquivoConteudo: z.string().min(1).optional(), // base64 (data URL ou puro)
 });
 export type AnexarDocumentoDto = z.infer<typeof anexarDocumentoSchema>;
+
+// Carrinho — adicionar produto do catálogo à proposta. valor opcional (centavos) sobrepõe o padrão.
+export const adicionarProdutoSchema = z.object({
+  produtoId: z.string().min(1),
+  valor: z.coerce.number().int().min(0).optional(),
+});
+export type AdicionarProdutoDto = z.infer<typeof adicionarProdutoSchema>;
+
+// Assinatura mock do contrato — por parte (titular ou Azit).
+export const assinarSchema = z.object({ parte: z.enum(['titular', 'azit']) });
+export type AssinarDto = z.infer<typeof assinarSchema>;
 
 // 7.8 — parecer da análise de crédito.
 export const registrarParecerSchema = z.object({

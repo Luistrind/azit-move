@@ -21,6 +21,7 @@ export const criarContratoSchema = z.object({
   dataPrimeiraParcela: z.coerce.date(),
   valorTotal: z.coerce.number().int().min(0),
   valorEntrada: z.coerce.number().int().min(0).default(0),
+  entradaParcelada: z.boolean().optional(), // entrada dividida em intermediárias (60/40)
   numeroParcelas: z.coerce.number().int().min(1),
   valorParcelaInicial: z.coerce.number().int().min(0),
   periodicidade: z.enum(['semanal', 'quinzenal', 'mensal']).default('semanal'),

@@ -19,7 +19,7 @@ Leia `docs/` nesta ordem antes de escrever qualquer código:
 Nunca contrarie sem validação humana explícita:
 
 1. **Asaas executa, Azit controla.** Toda lógica de negócio vive no sistema, não no Asaas.
-2. **Recebível nasce no dia zero.** Cronograma completo gerado na criação do contrato.
+2. **Recebível nasce no dia zero do contrato ATIVO.** O cronograma completo (parcelas + recebíveis + faturas) é gerado quando o contrato é **ativado pelo pagamento da entrada** — não na formalização. (Decisão 2026-06-29, Luís: na originação nativa, formalização cria o contrato em *Aguardando assinatura* SEM cronograma; assinatura titular+Azit → cobrança da entrada → pagamento → "dia zero" → cronograma. Legado/novação geram o cronograma na criação por já nascerem ativos.)
 3. **A dívida independe do ativo.** Sinistro/furto não extingue obrigação. Parcela não é apagada.
 4. **Webhook nunca é síncrono.** Responde 202 e enfileira via BullMQ.
 5. **Acordo ≠ Novação.** O *Acordo* (recuperação branda) dilui parcelas em atraso sem liquidar o contrato: as parcelas cobertas recebem vínculo de acordo (NÃO o status RENEGOCIADA como marca), e um ItemContratado de origem ACORDO nasce com as parcelas novas. A *Novação* (radical) liquida o contrato inteiro (LIQUIDADO_POR_NOVACAO) e cria um novo. São mecanismos distintos — nunca confundir.

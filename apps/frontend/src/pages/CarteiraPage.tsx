@@ -26,18 +26,16 @@ export function CarteiraPage() {
   const kpis = useQuery({ queryKey: ['contratos', 'kpis'], queryFn: () => contratoService.kpis() });
   const lista = useQuery({ queryKey: ['contratos', 'lista'], queryFn: () => contratoService.listar({ limit: 50 }) });
 
-  const ativos = kpis.data?.porStatus.find((s) => s.status === 'Ativo')?.total ?? 0;
+  const k = kpis.data;
 
   return (
     <div className="flex flex-col gap-[18px]">
-      {/* KPIs */}
-      <div className="grid grid-cols-3 gap-[14px]">
-        <Kpi label="Contratos" valor={String(kpis.data?.totalContratos ?? '—')} />
-        <Kpi label="Contratos ativos" valor={String(ativos)} />
-        <Kpi
-          label="Saldo devedor total"
-          valor={kpis.data ? formatCurrency(kpis.data.saldoDevedorTotal) : '—'}
-        />
+      {/* KPIs (Doc 3 §8.1) */}
+      <div className="grid grid-cols-4 gap-[14px]">
+        <Kpi label="Carteira sob gestão" valor={k ? formatCurrency(k.carteiraSobGestao) : '—'} />
+        <Kpi label="Contratos ativos" valor={String(k?.contratosAtivos ?? '—')} />
+        <Kpi label="Inadimplência" valor={k ? `${k.inadimplenciaPct}%` : '—'} />
+        <Kpi label="Recebido na semana" valor={k ? formatCurrency(k.recebidoNaSemana) : '—'} />
       </div>
 
       {/* Tabela de contratos */}

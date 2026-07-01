@@ -47,6 +47,16 @@ export class SimulacaoService {
       });
     }
 
+    // Entrada não pode cobrir/exceder o valor de venda — não há o que financiar
+    // (evita oferta zerada por valor mal cadastrado ou entrada alta demais).
+    const valorVendaCent = ativo.valorVenda !== null ? cent(ativo.valorVenda) : 0;
+    if (valorVendaCent > 0 && dto.valorEntrada >= valorVendaCent) {
+      throw new UnprocessableEntityException({
+        erro: 'entrada_invalida',
+        mensagem: 'A entrada é maior ou igual ao valor de venda do ativo — nada a financiar. Verifique o valor de venda do ativo e a entrada.',
+      });
+    }
+
     // Estruturas de oferta a calcular (uma por origem disponível no ativo).
     const calculos: { origem: OrigemCalculoOferta; valorVenda: number }[] = [];
     if (ativo.valorVenda !== null) {
@@ -101,6 +111,36 @@ export class SimulacaoService {
       precificacaoProvisoria: true, // 7.4 — marca placeholder (Vicente)
       ofertas,
     };
+  }
+
+  // Listagem de simulações (tela de apoio) — descartáveis; mostra a oferta escolhida
+  // e se já viraram proposta.
+  async listar() {
+    const sims = await this.prisma.db.simulacao.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        ativo: { select: { descricao: true } },
+        lead: { select: { nome: true } },
+        titular: { select: { nome: true } },
+        ofertas: { where: { selecionada: true }, take: 1 },
+        proposta: { select: { id: true, status: true } },
+      },
+    });
+    return sims.map((s) => {
+      const sel = s.ofertas[0];
+      return {
+        id: s.id,
+        cliente: s.titular?.nome ?? s.lead?.nome ?? '—',
+        ativo: s.ativo.descricao,
+        valorEntrada: cent(s.valorEntrada),
+        prazoSemanas: s.prazoSemanas,
+        ofertaEscolhida: sel ? { valorParcela: cent(sel.valorParcela), numeroParcelas: sel.numeroParcelas } : null,
+        propostaId: s.proposta?.id ?? null,
+        propostaStatus: s.proposta?.status?.toLowerCase() ?? null,
+        createdAt: s.createdAt.toISOString(),
+      };
+    });
   }
 
   async selecionarOferta(simulacaoId: string, ofertaId: string) {

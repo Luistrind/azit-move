@@ -52,15 +52,24 @@ export const ACORDO_STATUS_COLORS: Record<string, StatusColor> = {
   Cancelado: { bg: '#fdeceb', fg: '#e0413c' },
 };
 
+// Status de Ativo (estoque, Bloco 7) — Doc 2 §4.4.
+export const ATIVO_STATUS_COLORS: Record<string, StatusColor> = {
+  Disponível: { bg: '#eafaf1', fg: '#1f9d5b' },
+  'Em contrato': { bg: '#eef1f5', fg: '#5b6b7f' },
+  Quitado: { bg: '#eafaf1', fg: '#1f9d5b' },
+  Recuperado: { bg: '#f3eafb', fg: '#9a3bd1' },
+  Sinistrado: { bg: '#fdeceb', fg: '#e0413c' },
+};
+
 // Status de Proposta (funil de originação, Bloco 7) — Doc 2 §4-A.4.
 export const PROPOSTA_STATUS_COLORS: Record<string, StatusColor> = {
   Pendente: { bg: '#f1f4f8', fg: '#8694a4' },
   'Em análise': { bg: '#fef6e9', fg: '#c98a0a' },
   Aprovada: { bg: '#eafaf1', fg: '#1f9d5b' },
   Reprovada: { bg: '#fdeceb', fg: '#e0413c' },
-  'Em formalização': { bg: '#eef1f5', fg: '#5b6b7f' },
-  Convertida: { bg: '#efeaff', fg: '#6b4fd6' },
-  Cancelada: { bg: '#fdeceb', fg: '#e0413c' },
+  'Em formalização': { bg: '#eaf2fe', fg: '#2f6fde' },
+  Convertida: { bg: '#ede9fb', fg: '#6b4fd6' },
+  Cancelada: { bg: '#f1f4f8', fg: '#5b6b7f' },
 };
 
 // Estágios da régua de cobrança — Doc 3 §4.5. NÃO são status de entidade.

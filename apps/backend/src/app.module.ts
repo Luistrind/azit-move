@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { QueuesModule } from './modules/queues/queues.module';
@@ -17,6 +18,7 @@ import { AlcadaModule } from './modules/alcada/alcada.module';
 import { OperacoesModule } from './modules/operacoes/operacoes.module';
 import { OriginacaoModule } from './modules/originacao/originacao.module';
 import { FunilModule } from './modules/funil/funil.module';
+import { ProdutoModule } from './modules/produto/produto.module';
 import { InvestimentoModule } from './modules/investimento/investimento.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -26,6 +28,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 @Module({
   imports: [
     ConfigModule,
+    ScheduleModule.forRoot(),
     DatabaseModule,
     QueuesModule,
     HealthModule,
@@ -42,6 +45,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     OperacoesModule,
     OriginacaoModule,
     FunilModule,
+    ProdutoModule,
     InvestimentoModule,
   ],
   providers: [

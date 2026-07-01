@@ -16,12 +16,20 @@ describe('precificarPrice (PROVISÓRIA — Vicente)', () => {
     expect(r.totalAPagar).toBe(1000000 + 4000000);
   });
 
-  it('Price com juros: parcela > financiado/n e total > financiado', () => {
-    const r = precificarPrice({ valorVenda: 1000000, valorEntrada: 0, prazoSemanas: 10 });
-    expect(r.taxaSemanal).toBe(TAXA_SEMANAL_PROVISORIA);
-    expect(r.valorParcela).toBeGreaterThan(100000); // 0,5%/sem encarece
+  it('Price com juros (taxa explícita): parcela > financiado/n e total > financiado', () => {
+    const r = precificarPrice({ valorVenda: 1000000, valorEntrada: 0, prazoSemanas: 10, taxaSemanal: 0.005 });
+    expect(r.taxaSemanal).toBe(0.005);
+    expect(r.valorParcela).toBeGreaterThan(100000); // juros encarecem
     expect(r.totalParcelado).toBeGreaterThan(1000000);
     expect(r.provisorio).toBe(true);
+  });
+
+  it('taxa provisória atualmente ZERADA: parcela = financiado / n (sem juros)', () => {
+    expect(TAXA_SEMANAL_PROVISORIA).toBe(0);
+    const r = precificarPrice({ valorVenda: 1000000, valorEntrada: 0, prazoSemanas: 10 });
+    expect(r.taxaSemanal).toBe(0);
+    expect(r.valorParcela).toBe(100000);
+    expect(r.totalParcelado).toBe(1000000);
   });
 
   it('valida prazo inteiro >= 1', () => {

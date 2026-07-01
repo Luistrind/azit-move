@@ -9,7 +9,9 @@
 // Parte do VALOR DE VENDA do ativo individual (não de produto-catálogo) — a
 // direção definitiva do domínio. valorFinanciado = valorVenda - entrada.
 
-export const TAXA_SEMANAL_PROVISORIA = 0.005; // 0,5% a.s. — placeholder (Vicente)
+// ⚠️ ZERADA PARA TESTE (a pedido). Padrão provisório era 0,005 (0,5% a.s.).
+// Com taxa 0, a parcela = financiado / n (sem juros). Reverter/definir com Vicente.
+export const TAXA_SEMANAL_PROVISORIA = 0; // placeholder — atualmente sem juros
 
 export interface ParametrosPrecificacao {
   valorVenda: number; // centavos — preço de venda do ativo

@@ -1,0 +1,12 @@
+# Não enviar para o contexto de build (imagens Docker / EasyPanel).
+node_modules
+**/node_modules
+**/dist
+.git
+.gitignore
+**/.env
+**/.env.local
+**/.env.*.local
+*.log
+.claude
+uploads

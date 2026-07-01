@@ -16,7 +16,7 @@ O sistema é a **fonte única da verdade** da operação. O Asaas é a camada de
 ## 2. Princípios do Modelo
 
 - **Asaas executa, Azit controla** — lógica de negócio nunca vive no Asaas.
-- **O recebível nasce no dia zero** — cronograma completo gerado na criação do contrato.
+- **O recebível nasce no dia zero do contrato ATIVO** — o cronograma completo é gerado na **ativação pelo pagamento da entrada** (não na formalização). Na originação nativa: formalização → *Aguardando assinatura* (sem cronograma); assinatura titular+Azit → cobrança da entrada → pagamento → "dia zero" → cronograma/recebíveis/faturas. (Decisão 2026-06-29.) Legado/novação geram o cronograma na criação por já nascerem ativos.
 - **A dívida existe independente do ativo** — sinistro, furto ou dano não extinguem a obrigação do cliente.
 - **Toda cobrança tem um destino definido** — cada item cobrado tem um credor explícito.
 - **A fatura é o agregador, o contrato é a origem** — a dívida nasce no contrato, é cobrada na fatura.

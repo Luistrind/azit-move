@@ -58,6 +58,10 @@ export interface PropostaDetalhe {
   papeis: { id: string; papel: string; titular: { id: string; nome: string; cpfCnpj: string } }[];
   documentos: { id: string; tipo: string; titularId: string; arquivoRef: string }[];
   parecer: { resultado: string; exigeGarantidor: boolean; motivoReprovacao: string | null } | null;
+  documentosObrigatorios: string[];
+  pendenciasDocumentos: { titularId: string; papel: string; nome: string; faltando: string[] }[];
+  documentosCompletos: boolean;
+  itens: { id: string; produtoId: string | null; nome: string; natureza: string; apartado: boolean; credor: string; valor: number; periodicidade: string | null }[];
 }
 
 export interface Cadastro {
@@ -66,6 +70,26 @@ export interface Cadastro {
   cpfCnpj: string;
   whatsapp: string;
   email?: string;
+  rg?: string;
+  estadoCivil?: string;
+  profissao?: string;
+  endereco?: string;
+  bairro?: string;
+  cidade?: string;
+  estado?: string;
+  cep?: string;
+}
+
+export interface SimulacaoResumo {
+  id: string;
+  cliente: string;
+  ativo: string;
+  valorEntrada: number;
+  prazoSemanas: number;
+  ofertaEscolhida: { valorParcela: number; numeroParcelas: number } | null;
+  propostaId: string | null;
+  propostaStatus: string | null;
+  createdAt: string;
 }
 
 export const originacaoService = {
@@ -77,7 +101,7 @@ export const originacaoService = {
     const { data } = await api.post('/api/v1/leads', body);
     return data;
   },
-  async simular(body: { ativoId: string; valorEntrada: number; prazoSemanas: number; leadId?: string }): Promise<SimulacaoResultado> {
+  async simular(body: { ativoId: string; valorEntrada: number; prazoSemanas: number; leadId?: string; entradaParcelada?: boolean }): Promise<SimulacaoResultado> {
     const { data } = await api.post('/api/v1/simulacoes', body);
     return data;
   },
@@ -92,6 +116,10 @@ export const originacaoService = {
     const { data } = await api.get('/api/v1/propostas');
     return data;
   },
+  async listarSimulacoes(): Promise<SimulacaoResumo[]> {
+    const { data } = await api.get('/api/v1/simulacoes');
+    return data;
+  },
   async detalheProposta(id: string): Promise<PropostaDetalhe> {
     const { data } = await api.get(`/api/v1/propostas/${id}`);
     return data;
@@ -104,9 +132,26 @@ export const originacaoService = {
     const { data } = await api.post(`/api/v1/propostas/${id}/vinculos`, { papel, titular });
     return data;
   },
-  async anexarDocumento(id: string, titularId: string, tipo: string): Promise<PropostaDetalhe> {
-    const { data } = await api.post(`/api/v1/propostas/${id}/documentos`, { titularId, tipo });
+  async adicionarProduto(id: string, produtoId: string): Promise<PropostaDetalhe> {
+    const { data } = await api.post(`/api/v1/propostas/${id}/produtos`, { produtoId });
     return data;
+  },
+  async removerProduto(id: string, itemId: string): Promise<PropostaDetalhe> {
+    const { data } = await api.delete(`/api/v1/propostas/${id}/produtos/${itemId}`);
+    return data;
+  },
+  async anexarDocumento(id: string, titularId: string, tipo: string, arquivo?: { nome: string; conteudo: string }): Promise<PropostaDetalhe> {
+    const { data } = await api.post(`/api/v1/propostas/${id}/documentos`, {
+      titularId, tipo, arquivoNome: arquivo?.nome, arquivoConteudo: arquivo?.conteudo,
+    });
+    return data;
+  },
+  async baixarDocumento(docId: string, nome: string): Promise<void> {
+    const resp = await api.get(`/api/v1/propostas/documentos/${docId}/download`, { responseType: 'blob' });
+    const url = URL.createObjectURL(resp.data as Blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = nome; a.click();
+    URL.revokeObjectURL(url);
   },
   async registrarParecer(id: string, body: { resultado: string; motivoReprovacao?: string; exigeGarantidor?: boolean }): Promise<PropostaDetalhe> {
     const { data } = await api.post(`/api/v1/propostas/${id}/parecer`, body);
@@ -116,7 +161,26 @@ export const originacaoService = {
     const { data } = await api.post(`/api/v1/propostas/${id}/formalizar`, {});
     return data;
   },
-  async ativar(contratoId: string): Promise<{ status: string; entrada: number; cobranca: { id: string } }> {
+  async statusContrato(contratoId: string): Promise<{
+    status: string; numero: string; entrada: number; entradaAVista: number; entradaParcelada: boolean;
+    assinadoTitular: boolean; assinadoAzit: boolean; ambasAssinaturas: boolean; cronogramaGerado: boolean;
+  }> {
+    const { data } = await api.get(`/api/v1/contratos/${contratoId}/status-formalizacao`);
+    return data;
+  },
+  async statusPacote(propostaId: string): Promise<{
+    propostaId: string; ancoraId: string | null; entrada: number; entradaAVista: number; entradaParcelada: boolean;
+    todasAssinaturas: boolean; cronogramaGerado: boolean;
+    contratos: { id: string; numero: string; descricao: string; status: string; entrada: number; entradaAVista: number; entradaParcelada: boolean; ancora: boolean; assinadoTitular: boolean; assinadoAzit: boolean; ambasAssinaturas: boolean; cronogramaGerado: boolean }[];
+  }> {
+    const { data } = await api.get(`/api/v1/propostas/${propostaId}/status-pacote`);
+    return data;
+  },
+  async assinar(contratoId: string, parte: 'titular' | 'azit'): Promise<unknown> {
+    const { data } = await api.post(`/api/v1/contratos/${contratoId}/assinar`, { parte });
+    return data;
+  },
+  async ativar(contratoId: string): Promise<{ status: string; entrada: number; entradaAVista: number; cobranca: { id: string } }> {
     const { data } = await api.post(`/api/v1/contratos/${contratoId}/ativar`, {});
     return data;
   },

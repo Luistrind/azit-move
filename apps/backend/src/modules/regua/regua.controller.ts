@@ -1,6 +1,7 @@
-import { Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { Controller, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
 import { RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { ReguaService } from './regua.service';
 
 @Controller()
@@ -30,6 +31,7 @@ export class ReguaController {
   // Dev: roda a régua (varre inadimplência + dispara cobrança D+1/D+2).
   // Em prod é job agendado na fila regua-step.
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @UseGuards(DevOnlyGuard)
   @Post('dev/varrer-regua')
   @HttpCode(200)
   varrer() {
