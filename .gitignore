@@ -10,5 +10,8 @@ coverage/
 # Uploads de documentos gerados em runtime/teste (não versionar)
 uploads/
 
+# Segredos do deploy (stack.env real fica só no servidor)
+deploy/stack.env
+
 # Config local/pessoal do Claude Code (settings.json compartilhado é versionado)
 .claude/settings.local.json

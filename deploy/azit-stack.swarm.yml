@@ -1,0 +1,81 @@
+# Stack Swarm do Azit Move V3 — publica atrás do Traefik existente (rede PopCarrosNet).
+# Postgres + Redis PRÓPRIOS e isolados (rede interna, sem exposição à internet).
+#
+# Deploy (no servidor, como root):
+#   set -a; . deploy/stack.env; set +a
+#   docker stack deploy -c deploy/azit-stack.swarm.yml azit
+#
+# Variáveis (secrets) vêm de deploy/stack.env (NÃO versionado). Veja stack.env.example.
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: azit
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: azit
+    volumes:
+      - azit_pgdata:/var/lib/postgresql/data
+    networks: [azit_internal]
+    deploy:
+      replicas: 1
+      restart_policy: { condition: any }
+
+  redis:
+    image: redis:7-alpine
+    networks: [azit_internal]
+    deploy:
+      replicas: 1
+      restart_policy: { condition: any }
+
+  backend:
+    image: azit-backend:latest
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      FRONTEND_URL: https://azit.popcarros.com.br
+      DATABASE_URL: postgresql://azit:${POSTGRES_PASSWORD}@postgres:5432/azit?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN_DAYS: "7"
+      ASAAS_API_URL: https://api-sandbox.asaas.com/v3
+      ASAAS_API_KEY: ${ASAAS_API_KEY}
+      ASAAS_WEBHOOK_SECRET: ${ASAAS_WEBHOOK_SECRET}
+    networks: [azit_internal, PopCarrosNet]
+    deploy:
+      replicas: 1
+      restart_policy: { condition: any }
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=PopCarrosNet
+        - traefik.http.routers.azit-api.entrypoints=websecure
+        - traefik.http.routers.azit-api.rule=Host(`api-azit.popcarros.com.br`)
+        - traefik.http.routers.azit-api.tls=true
+        - traefik.http.routers.azit-api.tls.certresolver=letsencryptresolver
+        - traefik.http.services.azit-api.loadbalancer.server.port=3001
+
+  frontend:
+    image: azit-frontend:latest
+    networks: [PopCarrosNet]
+    deploy:
+      replicas: 1
+      restart_policy: { condition: any }
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=PopCarrosNet
+        - traefik.http.routers.azit-web.entrypoints=websecure
+        - traefik.http.routers.azit-web.rule=Host(`azit.popcarros.com.br`)
+        - traefik.http.routers.azit-web.tls=true
+        - traefik.http.routers.azit-web.tls.certresolver=letsencryptresolver
+        - traefik.http.services.azit-web.loadbalancer.server.port=80
+
+networks:
+  PopCarrosNet:
+    external: true
+  azit_internal:
+    driver: overlay
+
+volumes:
+  azit_pgdata:
