@@ -3,7 +3,7 @@
 # IMPORTANTE: VITE_API_URL é lido em BUILD TIME (Vite inlina no bundle). Passe como
 #   Build Arg apontando para a URL pública do backend, ex: https://api.seu-dominio.com
 FROM node:20-slim AS build
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 WORKDIR /app
 COPY . .
 
