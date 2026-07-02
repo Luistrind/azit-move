@@ -8,18 +8,21 @@ import { z } from 'zod';
 // houver o que conciliar, em vez de devolver 400.
 export const webhookAsaasSchema = z.object({
   event: z.string().min(1),
+  // Todos os campos aceitam null (o Asaas manda muitos campos como null, ex.:
+  // interestValue/fineValue/paymentDate) — usar .nullish() (null OU ausente) em vez
+  // de .optional(), senão um null quebra a validação e vira 400 (e o Asaas pune a fila).
   payment: z
     .object({
-      id: z.string().optional(),
+      id: z.string().nullish(),
       externalReference: z.string().nullish(),
-      value: z.number().optional(),
+      value: z.number().nullish(),
       paymentDate: z.string().nullish(),
       dueDate: z.string().nullish(),
-      fineValue: z.number().optional(),
-      interestValue: z.number().optional(),
-      status: z.string().optional(),
+      fineValue: z.number().nullish(),
+      interestValue: z.number().nullish(),
+      status: z.string().nullish(),
     })
-    .optional(),
+    .nullish(),
 });
 
 export type WebhookAsaasDto = z.infer<typeof webhookAsaasSchema>;
