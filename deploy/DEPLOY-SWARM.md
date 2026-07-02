@@ -6,9 +6,9 @@ O Azit sobe como um **stack novo** atrás do **Traefik** que já roda no servido
 é tocado.
 
 ## 0. Pré-requisito: DNS
-No provedor de DNS do `popcarros.com.br`, crie 2 registros **A** apontando para o IP do VPS `147.79.81.186`:
-- `azit`      → 147.79.81.186   (frontend → `azit.popcarros.com.br`)
-- `api-azit`  → 147.79.81.186   (backend  → `api-azit.popcarros.com.br`)
+No DNS do `azitmove.com.br` (registro.br), crie 2 registros **A** apontando para o IP do VPS `147.79.81.186`:
+- `app`  → 147.79.81.186   (frontend → `app.azitmove.com.br`)
+- `api`  → 147.79.81.186   (backend  → `api.azitmove.com.br`)
 
 Espere propagar (alguns minutos). O Let's Encrypt só emite o certificado depois que o domínio resolve para o servidor.
 
@@ -24,7 +24,7 @@ cd azit
 ## 2. Buildar as imagens (single-node Swarm → build local)
 ```
 docker build -t azit-backend:latest -f apps/backend/Dockerfile .
-docker build -t azit-frontend:latest --build-arg VITE_API_URL=https://api-azit.popcarros.com.br -f apps/frontend/Dockerfile .
+docker build -t azit-frontend:latest --build-arg VITE_API_URL=https://api.azitmove.com.br -f apps/frontend/Dockerfile .
 ```
 > O `VITE_API_URL` é fixado no build do frontend. Se mudar o domínio da API, rebuild o frontend.
 
@@ -53,12 +53,12 @@ docker exec -it $(docker ps -qf name=azit_backend) sh -lc "pnpm exec ts-node pri
 
 ## 6. Ligar o Asaas (uma vez só, URL fixa)
 No painel do Asaas → Webhooks:
-- URL: `https://api-azit.popcarros.com.br/api/v1/webhooks/asaas`
+- URL: `https://api.azitmove.com.br/api/v1/webhooks/asaas`
 - Token: o MESMO valor de `ASAAS_WEBHOOK_SECRET`.
 - v3, envio Sequencial, eventos de Cobranças: PAYMENT_RECEIVED, PAYMENT_CONFIRMED, PAYMENT_OVERDUE.
 
 ## 7. Testar
-- Abra `https://azit.popcarros.com.br`, faça login e rode o fluxo.
+- Abra `https://app.azitmove.com.br`, faça login e rode o fluxo.
 - Um pagamento no sandbox → webhook chega → contrato ativa.
 
 ---
@@ -67,7 +67,7 @@ No painel do Asaas → Webhooks:
 ```
 cd /opt/azit && git pull
 docker build -t azit-backend:latest -f apps/backend/Dockerfile .
-docker build -t azit-frontend:latest --build-arg VITE_API_URL=https://api-azit.popcarros.com.br -f apps/frontend/Dockerfile .
+docker build -t azit-frontend:latest --build-arg VITE_API_URL=https://api.azitmove.com.br -f apps/frontend/Dockerfile .
 set -a; . deploy/stack.env; set +a
 docker stack deploy -c deploy/azit-stack.swarm.yml azit   # atualiza os serviços
 ```
