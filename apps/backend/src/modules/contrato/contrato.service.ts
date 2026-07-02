@@ -152,6 +152,9 @@ export class ContratoService {
           numeroParcelas: dto.numeroParcelas,
           valorParcelaInicial: reais(dto.valorParcelaInicial),
           periodicidade: periodicidadePrisma,
+          modalidade: (
+            { assinatura: 'ASSINATURA', compra_parcelada: 'COMPRA_PARCELADA', compra_vista: 'COMPRA_VISTA' } as const
+          )[dto.modalidade ?? 'assinatura'],
           indiceReajuste: dto.indiceReajuste,
           taxaMultaAtraso: dto.taxaMultaAtraso,
           taxaJurosAtraso: dto.taxaJurosAtraso,

@@ -22,7 +22,12 @@ const NAV_ITEMS: NavItemDef[] = [
   { to: '/titulares', label: 'Titulares' },
   { to: '/regua', label: 'Régua' },
   { to: '/acordos', label: 'Renegociações' },
+  { to: '/aprovacoes', label: 'Aprovações' },
 ];
+
+// Itens de configuração — visíveis só para administradores.
+const NAV_CONFIG: NavItemDef[] = [{ to: '/configuracoes/alcadas', label: 'Alçadas' }];
+const ROLES_CONFIG = ['ADMIN', 'DIRETOR'];
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -79,6 +84,31 @@ export function Sidebar() {
             {item.label}
           </NavLink>
         ))}
+
+        {ROLES_CONFIG.some((r) => usuario?.roles?.includes(r)) && (
+          <>
+            <div
+              className="mx-[8px] mb-[8px] mt-[16px] text-[10px] uppercase tracking-[0.14em]"
+              style={{ color: 'var(--navy-text-muted)' }}
+            >
+              Configuração
+            </div>
+            {NAV_CONFIG.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className="flex items-center gap-[11px] rounded-[9px] px-[11px] py-[10px] text-[13px] transition-colors"
+                style={({ isActive }) =>
+                  isActive
+                    ? { background: 'rgba(255,255,255,.08)', color: '#fff', fontWeight: 700 }
+                    : { color: 'var(--navy-text)', fontWeight: 500 }
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </>
+        )}
       </nav>
 
       <div className="flex-1" />

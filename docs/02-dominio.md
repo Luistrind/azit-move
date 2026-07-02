@@ -353,6 +353,19 @@ Representação do acordo comercial entre a Azit e o titular para um produto de 
 
 ---
 
+### 4.7-A Crédito de manutenção (crédito para cliente já ativo)
+
+> **Decisão 2026-07-02, Luís:** um titular com contrato ativo pode contratar um **crédito de manutenção** (crédito avulso — reparo do veículo, capital, etc.). Modelagem:
+>
+> - **Produto de valor variável** (`Produto.valorPadrao = null`, `ancora = false`, `credorPadrao = AZIT`): não tem preço fixo — só regras de juros/tabela aplicadas sobre o valor pedido na contratação.
+> - **Ancoragem no ativo:** todo `ContratoCredito` exige um `ativo`. O crédito de manutenção nasce ancorado num **Ativo sintético `tipo = OUTRO`** ("Crédito manutenção — <titular>"), com sua própria `OrigemCapital` (capital AZIT). O vínculo *real* é com o **titular** e com a **fatura** — não com um veículo.
+> - **Cobrança na mesma fatura:** é um `ContratoCredito` **à parte**, mas reusa a **Conta existente** do titular; suas parcelas/recebíveis caem nas **faturas da conta** junto com o contrato do veículo (a Conta é a visão unificada — §4.3).
+> - **Modalidade `COMPRA_PARCELADA`:** não há assinatura formal (titular+Azit). É um parcelamento de um valor pré-definido; entrada é **opcional** (`valorEntrada` pode ser 0). Novo campo `ContratoCredito.modalidade` (default `ASSINATURA` para o veículo; `COMPRA_PARCELADA` para o crédito de manutenção).
+> - **Gatilho de ativação (exceção à Regra 2):** *sem* entrada → o "dia zero" é a **aprovação pela alçada** (não o pagamento da entrada); o cronograma nasce na aprovação. *Com* entrada (opcional) → cobra a entrada e o dia zero é o pagamento dela, como no veículo.
+> - **Esteira:** *sem* análise documental (cliente já conhecido), mas **passa obrigatoriamente pela alçada de aprovação** (§7.9). Reaproveita `Proposta` (`StatusProposta`, `aprovadoPor`, `dataAprovacao`) e o `model Alcada` (`tipoOperacao = "credito_avulso"`). Limites da alçada são **placeholder do Vicente** — padrão provisório configurável, marcado como substituível.
+
+---
+
 ### 4.8 TipoProduto
 
 Catálogo de produtos/serviços que a Azit oferece. Cada produto pode ter seu próprio contrato, ou compor a cesta de um contrato — conforme a configuração.
@@ -797,7 +810,15 @@ Estrutura transversal aplicável a:
 - Venda de produtos e crédito avulso
 - Qualquer operação com parcelamento, risco ou exceção
 
-> ⚠️ **Placeholder:** Regras específicas de alçada (quem aprova o quê, limites de valor) a definir com Vicente. A estrutura deve ser configurável — não hardcoded.
+> ⚠️ **Placeholder (valores):** os *limites* concretos (quanto cada papel aprova) a definir com Vicente. A **estrutura**, porém, é configurável em tela — não hardcoded.
+
+> **Decisão 2026-07-02, Luís:** a alçada é uma **matriz configurável pelo administrador**, não valores de seed. Modelagem:
+>
+> - **Catálogo de tipos de operação** (`TipoOperacaoAlcada`: `chave`, `nome`, `ativo`) — extensível pelo admin. Semeado com: `credito_avulso`, `acordo`, `novacao`, `reajuste_ipca`, `despesa`, `venda`. Novos tipos (ex.: outra modalidade de renegociação) entram sem mexer no código.
+> - **Matriz de limites por papel** (`Alcada`: `papel` [RoleUsuario] × `tipoOperacao` → `limiteMaximo`, `ilimitado` bool, `ativo` bool; único por (papel, tipoOperacao)). O admin edita quanto cada **papel** (OPERADOR, APROVADOR, ADMIN, DIRETOR, FINANCEIRO) aprova em cada tipo de operação. `ilimitado = true` dispensa o teto (ex.: DIRETOR).
+>   - *(Muda o esqueleto anterior de `Alcada` per-usuário → per-papel. Override por usuário individual fica como extensão futura, se necessário.)*
+> - **Regra de aprovação:** para aprovar uma operação de valor *V* e tipo *T*, o usuário precisa de uma linha ativa `Alcada(papel = papel do usuário, tipoOperacao = T)` com `ilimitado` **ou** `limiteMaximo ≥ V`. Caso contrário, a operação fica **pendente** para um papel de alçada suficiente.
+> - **Admin em tela:** tela de Configurações → Alçadas, onde o administrador gerencia o catálogo de operações e a matriz papel × limite. Aplica-se de forma transversal a crédito avulso, acordo, novação, reajuste, etc.
 
 ---
 

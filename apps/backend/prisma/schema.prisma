@@ -599,6 +599,7 @@ model ContratoCredito {
   valorTotal           Decimal               @db.Decimal(12, 2)
   valorEntrada         Decimal               @default(0) @db.Decimal(12, 2)
   entradaParcelada     Boolean               @default(false) // entrada dividida em intermediárias (Doc 2 §4-A.3)
+  modalidade           ModalidadeContrato    @default(ASSINATURA) // ASSINATURA (veículo) | COMPRA_PARCELADA (crédito de manutenção — Doc 2 §4.7-A)
   assinaturaTitularEm  DateTime? // assinatura mock do titular (Doc 3 §8-A.6)
   assinaturaAzitEm     DateTime? // assinatura mock da Azit
   cronogramaGeradoEm   DateTime? // "dia zero": cronograma nasce no pagamento da entrada (Decisão 2026-06-29)
@@ -611,6 +612,9 @@ model ContratoCredito {
   taxaJurosAtraso      Decimal               @default(1.0) @db.Decimal(5, 2)
   taxaDescontoQuitacao Decimal?              @db.Decimal(8, 6)
   status               StatusContratoCredito @default(RASCUNHO)
+  solicitadoPor        String? // crédito de manutenção: usuário que originou (Doc 2 §4.7-A)
+  aprovadoPor          String? // usuário que aprovou pela alçada (§7.9)
+  dataAprovacao        DateTime?
   dataEncerramento     DateTime?
   motivoEncerramento   MotivoEncerramento?
   asaasSubscriptionId  String?
@@ -872,22 +876,39 @@ model ReajusteIPCA {
   @@map("reajustes_ipca")
 }
 
-// Alçada de aprovação — esqueleto do Doc 6 §9.1 (a detalhar com Vicente).
-// PER USUÁRIO: cada aprovador tem um limite por tipo de operação. Valores são
-// placeholder/seed (configuração, não código).
-model Alcada {
-  id           String  @id @default(cuid())
-  usuarioId    String // o aprovador
-  tipoOperacao String // acordo | novacao | despesa | venda | reajuste | ...
-  limiteMaximo Decimal @db.Decimal(12, 2)
-  ativo        Boolean @default(true)
+// Catálogo de tipos de operação sujeitos a alçada (Doc 2 §7.9). Configurável pelo
+// admin — novos tipos (ex.: outra modalidade de renegociação) entram sem tocar no código.
+model TipoOperacaoAlcada {
+  id    String  @id @default(cuid())
+  chave String  @unique // credito_avulso | acordo | novacao | reajuste_ipca | despesa | venda
+  nome  String // rótulo exibido ao admin
+  ativo Boolean @default(true)
 
-  usuario Usuario @relation(fields: [usuarioId], references: [id])
+  alcadas Alcada[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([usuarioId])
+  @@map("tipos_operacao_alcada")
+}
+
+// Alçada de aprovação — matriz configurável PER PAPEL × tipo de operação (Doc 2 §7.9,
+// Decisão 2026-07-02). O admin edita quanto cada papel aprova em cada operação.
+// `ilimitado` dispensa o teto (ex.: DIRETOR). Valores concretos = placeholder do Vicente.
+model Alcada {
+  id            String      @id @default(cuid())
+  papel         RoleUsuario // OPERADOR | APROVADOR | ADMIN | DIRETOR | FINANCEIRO
+  tipoOperacao  String // FK lógica para TipoOperacaoAlcada.chave
+  limiteMaximo  Decimal     @default(0) @db.Decimal(12, 2)
+  ilimitado     Boolean     @default(false)
+  ativo         Boolean     @default(true)
+
+  operacao TipoOperacaoAlcada @relation(fields: [tipoOperacao], references: [chave])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([papel, tipoOperacao])
   @@index([tipoOperacao])
   @@map("alcadas")
 }
@@ -906,7 +927,6 @@ model Usuario {
   roles         UsuarioRole[]
   acordos       Acordo[]
   novacoes      Novacao[]      @relation("NovacaoOperador")
-  alcadas       Alcada[]
   refreshTokens RefreshToken[]
 
   createdAt DateTime  @default(now())

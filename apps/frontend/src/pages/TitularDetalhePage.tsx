@@ -5,6 +5,9 @@ import { formatCurrency } from '@azit/utils';
 import { titularService } from '../services/titular.service';
 import { faturaService } from '../services/fatura.service';
 import { originacaoService } from '../services/originacao.service';
+import { creditoService } from '../services/credito.service';
+import { reaisParaCentavos } from '../lib/valor';
+import { mensagemErro } from '../lib/permissoes';
 import { StatusBadge } from '../components/StatusBadge';
 import { Modal } from '../components/Modal';
 import { CONTRATO_STATUS_COLORS } from '../config/statusColors';
@@ -62,6 +65,46 @@ export function TitularDetalhePage() {
   const [pagina, setPagina] = useState(1);
   const [faturaSel, setFaturaSel] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
+
+  // Contratar crédito de manutenção (Doc 2 §4.7-A).
+  const [creditoOpen, setCreditoOpen] = useState(false);
+  const [creditoBusy, setCreditoBusy] = useState(false);
+  const [cDescricao, setCDescricao] = useState('Crédito de manutenção');
+  const [cValor, setCValor] = useState('');
+  const [cParcelas, setCParcelas] = useState('12');
+  const [cEntrada, setCEntrada] = useState('');
+  const [cPeriodicidade, setCPeriodicidade] = useState<'semanal' | 'quinzenal' | 'mensal'>('mensal');
+
+  const cValorCent = reaisParaCentavos(cValor);
+  const cEntradaCent = reaisParaCentavos(cEntrada);
+  const cNumParcelas = Math.max(1, parseInt(cParcelas || '0', 10) || 0);
+  const cParcelaPrev =
+    cValorCent > 0 && cNumParcelas > 0
+      ? Math.round((cValorCent - cEntradaCent) / cNumParcelas)
+      : 0;
+
+  async function contratarCredito() {
+    if (cValorCent <= 0 || cNumParcelas <= 0) return;
+    setCreditoBusy(true);
+    try {
+      const r = await creditoService.originar(id, {
+        descricao: cDescricao.trim() || 'Crédito de manutenção',
+        valor: cValorCent,
+        numeroParcelas: cNumParcelas,
+        valorEntrada: cEntradaCent,
+        periodicidade: cPeriodicidade,
+      });
+      setCreditoOpen(false);
+      setCValor('');
+      setCEntrada('');
+      await recarregar();
+      window.alert(`Crédito ${r.numero} enviado para aprovação (alçada).`);
+    } catch (e) {
+      window.alert(mensagemErro(e));
+    } finally {
+      setCreditoBusy(false);
+    }
+  }
 
   async function recarregar() {
     await Promise.all([
@@ -160,7 +203,16 @@ export function TitularDetalhePage() {
 
       {/* Bloco 3 — Contratos */}
       <div className="rounded-card p-[18px]" style={card}>
-        <div className="mb-[12px] font-display text-[13px] font-bold">Contratos ({contratosCredito.length})</div>
+        <div className="mb-[12px] flex items-center justify-between">
+          <span className="font-display text-[13px] font-bold">Contratos ({contratosCredito.length})</span>
+          <button
+            onClick={() => setCreditoOpen(true)}
+            className="h-[30px] rounded-[8px] px-[12px] text-[12px] font-semibold"
+            style={{ background: 'var(--navy)', color: '#fff' }}
+          >
+            + Contratar crédito
+          </button>
+        </div>
         {contratosCredito.length === 0 ? (
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum contrato vinculado.</div>
         ) : (
@@ -291,6 +343,50 @@ export function TitularDetalhePage() {
             })()}
           </div>
         )}
+      </Modal>
+
+      {/* Contratar crédito de manutenção — vai para a fila de aprovação (alçada). */}
+      <Modal open={creditoOpen} onClose={() => setCreditoOpen(false)} title="Contratar crédito de manutenção">
+        <div className="flex flex-col gap-[12px]">
+          <label className="flex flex-col gap-[4px] text-[12px]">
+            <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Descrição</span>
+            <input value={cDescricao} onChange={(e) => setCDescricao(e.target.value)} className="h-[34px] rounded-[8px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+          </label>
+          <div className="grid grid-cols-2 gap-[10px]">
+            <label className="flex flex-col gap-[4px] text-[12px]">
+              <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Valor do crédito (R$)</span>
+              <input value={cValor} onChange={(e) => setCValor(e.target.value)} placeholder="5.000,00" className="h-[34px] rounded-[8px] px-[10px] text-right text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+            </label>
+            <label className="flex flex-col gap-[4px] text-[12px]">
+              <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Entrada (R$, opcional)</span>
+              <input value={cEntrada} onChange={(e) => setCEntrada(e.target.value)} placeholder="0,00" className="h-[34px] rounded-[8px] px-[10px] text-right text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+            </label>
+            <label className="flex flex-col gap-[4px] text-[12px]">
+              <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Nº de parcelas</span>
+              <input value={cParcelas} onChange={(e) => setCParcelas(e.target.value.replace(/\D/g, ''))} className="h-[34px] rounded-[8px] px-[10px] text-right text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+            </label>
+            <label className="flex flex-col gap-[4px] text-[12px]">
+              <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Periodicidade</span>
+              <select value={cPeriodicidade} onChange={(e) => setCPeriodicidade(e.target.value as typeof cPeriodicidade)} className="h-[34px] rounded-[8px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+                <option value="semanal">Semanal</option>
+                <option value="quinzenal">Quinzenal</option>
+                <option value="mensal">Mensal</option>
+              </select>
+            </label>
+          </div>
+          <div className="flex items-center justify-between rounded-[10px] px-[12px] py-[10px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
+            <span style={{ color: 'var(--text-muted)' }}>Parcela estimada <span title="Juros a definir (Vicente) — cálculo provisório">(provisório)</span></span>
+            <span className="font-bold tabular-nums">{cNumParcelas}× {formatCurrency(cParcelaPrev)}</span>
+          </div>
+          <button
+            disabled={creditoBusy || cValorCent <= 0 || cNumParcelas <= 0}
+            onClick={contratarCredito}
+            className="h-[38px] rounded-[9px] text-[13px] font-semibold disabled:opacity-50"
+            style={{ background: 'var(--accent)', color: '#fff' }}
+          >
+            {creditoBusy ? 'Enviando…' : 'Enviar para aprovação'}
+          </button>
+        </div>
       </Modal>
     </div>
   );
