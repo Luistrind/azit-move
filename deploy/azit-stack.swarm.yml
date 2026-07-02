@@ -9,7 +9,7 @@
 version: "3.8"
 
 services:
-  postgres:
+  azit-db:
     image: postgres:16
     environment:
       POSTGRES_USER: azit
@@ -22,7 +22,7 @@ services:
       replicas: 1
       restart_policy: { condition: any }
 
-  redis:
+  azit-redis:
     image: redis:7-alpine
     networks: [azit_internal]
     deploy:
@@ -35,8 +35,8 @@ services:
       NODE_ENV: production
       PORT: "3001"
       FRONTEND_URL: https://app.azitmove.com.br
-      DATABASE_URL: postgresql://azit:${POSTGRES_PASSWORD}@postgres:5432/azit?schema=public
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://azit:${POSTGRES_PASSWORD}@azit-db:5432/azit?schema=public
+      REDIS_URL: redis://azit-redis:6379
       JWT_SECRET: ${JWT_SECRET}
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN_DAYS: "7"

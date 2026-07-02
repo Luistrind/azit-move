@@ -8,11 +8,11 @@ docker stack services azit
 
 echo
 echo "===== POSTGRES env (sem a senha) ====="
-docker service inspect azit_postgres --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' | grep -vi password
+docker service inspect azit_azit-db --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' | grep -vi password
 
 echo
 echo "===== POSTGRES: roles/usuários existentes ====="
-CID=$(docker ps -qf name=azit_postgres | head -1)
+CID=$(docker ps -qf name=azit_azit-db | head -1)
 if [ -n "${CID:-}" ]; then
   echo "-- tentando como azit --"
   docker exec "$CID" psql -U azit -d azit -tAc "select rolname from pg_roles order by 1" 2>&1 | head -20
@@ -24,8 +24,8 @@ fi
 
 echo
 echo "===== senha postgres vs backend ====="
-PG=$(docker service inspect azit_postgres --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_PASSWORD=//p')
-BE=$(docker service inspect azit_backend --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' | sed -n 's#^DATABASE_URL=postgresql://azit:\(.*\)@postgres.*#\1#p')
+PG=$(docker service inspect azit_azit-db --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_PASSWORD=//p')
+BE=$(docker service inspect azit_backend --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' | sed -n 's#^DATABASE_URL=postgresql://azit:\(.*\)@azit-db.*#\1#p')
 echo "postgres: ${#PG} chars | backend: ${#BE} chars"
 [ -n "$PG" ] && [ "$PG" = "$BE" ] && echo ">> IGUAIS" || echo ">> DIFERENTES"
 
