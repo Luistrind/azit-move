@@ -25,7 +25,8 @@ export const criarContratoSchema = z.object({
   numeroParcelas: z.coerce.number().int().min(1),
   valorParcelaInicial: z.coerce.number().int().min(0),
   periodicidade: z.enum(['semanal', 'quinzenal', 'mensal']).default('semanal'),
-  modalidade: z.enum(['assinatura', 'compra_parcelada', 'compra_vista']).default('assinatura'),
+  // Opcional: default 'assinatura' aplicado no service (mantém os chamadores existentes intactos).
+  modalidade: z.enum(['assinatura', 'compra_parcelada', 'compra_vista']).optional(),
   indiceReajuste: z.string().trim().min(1).optional(),
   descricaoFinanciamento: z.string().trim().min(1).default('Parcelamento do veículo'),
   credor: z.enum(['azit', 'investidor', 'terceiro']).default('azit'),
