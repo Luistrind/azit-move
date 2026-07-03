@@ -774,18 +774,19 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > Desbloqueio após pagamento é sempre **manual** — o operador confirma a regularização antes de liberar.
 
 ### 7.7 Acordo (recuperação branda)
-- Operador seleciona obrigações em atraso por parcela ou fatura
-- Sistema soma o saldo e permite estruturar o acordo
-- Acordo nasce em **Rascunho** — não tem efeito até pagamento da entrada
+
+> **Decisão 2026-07-03, Luís — o Acordo é da CONTA, não do contrato.** O pagamento acontece na fatura, e a fatura é da Conta: ela agrega parcelas de *todos* os contratos do titular. Logo a inadimplência é da conta — o titular nunca atrasa "um contrato", atrasa faturas. A renegociação, portanto, cobre **todas as parcelas em atraso da conta** (de todos os contratos) numa única negociação: uma entrada, um plano novo, uma conversa.
+
+- Operador inicia a renegociação **a partir da ficha do titular** (wizard: diagnóstico → proposta → aprovação → confirmação)
+- O sistema levanta as parcelas em atraso de **todos os contratos da conta**, soma o saldo e permite estruturar o acordo
+- Acordo nasce em **Rascunho** e passa pelo **motor de aprovação** (§7.9-A); aprovado, cobra-se a entrada
 - Pagamento da entrada via webhook do Asaas é o aceite formal do cliente
 - Após confirmação:
   - As parcelas cobertas recebem **vínculo de acordo** (não usar o status "Renegociada" como marca do vínculo — "renegociação" já é status de parcela)
-  - O acordo gera um `ItemContratado` de origem **ACORDO**
-  - As novas parcelas pertencem a esse item e nascem Em aberto
-  - O **contrato principal NÃO é liquidado**; as demais parcelas seguem inalteradas
-- Novas parcelas entram na próxima fatura aberta
+  - **Explosão interna por contrato:** o acordo gera um `ItemContratado` de origem **ACORDO** *em cada contrato afetado*, com as parcelas novas rateadas proporcionalmente ao que cada contrato devia. Isso preserva a separação credor/recebível (parcela de contrato financiado por investidor ≠ parcela de capital Azit) — o titular vê **um acordo**; o sistema mantém o rastro por contrato
+  - Os **contratos NÃO são liquidados**; as demais parcelas seguem inalteradas
+- Novas parcelas entram na próxima fatura aberta da conta
 - O cliente permanece inadimplente para fins contábeis até cumprir o acordo
-- Acordos passam pela estrutura de alçadas de aprovação
 
 ### 7.7b Novação (recuperação radical)
 - Mecanismo distinto do Acordo: **liquida o ContratoCredito inteiro** e gera um **ContratoCredito novo** completo
@@ -819,6 +820,18 @@ Estrutura transversal aplicável a:
 >   - *(Muda o esqueleto anterior de `Alcada` per-usuário → per-papel. Override por usuário individual fica como extensão futura, se necessário.)*
 > - **Regra de aprovação:** para aprovar uma operação de valor *V* e tipo *T*, o usuário precisa de uma linha ativa `Alcada(papel = papel do usuário, tipoOperacao = T)` com `ilimitado` **ou** `limiteMaximo ≥ V`. Caso contrário, a operação fica **pendente** para um papel de alçada suficiente.
 > - **Admin em tela:** tela de Configurações → Alçadas, onde o administrador gerencia o catálogo de operações e a matriz papel × limite. Aplica-se de forma transversal a crédito avulso, acordo, novação, reajuste, etc.
+
+### 7.9-A Motor de Aprovação (unificado)
+
+> **Decisão 2026-07-03, Luís:** toda operação sensível passa por um **motor de aprovação único** — propor e aprovar são atos distintos, de pessoas distintas. Substitui os fluxos ad-hoc (acordo que validava alçada na criação, crédito com fila própria, reajuste com aprovação embutida).
+
+- **Solicitação (`Aprovacao`):** qualquer operação sujeita a alçada (crédito avulso, acordo, novação, reajuste, …) gera uma solicitação com: tipo de operação, valor, solicitante, referência à entidade (contrato/acordo/reajuste), contexto do titular e **trilha de decisões** (quem, quando, decisão, parecer).
+- **Decisões possíveis:** **Aprovar** (exige alçada suficiente para o valor), **Recomendar** (endosso de quem NÃO tem alçada — escala para o nível acima, registrado na trilha) e **Reprovar** (exige alçada; encerra a solicitação).
+- **N aprovações configurável:** cada tipo de operação define `aprovacoesNecessarias` (default 1) — editável pelo admin na tela de Alçadas. A solicitação só é APROVADA após N decisões "Aprovar" de **usuários distintos, cada um com alçada** para o valor (princípio dos quatro olhos, ex.: novação exige 2).
+- **Segregação:** o solicitante **não decide** a própria solicitação — nem aprovar, nem recomendar, nem reprovar.
+- **Efetivação:** ao completar as N aprovações, o motor dispara a efetivação da operação (ex.: crédito → ativa/cobra entrada; acordo → cobra entrada; novação → liquida e cria o contrato novo; reajuste → aplica).
+- **Central única:** a tela de Aprovações lista TODAS as solicitações pendentes, com contexto do titular (atraso, contratos, saldo) — aprovar às cegas não é aprovar.
+- Estados da solicitação: `PENDENTE → APROVADA | REPROVADA | CANCELADA`.
 
 ---
 

@@ -8,9 +8,95 @@ import { CriarContaDto } from './dto/criar-conta.dto';
 import { AtualizarContaDto } from './dto/atualizar-conta.dto';
 import { ContaApi, contaParaApi, mapearStatusConta } from './conta.mapper';
 
+const CONTRATOS_VIGENTES = [
+  'ATIVO',
+  'INADIMPLENTE',
+  'BLOQUEADO',
+  'SUSPENSO',
+  'EM_RECUPERACAO_VEICULO',
+] as const;
+
 @Injectable()
 export class ContaService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private cent(v: unknown): number {
+    return Math.round(Number(v?.toString() ?? '0') * 100);
+  }
+
+  // Carteira TITULAR-cêntrica (Doc 2: a arquitetura é centrada no titular): posição
+  // consolidada por conta — saldo, atraso, contratos, bloqueio — para a tela Carteira.
+  async carteira() {
+    const hoje = new Date();
+    const contas = await this.prisma.db.conta.findMany({
+      where: { titular: { deletedAt: null } },
+      include: {
+        titular: { select: { id: true, nome: true, cpfCnpj: true } },
+        contratosCredito: { select: { id: true, status: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Agregados em lote (evita N+1 pesado): parcelas por contrato, faturas por conta.
+    const todosContratos = contas.flatMap((c) =>
+      c.contratosCredito
+        .filter((ct) => (CONTRATOS_VIGENTES as readonly string[]).includes(ct.status))
+        .map((ct) => ct.id),
+    );
+    const [saldos, atrasos, vencidas] = await Promise.all([
+      this.prisma.db.parcela.groupBy({
+        by: ['contratoId'],
+        where: { contratoId: { in: todosContratos }, status: null, acordoId: null },
+        _sum: { valorNominal: true },
+      }),
+      this.prisma.db.parcela.groupBy({
+        by: ['contratoId'],
+        where: {
+          contratoId: { in: todosContratos },
+          status: null,
+          acordoId: null,
+          dataVencimento: { lt: hoje },
+        },
+        _sum: { valorNominal: true },
+      }),
+      this.prisma.db.fatura.groupBy({
+        by: ['contaId'],
+        where: {
+          contaId: { in: contas.map((c) => c.id) },
+          dataVencimento: { lt: hoje },
+          status: { in: ['ABERTA', 'FECHADA', 'VENCIDA'] },
+        },
+        _count: { _all: true },
+      }),
+    ]);
+    const saldoPorContrato = new Map(saldos.map((s) => [s.contratoId, this.cent(s._sum.valorNominal)]));
+    const atrasoPorContrato = new Map(atrasos.map((s) => [s.contratoId, this.cent(s._sum.valorNominal)]));
+    const vencidasPorConta = new Map(vencidas.map((v) => [v.contaId, v._count._all]));
+
+    return contas
+      .map((conta) => {
+        const vigentes = conta.contratosCredito.filter((ct) =>
+          (CONTRATOS_VIGENTES as readonly string[]).includes(ct.status),
+        );
+        const saldoDevedor = vigentes.reduce((s, ct) => s + (saldoPorContrato.get(ct.id) ?? 0), 0);
+        const valorEmAtraso = vigentes.reduce((s, ct) => s + (atrasoPorContrato.get(ct.id) ?? 0), 0);
+        const bloqueada = conta.contratosCredito.some((ct) => ct.status === 'BLOQUEADO');
+        return {
+          contaId: conta.id,
+          titularId: conta.titular.id,
+          titular: conta.titular.nome,
+          cpfCnpj: conta.titular.cpfCnpj,
+          contratosAtivos: vigentes.length,
+          contratosTotal: conta.contratosCredito.length,
+          saldoDevedor,
+          valorEmAtraso,
+          faturasVencidas: vencidasPorConta.get(conta.id) ?? 0,
+          bloqueada,
+          situacao: bloqueada ? 'bloqueada' : valorEmAtraso > 0 ? 'em_atraso' : 'em_dia',
+        };
+      })
+      .filter((c) => c.contratosTotal > 0);
+  }
 
   async criar(dto: CriarContaDto): Promise<ContaApi> {
     // Titular precisa existir e não estar deletado (findFirst respeita soft delete).

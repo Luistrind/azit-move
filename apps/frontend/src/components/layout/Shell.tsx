@@ -1,13 +1,16 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
+import { Toaster } from '../Toast';
 
 // Shell da aplicação — Doc 3 §7.1. Sidebar + Topbar + área de scroll.
 // O título da topbar é derivado da rota atual (mapa simples por enquanto).
 const TITULOS: Record<string, { title: string; subtitle: string }> = {
-  '/': { title: 'Carteira Operacional', subtitle: 'Portfólio de contratos' },
+  '/': { title: 'Carteira Operacional', subtitle: 'Posição consolidada por titular' },
   '/regua': { title: 'Régua de Cobrança', subtitle: 'Gestão de inadimplência' },
-  '/acordos': { title: 'Renegociações', subtitle: 'Acordos e novações' },
+  '/acordos': { title: 'Renegociações', subtitle: 'Acompanhamento de acordos e novações' },
+  '/aprovacoes': { title: 'Central de Aprovações', subtitle: 'Solicitações pendentes de alçada' },
+  '/configuracoes/alcadas': { title: 'Alçadas', subtitle: 'Matriz de aprovação por papel' },
 };
 
 export function Shell() {
@@ -28,6 +31,7 @@ export function Shell() {
           <Outlet />
         </main>
       </div>
+      <Toaster />
     </div>
   );
 }

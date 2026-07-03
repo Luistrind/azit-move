@@ -6,6 +6,7 @@ export const criarRenegociacaoSchema = z.object({
   valorEntrada: z.coerce.number().int().min(0),
   numeroParcelasNovas: z.coerce.number().int().min(1),
   valorParcelaNova: z.coerce.number().int().min(1),
+  periodicidade: z.enum(['semanal', 'quinzenal', 'mensal']).optional(), // plano do acordo (default semanal)
 });
 export type CriarRenegociacaoBody = z.infer<typeof criarRenegociacaoSchema>;
 

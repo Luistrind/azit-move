@@ -5,6 +5,7 @@ export interface OperacaoAlcada {
   chave: string;
   nome: string;
   ativo: boolean;
+  aprovacoesNecessarias: number;
 }
 export interface CelulaAlcada {
   papel: string;
@@ -36,6 +37,13 @@ export const alcadaService = {
   },
   async criarOperacao(body: { chave: string; nome: string }): Promise<MatrizAlcada> {
     const { data } = await api.post<MatrizAlcada>('/api/v1/alcadas/operacoes', body);
+    return data;
+  },
+  async salvarOperacao(
+    chave: string,
+    body: { aprovacoesNecessarias?: number; nome?: string; ativo?: boolean },
+  ): Promise<MatrizAlcada> {
+    const { data } = await api.put<MatrizAlcada>(`/api/v1/alcadas/operacoes/${chave}`, body);
     return data;
   },
 };

@@ -77,7 +77,12 @@ export class AlcadaService {
     ]);
     return {
       papeis: this.PAPEIS,
-      operacoes: operacoes.map((o) => ({ chave: o.chave, nome: o.nome, ativo: o.ativo })),
+      operacoes: operacoes.map((o) => ({
+        chave: o.chave,
+        nome: o.nome,
+        ativo: o.ativo,
+        aprovacoesNecessarias: o.aprovacoesNecessarias,
+      })),
       celulas: alcadas.map((a) => ({
         papel: a.papel,
         tipoOperacao: a.tipoOperacao,
@@ -111,6 +116,21 @@ export class AlcadaService {
       where: { papel_tipoOperacao: { papel: dto.papel as any, tipoOperacao: dto.tipoOperacao } },
       update: data,
       create: { papel: dto.papel as any, tipoOperacao: dto.tipoOperacao, ...data },
+    });
+    return this.matriz();
+  }
+
+  // Admin ajusta o nº de aprovações exigidas (princípio dos 4 olhos — Doc 2 §7.9-A).
+  async salvarOperacao(chave: string, dto: { aprovacoesNecessarias?: number; nome?: string; ativo?: boolean }) {
+    const op = await this.prisma.db.tipoOperacaoAlcada.findUnique({ where: { chave } });
+    if (!op) throw new NotFoundException({ erro: 'operacao_inexistente' });
+    await this.prisma.db.tipoOperacaoAlcada.update({
+      where: { chave },
+      data: {
+        aprovacoesNecessarias: dto.aprovacoesNecessarias,
+        nome: dto.nome,
+        ativo: dto.ativo,
+      },
     });
     return this.matriz();
   }

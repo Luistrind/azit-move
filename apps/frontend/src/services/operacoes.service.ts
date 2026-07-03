@@ -5,6 +5,7 @@ export interface Acordo {
   id: string;
   status: string;
   contratoNumero: string;
+  titularId: string;
   titular: string;
   valorTotalRenegociado: number;
   valorEntrada: number;
@@ -23,9 +24,26 @@ export interface Novacao {
   dataEfetivacao: string | null;
 }
 
-export interface Elegivel {
-  parcelas: { id: string; display: string; dataVencimento: string; valorNominal: number }[];
+export interface ParcelaElegivel {
+  id: string;
+  display: string;
+  dataVencimento: string;
+  valorNominal: number;
+}
+
+// Elegíveis da CONTA (renegociação conta-cêntrica — Doc 2 §7.7).
+export interface ElegivelConta {
+  contaId: string;
+  titularId: string;
+  contratos: {
+    contratoId: string;
+    numero: string;
+    descricao: string;
+    valor: number;
+    parcelas: ParcelaElegivel[];
+  }[];
   valorTotal: number;
+  faturasVencidas: number;
 }
 
 export interface SimulacaoQuitacao {
@@ -40,15 +58,20 @@ export const operacoesService = {
     const { data } = await api.get<Acordo[]>('/api/v1/acordos');
     return data;
   },
-  async elegivel(contratoId: string): Promise<Elegivel> {
-    const { data } = await api.get<Elegivel>(`/api/v1/contratos/${contratoId}/renegociacao/elegivel`);
+  async elegivelConta(contaId: string): Promise<ElegivelConta> {
+    const { data } = await api.get<ElegivelConta>(`/api/v1/contas/${contaId}/renegociacao/elegivel`);
     return data;
   },
-  async criarRenegociacao(
-    contratoId: string,
-    body: { valorEntrada: number; numeroParcelasNovas: number; valorParcelaNova: number },
-  ): Promise<{ id: string; nivelAlcada: number | null }> {
-    const { data } = await api.post(`/api/v1/contratos/${contratoId}/renegociacao`, body);
+  async criarRenegociacaoConta(
+    contaId: string,
+    body: {
+      valorEntrada: number;
+      numeroParcelasNovas: number;
+      valorParcelaNova: number;
+      periodicidade?: 'semanal' | 'quinzenal' | 'mensal';
+    },
+  ): Promise<{ id: string; status: string; valorTotalRenegociado: number; contratosAfetados: number }> {
+    const { data } = await api.post(`/api/v1/contas/${contaId}/renegociacao`, body);
     return data;
   },
   async simularEntrada(acordoId: string): Promise<void> {
@@ -83,11 +106,9 @@ export const operacoesService = {
     const { data } = await api.post(`/api/v1/contratos/${contratoId}/sinistro`, { valorIndenizacao });
     return data;
   },
-  // 6.8 — Reajuste IPCA: gera (pendente) -> aprova (alçada) -> aplica nas parcelas
-  // futuras. Aqui encadeado para o operador disparar o ciclo.
+  // 6.8 — Reajuste IPCA: propõe; aprovação e aplicação acontecem via motor de
+  // aprovação (Central de Aprovações — Doc 2 §7.9-A).
   async reajustar(contratoId: string, indicePercentual: number): Promise<void> {
-    const { data } = await api.post<{ id: string }>(`/api/v1/contratos/${contratoId}/reajuste`, { indicePercentual });
-    await api.post(`/api/v1/reajustes/${data.id}/aprovar`);
-    await api.post(`/api/v1/reajustes/${data.id}/aplicar`);
+    await api.post(`/api/v1/contratos/${contratoId}/reajuste`, { indicePercentual });
   },
 };

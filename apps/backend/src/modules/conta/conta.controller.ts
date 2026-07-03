@@ -28,6 +28,12 @@ export class ContaController {
     return this.contaService.criar(dto);
   }
 
+  // Carteira consolidada por titular/conta (declarada antes de :id para não colidir).
+  @Get('carteira')
+  carteira() {
+    return this.contaService.carteira();
+  }
+
   // Conta de um titular (1:1). Declarada antes de :id para não colidir.
   @Get('por-titular/:titularId')
   buscarPorTitular(@Param('titularId') titularId: string) {

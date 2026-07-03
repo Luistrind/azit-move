@@ -43,21 +43,22 @@ export class OperacoesController {
     @InjectQueue(QUEUE_NAMES.EFETIVAR_ACORDO) private readonly filaAcordo: Queue,
   ) {}
 
-  // --- Renegociação (6.2–6.5) ---
-  @Get('contratos/:id/renegociacao/elegivel')
-  elegivel(@Param('id') id: string) {
-    return this.renegociacao.elegiveis(id);
+  // --- Renegociação (6.2–6.5) — CONTA-cêntrica (Doc 2 §7.7): a inadimplência é da
+  // conta; o acordo cobre as parcelas em atraso de todos os contratos do titular.
+  @Get('contas/:id/renegociacao/elegivel')
+  elegivelConta(@Param('id') id: string) {
+    return this.renegociacao.elegiveisConta(id);
   }
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
-  @Post('contratos/:id/renegociacao')
+  @Post('contas/:id/renegociacao')
   @HttpCode(201)
   criarRenegociacao(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(criarRenegociacaoSchema)) dto: CriarRenegociacaoBody,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.renegociacao.criar(id, dto, user.id);
+    return this.renegociacao.criarPorConta(id, dto, user.id);
   }
 
   @Get('acordos')
@@ -84,7 +85,8 @@ export class OperacoesController {
     return this.novacao.listar();
   }
 
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
+  // Propõe a novação — a execução acontece na aprovação (motor §7.9-A, 2 aprovações).
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
   @Post('contratos/:id/novacao')
   @HttpCode(201)
   novar(
@@ -92,7 +94,7 @@ export class OperacoesController {
     @Body(new ZodValidationPipe(novacaoSchema)) dto: NovacaoBody,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.novacao.novar(id, dto, user.id);
+    return this.novacao.solicitar(id, dto, user.id);
   }
 
   // --- Quitação antecipada (6.7) ---
@@ -132,27 +134,15 @@ export class OperacoesController {
     return this.reajuste.listar(id);
   }
 
+  // Propõe o reajuste — aprovação e aplicação acontecem via motor (§7.9-A).
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('contratos/:id/reajuste')
   @HttpCode(201)
   gerarReajuste(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(reajusteSchema)) dto: ReajusteBody,
+    @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.reajuste.gerar(id, dto.indicePercentual);
-  }
-
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
-  @Post('reajustes/:id/aprovar')
-  @HttpCode(200)
-  aprovarReajuste(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
-    return this.reajuste.aprovar(id, user.id);
-  }
-
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
-  @Post('reajustes/:id/aplicar')
-  @HttpCode(200)
-  aplicarReajuste(@Param('id') id: string) {
-    return this.reajuste.aplicar(id);
+    return this.reajuste.gerar(id, dto.indicePercentual, user.id);
   }
 }

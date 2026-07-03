@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Param, Post } from '@nestjs/common';
 import { RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
@@ -9,11 +9,10 @@ import {
   OriginarCreditoDto,
   simularCreditoSchema,
   SimularCreditoDto,
-  reprovarCreditoSchema,
-  ReprovarCreditoDto,
 } from './dto/credito.dto';
 
-// Crédito de manutenção (crédito avulso para cliente já ativo) — Doc 2 §4.7-A.
+// Crédito avulso para cliente já ativo (Doc 2 §4.7-A). A decisão acontece na
+// Central de Aprovações (motor §7.9-A) — aqui só simulação e originação.
 @Controller()
 export class CreditoController {
   constructor(private readonly credito: CreditoService) {}
@@ -25,7 +24,7 @@ export class CreditoController {
     return this.credito.simular(dto);
   }
 
-  // Operador origina o crédito para um titular existente → aguardando alçada.
+  // Origina o crédito para um titular existente → solicitação no motor de aprovação.
   @Roles(RoleUsuario.OPERADOR, RoleUsuario.APROVADOR, RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
   @Post('titulares/:id/creditos')
   @HttpCode(201)
@@ -35,28 +34,5 @@ export class CreditoController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.credito.originar(titularId, dto, user.id);
-  }
-
-  // Fila de aprovação.
-  @Get('creditos/pendentes')
-  pendentes() {
-    return this.credito.pendentes();
-  }
-
-  // Aprovação pela alçada.
-  @Roles(RoleUsuario.APROVADOR, RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
-  @Post('creditos/:id/aprovar')
-  aprovar(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
-    return this.credito.aprovar(id, user.id);
-  }
-
-  @Roles(RoleUsuario.APROVADOR, RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
-  @Post('creditos/:id/reprovar')
-  reprovar(
-    @Param('id') id: string,
-    @Body(new ZodValidationPipe(reprovarCreditoSchema)) dto: ReprovarCreditoDto,
-    @CurrentUser() user: UsuarioAutenticado,
-  ) {
-    return this.credito.reprovar(id, user.id, dto);
   }
 }

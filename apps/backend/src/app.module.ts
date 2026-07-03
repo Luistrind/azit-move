@@ -15,6 +15,7 @@ import { AsaasModule } from './modules/asaas/asaas.module';
 import { CobrancaModule } from './modules/cobranca/cobranca.module';
 import { ReguaModule } from './modules/regua/regua.module';
 import { AlcadaModule } from './modules/alcada/alcada.module';
+import { AprovacaoModule } from './modules/aprovacao/aprovacao.module';
 import { CreditoModule } from './modules/credito/credito.module';
 import { OperacoesModule } from './modules/operacoes/operacoes.module';
 import { OriginacaoModule } from './modules/originacao/originacao.module';
@@ -43,6 +44,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     CobrancaModule,
     ReguaModule,
     AlcadaModule,
+    AprovacaoModule,
     CreditoModule,
     OperacoesModule,
     OriginacaoModule,

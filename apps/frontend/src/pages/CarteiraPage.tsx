@@ -2,8 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
 import { contratoService } from '../services/contrato.service';
-import { StatusBadge } from '../components/StatusBadge';
-import { CONTRATO_STATUS_COLORS } from '../config/statusColors';
+import { contaService } from '../services/conta.service';
 
 function Kpi({ label, valor }: { label: string; valor: string }) {
   return (
@@ -21,12 +20,21 @@ function Kpi({ label, valor }: { label: string; valor: string }) {
   );
 }
 
+const SITUACAO: Record<string, { rotulo: string; bg: string; fg: string }> = {
+  em_dia: { rotulo: 'Em dia', bg: '#eafaf1', fg: '#1f9d5b' },
+  em_atraso: { rotulo: 'Em atraso', bg: '#fef6e9', fg: '#c98a0a' },
+  bloqueada: { rotulo: 'Bloqueada', bg: '#fdeceb', fg: '#e0413c' },
+};
+
+// Carteira TITULAR-cêntrica (Doc 2: arquitetura centrada no titular): a lista é de
+// pessoas com posição consolidada; o contrato é o drill-down (ficha do titular).
 export function CarteiraPage() {
   const navigate = useNavigate();
   const kpis = useQuery({ queryKey: ['contratos', 'kpis'], queryFn: () => contratoService.kpis() });
-  const lista = useQuery({ queryKey: ['contratos', 'lista'], queryFn: () => contratoService.listar({ limit: 50 }) });
+  const carteira = useQuery({ queryKey: ['carteira-contas'], queryFn: () => contaService.carteira() });
 
   const k = kpis.data;
+  const lista = carteira.data ?? [];
 
   return (
     <div className="flex flex-col gap-[18px]">
@@ -38,7 +46,7 @@ export function CarteiraPage() {
         <Kpi label="Recebido na semana" valor={k ? formatCurrency(k.recebidoNaSemana) : '—'} />
       </div>
 
-      {/* Tabela de contratos */}
+      {/* Posição consolidada por titular */}
       <div
         className="rounded-card overflow-hidden"
         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
@@ -46,57 +54,65 @@ export function CarteiraPage() {
         <table className="w-full border-collapse text-[12.5px]">
           <thead>
             <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Contrato</th>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Cliente</th>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Ativo</th>
+              <th className="px-[18px] py-[12px] text-left font-semibold">Titular</th>
+              <th className="px-[18px] py-[12px] text-left font-semibold">CPF/CNPJ</th>
+              <th className="px-[18px] py-[12px] text-center font-semibold">Contratos</th>
               <th className="px-[18px] py-[12px] text-right font-semibold">Saldo devedor</th>
-              <th className="px-[18px] py-[12px] text-center font-semibold">Parcelas</th>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Status</th>
+              <th className="px-[18px] py-[12px] text-right font-semibold">Em atraso</th>
+              <th className="px-[18px] py-[12px] text-center font-semibold">Faturas vencidas</th>
+              <th className="px-[18px] py-[12px] text-left font-semibold">Situação</th>
             </tr>
           </thead>
           <tbody>
-            {lista.isLoading && (
+            {carteira.isLoading && (
               <tr>
-                <td colSpan={6} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>
+                <td colSpan={7} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>
                   Carregando…
                 </td>
               </tr>
             )}
-            {lista.data?.data.length === 0 && (
+            {!carteira.isLoading && lista.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>
-                  Nenhum contrato na carteira.
+                <td colSpan={7} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>
+                  Nenhum titular com contratos na carteira.
                 </td>
               </tr>
             )}
-            {lista.data?.data.map((c) => (
-              <tr
-                key={c.id}
-                onClick={() => navigate(`/contratos/${c.id}`)}
-                className="cursor-pointer transition-colors hover:bg-[var(--surface-muted)]"
-                style={{ borderBottom: '1px solid var(--border-light)' }}
-              >
-                <td className="px-[18px] py-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>
-                  {c.numero}
-                </td>
-                <td className="px-[18px] py-[13px]" style={{ color: 'var(--text-body)' }}>
-                  {c.titular.nome}
-                </td>
-                <td className="px-[18px] py-[13px]" style={{ color: 'var(--text-body)' }}>
-                  {c.ativo.modelo ?? '—'}
-                  {c.ativo.placa ? ` · ${c.ativo.placa}` : ''}
-                </td>
-                <td className="px-[18px] py-[13px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>
-                  {formatCurrency(c.saldoDevedorAtual)}
-                </td>
-                <td className="px-[18px] py-[13px] text-center tabular-nums" style={{ color: 'var(--text-body)' }}>
-                  {c.parcelasPagas}/{c.numeroParcelas}
-                </td>
-                <td className="px-[18px] py-[13px]">
-                  <StatusBadge label={c.status} colors={CONTRATO_STATUS_COLORS} />
-                </td>
-              </tr>
-            ))}
+            {lista.map((c) => {
+              const s = SITUACAO[c.situacao] ?? SITUACAO.em_dia;
+              return (
+                <tr
+                  key={c.contaId}
+                  onClick={() => navigate(`/titulares/${c.titularId}`)}
+                  className="cursor-pointer transition-colors hover:bg-[var(--surface-muted)]"
+                  style={{ borderBottom: '1px solid var(--border-light)' }}
+                >
+                  <td className="px-[18px] py-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    {c.titular}
+                  </td>
+                  <td className="px-[18px] py-[13px] tabular-nums" style={{ color: 'var(--text-body)' }}>
+                    {c.cpfCnpj}
+                  </td>
+                  <td className="px-[18px] py-[13px] text-center tabular-nums" style={{ color: 'var(--text-body)' }}>
+                    {c.contratosAtivos}
+                  </td>
+                  <td className="px-[18px] py-[13px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>
+                    {formatCurrency(c.saldoDevedor)}
+                  </td>
+                  <td className="px-[18px] py-[13px] text-right tabular-nums" style={{ color: c.valorEmAtraso > 0 ? '#c0392b' : 'var(--text-body)' }}>
+                    {c.valorEmAtraso > 0 ? formatCurrency(c.valorEmAtraso) : '—'}
+                  </td>
+                  <td className="px-[18px] py-[13px] text-center tabular-nums" style={{ color: c.faturasVencidas > 0 ? '#c0392b' : 'var(--text-body)' }}>
+                    {c.faturasVencidas || '—'}
+                  </td>
+                  <td className="px-[18px] py-[13px]">
+                    <span className="rounded-[6px] px-[8px] py-[3px] text-[11px] font-bold" style={{ background: s.bg, color: s.fg }}>
+                      {s.rotulo}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

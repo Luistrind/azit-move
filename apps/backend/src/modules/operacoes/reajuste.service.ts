@@ -2,7 +2,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  ForbiddenException,
+  OnModuleInit,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -10,34 +10,56 @@ import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
 import { centavosParaReaisString } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
-import { AlcadaService } from '../alcada/alcada.service';
+import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
 
 const reais = (c: number) => centavosParaReaisString(c);
 const cent = (d: Prisma.Decimal | null): number =>
   d !== null ? Math.round(Number(d.toString()) * 100) : 0;
 
-// 6.8 — Reajuste anual por IPCA (Doc 2 §7.5, gatilho 10). Gera evento PENDENTE,
-// que passa por aprovação humana (alçada) e só então atualiza as parcelas FUTURAS.
+// 6.8 — Reajuste anual por IPCA (Doc 2 §7.5, gatilho 10). Gera evento PENDENTE +
+// solicitação no motor de aprovação (§7.9-A); a efetivação aprova E aplica nas
+// parcelas FUTURAS.
 @Injectable()
-export class ReajusteService {
+export class ReajusteService implements OnModuleInit {
   private readonly logger = new Logger(ReajusteService.name);
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly alcada: AlcadaService,
+    private readonly aprovacao: AprovacaoService,
     @InjectQueue(QUEUE_NAMES.NOTIFICAR_CLIENTE) private readonly filaNotificar: Queue,
   ) {}
+
+  onModuleInit() {
+    this.aprovacao.registrarEfetivador('reajuste', {
+      aprovada: async (a) => {
+        await this.aprovar(a.referenciaId, a.decisorId);
+        const r = await this.aplicar(a.referenciaId);
+        return `Reajuste aplicado em ${r.parcelasAtualizadas} parcela(s) futura(s).`;
+      },
+      reprovada: async (a) => {
+        await this.prisma.db.reajusteIPCA.updateMany({
+          where: { id: a.referenciaId, status: 'PENDENTE' },
+          data: { status: 'CANCELADO' },
+        });
+      },
+    });
+  }
 
   private hojeUTC(): Date {
     return new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
   }
 
-  // Gera o evento de reajuste (PENDENTE) — não aplica ainda.
-  async gerar(contratoId: string, indicePercentual: number) {
+  // Gera o evento de reajuste (PENDENTE) + solicitação de aprovação.
+  async gerar(contratoId: string, indicePercentual: number, solicitanteId: string) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id: contratoId },
-      select: { id: true, valorParcelaInicial: true },
+      select: {
+        id: true,
+        numero: true,
+        valorParcelaInicial: true,
+        conta: { select: { titularId: true } },
+      },
     });
     if (!contrato) {
       throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Contrato não encontrado' });
@@ -53,11 +75,20 @@ export class ReajusteService {
         valorParcelaNovo: reais(novo),
       },
     });
-    return { id: reajuste.id, status: 'pendente', valorParcelaAnterior: anterior, valorParcelaNovo: novo };
+    await this.aprovacao.criar({
+      tipoOperacao: 'reajuste',
+      referenciaTipo: 'reajuste',
+      referenciaId: reajuste.id,
+      titularId: contrato.conta.titularId,
+      valorCentavos: novo,
+      resumo: `Reajuste IPCA ${indicePercentual.toFixed(2)}% no contrato ${contrato.numero} — parcela R$ ${reais(anterior)} → R$ ${reais(novo)}`,
+      solicitanteId,
+    });
+    return { id: reajuste.id, status: 'aguardando_aprovacao', valorParcelaAnterior: anterior, valorParcelaNovo: novo };
   }
 
-  // Aprovação humana via alçada (tipo reajuste).
-  async aprovar(reajusteId: string, aprovadorId: string) {
+  // Marca aprovado (chamado pela efetivação do motor — a alçada já foi verificada lá).
+  private async aprovar(reajusteId: string, aprovadorId: string) {
     const reajuste = await this.prisma.db.reajusteIPCA.findFirst({ where: { id: reajusteId } });
     if (!reajuste) {
       throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Reajuste não encontrado' });
@@ -65,15 +96,11 @@ export class ReajusteService {
     if (reajuste.status !== 'PENDENTE') {
       throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: 'Reajuste não está pendente' });
     }
-    const alcada = await this.alcada.verificar(aprovadorId, 'reajuste', cent(reajuste.valorParcelaNovo));
-    if (!alcada.aprovado) {
-      throw new ForbiddenException({ erro: 'fora_da_alcada', mensagem: alcada.motivo });
-    }
     await this.prisma.db.reajusteIPCA.update({
       where: { id: reajusteId },
       data: { status: 'APROVADO', aprovadoPor: aprovadorId, dataAprovacao: new Date() },
     });
-    return { resultado: 'aprovado', limiteAlcada: alcada.limiteMaximo };
+    return { resultado: 'aprovado' };
   }
 
   // Aplica o reajuste nas parcelas FUTURAS (status null, vencimento > hoje) e

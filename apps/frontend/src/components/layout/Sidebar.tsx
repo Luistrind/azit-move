@@ -1,6 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../stores/authStore';
 import { authService } from '../../services/auth.service';
+import { aprovacaoService } from '../../services/aprovacao.service';
 
 // Sidebar 236px navy — Doc 3 §7.2. Logo (fallback bloco âmbar "a" até o SVG oficial),
 // nav e footer de usuário. Os itens reais entram conforme as telas dos blocos seguintes.
@@ -33,6 +35,13 @@ export function Sidebar() {
   const navigate = useNavigate();
   const usuario = useAuthStore((s) => s.usuario);
   const limpar = useAuthStore((s) => s.limpar);
+  // Badge de aprovações pendentes (atualiza a cada 60s).
+  const contagem = useQuery({
+    queryKey: ['aprovacoes-contagem'],
+    queryFn: () => aprovacaoService.contagem(),
+    refetchInterval: 60_000,
+  });
+  const pendentes = contagem.data ?? 0;
 
   async function onLogout() {
     await authService.logout();
@@ -81,7 +90,15 @@ export function Sidebar() {
                 : { color: 'var(--navy-text)', fontWeight: 500 }
             }
           >
-            {item.label}
+            <span className="flex-1">{item.label}</span>
+            {item.to === '/aprovacoes' && pendentes > 0 && (
+              <span
+                className="rounded-full px-[7px] py-[1px] text-[10.5px] font-bold"
+                style={{ background: 'var(--accent)', color: 'var(--navy)' }}
+              >
+                {pendentes}
+              </span>
+            )}
           </NavLink>
         ))}
 

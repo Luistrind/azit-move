@@ -6,10 +6,14 @@ import { titularService } from '../services/titular.service';
 import { faturaService } from '../services/fatura.service';
 import { originacaoService } from '../services/originacao.service';
 import { creditoService } from '../services/credito.service';
+import { produtoService } from '../services/produto.service';
+import { reguaService } from '../services/regua.service';
 import { reaisParaCentavos } from '../lib/valor';
-import { mensagemErro } from '../lib/permissoes';
+import { mensagemErro, usePodeRole, ROLE_OPERACAO } from '../lib/permissoes';
 import { StatusBadge } from '../components/StatusBadge';
 import { Modal } from '../components/Modal';
+import { RenegociacaoWizard } from '../components/RenegociacaoWizard';
+import { toast } from '../components/Toast';
 import { CONTRATO_STATUS_COLORS } from '../config/statusColors';
 
 const card = { background: 'var(--surface)', border: '1px solid var(--border)' };
@@ -66,14 +70,31 @@ export function TitularDetalhePage() {
   const [faturaSel, setFaturaSel] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
 
-  // Contratar crédito de manutenção (Doc 2 §4.7-A).
+  // Hub de ações do titular: contratar crédito, renegociar, desbloquear.
+  const pode = usePodeRole();
+  const [renegOpen, setRenegOpen] = useState(false);
+  const [desbloqueando, setDesbloqueando] = useState(false);
+
+  // Contratar crédito avulso (Doc 2 §4.7-A) — produto do catálogo + finalidade livre.
   const [creditoOpen, setCreditoOpen] = useState(false);
   const [creditoBusy, setCreditoBusy] = useState(false);
-  const [cDescricao, setCDescricao] = useState('Crédito de manutenção');
+  const [cProdutoId, setCProdutoId] = useState('');
+  const [cFinalidade, setCFinalidade] = useState('');
   const [cValor, setCValor] = useState('');
   const [cParcelas, setCParcelas] = useState('12');
   const [cEntrada, setCEntrada] = useState('');
   const [cPeriodicidade, setCPeriodicidade] = useState<'semanal' | 'quinzenal' | 'mensal'>('mensal');
+
+  const produtos = useQuery({
+    queryKey: ['produtos'],
+    queryFn: () => produtoService.listar(),
+    enabled: creditoOpen,
+  });
+  // Produtos de crédito de valor variável (não âncora, parcelados, ativos).
+  const produtosCredito = (produtos.data ?? []).filter(
+    (p) => p.ativo && !p.ancora && p.natureza === 'parcelado',
+  );
+  const produtoSel = produtosCredito.find((p) => p.id === cProdutoId);
 
   const cValorCent = reaisParaCentavos(cValor);
   const cEntradaCent = reaisParaCentavos(cEntrada);
@@ -87,8 +108,9 @@ export function TitularDetalhePage() {
     if (cValorCent <= 0 || cNumParcelas <= 0) return;
     setCreditoBusy(true);
     try {
+      const nomeProduto = produtoSel?.nome ?? 'Crédito avulso';
       const r = await creditoService.originar(id, {
-        descricao: cDescricao.trim() || 'Crédito de manutenção',
+        descricao: cFinalidade.trim() ? `${nomeProduto} — ${cFinalidade.trim()}` : nomeProduto,
         valor: cValorCent,
         numeroParcelas: cNumParcelas,
         valorEntrada: cEntradaCent,
@@ -97,12 +119,27 @@ export function TitularDetalhePage() {
       setCreditoOpen(false);
       setCValor('');
       setCEntrada('');
+      setCFinalidade('');
       await recarregar();
-      window.alert(`Crédito ${r.numero} enviado para aprovação (alçada).`);
+      await queryClient.invalidateQueries({ queryKey: ['aprovacoes-contagem'] });
+      toast.sucesso(`Crédito ${r.numero} enviado para a Central de Aprovações.`);
     } catch (e) {
-      window.alert(mensagemErro(e));
+      toast.erro(mensagemErro(e));
     } finally {
       setCreditoBusy(false);
+    }
+  }
+
+  async function desbloquear(contratoId: string) {
+    setDesbloqueando(true);
+    try {
+      await reguaService.desbloquear(contratoId);
+      await recarregar();
+      toast.sucesso('Contrato desbloqueado.');
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+    } finally {
+      setDesbloqueando(false);
     }
   }
 
@@ -146,14 +183,57 @@ export function TitularDetalhePage() {
 
   return (
     <div className="flex flex-col gap-[16px] p-[24px]">
-      {/* Header */}
-      <div className="flex items-center gap-[12px]">
+      {/* Header + hub de ações contextuais (a ficha do titular é o hub de operações) */}
+      <div className="flex flex-wrap items-center gap-[12px]">
         <button onClick={() => navigate('/titulares')} className="rounded-[8px] px-[10px] py-[6px] text-[12px] font-semibold" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>← Titulares</button>
         <div>
           <div className="font-display text-[18px] font-bold">{t.nome}</div>
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>{t.tipoPessoa.toUpperCase()} · {t.cpfCnpj} · conta {det.data.conta?.status ?? '—'}</div>
         </div>
+        <div className="flex-1" />
+        <div className="flex items-center gap-[8px]">
+          <button
+            onClick={() => setCreditoOpen(true)}
+            className="h-[32px] rounded-[9px] px-[14px] text-[12px] font-semibold"
+            style={{ background: 'var(--navy)', color: '#fff' }}
+          >
+            + Contratar crédito
+          </button>
+          {rf.valorEmAtraso > 0 && contaId && (
+            <button
+              onClick={() => setRenegOpen(true)}
+              className="h-[32px] rounded-[9px] px-[14px] text-[12px] font-semibold"
+              style={{ background: 'var(--accent)', color: '#fff' }}
+            >
+              Renegociar atraso
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Banner de bloqueio (D+3 — desbloqueio sempre manual, Doc 2 Regra 6) */}
+      {contratosCredito.some((c) => c.status.toLowerCase() === 'bloqueado') && (
+        <div className="flex flex-wrap items-center gap-[10px] rounded-[12px] px-[16px] py-[12px]" style={{ background: '#fdeceb', border: '1px solid #f5c6c3' }}>
+          <span className="text-[16px]">🔒</span>
+          <div className="flex-1 text-[12.5px]" style={{ color: '#c0392b' }}>
+            <b>Conta bloqueada</b> — bloqueio D+3 por inadimplência. O desbloqueio é sempre manual.
+          </div>
+          {pode(ROLE_OPERACAO) &&
+            contratosCredito
+              .filter((c) => c.status.toLowerCase() === 'bloqueado')
+              .map((c) => (
+                <button
+                  key={c.id}
+                  disabled={desbloqueando}
+                  onClick={() => desbloquear(c.id)}
+                  className="h-[30px] rounded-[8px] px-[12px] text-[12px] font-semibold disabled:opacity-50"
+                  style={{ background: '#c0392b', color: '#fff' }}
+                >
+                  Desbloquear {c.numero}
+                </button>
+              ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-[16px] lg:grid-cols-2">
         {/* Bloco 1 — Dados pessoais + documentos */}
@@ -203,16 +283,7 @@ export function TitularDetalhePage() {
 
       {/* Bloco 3 — Contratos */}
       <div className="rounded-card p-[18px]" style={card}>
-        <div className="mb-[12px] flex items-center justify-between">
-          <span className="font-display text-[13px] font-bold">Contratos ({contratosCredito.length})</span>
-          <button
-            onClick={() => setCreditoOpen(true)}
-            className="h-[30px] rounded-[8px] px-[12px] text-[12px] font-semibold"
-            style={{ background: 'var(--navy)', color: '#fff' }}
-          >
-            + Contratar crédito
-          </button>
-        </div>
+        <div className="mb-[12px] font-display text-[13px] font-bold">Contratos ({contratosCredito.length})</div>
         {contratosCredito.length === 0 ? (
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum contrato vinculado.</div>
         ) : (
@@ -345,13 +416,33 @@ export function TitularDetalhePage() {
         )}
       </Modal>
 
-      {/* Contratar crédito de manutenção — vai para a fila de aprovação (alçada). */}
-      <Modal open={creditoOpen} onClose={() => setCreditoOpen(false)} title="Contratar crédito de manutenção">
+      {/* Contratar crédito avulso — produto do catálogo + finalidade; decisão na Central. */}
+      <Modal open={creditoOpen} onClose={() => setCreditoOpen(false)} title="Contratar crédito">
         <div className="flex flex-col gap-[12px]">
-          <label className="flex flex-col gap-[4px] text-[12px]">
-            <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Descrição</span>
-            <input value={cDescricao} onChange={(e) => setCDescricao(e.target.value)} className="h-[34px] rounded-[8px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
-          </label>
+          <div className="grid grid-cols-2 gap-[10px]">
+            <label className="flex flex-col gap-[4px] text-[12px]">
+              <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Produto</span>
+              <select
+                value={cProdutoId}
+                onChange={(e) => {
+                  setCProdutoId(e.target.value);
+                  const p = produtosCredito.find((x) => x.id === e.target.value);
+                  if (p?.valorPadrao) setCValor((p.valorPadrao / 100).toFixed(2).replace('.', ','));
+                }}
+                className="h-[34px] rounded-[8px] px-[10px] text-[13px]"
+                style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
+              >
+                <option value="">Crédito avulso (genérico)</option>
+                {produtosCredito.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nome}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-[4px] text-[12px]">
+              <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Finalidade (opcional)</span>
+              <input value={cFinalidade} onChange={(e) => setCFinalidade(e.target.value)} placeholder="ex: manutenção do veículo" className="h-[34px] rounded-[8px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+            </label>
+          </div>
           <div className="grid grid-cols-2 gap-[10px]">
             <label className="flex flex-col gap-[4px] text-[12px]">
               <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Valor do crédito (R$)</span>
@@ -388,6 +479,11 @@ export function TitularDetalhePage() {
           </button>
         </div>
       </Modal>
+
+      {/* Wizard de renegociação conta-cêntrica (Doc 2 §7.7) */}
+      {renegOpen && contaId && (
+        <RenegociacaoWizard contaId={contaId} titular={t.nome} onClose={() => { setRenegOpen(false); void recarregar(); }} />
+      )}
     </div>
   );
 }

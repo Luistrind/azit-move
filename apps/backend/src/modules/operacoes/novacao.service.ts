@@ -2,14 +2,14 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  ForbiddenException,
+  OnModuleInit,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, StatusContratoCredito } from '@prisma/client';
 import { centavosParaReaisString } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { ContratoService } from '../contrato/contrato.service';
-import { AlcadaService } from '../alcada/alcada.service';
+import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { NovacaoBody } from './dto/novacao.dto';
 
 const reais = (c: number) => centavosParaReaisString(c);
@@ -25,45 +25,73 @@ const TERMINAIS: StatusContratoCredito[] = [
 ];
 
 // 6.6 — Novação (recuperação RADICAL): liquida o ContratoCredito origem inteiro
-// (LIQUIDADO_POR_NOVACAO) e gera um ContratoCredito novo completo. Registro Novacao
-// vincula os dois. Distinto do Acordo (que dilui parcelas sem liquidar).
+// (LIQUIDADO_POR_NOVACAO) e gera um ContratoCredito novo completo. Passa pelo motor
+// de aprovação (Doc 2 §7.9-A) — operação mais sensível: exige 2 aprovações (config).
+// Os termos ficam no payload da solicitação e são executados na efetivação.
 @Injectable()
-export class NovacaoService {
+export class NovacaoService implements OnModuleInit {
   private readonly logger = new Logger(NovacaoService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly contrato: ContratoService,
-    private readonly alcada: AlcadaService,
+    private readonly aprovacao: AprovacaoService,
   ) {}
 
-  async novar(contratoOrigemId: string, dto: NovacaoBody, operadorId: string) {
-    const origem = await this.prisma.db.contratoCredito.findFirst({
-      where: { id: contratoOrigemId },
-      select: { id: true, numero: true, contaId: true, ativoId: true, status: true },
+  onModuleInit() {
+    this.aprovacao.registrarEfetivador('novacao', {
+      aprovada: async (a) => {
+        const payload = a.payload as NovacaoBody & {
+          dataAssinatura?: string;
+          dataPrimeiraParcela: string;
+        };
+        const r = await this.executar(
+          a.referenciaId,
+          {
+            ...payload,
+            dataAssinatura: payload.dataAssinatura ? new Date(payload.dataAssinatura) : undefined,
+            dataPrimeiraParcela: new Date(payload.dataPrimeiraParcela),
+          } as NovacaoBody,
+          a.decisorId,
+        );
+        return `Novação efetivada: contrato ${r.contratoOrigem} liquidado → novo ${r.contratoNovo}.`;
+      },
     });
-    if (!origem) {
-      throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Contrato não encontrado' });
-    }
-    if (TERMINAIS.includes(origem.status)) {
-      throw new UnprocessableEntityException({
-        erro: 'estado_invalido',
-        mensagem: `Contrato em estado terminal (${origem.status}) não pode ser novado`,
-      });
-    }
+  }
 
-    // Saldo a liquidar = parcelas em aberto não cobertas por acordo.
-    const saldo = await this.prisma.db.parcela.aggregate({
-      where: { contratoId: origem.id, status: null, acordoId: null },
-      _sum: { valorNominal: true },
+  // Propõe a novação: valida e abre a solicitação (termos no payload). Nada é
+  // liquidado aqui — propor e aprovar são atos distintos (§7.9-A).
+  async solicitar(contratoOrigemId: string, dto: NovacaoBody, operadorId: string) {
+    const origem = await this.validarOrigem(contratoOrigemId);
+    const saldoLiquidado = await this.saldoALiquidar(origem.id);
+
+    const conta = await this.prisma.db.conta.findFirst({
+      where: { id: origem.contaId },
+      select: { titularId: true },
     });
-    const saldoLiquidado = cent(saldo._sum.valorNominal);
 
-    // Alçada (operação mais sensível que o acordo).
-    const alcada = await this.alcada.verificar(operadorId, 'novacao', saldoLiquidado);
-    if (!alcada.aprovado) {
-      throw new ForbiddenException({ erro: 'fora_da_alcada', mensagem: alcada.motivo });
-    }
+    await this.aprovacao.criar({
+      tipoOperacao: 'novacao',
+      referenciaTipo: 'contrato_credito',
+      referenciaId: origem.id,
+      titularId: conta?.titularId,
+      valorCentavos: saldoLiquidado,
+      resumo: `Novação do contrato ${origem.numero} — novo plano de ${dto.numeroParcelas}× R$ ${reais(dto.valorParcelaInicial)}`,
+      payload: dto,
+      solicitanteId: operadorId,
+    });
+
+    return {
+      contratoOrigem: origem.numero,
+      status: 'aguardando_aprovacao',
+      saldoLiquidado,
+    };
+  }
+
+  // Execução (chamada pelo motor ao completar as aprovações).
+  private async executar(contratoOrigemId: string, dto: NovacaoBody, operadorId: string) {
+    const origem = await this.validarOrigem(contratoOrigemId);
+    const saldoLiquidado = await this.saldoALiquidar(origem.id);
 
     // 1. Liquida o contrato origem (terminal). Feito ANTES de criar o novo para
     //    liberar o ativo na regra "1 ativo = 1 contrato ATIVO".
@@ -111,6 +139,32 @@ export class NovacaoService {
       contratoNovoId: novo.id,
       saldoLiquidado,
     };
+  }
+
+  private async validarOrigem(contratoOrigemId: string) {
+    const origem = await this.prisma.db.contratoCredito.findFirst({
+      where: { id: contratoOrigemId },
+      select: { id: true, numero: true, contaId: true, ativoId: true, status: true },
+    });
+    if (!origem) {
+      throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Contrato não encontrado' });
+    }
+    if (TERMINAIS.includes(origem.status)) {
+      throw new UnprocessableEntityException({
+        erro: 'estado_invalido',
+        mensagem: `Contrato em estado terminal (${origem.status}) não pode ser novado`,
+      });
+    }
+    return origem;
+  }
+
+  // Saldo a liquidar = parcelas em aberto não cobertas por acordo.
+  private async saldoALiquidar(contratoId: string): Promise<number> {
+    const saldo = await this.prisma.db.parcela.aggregate({
+      where: { contratoId, status: null, acordoId: null },
+      _sum: { valorNominal: true },
+    });
+    return cent(saldo._sum.valorNominal);
   }
 
   async listar() {

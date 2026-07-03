@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
 import { RoleUsuario } from '@prisma/client';
 import { z } from 'zod';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -19,6 +19,13 @@ const criarOperacaoSchema = z.object({
   nome: z.string().min(2),
 });
 type CriarOperacaoBody = z.infer<typeof criarOperacaoSchema>;
+
+const salvarOperacaoSchema = z.object({
+  aprovacoesNecessarias: z.number().int().min(1).max(5).optional(),
+  nome: z.string().min(2).optional(),
+  ativo: z.boolean().optional(),
+});
+type SalvarOperacaoBody = z.infer<typeof salvarOperacaoSchema>;
 
 @Controller('alcadas')
 export class AlcadaController {
@@ -42,5 +49,15 @@ export class AlcadaController {
   @Post('operacoes')
   criarOperacao(@Body(new ZodValidationPipe(criarOperacaoSchema)) dto: CriarOperacaoBody) {
     return this.alcada.criarOperacao(dto);
+  }
+
+  // Admin ajusta uma operação (nº de aprovações exigidas, nome, ativo).
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  @Put('operacoes/:chave')
+  salvarOperacao(
+    @Param('chave') chave: string,
+    @Body(new ZodValidationPipe(salvarOperacaoSchema)) dto: SalvarOperacaoBody,
+  ) {
+    return this.alcada.salvarOperacao(chave, dto);
   }
 }

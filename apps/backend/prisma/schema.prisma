@@ -216,10 +216,25 @@ enum StatusRecebivel {
 }
 
 enum StatusAcordo {
-  RASCUNHO
+  RASCUNHO // criado, aguardando aprovação pela alçada (Doc 2 §7.9-A)
+  AGUARDANDO_ENTRADA // aprovado; cobrança da entrada gerada, aguardando pagamento
   ATIVO
   QUITADO
   CANCELADO
+}
+
+// Motor de aprovação unificado (Doc 2 §7.9-A).
+enum StatusAprovacao {
+  PENDENTE
+  APROVADA
+  REPROVADA
+  CANCELADA
+}
+
+enum DecisaoAprovacao {
+  APROVADA
+  RECOMENDADA // endosso de quem não tem alçada — escala para o nível acima
+  REPROVADA
 }
 
 enum StatusNovacao {
@@ -342,6 +357,7 @@ model Conta {
   contratosCredito      ContratoCredito[]
   contratosInvestimento ContratoInvestimento[]
   faturas               Fatura[]
+  acordos               Acordo[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -650,7 +666,7 @@ model ItemContratado {
   descricao      String
   natureza       NaturezaProduto
   origem         OrigemItemContratado @default(VENDA)
-  acordoOrigemId String?              @unique
+  acordoOrigemId String? // acordo conta-cêntrico gera um item por contrato (1:N)
   credor         Credor               @default(AZIT)
   credorId       String?
   valor          Decimal              @db.Decimal(12, 2)
@@ -798,36 +814,87 @@ model Recebivel {
 // ============================================================
 
 // Acordo: recuperação BRANDA. Dilui parcelas em atraso; NÃO liquida o contrato.
+// Acordo é da CONTA (Doc 2 §7.7, Decisão 2026-07-03): cobre as parcelas em atraso de
+// TODOS os contratos do titular. Internamente explode em ItemContratado ACORDO por
+// contrato afetado (preserva credor/recebível). contratoId permanece só como legado.
 model Acordo {
   id                    String       @id @default(cuid())
-  contratoId            String
+  contaId               String
+  contratoId            String? // legado (acordos antigos, por contrato)
   operadorId            String
   dataCriacao           DateTime     @default(now())
   dataEfetivacao        DateTime?
   valorTotalRenegociado Decimal      @db.Decimal(12, 2)
   valorEntrada          Decimal      @db.Decimal(12, 2)
   numeroParcelasNovas   Int
-  valorParcelaNova      Decimal      @db.Decimal(12, 2)
+  valorParcelaNova      Decimal       @db.Decimal(12, 2)
+  periodicidade         Periodicidade @default(SEMANAL) // plano do acordo (conta-cêntrico não herda de contrato)
   asaasChargeIdEntrada  String?
-  status                StatusAcordo @default(RASCUNHO)
+  status                StatusAcordo  @default(RASCUNHO)
   observacao            String?
 
-  contrato         ContratoCredito @relation(fields: [contratoId], references: [id])
-  operador         Usuario         @relation(fields: [operadorId], references: [id])
+  conta            Conta            @relation(fields: [contaId], references: [id])
+  contrato         ContratoCredito? @relation(fields: [contratoId], references: [id])
+  operador         Usuario          @relation(fields: [operadorId], references: [id])
   // Parcelas em atraso cobertas (recebem vínculo de acordo; NÃO status RENEGOCIADA)
-  parcelasCobertas Parcela[]       @relation("ParcelasCobertas")
-  // Item de crédito NOVO gerado por este acordo (origem ACORDO)
-  itemGerado       ItemContratado? @relation("ItemGeradoPorAcordo")
+  parcelasCobertas Parcela[]        @relation("ParcelasCobertas")
+  // Itens de crédito NOVOS gerados por este acordo (origem ACORDO) — um por contrato afetado
+  itensGerados     ItemContratado[] @relation("ItemGeradoPorAcordo")
   faturas          Fatura[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  @@index([contaId])
   @@index([contratoId])
   @@index([status])
   @@index([operadorId])
   @@map("acordos")
+}
+
+// Solicitação de aprovação — motor unificado (Doc 2 §7.9-A). Propor e aprovar são
+// atos distintos: qualquer operação sujeita a alçada gera uma solicitação; a decisão
+// (com trilha) fica registrada aqui. Efetivação dispara ao completar N aprovações.
+model Aprovacao {
+  id             String          @id @default(cuid())
+  tipoOperacao   String // FK lógica → TipoOperacaoAlcada.chave
+  referenciaTipo String // contrato_credito | acordo | reajuste
+  referenciaId   String
+  titularId      String? // contexto para a central (atraso, contratos, saldo)
+  valor          Decimal         @db.Decimal(12, 2)
+  resumo         String
+  payload        Json? // termos para efetivação tardia (ex: novação)
+  solicitanteId  String
+  status         StatusAprovacao @default(PENDENTE)
+
+  operacao    TipoOperacaoAlcada @relation(fields: [tipoOperacao], references: [chave])
+  solicitante Usuario            @relation("AprovacaoSolicitante", fields: [solicitanteId], references: [id])
+  decisoes    AprovacaoDecisao[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([referenciaTipo, referenciaId])
+  @@index([titularId])
+  @@map("aprovacoes")
+}
+
+model AprovacaoDecisao {
+  id          String           @id @default(cuid())
+  aprovacaoId String
+  usuarioId   String
+  decisao     DecisaoAprovacao
+  parecer     String?
+
+  aprovacao Aprovacao @relation(fields: [aprovacaoId], references: [id])
+  usuario   Usuario   @relation("DecisaoUsuario", fields: [usuarioId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([aprovacaoId])
+  @@map("aprovacao_decisoes")
 }
 
 // Novação: recuperação RADICAL. Liquida o contrato inteiro e gera um novo.
@@ -879,12 +946,14 @@ model ReajusteIPCA {
 // Catálogo de tipos de operação sujeitos a alçada (Doc 2 §7.9). Configurável pelo
 // admin — novos tipos (ex.: outra modalidade de renegociação) entram sem tocar no código.
 model TipoOperacaoAlcada {
-  id    String  @id @default(cuid())
-  chave String  @unique // credito_avulso | acordo | novacao | reajuste_ipca | despesa | venda
-  nome  String // rótulo exibido ao admin
-  ativo Boolean @default(true)
+  id                    String  @id @default(cuid())
+  chave                 String  @unique // credito_avulso | acordo | novacao | reajuste | despesa | venda
+  nome                  String // rótulo exibido ao admin
+  aprovacoesNecessarias Int     @default(1) // princípio dos 4 olhos configurável (Doc 2 §7.9-A)
+  ativo                 Boolean @default(true)
 
-  alcadas Alcada[]
+  alcadas    Alcada[]
+  aprovacoes Aprovacao[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -924,10 +993,12 @@ model Usuario {
   senhaHash String
   ativo     Boolean @default(true)
 
-  roles         UsuarioRole[]
-  acordos       Acordo[]
-  novacoes      Novacao[]      @relation("NovacaoOperador")
-  refreshTokens RefreshToken[]
+  roles                 UsuarioRole[]
+  acordos               Acordo[]
+  novacoes              Novacao[]          @relation("NovacaoOperador")
+  refreshTokens         RefreshToken[]
+  aprovacoesSolicitadas Aprovacao[]        @relation("AprovacaoSolicitante")
+  decisoesAprovacao     AprovacaoDecisao[] @relation("DecisaoUsuario")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

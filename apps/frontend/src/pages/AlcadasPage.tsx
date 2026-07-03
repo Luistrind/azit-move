@@ -78,6 +78,7 @@ export function AlcadasPage() {
             <thead>
               <tr style={{ color: 'var(--text-muted)' }}>
                 <th className="pb-[10px] text-left font-semibold">Operação</th>
+                <th className="pb-[10px] text-center font-semibold" title="Nº de aprovações exigidas (princípio dos 4 olhos)">Aprovações</th>
                 {m.papeis.map((p) => (
                   <th key={p} className="pb-[10px] text-center font-semibold">{p}</th>
                 ))}
@@ -89,6 +90,26 @@ export function AlcadasPage() {
                   <td className="py-[10px] font-semibold">
                     {op.nome}
                     <div className="text-[10px] font-normal" style={{ color: 'var(--text-muted)' }}>{op.chave}</div>
+                  </td>
+                  <td className="px-[6px] py-[8px] text-center">
+                    <select
+                      disabled={!podeEditar}
+                      value={op.aprovacoesNecessarias}
+                      onChange={async (e) => {
+                        try {
+                          await alcadaService.salvarOperacao(op.chave, { aprovacoesNecessarias: Number(e.target.value) });
+                          await recarregar();
+                        } catch (err) {
+                          window.alert(mensagemErro(err));
+                        }
+                      }}
+                      className="h-[28px] rounded-[7px] px-[6px] text-[12px] disabled:opacity-50"
+                      style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
+                    >
+                      {[1, 2, 3].map((n) => (
+                        <option key={n} value={n}>{n}×</option>
+                      ))}
+                    </select>
                   </td>
                   {m.papeis.map((papel) => {
                     const c = celula(m, papel, op.chave);
