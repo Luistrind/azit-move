@@ -4,13 +4,14 @@ import {
   OnModuleInit,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { precificarPrice, centavosParaReaisString } from '@azit/utils';
+import { precificarCreditoAvulso, centavosParaReaisString } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AtivoService } from '../ativo/ativo.service';
 import { OrigemCapitalService } from '../origem-capital/origem-capital.service';
 import { ContratoService } from '../contrato/contrato.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { AsaasService } from '../asaas/asaas.service';
+import { ParametrosService } from '../simulador/parametros.service';
 import {
   OriginarCreditoDto,
   SimularCreditoDto,
@@ -32,6 +33,7 @@ export class CreditoService implements OnModuleInit {
     private readonly contrato: ContratoService,
     private readonly aprovacao: AprovacaoService,
     private readonly asaas: AsaasService,
+    private readonly parametros: ParametrosService,
   ) {}
 
   onModuleInit() {
@@ -51,18 +53,38 @@ export class CreditoService implements OnModuleInit {
     return periodicidade === 'mensal' ? 30 : periodicidade === 'quinzenal' ? 14 : 7;
   }
 
-  private precificar(dto: { valor: number; numeroParcelas: number; valorEntrada: number }) {
-    // Motor provisório (taxa zerada — placeholder do Vicente; marca provisorio:true).
-    return precificarPrice({
-      valorVenda: dto.valor,
-      valorEntrada: dto.valorEntrada,
-      prazoSemanas: dto.numeroParcelas,
+  // Precificação com a TAXA VIGENTE do simulador (TR a.m. convertida à taxa
+  // periódica equivalente). Provisório até o Vicente formalizar a régua do avulso.
+  private async precificar(dto: {
+    valor: number;
+    numeroParcelas: number;
+    valorEntrada: number;
+    periodicidade?: string;
+  }) {
+    const params = await this.parametros.vigente();
+    const periodicidade = dto.periodicidade ?? 'mensal';
+    const fator =
+      periodicidade === 'mensal' ? 1 : periodicidade === 'quinzenal' ? params.fatorQuinzenal : params.fatorSemanal;
+    const valorFinanciado = Math.max(0, dto.valor - dto.valorEntrada);
+    const { valorParcela } = precificarCreditoAvulso({
+      valorFinanciado,
+      numeroParcelas: dto.numeroParcelas,
+      taxaMensal: params.taxaMensal,
+      fator,
     });
+    return {
+      valorFinanciado,
+      valorParcela,
+      numeroParcelas: dto.numeroParcelas,
+      totalAPagar: dto.valorEntrada + valorParcela * dto.numeroParcelas,
+      taxaMensal: params.taxaMensal,
+      provisorio: true as const,
+    };
   }
 
   // Prévia da parcela para a tela (não persiste).
   async simular(dto: SimularCreditoDto) {
-    const p = this.precificar(dto);
+    const p = await this.precificar(dto);
     return {
       valor: dto.valor,
       valorEntrada: dto.valorEntrada,
@@ -95,7 +117,7 @@ export class CreditoService implements OnModuleInit {
       });
     }
 
-    const p = this.precificar(dto);
+    const p = await this.precificar(dto);
 
     const ativo = await this.ativo.criar({
       tipo: 'outro',

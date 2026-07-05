@@ -12,6 +12,8 @@ import { criarLeadSchema, CriarLeadDto } from './dto/lead.dto';
 import {
   criarSimulacaoSchema,
   CriarSimulacaoDto,
+  simularOpcaoSchema,
+  SimularOpcaoDto,
   selecionarOfertaSchema,
   SelecionarOfertaDto,
 } from './dto/simulacao.dto';
@@ -77,6 +79,37 @@ export class FunilController {
     @Body(new ZodValidationPipe(selecionarOfertaSchema)) dto: SelecionarOfertaDto,
   ) {
     return this.simulacao.selecionarOferta(id, dto.ofertaId);
+  }
+
+  // Tela 3 — "Simular outras opções": cenário personalizado (bloqueios no service).
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('simulacoes/:id/opcoes')
+  @HttpCode(200)
+  simularOpcao(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(simularOpcaoSchema)) dto: SimularOpcaoDto,
+  ) {
+    return this.simulacao.simularOpcao(id, dto);
+  }
+
+  @Get('simulacoes/:id')
+  detalheSimulacao(@Param('id') id: string) {
+    return this.simulacao.detalhe(id);
+  }
+
+  // Marca a condição como apresentada ao cliente (estado do Doc 2 §4-A.2).
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('simulacoes/:id/apresentar')
+  @HttpCode(200)
+  apresentarSimulacao(@Param('id') id: string) {
+    return this.simulacao.apresentar(id);
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('simulacoes/:id/cancelar')
+  @HttpCode(200)
+  cancelarSimulacao(@Param('id') id: string) {
+    return this.simulacao.cancelar(id);
   }
 
   // --- 7.5/7.6/7.7 Proposta + papéis ---

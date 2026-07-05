@@ -9,24 +9,28 @@ export interface AtivoDisponivel {
   pacoteOfertaId: string | null;
 }
 
+// Simulação V3 (Doc 2 §4-A.2): prazo em MESES + frequência; ofertas fixas/padrão/
+// personalizadas. Visão comercial — sem termos internos (CI/CR/TR).
 export interface OfertaSimulada {
   id: string;
-  origemCalculo: string;
+  tipo: 'oferta_fixa' | 'padrao' | 'personalizada';
   valorEntrada: number;
-  prazoSemanas: number;
+  entradaParcelada: boolean;
+  prazoMeses: number | null;
+  frequencia: 'mensal' | 'quinzenal' | 'semanal';
   valorParcela: number;
   numeroParcelas: number;
-  valorFinanciado: number;
-  totalAPagar: number;
   selecionada: boolean;
 }
 
 export interface SimulacaoResultado {
   id: string;
-  ativo: { id: string; descricao: string };
-  valorEntrada: number;
-  prazoSemanas: number;
-  precificacaoProvisoria: boolean;
+  status: string;
+  validaAte: string | null;
+  ativo: { id: string; descricao: string; placa: string | null } | null;
+  valorAvista: number;
+  valorAvistaManual: boolean;
+  avisoDivergencia: string | null;
   ofertas: OfertaSimulada[];
 }
 
@@ -84,12 +88,18 @@ export interface SimulacaoResumo {
   id: string;
   cliente: string;
   ativo: string;
+  valorAvista: number;
   valorEntrada: number;
-  prazoSemanas: number;
-  ofertaEscolhida: { valorParcela: number; numeroParcelas: number } | null;
+  status: string;
+  validaAte: string | null;
+  ofertaEscolhida: {
+    valorParcela: number;
+    numeroParcelas: number;
+    frequencia: string;
+    prazoMeses: number | null;
+  } | null;
   propostaId: string | null;
   propostaStatus: string | null;
-  createdAt: string;
 }
 
 export const originacaoService = {
@@ -101,9 +111,25 @@ export const originacaoService = {
     const { data } = await api.post('/api/v1/leads', body);
     return data;
   },
-  async simular(body: { ativoId: string; valorEntrada: number; prazoSemanas: number; leadId?: string; entradaParcelada?: boolean }): Promise<SimulacaoResultado> {
+  async simular(body: { ativoId?: string; valorAvista?: number; leadId?: string }): Promise<SimulacaoResultado> {
     const { data } = await api.post('/api/v1/simulacoes', body);
     return data;
+  },
+  // Tela 3 — cenário personalizado (bloqueios de entrada/prazo no backend).
+  async simularOpcao(
+    simulacaoId: string,
+    body: {
+      valorEntrada: number;
+      prazoMeses: number;
+      frequencia: 'mensal' | 'quinzenal' | 'semanal';
+      entradaParcelada?: boolean;
+    },
+  ): Promise<SimulacaoResultado> {
+    const { data } = await api.post(`/api/v1/simulacoes/${simulacaoId}/opcoes`, body);
+    return data;
+  },
+  async apresentarSimulacao(simulacaoId: string): Promise<void> {
+    await api.post(`/api/v1/simulacoes/${simulacaoId}/apresentar`);
   },
   async selecionarOferta(simulacaoId: string, ofertaId: string): Promise<void> {
     await api.post(`/api/v1/simulacoes/${simulacaoId}/selecionar`, { ofertaId });

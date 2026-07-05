@@ -3,173 +3,382 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { Prisma, OrigemCalculoOferta, Periodicidade } from '@prisma/client';
-import {
-  precificarPrice,
-  centavosParaReaisString,
-  reaisParaCentavos,
-} from '@azit/utils';
+import { Prisma, Periodicidade as PeriodicidadePrisma } from '@prisma/client';
+import { precificarSimulacao, FrequenciaSimulacao } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
-import { CriarSimulacaoDto } from './dto/simulacao.dto';
+import { ParametrosService, ParametrosVigentes } from '../simulador/parametros.service';
+import { OfertaFixaService } from '../simulador/oferta-fixa.service';
+import { CriarSimulacaoDto, SimularOpcaoDto } from './dto/simulacao.dto';
 
-const reais = (c: number) => centavosParaReaisString(c);
 const cent = (d: Prisma.Decimal | null): number =>
-  d !== null ? reaisParaCentavos(d.toString()) : 0;
+  d !== null ? Math.round(Number(d.toString()) * 100) : 0;
+const reais = (c: number) => (c / 100).toFixed(2);
+const DIA_MS = 24 * 60 * 60 * 1000;
 
-// Intermediárias (Doc 2 §4-A.3): entrada parcelada → mín. 60% à vista.
-const MIN_ENTRADA_A_VISTA = 0.6;
+const FREQ_PRISMA: Record<FrequenciaSimulacao, PeriodicidadePrisma> = {
+  mensal: 'MENSAL',
+  quinzenal: 'QUINZENAL',
+  semanal: 'SEMANAL',
+};
+const FREQ_API: Record<string, FrequenciaSimulacao> = {
+  MENSAL: 'mensal',
+  QUINZENAL: 'quinzenal',
+  SEMANAL: 'semanal',
+};
 
-// 7.3 — Simulação e ofertas. A precificação parte do VALOR DE VENDA do ativo
-// (e/ou de um pacote genérico legado). A simulação é descartável; persiste-se a
-// estrutura e as ofertas calculadas, e marca-se só a oferta escolhida ao avançar.
+// Simulação V3 (Doc 2 §4-A.2, Decisão 2026-07-05): cálculo no BACKEND com
+// parâmetros VERSIONADOS. Ao criar, calcula as ofertas padrão (combos
+// parametrizados) e a oferta fixa vinculada ao ativo (se houver); cenários
+// personalizados entram via "Simular outras opções". A visão do cliente mostra
+// só a condição comercial — CI/CR/TR ficam internos.
 @Injectable()
 export class SimulacaoService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly parametros: ParametrosService,
+    private readonly ofertaFixa: OfertaFixaService,
+  ) {}
 
-  async criar(dto: CriarSimulacaoDto) {
-    const ativo = await this.prisma.db.ativo.findFirst({
-      where: { id: dto.ativoId },
-      select: { id: true, descricao: true, valorVenda: true, pacoteOfertaId: true, status: true },
+  private expirada(s: { validaAte: Date | null; status: string }): boolean {
+    return (
+      !!s.validaAte &&
+      s.validaAte < new Date() &&
+      (s.status === 'CALCULADA' || s.status === 'APRESENTADA')
+    );
+  }
+
+  private async auditar(acao: string, entidadeId: string, depois?: unknown) {
+    await this.prisma.db.logAuditoria.create({
+      data: {
+        acao,
+        entidade: 'simulacao',
+        entidadeId,
+        depois: depois ? (JSON.parse(JSON.stringify(depois)) as Prisma.InputJsonValue) : undefined,
+      },
     });
-    if (!ativo) {
-      throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Ativo não encontrado' });
-    }
-    if (ativo.status !== 'DISPONIVEL') {
-      throw new UnprocessableEntityException({
-        erro: 'ativo_indisponivel',
-        mensagem: 'Ativo não está disponível para simulação',
-      });
-    }
-    if (ativo.valorVenda === null && !ativo.pacoteOfertaId) {
-      throw new UnprocessableEntityException({
-        erro: 'sem_precificacao',
-        mensagem: 'Ativo sem valor de venda nem pacote — não há como precificar',
-      });
-    }
+  }
 
-    // Entrada não pode cobrir/exceder o valor de venda — não há o que financiar
-    // (evita oferta zerada por valor mal cadastrado ou entrada alta demais).
-    const valorVendaCent = ativo.valorVenda !== null ? cent(ativo.valorVenda) : 0;
-    if (valorVendaCent > 0 && dto.valorEntrada >= valorVendaCent) {
+  private validarCenario(
+    p: ParametrosVigentes,
+    valorAvista: number,
+    dto: { valorEntrada: number; prazoMeses: number },
+  ) {
+    if (dto.valorEntrada < p.entradaMinima) {
+      throw new UnprocessableEntityException({
+        erro: 'entrada_minima',
+        mensagem: `A entrada mínima é R$ ${reais(p.entradaMinima)}`,
+      });
+    }
+    if (dto.valorEntrada >= valorAvista) {
       throw new UnprocessableEntityException({
         erro: 'entrada_invalida',
-        mensagem: 'A entrada é maior ou igual ao valor de venda do ativo — nada a financiar. Verifique o valor de venda do ativo e a entrada.',
+        mensagem: 'A entrada não pode ser maior ou igual ao valor à vista',
       });
     }
+    if (dto.prazoMeses < p.prazoMinMeses || dto.prazoMeses > p.prazoMaxMeses) {
+      throw new UnprocessableEntityException({
+        erro: 'prazo_invalido',
+        mensagem: `O prazo deve estar entre ${p.prazoMinMeses} e ${p.prazoMaxMeses} meses`,
+      });
+    }
+  }
 
-    // Estruturas de oferta a calcular (uma por origem disponível no ativo).
-    const calculos: { origem: OrigemCalculoOferta; valorVenda: number }[] = [];
-    if (ativo.valorVenda !== null) {
-      calculos.push({ origem: 'VALOR_VENDA_ATIVO', valorVenda: cent(ativo.valorVenda) });
+  // Tela 1→2: cria a simulação (ativo OU valor manual) e calcula as ofertas
+  // padrão + a oferta fixa vinculada ao ativo. Status: CALCULADA.
+  async criar(dto: CriarSimulacaoDto) {
+    const params = await this.parametros.vigente();
+
+    let ativo: {
+      id: string;
+      descricao: string;
+      status: string;
+      valorVenda: Prisma.Decimal | null;
+      ofertaFixaId: string | null;
+    } | null = null;
+    if (dto.ativoId) {
+      ativo = await this.prisma.db.ativo.findFirst({
+        where: { id: dto.ativoId },
+        select: { id: true, descricao: true, status: true, valorVenda: true, ofertaFixaId: true },
+      });
+      if (!ativo) {
+        throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Ativo não encontrado' });
+      }
+      if (ativo.status !== 'DISPONIVEL') {
+        throw new UnprocessableEntityException({
+          erro: 'ativo_indisponivel',
+          mensagem: 'O ativo não está disponível para simulação',
+        });
+      }
     }
-    if (ativo.pacoteOfertaId) {
-      // Pacote genérico (andaime legado): sem catálogo real, usa o mesmo motor
-      // sobre o valor de venda como aproximação provisória.
-      const base = ativo.valorVenda !== null ? cent(ativo.valorVenda) : 0;
-      calculos.push({ origem: 'PACOTE_GENERICO', valorVenda: base });
+
+    // VA: cadastro do ativo tem prioridade; manual quando não há valor cadastrado.
+    const valorCadastro = ativo?.valorVenda ? cent(ativo.valorVenda) : 0;
+    const valorAvista = valorCadastro > 0 ? valorCadastro : (dto.valorAvista ?? 0);
+    const manual = valorCadastro === 0;
+    if (valorAvista <= 0) {
+      throw new UnprocessableEntityException({
+        erro: 'sem_valor_avista',
+        mensagem: ativo
+          ? 'O ativo não tem valor de venda cadastrado — informe o valor à vista manualmente'
+          : 'Informe o valor à vista',
+      });
     }
+    const avisoDivergencia =
+      !!dto.valorAvista && valorCadastro > 0 && dto.valorAvista !== valorCadastro
+        ? `Valor informado (R$ ${reais(dto.valorAvista)}) diverge do cadastro (R$ ${reais(valorCadastro)}) — usado o valor do cadastro`
+        : null;
 
     const simulacao = await this.prisma.db.simulacao.create({
       data: {
         leadId: dto.leadId,
         titularId: dto.titularId,
-        ativoId: ativo.id,
-        valorEntrada: reais(dto.valorEntrada),
-        prazoSemanas: dto.prazoSemanas,
-        periodicidade: dto.periodicidade.toUpperCase() as Periodicidade,
+        ativoId: ativo?.id,
+        valorAvista: reais(valorAvista),
+        valorAvistaManual: manual,
+        valorEntrada: reais(params.entradaMinima), // provisório até escolher oferta
+        status: 'CALCULADA',
+        validaAte: new Date(Date.now() + params.validadeDias * DIA_MS),
+        parametroVersaoId: params.id,
         observacoes: dto.observacoes,
       },
     });
 
-    const ofertas = [];
-    for (const c of calculos) {
-      const p = precificarPrice({
-        valorVenda: c.valorVenda,
-        valorEntrada: dto.valorEntrada,
-        prazoSemanas: dto.prazoSemanas,
-      });
-      const oferta = await this.prisma.db.oferta.create({
-        data: {
-          simulacaoId: simulacao.id,
-          origemCalculo: c.origem,
-          valorEntrada: reais(dto.valorEntrada),
-          entradaParcelada: dto.entradaParcelada,
-          prazoSemanas: dto.prazoSemanas,
-          valorParcela: reais(p.valorParcela),
-          numeroParcelas: p.numeroParcelas,
-        },
-      });
-      ofertas.push(this.ofertaApi(oferta, p.totalAPagar, p.valorFinanciado));
+    // Oferta FIXA vinculada ao ativo (Doc 2 §4-A.3) — valores desenhados, em destaque.
+    if (ativo?.ofertaFixaId) {
+      const fixa = await this.prisma.db.ofertaFixa.findFirst({ where: { id: ativo.ofertaFixaId } });
+      if (fixa && this.ofertaFixa.estaVigente(fixa)) {
+        const fator =
+          fixa.frequencia === 'MENSAL'
+            ? 1
+            : fixa.frequencia === 'QUINZENAL'
+              ? params.fatorQuinzenal
+              : params.fatorSemanal;
+        await this.prisma.db.oferta.create({
+          data: {
+            simulacaoId: simulacao.id,
+            tipo: 'OFERTA_FIXA',
+            origemCalculo: 'VALOR_VENDA_ATIVO',
+            valorEntrada: fixa.valorEntrada,
+            prazoMeses: fixa.prazoMeses,
+            frequencia: fixa.frequencia,
+            valorParcela: fixa.valorParcela,
+            numeroParcelas: Math.max(1, Math.round(fixa.prazoMeses * fator)),
+          },
+        });
+      }
     }
 
-    return {
-      id: simulacao.id,
-      ativo: { id: ativo.id, descricao: ativo.descricao },
-      valorEntrada: dto.valorEntrada,
-      prazoSemanas: dto.prazoSemanas,
-      entradaParcelada: dto.entradaParcelada,
-      precificacaoProvisoria: true, // 7.4 — marca placeholder (Vicente)
-      ofertas,
-    };
+    // Ofertas PADRÃO (combos parametrizados) — pula combos cuja entrada não cabe no VA.
+    for (const combo of params.ofertasPadrao) {
+      if (combo.valorEntrada >= valorAvista) continue;
+      const freqApi = FREQ_API[combo.frequencia] ?? 'semanal';
+      const r = precificarSimulacao({
+        valorAvista,
+        valorEntrada: combo.valorEntrada,
+        prazoMeses: combo.prazoMeses,
+        frequencia: freqApi,
+        comissaoInicial: params.comissaoInicial,
+        comissaoRecorrente: params.comissaoRecorrente,
+        taxaMensal: params.taxaMensal,
+        fatorSemanal: params.fatorSemanal,
+        fatorQuinzenal: params.fatorQuinzenal,
+      });
+      await this.prisma.db.oferta.create({
+        data: {
+          simulacaoId: simulacao.id,
+          tipo: 'PADRAO',
+          origemCalculo: 'VALOR_VENDA_ATIVO',
+          valorEntrada: reais(combo.valorEntrada),
+          prazoMeses: combo.prazoMeses,
+          frequencia: combo.frequencia,
+          valorParcela: reais(r.parcelaFinal),
+          numeroParcelas: r.numeroParcelas,
+        },
+      });
+    }
+
+    await this.auditar('simulacao_criada', simulacao.id, {
+      ativoId: ativo?.id ?? null,
+      valorAvista,
+      manual,
+      parametroVersaoId: params.id,
+    });
+    return this.detalhe(simulacao.id, avisoDivergencia);
   }
 
-  // Listagem de simulações (tela de apoio) — descartáveis; mostra a oferta escolhida
-  // e se já viraram proposta.
-  async listar() {
-    const sims = await this.prisma.db.simulacao.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-      include: {
-        ativo: { select: { descricao: true } },
-        lead: { select: { nome: true } },
-        titular: { select: { nome: true } },
-        ofertas: { where: { selecionada: true }, take: 1 },
-        proposta: { select: { id: true, status: true } },
+  // Tela 3: cenário personalizado ("Simular outras opções") — valida bloqueios.
+  async simularOpcao(simulacaoId: string, dto: SimularOpcaoDto) {
+    const s = await this.buscar(simulacaoId);
+    this.garantirEditavel(s);
+    const params = await this.parametros.vigente();
+    const valorAvista = cent(s.valorAvista);
+    this.validarCenario(params, valorAvista, dto);
+
+    const r = precificarSimulacao({
+      valorAvista,
+      valorEntrada: dto.valorEntrada,
+      prazoMeses: dto.prazoMeses,
+      frequencia: dto.frequencia,
+      comissaoInicial: params.comissaoInicial,
+      comissaoRecorrente: params.comissaoRecorrente,
+      taxaMensal: params.taxaMensal,
+      fatorSemanal: params.fatorSemanal,
+      fatorQuinzenal: params.fatorQuinzenal,
+    });
+    await this.prisma.db.oferta.create({
+      data: {
+        simulacaoId,
+        tipo: 'PERSONALIZADA',
+        origemCalculo: 'VALOR_VENDA_ATIVO',
+        valorEntrada: reais(dto.valorEntrada),
+        entradaParcelada: dto.entradaParcelada,
+        prazoMeses: dto.prazoMeses,
+        frequencia: FREQ_PRISMA[dto.frequencia],
+        valorParcela: reais(r.parcelaFinal),
+        numeroParcelas: r.numeroParcelas,
       },
     });
-    return sims.map((s) => {
-      const sel = s.ofertas[0];
-      return {
-        id: s.id,
-        cliente: s.titular?.nome ?? s.lead?.nome ?? '—',
-        ativo: s.ativo.descricao,
-        valorEntrada: cent(s.valorEntrada),
-        prazoSemanas: s.prazoSemanas,
-        ofertaEscolhida: sel ? { valorParcela: cent(sel.valorParcela), numeroParcelas: sel.numeroParcelas } : null,
-        propostaId: s.proposta?.id ?? null,
-        propostaStatus: s.proposta?.status?.toLowerCase() ?? null,
-        createdAt: s.createdAt.toISOString(),
-      };
+    await this.auditar('simulacao_cenario_calculado', simulacaoId, dto);
+    return this.detalhe(simulacaoId);
+  }
+
+  // Marca a condição como apresentada ao cliente (Doc 2 §4-A.2 estados).
+  async apresentar(simulacaoId: string) {
+    const s = await this.buscar(simulacaoId);
+    this.garantirEditavel(s);
+    await this.prisma.db.simulacao.update({
+      where: { id: simulacaoId },
+      data: { status: 'APRESENTADA' },
     });
+    await this.auditar('simulacao_apresentada', simulacaoId);
+    return { id: simulacaoId, status: 'apresentada' };
+  }
+
+  async cancelar(simulacaoId: string) {
+    const s = await this.buscar(simulacaoId);
+    if (s.status === 'CONVERTIDA') {
+      throw new UnprocessableEntityException({
+        erro: 'ja_convertida',
+        mensagem: 'Simulação já convertida em proposta não pode ser cancelada',
+      });
+    }
+    await this.prisma.db.simulacao.update({
+      where: { id: simulacaoId },
+      data: { status: 'CANCELADA' },
+    });
+    await this.auditar('simulacao_cancelada', simulacaoId);
+    return { id: simulacaoId, status: 'cancelada' };
   }
 
   async selecionarOferta(simulacaoId: string, ofertaId: string) {
+    const s = await this.buscar(simulacaoId);
+    this.garantirEditavel(s);
     const oferta = await this.prisma.db.oferta.findFirst({
       where: { id: ofertaId, simulacaoId },
     });
     if (!oferta) {
       throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Oferta não encontrada' });
     }
-    // Só uma oferta selecionada por simulação.
     await this.prisma.db.oferta.updateMany({ where: { simulacaoId }, data: { selecionada: false } });
-    const sel = await this.prisma.db.oferta.update({ where: { id: ofertaId }, data: { selecionada: true } });
-    return { id: sel.id, selecionada: true };
+    await this.prisma.db.oferta.update({ where: { id: ofertaId }, data: { selecionada: true } });
+    // A entrada da simulação passa a refletir a oferta escolhida.
+    await this.prisma.db.simulacao.update({
+      where: { id: simulacaoId },
+      data: { valorEntrada: oferta.valorEntrada, prazoMeses: oferta.prazoMeses },
+    });
+    return { simulacaoId, ofertaSelecionada: ofertaId };
   }
 
-  private ofertaApi(o: { id: string; origemCalculo: OrigemCalculoOferta; valorEntrada: Prisma.Decimal; entradaParcelada: boolean; prazoSemanas: number; valorParcela: Prisma.Decimal; numeroParcelas: number; selecionada: boolean }, totalAPagar: number, valorFinanciado: number) {
-    const entradaCent = cent(o.valorEntrada);
+  async detalhe(simulacaoId: string, avisoDivergencia: string | null = null) {
+    const s = await this.prisma.db.simulacao.findFirst({
+      where: { id: simulacaoId },
+      include: {
+        ativo: { select: { id: true, descricao: true, placa: true } },
+        ofertas: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+    if (!s) {
+      throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Simulação não encontrada' });
+    }
     return {
-      id: o.id,
-      origemCalculo: o.origemCalculo.toLowerCase(),
-      valorEntrada: entradaCent,
-      entradaParcelada: o.entradaParcelada,
-      entradaAVistaMinima: Math.round(entradaCent * MIN_ENTRADA_A_VISTA),
-      prazoSemanas: o.prazoSemanas,
-      valorParcela: cent(o.valorParcela),
-      numeroParcelas: o.numeroParcelas,
-      valorFinanciado,
-      totalAPagar,
-      selecionada: o.selecionada,
+      id: s.id,
+      status: this.expirada(s) ? 'expirada' : s.status.toLowerCase(),
+      validaAte: s.validaAte?.toISOString() ?? null,
+      ativo: s.ativo ? { id: s.ativo.id, descricao: s.ativo.descricao, placa: s.ativo.placa } : null,
+      valorAvista: cent(s.valorAvista),
+      valorAvistaManual: s.valorAvistaManual,
+      avisoDivergencia,
+      ofertas: s.ofertas.map((o) => ({
+        id: o.id,
+        tipo: o.tipo.toLowerCase(),
+        valorEntrada: cent(o.valorEntrada),
+        entradaParcelada: o.entradaParcelada,
+        prazoMeses: o.prazoMeses,
+        frequencia: FREQ_API[o.frequencia] ?? 'semanal',
+        valorParcela: cent(o.valorParcela),
+        numeroParcelas: o.numeroParcelas,
+        selecionada: o.selecionada,
+      })),
     };
+  }
+
+  // Listagem (tela de apoio): status/validade + oferta escolhida + proposta.
+  async listar() {
+    const simulacoes = await this.prisma.db.simulacao.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        lead: { select: { nome: true } },
+        titular: { select: { nome: true } },
+        ativo: { select: { descricao: true } },
+        ofertas: { where: { selecionada: true }, take: 1 },
+        proposta: { select: { id: true, status: true } },
+      },
+    });
+    return simulacoes.map((s) => {
+      const sel = s.ofertas[0];
+      return {
+        id: s.id,
+        cliente: s.titular?.nome ?? s.lead?.nome ?? '—',
+        ativo: s.ativo?.descricao ?? 'Valor manual',
+        valorAvista: cent(s.valorAvista),
+        valorEntrada: cent(s.valorEntrada),
+        status: this.expirada(s) ? 'expirada' : s.status.toLowerCase(),
+        validaAte: s.validaAte?.toISOString() ?? null,
+        ofertaEscolhida: sel
+          ? {
+              valorParcela: cent(sel.valorParcela),
+              numeroParcelas: sel.numeroParcelas,
+              frequencia: FREQ_API[sel.frequencia] ?? 'semanal',
+              prazoMeses: sel.prazoMeses,
+            }
+          : null,
+        propostaId: s.proposta?.id ?? null,
+        propostaStatus: s.proposta?.status?.toLowerCase() ?? null,
+      };
+    });
+  }
+
+  private async buscar(id: string) {
+    const s = await this.prisma.db.simulacao.findFirst({ where: { id } });
+    if (!s) {
+      throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Simulação não encontrada' });
+    }
+    return s;
+  }
+
+  private garantirEditavel(s: { status: string; validaAte: Date | null }) {
+    if (s.status === 'CONVERTIDA' || s.status === 'CANCELADA') {
+      throw new UnprocessableEntityException({
+        erro: 'estado_invalido',
+        mensagem: 'Simulação já convertida/cancelada não pode ser alterada',
+      });
+    }
+    if (this.expirada(s)) {
+      throw new UnprocessableEntityException({
+        erro: 'simulacao_expirada',
+        mensagem: 'Simulação expirada — crie uma nova para recalcular com os parâmetros vigentes',
+      });
+    }
   }
 }

@@ -2,9 +2,14 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
-import { originacaoService, SimulacaoResultado } from '../services/originacao.service';
+import { originacaoService, SimulacaoResultado, OfertaSimulada } from '../services/originacao.service';
+import { simuladorService } from '../services/simulador.service';
 import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
 import { reaisParaCentavos } from '../lib/valor';
+import { toast } from '../components/Toast';
+
+const FREQ_LABEL: Record<string, string> = { mensal: 'por mês', quinzenal: 'por quinzena', semanal: 'por semana' };
+const TIPO_LABEL: Record<string, string> = { oferta_fixa: 'Oferta especial', padrao: 'Oferta padrão', personalizada: 'Personalizada' };
 
 const inputCls = 'h-[36px] rounded-[8px] px-[10px] text-[12.5px]';
 const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' };
@@ -26,12 +31,18 @@ export function OriginacaoPage() {
   const [leadInfo, setLeadInfo] = useState('');
   const [leadId, setLeadId] = useState<string | undefined>();
 
+  // Simulação V3 (telas 1–4 da planilha): ativo OU valor manual → ofertas
+  // (fixa + padrão) → "Simular outras opções" → resultado/seleção.
   const [ativoId, setAtivoId] = useState('');
-  const [entrada, setEntrada] = useState('15000');
-  const [prazo, setPrazo] = useState('48');
+  const [valorManual, setValorManual] = useState('');
   const [sim, setSim] = useState<SimulacaoResultado | null>(null);
   const [ofertaSel, setOfertaSel] = useState('');
+  const [mostraPersonalizada, setMostraPersonalizada] = useState(false);
+  const [pEntrada, setPEntrada] = useState('');
+  const [pPrazo, setPPrazo] = useState('48');
+  const [pFreq, setPFreq] = useState<'mensal' | 'quinzenal' | 'semanal'>('semanal');
   const [entParcelada, setEntParcelada] = useState(false);
+  const parametros = useQuery({ queryKey: ['simulador-parametros'], queryFn: () => simuladorService.parametros() });
 
   // Cadastro pleno do comprador principal + 2º comprador opcional.
   const [cad, setCad] = useState({ whatsapp: '', email: '', rg: '', estadoCivil: '', profissao: '', endereco: '', bairro: '', cidade: '', estado: '', cep: '' });
@@ -42,7 +53,8 @@ export function OriginacaoPage() {
 
   function resetWizard() {
     setEtapa(1); setNome(''); setCpf(''); setLeadInfo(''); setLeadId(undefined);
-    setAtivoId(''); setEntrada('15000'); setPrazo('48'); setSim(null); setOfertaSel(''); setEntParcelada(false);
+    setAtivoId(''); setValorManual(''); setSim(null); setOfertaSel('');
+    setMostraPersonalizada(false); setPEntrada(''); setPPrazo('48'); setPFreq('semanal'); setEntParcelada(false);
     setCad({ whatsapp: '', email: '', rg: '', estadoCivil: '', profissao: '', endereco: '', bairro: '', cidade: '', estado: '', cep: '' });
     setComSeg(false); setSeg({ nome: '', cpf: '', whatsapp: '' });
   }
@@ -58,23 +70,53 @@ export function OriginacaoPage() {
     } catch (e) { alert(mensagemErro(e)); } finally { setOcupado(false); }
   }
 
+  // Tela 1→2: cria a simulação (backend calcula ofertas fixa + padrão).
   async function simular() {
-    if (!ativoId) return;
+    const manual = reaisParaCentavos(valorManual);
+    if (!ativoId && manual <= 0) return;
     setOcupado(true);
     try {
       const r = await originacaoService.simular({
-        ativoId, valorEntrada: reaisParaCentavos(entrada), prazoSemanas: Math.max(1, Number(prazo || 1)), leadId, entradaParcelada: entParcelada,
+        ativoId: ativoId || undefined,
+        valorAvista: manual > 0 ? manual : undefined,
+        leadId,
       });
       setSim(r);
-      setOfertaSel(r.ofertas[0]?.id ?? '');
-    } catch (e) { alert(mensagemErro(e)); } finally { setOcupado(false); }
+      setOfertaSel(r.ofertas.find((o) => o.tipo === 'oferta_fixa')?.id ?? r.ofertas[0]?.id ?? '');
+      if (r.avisoDivergencia) toast.info(r.avisoDivergencia);
+    } catch (e) { toast.erro(mensagemErro(e)); } finally { setOcupado(false); }
+  }
+
+  // Tela 3: cenário personalizado ("Simular outras opções").
+  async function simularOutra() {
+    if (!sim) return;
+    setOcupado(true);
+    try {
+      const r = await originacaoService.simularOpcao(sim.id, {
+        valorEntrada: reaisParaCentavos(pEntrada),
+        prazoMeses: Math.max(1, Number(pPrazo || 1)),
+        frequencia: pFreq,
+        entradaParcelada: entParcelada,
+      });
+      setSim(r);
+      const nova = r.ofertas[r.ofertas.length - 1];
+      if (nova) setOfertaSel(nova.id);
+    } catch (e) { toast.erro(mensagemErro(e)); } finally { setOcupado(false); }
+  }
+
+  async function apresentar() {
+    if (!sim) return;
+    try {
+      await originacaoService.apresentarSimulacao(sim.id);
+      toast.sucesso('Condição marcada como apresentada ao cliente.');
+    } catch (e) { toast.erro(mensagemErro(e)); }
   }
 
   async function irParaProposta() {
     if (!sim || !ofertaSel) return;
     setOcupado(true);
     try { await originacaoService.selecionarOferta(sim.id, ofertaSel); setEtapa(3); }
-    catch (e) { alert(mensagemErro(e)); } finally { setOcupado(false); }
+    catch (e) { toast.erro(mensagemErro(e)); } finally { setOcupado(false); }
   }
 
   async function criarProposta() {
@@ -124,40 +166,91 @@ export function OriginacaoPage() {
         {etapa === 2 && (
           <div className="flex flex-col gap-[12px]">
             {leadInfo && <div className="text-[12px]" style={{ color: 'var(--text-body)' }}>{leadInfo}</div>}
-            <div className="flex flex-wrap items-end gap-[14px]">
-              <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>Ativo disponível</span>
-                <select value={ativoId} onChange={(e) => setAtivoId(e.target.value)} className={`${inputCls} w-[260px]`} style={inputStyle}>
-                  <option value="">Selecione…</option>
-                  {ativos.data?.map((a) => <option key={a.id} value={a.id}>{a.descricao}{a.valorVenda ? ` · ${formatCurrency(a.valorVenda)}` : ''}</option>)}
-                </select></label>
-              <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>Entrada (R$)</span>
-                <input value={entrada} onChange={(e) => setEntrada(e.target.value)} className={`${inputCls} w-[110px]`} style={inputStyle} /></label>
-              <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>Prazo (semanas)</span>
-                <input value={prazo} onChange={(e) => setPrazo(e.target.value)} className={`${inputCls} w-[110px]`} style={inputStyle} /></label>
-              <label className="flex items-center gap-[6px] pb-[8px] text-[12px]" style={{ color: 'var(--text-body)' }}>
-                <input type="checkbox" checked={entParcelada} onChange={(e) => setEntParcelada(e.target.checked)} /> Entrada parcelada (60% à vista)
-              </label>
-              <button onClick={simular} disabled={ocupado || !ativoId}
-                className="h-[36px] rounded-[8px] px-[16px] text-[12.5px] font-semibold"
-                style={{ background: 'var(--navy)', color: '#fff', opacity: ocupado || !ativoId ? 0.6 : 1 }}>Calcular ofertas</button>
-            </div>
 
+            {/* Tela 1 — veículo/ativo OU valor à vista manual */}
+            {!sim && (
+              <div className="flex flex-wrap items-end gap-[14px]">
+                <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>Veículo/Ativo</span>
+                  <select value={ativoId} onChange={(e) => setAtivoId(e.target.value)} className={`${inputCls} w-[280px]`} style={inputStyle}>
+                    <option value="">Selecionar…</option>
+                    {ativos.data?.map((a) => <option key={a.id} value={a.id}>{a.descricao}{a.valorVenda ? ` · ${formatCurrency(a.valorVenda)}` : ''}</option>)}
+                  </select></label>
+                <span className="pb-[9px] text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}>OU</span>
+                <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>Valor à vista (R$, manual)</span>
+                  <input value={valorManual} onChange={(e) => setValorManual(e.target.value)} placeholder="50.000,00" className={`${inputCls} w-[140px]`} style={inputStyle} disabled={!!ativoId} /></label>
+                <button onClick={simular} disabled={ocupado || (!ativoId && reaisParaCentavos(valorManual) <= 0)}
+                  className="h-[36px] rounded-[8px] px-[16px] text-[12.5px] font-semibold"
+                  style={{ background: 'var(--navy)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>Ver ofertas</button>
+              </div>
+            )}
+
+            {/* Tela 2 — ofertas (fixa em destaque + padrão) */}
             {sim && (
-              <div className="flex flex-col gap-[8px]">
-                <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Ofertas (precificação provisória) — escolha uma:</div>
-                {sim.ofertas.map((of) => (
-                  <label key={of.id} className="flex cursor-pointer items-center gap-[10px] rounded-[8px] p-[10px]"
-                    style={{ border: `1px solid ${ofertaSel === of.id ? 'var(--accent)' : 'var(--border)'}` }}>
-                    <input type="radio" name="oferta" checked={ofertaSel === of.id} onChange={() => setOfertaSel(of.id)} />
-                    <span className="text-[12.5px]">
-                      <b>{of.origemCalculo === 'valor_venda_ativo' ? 'Valor de venda' : 'Pacote'}</b> · {of.numeroParcelas}× <b>{formatCurrency(of.valorParcela)}</b> · financiado {formatCurrency(of.valorFinanciado)} · total {formatCurrency(of.totalAPagar)}
-                    </span>
-                  </label>
-                ))}
-                <div>
+              <div className="flex flex-col gap-[10px]">
+                <div className="flex items-center gap-[8px] text-[12.5px]" style={{ color: 'var(--text-body)' }}>
+                  <b>{sim.ativo?.descricao ?? 'Valor manual'}</b> · à vista {formatCurrency(sim.valorAvista)}
+                  {sim.validaAte && <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>· válida até {new Date(sim.validaAte).toLocaleDateString('pt-BR')}</span>}
+                  <button onClick={() => { setSim(null); setOfertaSel(''); setMostraPersonalizada(false); }} className="text-[11px] font-semibold" style={{ color: 'var(--navy)' }}>trocar</button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-3">
+                  {sim.ofertas.map((of: OfertaSimulada) => (
+                    <label key={of.id} className="flex cursor-pointer flex-col gap-[4px] rounded-[12px] p-[12px]"
+                      style={{
+                        border: `2px solid ${ofertaSel === of.id ? 'var(--accent)' : of.tipo === 'oferta_fixa' ? 'var(--navy)' : 'var(--border)'}`,
+                        background: of.tipo === 'oferta_fixa' ? 'var(--surface-input)' : 'var(--surface)',
+                      }}>
+                      <span className="flex items-center justify-between">
+                        <span className="text-[10.5px] font-bold uppercase tracking-[0.04em]" style={{ color: of.tipo === 'oferta_fixa' ? 'var(--navy)' : 'var(--text-label)' }}>
+                          {TIPO_LABEL[of.tipo] ?? of.tipo}
+                        </span>
+                        <input type="radio" name="oferta" checked={ofertaSel === of.id} onChange={() => setOfertaSel(of.id)} />
+                      </span>
+                      <span className="text-[12.5px] font-bold">Contrato de {of.prazoMeses ?? '—'} meses</span>
+                      <span className="font-display text-[17px] font-bold" style={{ color: 'var(--accent)' }}>
+                        {formatCurrency(of.valorParcela)} <span className="text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>{FREQ_LABEL[of.frequencia]}</span>
+                      </span>
+                      <span className="text-[11.5px]" style={{ color: 'var(--text-body)' }}>Entrada {formatCurrency(of.valorEntrada)} · {of.numeroParcelas} parcelas</span>
+                    </label>
+                  ))}
+                </div>
+
+                {/* Tela 3 — simular outras opções */}
+                {!mostraPersonalizada ? (
+                  <button onClick={() => setMostraPersonalizada(true)} className="self-start text-[12px] font-semibold" style={{ color: 'var(--navy)' }}>
+                    + Simular outras opções
+                  </button>
+                ) : (
+                  <div className="flex flex-wrap items-end gap-[12px] rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)' }}>
+                    <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>Entrada (R$)</span>
+                      <input value={pEntrada} onChange={(e) => setPEntrada(e.target.value)} placeholder={parametros.data ? (parametros.data.entradaMinima / 100).toLocaleString('pt-BR') : ''} className={`${inputCls} w-[120px]`} style={inputStyle} /></label>
+                    <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>Prazo (meses)</span>
+                      <select value={pPrazo} onChange={(e) => setPPrazo(e.target.value)} className={`${inputCls} w-[100px]`} style={inputStyle}>
+                        {(parametros.data?.prazosPadronizados ?? [6, 12, 24, 36, 48]).map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select></label>
+                    <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>Frequência</span>
+                      <select value={pFreq} onChange={(e) => setPFreq(e.target.value as typeof pFreq)} className={`${inputCls} w-[120px]`} style={inputStyle}>
+                        <option value="semanal">Semanal</option>
+                        <option value="quinzenal">Quinzenal</option>
+                        <option value="mensal">Mensal</option>
+                      </select></label>
+                    <label className="flex items-center gap-[6px] pb-[8px] text-[12px]" style={{ color: 'var(--text-body)' }}>
+                      <input type="checkbox" checked={entParcelada} onChange={(e) => setEntParcelada(e.target.checked)} /> Entrada parcelada (60% à vista)
+                    </label>
+                    <button onClick={simularOutra} disabled={ocupado || reaisParaCentavos(pEntrada) <= 0}
+                      className="h-[36px] rounded-[8px] px-[16px] text-[12.5px] font-semibold"
+                      style={{ background: 'var(--navy)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>Simular</button>
+                  </div>
+                )}
+
+                {/* Tela 4 — ações sobre a condição escolhida */}
+                <div className="flex items-center gap-[8px]">
                   <button onClick={irParaProposta} disabled={ocupado || !ofertaSel}
                     className="h-[36px] rounded-[8px] px-[16px] text-[12.5px] font-semibold"
                     style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado || !ofertaSel ? 0.6 : 1 }}>Avançar para proposta</button>
+                  <button onClick={apresentar} disabled={ocupado}
+                    className="h-[36px] rounded-[8px] px-[14px] text-[12px] font-semibold"
+                    style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>Apresentar ao cliente</button>
                 </div>
               </div>
             )}

@@ -16,6 +16,7 @@ export const simularCreditoSchema = z.object({
   valor: z.coerce.number().int().min(1),
   numeroParcelas: z.coerce.number().int().min(1).max(120),
   valorEntrada: z.coerce.number().int().min(0).default(0),
+  periodicidade: z.enum(['semanal', 'quinzenal', 'mensal']).default('mensal'),
 });
 export type SimularCreditoDto = z.infer<typeof simularCreditoSchema>;
 

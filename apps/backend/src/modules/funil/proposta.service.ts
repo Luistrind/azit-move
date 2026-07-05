@@ -91,6 +91,25 @@ export class PropostaService {
         mensagem: 'Selecione uma oferta antes de criar a proposta',
       });
     }
+    // Bloqueio (Doc 2 §4-A.2): simulação expirada não converte sem recálculo.
+    if (
+      simulacao.validaAte &&
+      simulacao.validaAte < new Date() &&
+      (simulacao.status === 'CALCULADA' || simulacao.status === 'APRESENTADA')
+    ) {
+      throw new UnprocessableEntityException({
+        erro: 'simulacao_expirada',
+        mensagem: 'Simulação expirada — recalcule antes de converter em proposta',
+      });
+    }
+    // Proposta precisa de um ativo (o veículo da venda). Simulação por valor manual
+    // deve ser refeita com o ativo definido antes de virar proposta.
+    if (!simulacao.ativoId) {
+      throw new UnprocessableEntityException({
+        erro: 'sem_ativo',
+        mensagem: 'Vincule um veículo/ativo à simulação antes de converter em proposta',
+      });
+    }
 
     // Resolve o comprador principal (promoção do lead, se necessário).
     const titularId = await this.resolverTitular(simulacao.id, simulacao.titularId, simulacao.leadId, dto.comprador);
@@ -102,13 +121,30 @@ export class PropostaService {
         ativoId: simulacao.ativoId,
         modalidade: dto.modalidade.toUpperCase() as ModalidadeContrato,
         valorEntrada: oferta.valorEntrada,
-        prazoSemanas: oferta.prazoSemanas,
+        // V3: prazo em meses + frequência (a conversão em contrato deriva daqui).
+        // prazoSemanas preservado por compat (NOT NULL): recebe o nº de parcelas.
+        prazoSemanas: oferta.prazoSemanas ?? oferta.numeroParcelas,
+        prazoMeses: oferta.prazoMeses,
+        frequencia: oferta.frequencia,
         valorParcela: oferta.valorParcela,
         numeroParcelas: oferta.numeroParcelas,
         status: 'PENDENTE',
         vinculos: {
           create: { titularId, papel: 'COMPRADOR_PRINCIPAL' },
         },
+      },
+    });
+    // Rastreabilidade (Doc 2 §4-A.2): simulação convertida vira imutável.
+    await this.prisma.db.simulacao.update({
+      where: { id: simulacao.id },
+      data: { status: 'CONVERTIDA' },
+    });
+    await this.prisma.db.logAuditoria.create({
+      data: {
+        acao: 'simulacao_convertida',
+        entidade: 'simulacao',
+        entidadeId: simulacao.id,
+        depois: { propostaId: proposta.id, ofertaId: oferta.id },
       },
     });
     return this.detalhe(proposta.id);

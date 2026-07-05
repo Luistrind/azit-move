@@ -101,6 +101,7 @@ export interface AtivoApi {
   valorAquisicao: number | null; // centavos
   valorVenda: number | null; // centavos — base da precificação
   pacoteOfertaId: string | null;
+  ofertaFixaId: string | null;
   status: StatusApi;
   createdAt: string;
   updatedAt: string;
@@ -129,6 +130,7 @@ export function ativoParaApi(a: Ativo): AtivoApi {
     valorVenda:
       a.valorVenda !== null ? reaisParaCentavos(a.valorVenda.toString()) : null,
     pacoteOfertaId: a.pacoteOfertaId,
+    ofertaFixaId: a.ofertaFixaId,
     status: status.paraApi[a.status],
     createdAt: a.createdAt.toISOString(),
     updatedAt: a.updatedAt.toISOString(),

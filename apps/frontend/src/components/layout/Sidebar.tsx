@@ -28,7 +28,10 @@ const NAV_ITEMS: NavItemDef[] = [
 ];
 
 // Itens de configuração — visíveis só para administradores.
-const NAV_CONFIG: NavItemDef[] = [{ to: '/configuracoes/alcadas', label: 'Alçadas' }];
+const NAV_CONFIG: NavItemDef[] = [
+  { to: '/configuracoes/alcadas', label: 'Alçadas' },
+  { to: '/configuracoes/simulador', label: 'Simulador' },
+];
 const ROLES_CONFIG = ['ADMIN', 'DIRETOR'];
 
 export function Sidebar() {

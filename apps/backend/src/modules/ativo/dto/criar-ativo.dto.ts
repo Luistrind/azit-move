@@ -23,6 +23,8 @@ export const criarAtivoSchema = z.object({
   valorVenda: z.coerce.number().int().min(0).optional(),
   // vínculo opcional a pacote/oferta genérica (andaime de transição, legado PopHub).
   pacoteOfertaId: z.string().trim().min(1).optional(),
+  // oferta fixa desenhada (Doc 2 §4-A.3) — seletor no cadastro
+  ofertaFixaId: z.string().trim().min(1).nullish(),
 });
 
 export type CriarAtivoDto = z.infer<typeof criarAtivoSchema>;

@@ -16,6 +16,7 @@ import { CobrancaModule } from './modules/cobranca/cobranca.module';
 import { ReguaModule } from './modules/regua/regua.module';
 import { AlcadaModule } from './modules/alcada/alcada.module';
 import { AprovacaoModule } from './modules/aprovacao/aprovacao.module';
+import { SimuladorModule } from './modules/simulador/simulador.module';
 import { CreditoModule } from './modules/credito/credito.module';
 import { OperacoesModule } from './modules/operacoes/operacoes.module';
 import { OriginacaoModule } from './modules/originacao/originacao.module';
@@ -45,6 +46,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     ReguaModule,
     AlcadaModule,
     AprovacaoModule,
+    SimuladorModule,
     CreditoModule,
     OperacoesModule,
     OriginacaoModule,

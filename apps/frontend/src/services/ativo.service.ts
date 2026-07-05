@@ -19,6 +19,7 @@ export interface Ativo {
   valorAquisicao: number | null;
   valorVenda: number | null;
   pacoteOfertaId: string | null;
+  ofertaFixaId: string | null;
   status: string;
 }
 
@@ -46,6 +47,7 @@ export interface CriarAtivoBody {
   valorAquisicao?: number;
   valorVenda?: number;
   pacoteOfertaId?: string;
+  ofertaFixaId?: string | null;
 }
 
 export interface OrigemCapitalBody {

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '@azit/utils';
 import { ativoService, CriarAtivoBody } from '../services/ativo.service';
+import { simuladorService } from '../services/simulador.service';
 import { StatusBadge } from '../components/StatusBadge';
 import { ATIVO_STATUS_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
@@ -25,7 +26,7 @@ const Lbl = ({ children }: { children: React.ReactNode }) => (
 type FormState = Record<string, string>;
 const EMPTY: FormState = {
   marca: '', modelo: '', anoFabricacao: '', anoModelo: '', cor: '', placa: '', chassi: '', renavam: '',
-  combustivel: 'flex', origem: '', quilometragemEntrada: '', valorAquisicao: '', valorVenda: '', pacoteOfertaId: '',
+  combustivel: 'flex', origem: '', quilometragemEntrada: '', valorAquisicao: '', valorVenda: '', pacoteOfertaId: '', ofertaFixaId: '',
   capTipo: 'capital_proprio', capValor: '', capTaxa: '',
 };
 
@@ -47,6 +48,7 @@ export function AtivoPage() {
   const [busca, setBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('');
 
+  const ofertasFixas = useQuery({ queryKey: ['ofertas-fixas'], queryFn: () => simuladorService.ofertasFixas() });
   const ativos = useQuery({
     queryKey: ['ativos', filtroStatus, busca],
     queryFn: () => ativoService.listar({
@@ -73,6 +75,7 @@ export function AtivoPage() {
         valorAquisicao: a.valorAquisicao ? (a.valorAquisicao / 100).toString() : '',
         valorVenda: a.valorVenda ? (a.valorVenda / 100).toString() : '',
         pacoteOfertaId: a.pacoteOfertaId ?? '',
+        ofertaFixaId: a.ofertaFixaId ?? '',
         capTipo: oc?.tipo ?? 'capital_proprio',
         capValor: oc ? (oc.valorAportado / 100).toString() : '',
         capTaxa: oc?.taxaRetorno != null ? (oc.taxaRetorno * 100).toString() : '',
@@ -95,6 +98,7 @@ export function AtivoPage() {
       valorAquisicao: form.valorAquisicao ? reais(form.valorAquisicao) : undefined,
       valorVenda: form.valorVenda ? reais(form.valorVenda) : undefined,
       pacoteOfertaId: str(form.pacoteOfertaId),
+      ofertaFixaId: form.ofertaFixaId || null,
     };
     setOcupado(true);
     try {
@@ -166,7 +170,13 @@ export function AtivoPage() {
             <label className="flex flex-col gap-[4px]"><Lbl>Km entrada</Lbl><input value={form.quilometragemEntrada} onChange={set('quilometragemEntrada')} className={inputCls} style={inStyle} /></label>
             <label className="flex flex-col gap-[4px]"><Lbl>Valor aquisição (R$)</Lbl><input value={form.valorAquisicao} onChange={set('valorAquisicao')} className={inputCls} style={inStyle} /></label>
             <label className="flex flex-col gap-[4px]"><Lbl>Valor de venda (R$)</Lbl><input value={form.valorVenda} onChange={set('valorVenda')} className={inputCls} style={inStyle} /></label>
-            <label className="flex flex-col gap-[4px]"><Lbl>Pacote/oferta (opcional)</Lbl><input value={form.pacoteOfertaId} onChange={set('pacoteOfertaId')} className={inputCls} style={inStyle} /></label>
+            <label className="flex flex-col gap-[4px]"><Lbl>Oferta fixa (opcional)</Lbl>
+              <select value={form.ofertaFixaId} onChange={set('ofertaFixaId')} className={inputCls} style={inStyle}>
+                <option value="">Sem oferta vinculada</option>
+                {ofertasFixas.data?.filter((o) => o.ativa).map((o) => (
+                  <option key={o.id} value={o.id}>{o.nome} · {formatCurrency(o.valorParcela)}/{o.frequencia}</option>
+                ))}
+              </select></label>
             {editId && (
               <label className="flex flex-col gap-[4px]"><Lbl>Status</Lbl>
                 <select value={status} onChange={(e) => setStatus(e.target.value)} className={inputCls} style={inStyle}>

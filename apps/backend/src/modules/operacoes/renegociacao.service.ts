@@ -344,25 +344,44 @@ export class RenegociacaoService implements OnModuleInit {
         }
       }
 
-      // 3. UMA fatura por vencimento (a conta agrega — o titular vê um plano só).
+      // 3. Consolidação (Doc 2 §7.7 + reunião 04/07): cada grupo de parcelas entra na
+      //    PRÓXIMA fatura ABERTA da conta (venc >= parcela, janela 35d) — renegociação
+      //    NÃO gera fatura paralela; só cria quando não há ciclo aberto à frente.
       let seqFatura = await tx.fatura.count({ where: { contaId: acordo.contaId } });
       const vencimentos = [...parcelasPorVencimento.keys()].sort((a, b) => a - b);
       for (const venc of vencimentos) {
         const grupo = parcelasPorVencimento.get(venc)!;
         const dataVenc = new Date(venc);
         const valorFatura = grupo.reduce((s, g) => s + g.valor, 0);
-        seqFatura += 1;
-        const fatura = await tx.fatura.create({
-          data: {
+        let fatura = await tx.fatura.findFirst({
+          where: {
             contaId: acordo.contaId,
-            numero: seqFatura,
-            periodoReferencia: dataVenc,
-            dataFechamento: new Date(venc - 5 * DIA_MS),
-            dataVencimento: dataVenc,
-            valorTotal: reais(valorFatura),
             status: 'ABERTA',
+            dataVencimento: { gte: dataVenc, lt: new Date(venc + 35 * DIA_MS) },
           },
+          orderBy: { dataVencimento: 'asc' },
+          select: { id: true, valorTotal: true },
         });
+        if (fatura) {
+          await tx.fatura.update({
+            where: { id: fatura.id },
+            data: { valorTotal: reais(cent(fatura.valorTotal as Prisma.Decimal) + valorFatura) },
+          });
+        } else {
+          seqFatura += 1;
+          fatura = await tx.fatura.create({
+            data: {
+              contaId: acordo.contaId,
+              numero: seqFatura,
+              periodoReferencia: dataVenc,
+              dataFechamento: new Date(venc - 5 * DIA_MS),
+              dataVencimento: dataVenc,
+              valorTotal: reais(valorFatura),
+              status: 'ABERTA',
+            },
+            select: { id: true, valorTotal: true },
+          });
+        }
         for (const g of grupo) {
           await tx.itemFatura.create({
             data: {

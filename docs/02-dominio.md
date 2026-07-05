@@ -144,34 +144,45 @@ Registro **leve** de uma pessoa que iniciou um atendimento mas ainda não tem ca
 
 ### 4-A.2 Simulação
 
-Sessão de exploração de condições para um **Ativo específico**. É **descartável** — não se guarda o histórico de toda simulação; persiste apenas a oferta que o cliente escolheu ao avançar.
+> **Decisão 2026-07-05, Luís (Etapa A — Simulação V3, doc do Vicente + planilha):** a simulação é a **porta de entrada comercial**, com cálculo no backend, **parâmetros versionados** e rastreabilidade completa. Linguagem comercial de **venda parcelada** — nunca "financiamento". A visão do cliente mostra só a condição comercial (veículo, valor à vista, entrada, prazo, frequência, parcela); CI/CR/TR e memória de cálculo são **internos**.
+
+Sessão de exploração de condições para um **Ativo específico OU um valor à vista manual** (quando ainda não há veículo definido).
 
 **Campos:**
 - `id`
 - `lead_id` ou `titular_id` — pode existir solta no início; vincula-se ao avançar
-- `ativo_id` — o ativo específico sendo simulado
-- `valor_entrada` — valor (ou percentual) de entrada explorado
-- `prazo_semanas` — prazo explorado
-- `periodicidade` — semanal (padrão, parametrizável)
-- `observacoes_internas` — notas do operador, não exibidas ao cliente
-- `data_criacao`
+- `ativo_id` — opcional; quando ausente, `valor_avista` manual
+- `valor_avista` — base comercial (do cadastro do ativo ou manual; origem registrada)
+- `valor_entrada` — respeitando entrada mínima (parâmetro) e ≤ valor à vista
+- `prazo_meses` — 6 a 48 (parâmetros), prazos padronizados 6/12/24/36/48
+- `frequencia` — mensal | quinzenal | semanal (define a parcela final exibida)
+- `status` — rascunho | calculada | apresentada | convertida | cancelada (**expirada é derivada** de `valida_ate` em runtime — Regra 7)
+- `valida_ate` — validade (parâmetro `validade_dias`); conversão de expirada exige recálculo
+- `parametro_versao_id` — **versão dos parâmetros usada no cálculo** (nunca recalcular silenciosamente)
+- `observacoes_internas`, `data_criacao`
 
-> A precificação parte do **Ativo individual** (com seu valor de venda), não de um produto-catálogo genérico. As ofertas exibidas dependem do que o ativo tem: se está vinculado a um **pacote/oferta genérica** (legado), o pacote aparece; se tem **valor de venda** cadastrado, aparece a opção individualizada calculada pela fórmula de precificação. Um ativo pode ter uma, outra ou ambas.
+**Memória de cálculo (interna, backend):** `VP = VA + CI − EN` → `PM1 = VP × [TR×(1+TR)^PC] / [(1+TR)^PC − 1]` (Price mensal) → `PMT = PM1 + CR` → parcela quinzenal = PMT ÷ fator quinzenal; semanal = PMT ÷ fator semanal → `PF` conforme frequência.
+
+**Parâmetros versionados (`VersaoParametrosSimulacao`):** CI (comissão consignado inicial), CR (comissão consignado recorrente), TR (taxa a.m.), entrada mínima, prazo mín./máx., prazos padronizados, **fator semanal = 4,345** e **fator quinzenal = 2,1725** (semanas/mês reais — decisão reunião 04/07; a planilha usava 4 e 2), validade em dias, ofertas padrão, vigência. Alteração restrita (ADMIN/DIRETOR) e **auditada**; nova configuração = **nova versão** (histórico preservado).
 
 ### 4-A.3 Oferta
 
-Uma opção concreta calculada na simulação — combinação de entrada × prazo que resulta num valor de parcela. O cliente compara ofertas e escolhe uma. **Guarda-se a oferta escolhida** (não as exploradas).
+Uma opção concreta apresentada na simulação. **Três origens**:
+1. **Oferta padrão** — combos parametrizados (ex.: 48m/semanal/entrada 3.990) calculados automaticamente sobre o valor à vista;
+2. **Oferta fixa** (entidade `OfertaFixa`) — condição comercial **desenhada** pela Azit (entrada e parcela em valores redondos, ex.: "R$ 599/semana"), com **ativos vinculados** a ela no cadastro; aparece em destaque quando o ativo selecionado está vinculado;
+3. **Personalizada** — entrada/prazo/frequência informados pelo operador ("Simular outras opções").
 
 **Campos:**
-- `id`
-- `simulacao_id`
-- `origem_calculo` — pacote_generico | valor_venda_ativo
-- `valor_entrada`
-- `entrada_parcelada` — booleano; se a entrada é dividida em intermediárias
-- `prazo_semanas`
-- `valor_parcela`
-- `numero_parcelas`
+- `id`, `simulacao_id`
+- `tipo` — oferta_fixa | padrao | personalizada
+- `origem_calculo` — pacote_generico | valor_venda_ativo (legado)
+- `valor_entrada`, `entrada_parcelada`
+- `prazo_meses`, `frequencia`
+- `valor_parcela` — PF calculada e **gravada** (não recalculada)
+- `numero_parcelas` — arredondamento de `prazo_meses × fator` da frequência; última parcela absorve resíduo
 - `selecionada` — booleano
+
+> **Conversão em contrato:** periodicidade = frequência; nº de parcelas = prazo_meses × fator (mensal 1×, quinzenal 2,1725×, semanal 4,345×, arredondado); total idêntico ao plano mensal (resíduo na última parcela).
 
 > **Intermediárias (entrada parcelada):** quando a entrada é parcelada, no **mínimo 60%** vai numa única parcela à vista (a primeira), e o **restante (até 40%)** é diluído em parcelas-balão que concorrem com as parcelas do contrato (entram nas faturas seguintes como ItemFatura — ver 4.12).
 

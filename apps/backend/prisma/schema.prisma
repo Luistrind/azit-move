@@ -299,6 +299,21 @@ enum OrigemCalculoOferta {
   VALOR_VENDA_ATIVO
 }
 
+// Simulação V3 (Doc 2 §4-A.2). EXPIRADA não é persistida — deriva de validaAte (Regra 7).
+enum StatusSimulacao {
+  RASCUNHO
+  CALCULADA
+  APRESENTADA
+  CONVERTIDA
+  CANCELADA
+}
+
+enum TipoOferta {
+  OFERTA_FIXA
+  PADRAO
+  PERSONALIZADA
+}
+
 enum RoleUsuario {
   DIRETOR
   ADMIN
@@ -388,37 +403,51 @@ model Lead {
   @@map("leads")
 }
 
+// Simulação V3 (Doc 2 §4-A.2, Decisão 2026-07-05): porta de entrada comercial.
+// Cálculo no backend, parâmetros VERSIONADOS, prazo em MESES com frequência.
+// Ativo opcional (valor à vista manual). EXPIRADA é derivada de validaAte (Regra 7).
 model Simulacao {
-  id            String        @id @default(cuid())
-  leadId        String?
-  titularId     String?
-  ativoId       String
-  valorEntrada  Decimal       @db.Decimal(12, 2)
-  prazoSemanas  Int
-  periodicidade Periodicidade @default(SEMANAL)
-  observacoes   String?
+  id                String          @id @default(cuid())
+  leadId            String?
+  titularId         String?
+  ativoId           String? // opcional: simulação por valor manual
+  valorAvista       Decimal?        @db.Decimal(12, 2) // base comercial (VA)
+  valorAvistaManual Boolean         @default(false) // origem: manual × cadastro do ativo
+  valorEntrada      Decimal         @db.Decimal(12, 2)
+  prazoSemanas      Int? // LEGADO (simulações V1/V2)
+  prazoMeses        Int? // V3: 6–48 meses (parâmetros)
+  periodicidade     Periodicidade   @default(SEMANAL) // frequência da parcela final (V3)
+  status            StatusSimulacao @default(RASCUNHO)
+  validaAte         DateTime? // conversão de expirada exige recálculo
+  parametroVersaoId String? // versão dos parâmetros usada no cálculo (rastreabilidade)
+  observacoes       String?
 
-  lead     Lead?     @relation(fields: [leadId], references: [id])
-  titular  Titular?  @relation(fields: [titularId], references: [id])
-  ativo    Ativo     @relation(fields: [ativoId], references: [id])
-  ofertas  Oferta[]
-  proposta Proposta?
+  lead            Lead?                      @relation(fields: [leadId], references: [id])
+  titular         Titular?                   @relation(fields: [titularId], references: [id])
+  ativo           Ativo?                     @relation(fields: [ativoId], references: [id])
+  parametroVersao VersaoParametrosSimulacao? @relation(fields: [parametroVersaoId], references: [id])
+  ofertas         Oferta[]
+  proposta        Proposta?
 
   createdAt DateTime @default(now())
 
   @@index([ativoId])
   @@index([leadId])
+  @@index([status])
   @@map("simulacoes")
 }
 
 model Oferta {
   id               String              @id @default(cuid())
   simulacaoId      String
+  tipo             TipoOferta          @default(PERSONALIZADA) // oferta_fixa | padrao | personalizada
   origemCalculo    OrigemCalculoOferta
   valorEntrada     Decimal             @db.Decimal(12, 2)
   entradaParcelada Boolean             @default(false)
-  prazoSemanas     Int
-  valorParcela     Decimal             @db.Decimal(12, 2)
+  prazoSemanas     Int? // LEGADO
+  prazoMeses       Int? // V3
+  frequencia       Periodicidade       @default(SEMANAL)
+  valorParcela     Decimal             @db.Decimal(12, 2) // PF gravada — nunca recalculada
   numeroParcelas   Int
   selecionada      Boolean             @default(false)
 
@@ -430,6 +459,72 @@ model Oferta {
   @@map("ofertas")
 }
 
+// Parâmetros do simulador, VERSIONADOS (Doc 2 §4-A.2): nova configuração = nova
+// versão (histórico preservado — a simulação referencia a versão usada). Edição
+// restrita a ADMIN/DIRETOR e auditada. Valores monetários em REAIS (Decimal).
+model VersaoParametrosSimulacao {
+  id                 String   @id @default(cuid())
+  comissaoInicial    Decimal  @db.Decimal(12, 2) // CI — somada ao valor do parcelamento
+  comissaoRecorrente Decimal  @db.Decimal(12, 2) // CR — somada à parcela mensal
+  taxaMensal         Decimal  @db.Decimal(8, 6) // TR fração a.m. (0.02 = 2%)
+  entradaMinima      Decimal  @db.Decimal(12, 2)
+  prazoMinMeses      Int
+  prazoMaxMeses      Int
+  prazosPadronizados String // ex: "6,12,24,36,48"
+  fatorSemanal       Decimal  @db.Decimal(8, 4) // 4.3450 semanas/mês (reunião 04/07)
+  fatorQuinzenal     Decimal  @db.Decimal(8, 4) // 2.1725
+  validadeDias       Int      @default(7)
+  ofertasPadrao      Json // [{prazoMeses, frequencia, valorEntrada(centavos)}]
+  vigenteDesde       DateTime @default(now())
+  criadoPor          String?
+
+  simulacoes Simulacao[]
+
+  createdAt DateTime @default(now())
+
+  @@map("versoes_parametros_simulacao")
+}
+
+// Oferta fixa (Doc 2 §4-A.3): condição comercial DESENHADA pela Azit (números
+// redondos, ex.: "R$ 599/semana"), com ativos vinculados no cadastro. Aparece em
+// destaque na simulação quando o ativo selecionado está vinculado.
+model OfertaFixa {
+  id            String        @id @default(cuid())
+  nome          String // ex: "Promoção da semana"
+  valorEntrada  Decimal       @db.Decimal(12, 2)
+  valorParcela  Decimal       @db.Decimal(12, 2)
+  frequencia    Periodicidade @default(SEMANAL)
+  prazoMeses    Int
+  ativa         Boolean       @default(true)
+  vigenciaInicio DateTime?
+  vigenciaFim   DateTime? // campanhas "só hoje/esta semana"
+
+  ativos Ativo[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ofertas_fixas")
+}
+
+// Log de auditoria (Doc 2 §4-A.2 "Controles de segurança"): ações críticas com
+// antes/depois. Nasce na simulação/parâmetros; genérico para outras operações.
+model LogAuditoria {
+  id         String  @id @default(cuid())
+  usuarioId  String?
+  acao       String // simulacao_criada | simulacao_convertida | parametros_alterados | ...
+  entidade   String // simulacao | versao_parametros | ...
+  entidadeId String?
+  antes      Json?
+  depois     Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([entidade, entidadeId])
+  @@index([acao])
+  @@map("logs_auditoria")
+}
+
 model Proposta {
   id               String             @id @default(cuid())
   simulacaoId      String?            @unique
@@ -438,6 +533,8 @@ model Proposta {
   modalidade       ModalidadeContrato @default(COMPRA_PARCELADA)
   valorEntrada     Decimal            @db.Decimal(12, 2)
   prazoSemanas     Int
+  prazoMeses       Int? // V3: condição da oferta escolhida (prazo em meses)
+  frequencia       Periodicidade? // V3: define periodicidade + nº de parcelas do contrato
   valorParcela     Decimal            @db.Decimal(12, 2)
   numeroParcelas   Int
   status           StatusProposta     @default(PENDENTE)
@@ -532,9 +629,11 @@ model Ativo {
   valorAquisicao       Decimal?         @db.Decimal(12, 2)
   valorVenda           Decimal?         @db.Decimal(12, 2) // base da precificação individualizada
   pacoteOfertaId       String? // vínculo opcional a pacote/oferta genérica (legado PopHub)
+  ofertaFixaId         String? // oferta fixa desenhada (Doc 2 §4-A.3) — seletor no cadastro
   status               StatusAtivo      @default(DISPONIVEL)
 
   origemCapital    OrigemCapital?
+  ofertaFixa       OfertaFixa?    @relation(fields: [ofertaFixaId], references: [id])
   // 1 ativo pode ter vários contratos no tempo (ex: novação gera um novo);
   // a regra "1 ativo = 1 contrato ATIVO" é garantida em runtime (Doc 2 §4.4).
   contratosCredito ContratoCredito[]

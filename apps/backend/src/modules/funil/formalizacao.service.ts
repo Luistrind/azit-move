@@ -125,7 +125,14 @@ export class FormalizacaoService {
     const valorParcela = cent(proposta.valorParcela);
     const valorTotal = valorEntrada + valorParcela * proposta.numeroParcelas;
     const dataAssinatura = new Date();
-    const dataPrimeira = new Date(dataAssinatura.getTime() + 7 * DIA_MS);
+    // V3 (Doc 2 §4-A.3): a periodicidade do contrato vem da FREQUÊNCIA da oferta
+    // escolhida (mensal/quinzenal/semanal); legado sem frequência segue semanal.
+    const periodicidadeApi = (proposta.frequencia?.toLowerCase() ?? 'semanal') as
+      | 'semanal'
+      | 'quinzenal'
+      | 'mensal';
+    const passoDias = periodicidadeApi === 'mensal' ? 30 : periodicidadeApi === 'quinzenal' ? 14 : 7;
+    const dataPrimeira = new Date(dataAssinatura.getTime() + passoDias * DIA_MS);
 
     // Carrinho: produtos apartados (seguro) viram contratos próprios; os demais
     // entram como itens recorrentes na cesta do contrato do veículo (§4.8).
@@ -151,7 +158,7 @@ export class FormalizacaoService {
         valorEntrada,
         numeroParcelas: proposta.numeroParcelas,
         valorParcelaInicial: valorParcela,
-        periodicidade: 'semanal',
+        periodicidade: periodicidadeApi,
         entradaParcelada: proposta.simulacao?.ofertas.find((o) => o.selecionada)?.entradaParcelada ?? false,
         descricaoFinanciamento: `Financiamento ${proposta.ativo.descricao}`,
         credor: 'azit',

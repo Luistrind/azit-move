@@ -28,14 +28,15 @@ export function SimulacoesPage() {
             <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
               <th className="px-[18px] py-[12px] text-left font-semibold">Cliente</th>
               <th className="px-[18px] py-[12px] text-left font-semibold">Ativo</th>
-              <th className="px-[18px] py-[12px] text-right font-semibold">Entrada</th>
+              <th className="px-[18px] py-[12px] text-right font-semibold">À vista</th>
               <th className="px-[18px] py-[12px] text-center font-semibold">Oferta escolhida</th>
+              <th className="px-[18px] py-[12px] text-left font-semibold">Situação</th>
               <th className="px-[18px] py-[12px] text-left font-semibold">Proposta</th>
             </tr>
           </thead>
           <tbody>
             {sims.data?.length === 0 && (
-              <tr><td colSpan={5} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>Nenhuma simulação.</td></tr>
+              <tr><td colSpan={6} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>Nenhuma simulação.</td></tr>
             )}
             {sims.data?.map((s) => (
               <tr key={s.id}
@@ -44,9 +45,19 @@ export function SimulacoesPage() {
                 style={{ borderBottom: '1px solid var(--border-light)' }}>
                 <td className="px-[18px] py-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{s.cliente}</td>
                 <td className="px-[18px] py-[12px]" style={{ color: 'var(--text-body)' }}>{s.ativo}</td>
-                <td className="px-[18px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-body)' }}>{formatCurrency(s.valorEntrada)}</td>
+                <td className="px-[18px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-body)' }}>{formatCurrency(s.valorAvista)}</td>
                 <td className="px-[18px] py-[12px] text-center tabular-nums" style={{ color: 'var(--text-body)' }}>
-                  {s.ofertaEscolhida ? `${s.ofertaEscolhida.numeroParcelas}× ${formatCurrency(s.ofertaEscolhida.valorParcela)}` : '—'}
+                  {s.ofertaEscolhida ? `${s.ofertaEscolhida.numeroParcelas}× ${formatCurrency(s.ofertaEscolhida.valorParcela)} (${s.ofertaEscolhida.frequencia})` : '—'}
+                </td>
+                <td className="px-[18px] py-[12px]">
+                  <span className="rounded-[6px] px-[8px] py-[3px] text-[11px] font-bold"
+                    style={s.status === 'expirada'
+                      ? { background: '#fdeceb', color: '#c0392b' }
+                      : s.status === 'convertida'
+                        ? { background: '#eafaf1', color: '#1f9d5b' }
+                        : { background: 'var(--surface-input)', color: 'var(--text-body)' }}>
+                    {s.status}
+                  </span>
                 </td>
                 <td className="px-[18px] py-[12px]">
                   {s.propostaStatus

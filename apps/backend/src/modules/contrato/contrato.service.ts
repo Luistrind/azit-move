@@ -284,12 +284,19 @@ export class ContratoService {
       const cron = porNumero.get(pc.numero)!;
       const venc = cron.dataVencimento;
       const fechamento = new Date(venc.getTime() - 5 * 24 * 60 * 60 * 1000);
-      // Fatura única por conta + dia de vencimento — agrega itens de TODOS os
-      // contratos do pacote (veículo + apartados) no mesmo ciclo (Doc 2 §372).
+      // Consolidação (Doc 2 §7.7 + reunião 04/07): a parcela entra na PRÓXIMA fatura
+      // ABERTA da conta (vencimento >= parcela, janela de 35 dias) — agrega itens de
+      // todos os contratos no mesmo ciclo do titular (crédito avulso NÃO gera fatura
+      // paralela). Só nasce fatura nova quando não há ciclo aberto à frente.
       const diaIni = new Date(venc); diaIni.setHours(0, 0, 0, 0);
-      const diaFim = new Date(diaIni.getTime() + 24 * 60 * 60 * 1000);
+      const janelaFim = new Date(diaIni.getTime() + 35 * 24 * 60 * 60 * 1000);
       let fatura = await tx.fatura.findFirst({
-        where: { contaId: p.contaId, dataVencimento: { gte: diaIni, lt: diaFim } },
+        where: {
+          contaId: p.contaId,
+          status: 'ABERTA',
+          dataVencimento: { gte: diaIni, lt: janelaFim },
+        },
+        orderBy: { dataVencimento: 'asc' },
         select: { id: true, valorTotal: true },
       });
       if (!fatura) {
