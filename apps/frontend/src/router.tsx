@@ -17,6 +17,7 @@ import { TitularDetalhePage } from './pages/TitularDetalhePage';
 import { AprovacoesPage } from './pages/AprovacoesPage';
 import { AlcadasPage } from './pages/AlcadasPage';
 import { SimuladorConfigPage } from './pages/SimuladorConfigPage';
+import { CentroCustoPage } from './pages/CentroCustoPage';
 
 // Rotas client-side — Doc 4 §5.1. /login é pública; o restante é protegido pela sessão.
 export const router = createBrowserRouter([
@@ -87,6 +88,10 @@ export const router = createBrowserRouter([
       {
         path: 'configuracoes/alcadas',
         element: <AlcadasPage />,
+      },
+      {
+        path: 'centros-custo',
+        element: <CentroCustoPage />,
       },
       {
         path: 'configuracoes/simulador',

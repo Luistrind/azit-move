@@ -507,6 +507,27 @@ model OfertaFixa {
   @@map("ofertas_fixas")
 }
 
+// Centro de custo do ativo (Doc 2 §4.4-A): lançamentos de CUSTO por veículo
+// (manutenção, documentação, franquia...). Receita é calculada em runtime
+// (parcelas pagas dos contratos) — Regra 7. Tipo é texto: catálogo aberto.
+model LancamentoCustoAtivo {
+  id        String   @id @default(cuid())
+  ativoId   String
+  tipo      String // manutencao | documentacao | seguro | franquia | outro | ...
+  descricao String
+  valor     Decimal  @db.Decimal(12, 2)
+  data      DateTime @default(now())
+  criadoPor String?
+
+  ativo Ativo @relation(fields: [ativoId], references: [id])
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  @@index([ativoId])
+  @@map("lancamentos_custo_ativo")
+}
+
 // Log de auditoria (Doc 2 §4-A.2 "Controles de segurança"): ações críticas com
 // antes/depois. Nasce na simulação/parâmetros; genérico para outras operações.
 model LogAuditoria {
@@ -633,7 +654,8 @@ model Ativo {
   status               StatusAtivo      @default(DISPONIVEL)
 
   origemCapital    OrigemCapital?
-  ofertaFixa       OfertaFixa?    @relation(fields: [ofertaFixaId], references: [id])
+  ofertaFixa       OfertaFixa?           @relation(fields: [ofertaFixaId], references: [id])
+  lancamentosCusto LancamentoCustoAtivo[]
   // 1 ativo pode ter vários contratos no tempo (ex: novação gera um novo);
   // a regra "1 ativo = 1 contrato ATIVO" é garantida em runtime (Doc 2 §4.4).
   contratosCredito ContratoCredito[]

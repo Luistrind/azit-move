@@ -283,6 +283,15 @@ O bem objeto do contrato — hoje predominantemente veículos.
 
 ---
 
+### 4.4-A Centro de custo do Ativo
+
+> **Decisão 2026-07-05, Luís:** todo Ativo é um **centro de custo**. Início com frota 100% capital próprio: cadastra-se o ativo com o **valor de aquisição** (sem margem no cadastro) e acompanha-se **quanto gastamos × quanto recebemos** por veículo.
+>
+> - **Custos:** `valorAquisicao` (cadastro) + **lançamentos de custo** (`LancamentoCustoAtivo`: tipo livre — manutenção, documentação, seguro, franquia… —, descrição, valor, data, quem lançou). Tipo é texto (catálogo aberto): expandir é dado, não migração.
+> - **Receitas (calculadas em runtime — Regra 7):** entrada paga + parcelas pagas de todos os contratos do ativo (acordos e itens do contrato entram automaticamente). Nada de receita gravada.
+> - **Visões:** por veículo (gasto, recebido, a receber, resultado) e **crédito avulso como centro de custo próprio agregado** (quanto foi liberado × quanto retornou × em aberto) — os ativos sintéticos `OUTRO` do crédito dão a granularidade.
+> - **Expansão prevista (sem mudar a estrutura):** veículo de investidor/fundo entra pela dimensão `OrigemCapital` (já 1:1 com o ativo); centros não-ativo (corporativo, despesas gerais) entram como novas visões sobre o mesmo livro de lançamentos.
+
 ### 4.5 OrigemCapital
 
 Define como o ativo foi financiado. Separa a camada do titular-cliente (contrato de crédito) da camada do capital que financia aquele ativo.

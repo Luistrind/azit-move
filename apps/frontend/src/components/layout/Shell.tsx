@@ -12,6 +12,7 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
   '/aprovacoes': { title: 'Central de Aprovações', subtitle: 'Solicitações pendentes de alçada' },
   '/configuracoes/alcadas': { title: 'Alçadas', subtitle: 'Matriz de aprovação por papel' },
   '/configuracoes/simulador': { title: 'Simulador', subtitle: 'Parâmetros versionados e ofertas fixas' },
+  '/centros-custo': { title: 'Centros de custo', subtitle: 'Quanto gastamos × quanto recebemos, por ativo' },
 };
 
 export function Shell() {

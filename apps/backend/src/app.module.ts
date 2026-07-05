@@ -17,6 +17,7 @@ import { ReguaModule } from './modules/regua/regua.module';
 import { AlcadaModule } from './modules/alcada/alcada.module';
 import { AprovacaoModule } from './modules/aprovacao/aprovacao.module';
 import { SimuladorModule } from './modules/simulador/simulador.module';
+import { CentroCustoModule } from './modules/centro-custo/centro-custo.module';
 import { CreditoModule } from './modules/credito/credito.module';
 import { OperacoesModule } from './modules/operacoes/operacoes.module';
 import { OriginacaoModule } from './modules/originacao/originacao.module';
@@ -47,6 +48,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     AlcadaModule,
     AprovacaoModule,
     SimuladorModule,
+    CentroCustoModule,
     CreditoModule,
     OperacoesModule,
     OriginacaoModule,

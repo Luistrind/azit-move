@@ -25,6 +25,7 @@ const NAV_ITEMS: NavItemDef[] = [
   { to: '/regua', label: 'Régua' },
   { to: '/acordos', label: 'Renegociações' },
   { to: '/aprovacoes', label: 'Aprovações' },
+  { to: '/centros-custo', label: 'Centros de custo' },
 ];
 
 // Itens de configuração — visíveis só para administradores.
