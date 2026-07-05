@@ -148,7 +148,12 @@ export class AtivoService {
         dto.valorVenda === null ? null : valorAquisicaoParaPrisma(dto.valorVenda);
     }
     if (dto.pacoteOfertaId !== undefined) data.pacoteOfertaId = dto.pacoteOfertaId;
-    if (dto.ofertaFixaId !== undefined) data.ofertaFixaId = dto.ofertaFixaId;
+    // Relação (AtivoUpdateInput não aceita o FK escalar): vincula/desvincula a oferta fixa.
+    if (dto.ofertaFixaId !== undefined) {
+      data.ofertaFixa = dto.ofertaFixaId
+        ? { connect: { id: dto.ofertaFixaId } }
+        : { disconnect: true };
+    }
     if (dto.placa !== undefined) {
       if (dto.placa) await this.garantirPlacaLivre(dto.placa, id);
       data.placa = dto.placa;
