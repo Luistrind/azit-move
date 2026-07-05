@@ -51,7 +51,6 @@ export class FunilController {
     return this.lead.listar();
   }
 
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('leads')
   @HttpCode(201)
   criarLead(@Body(new ZodValidationPipe(criarLeadSchema)) dto: CriarLeadDto) {
@@ -64,14 +63,12 @@ export class FunilController {
     return this.simulacao.listar();
   }
 
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('simulacoes')
   @HttpCode(201)
   simular(@Body(new ZodValidationPipe(criarSimulacaoSchema)) dto: CriarSimulacaoDto) {
     return this.simulacao.criar(dto);
   }
 
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('simulacoes/:id/selecionar')
   @HttpCode(200)
   selecionar(
@@ -82,7 +79,6 @@ export class FunilController {
   }
 
   // Tela 3 — "Simular outras opções": cenário personalizado (bloqueios no service).
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('simulacoes/:id/opcoes')
   @HttpCode(200)
   simularOpcao(
@@ -98,14 +94,12 @@ export class FunilController {
   }
 
   // Marca a condição como apresentada ao cliente (estado do Doc 2 §4-A.2).
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('simulacoes/:id/apresentar')
   @HttpCode(200)
   apresentarSimulacao(@Param('id') id: string) {
     return this.simulacao.apresentar(id);
   }
 
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('simulacoes/:id/cancelar')
   @HttpCode(200)
   cancelarSimulacao(@Param('id') id: string) {
@@ -123,14 +117,12 @@ export class FunilController {
     return this.proposta.detalhe(id);
   }
 
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('propostas')
   @HttpCode(201)
   criarProposta(@Body(new ZodValidationPipe(criarPropostaSchema)) dto: CriarPropostaDto) {
     return this.proposta.criar(dto);
   }
 
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Patch('propostas/:id/status')
   patchStatus(
     @Param('id') id: string,
@@ -139,7 +131,6 @@ export class FunilController {
     return this.proposta.patchStatus(id, dto.status);
   }
 
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('propostas/:id/vinculos')
   @HttpCode(201)
   adicionarVinculo(
@@ -150,7 +141,6 @@ export class FunilController {
   }
 
   // --- Carrinho de produtos da proposta ---
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('propostas/:id/produtos')
   @HttpCode(201)
   adicionarProduto(
@@ -160,14 +150,12 @@ export class FunilController {
     return this.proposta.adicionarProduto(id, dto.produtoId, dto.valor);
   }
 
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Delete('propostas/:id/produtos/:itemId')
   removerProduto(@Param('id') id: string, @Param('itemId') itemId: string) {
     return this.proposta.removerProduto(id, itemId);
   }
 
   // --- 7.8 Análise documental ---
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('propostas/:id/documentos')
   @HttpCode(201)
   anexarDocumento(
@@ -196,7 +184,6 @@ export class FunilController {
   }
 
   // --- 7.10 Formalização ---
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('propostas/:id/formalizar')
   @HttpCode(201)
   formalizar(@Param('id') id: string) {
@@ -215,7 +202,6 @@ export class FunilController {
     return this.formalizacao.statusPacote(id);
   }
 
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('contratos/:id/assinar')
   @HttpCode(200)
   assinar(
@@ -226,7 +212,6 @@ export class FunilController {
   }
 
   // --- 7.11 Ativação (cobrança da entrada; exige assinaturas) ---
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('contratos/:id/ativar')
   @HttpCode(200)
   ativar(@Param('id') id: string) {

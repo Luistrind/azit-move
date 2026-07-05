@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
 import { originacaoService, SimulacaoResultado, OfertaSimulada } from '../services/originacao.service';
 import { simuladorService } from '../services/simulador.service';
-import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
+import { mensagemErro } from '../lib/permissoes';
 import { reaisParaCentavos } from '../lib/valor';
 import { toast } from '../components/Toast';
 
@@ -21,8 +21,6 @@ const labelStyle = { color: 'var(--text-label)' };
 export function OriginacaoPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const pode = usePodeRole();
-  const podeOriginar = pode(ROLE_OPERACAO);
   const [ocupado, setOcupado] = useState(false);
 
   const [etapa, setEtapa] = useState<1 | 2 | 3>(1);
@@ -135,10 +133,6 @@ export function OriginacaoPage() {
       // Vai direto para a análise da proposta (documentos + parecer ficam lá).
       navigate(`/propostas/${prop.id}`);
     } catch (e) { alert(mensagemErro(e)); } finally { setOcupado(false); }
-  }
-
-  if (!podeOriginar) {
-    return <div className="rounded-card p-[18px] text-[13px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>Sem permissão para originar.</div>;
   }
 
   return (
