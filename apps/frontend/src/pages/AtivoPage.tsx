@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
 import { ativoService, CriarAtivoBody } from '../services/ativo.service';
 import { simuladorService } from '../services/simulador.service';
@@ -7,6 +8,14 @@ import { StatusBadge } from '../components/StatusBadge';
 import { ATIVO_STATUS_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
 import { reaisParaCentavos } from '../lib/valor';
+import { toast } from '../components/Toast';
+
+const DOC_TIPOS: { v: string; l: string }[] = [
+  { v: 'crlv', l: 'CRLV / documento' },
+  { v: 'nota_fiscal', l: 'Nota fiscal' },
+  { v: 'laudo', l: 'Laudo' },
+  { v: 'outro', l: 'Outro' },
+];
 
 const STATUS_LABEL: Record<string, string> = {
   disponivel: 'Disponível', em_contrato: 'Em contrato', quitado: 'Quitado', recuperado: 'Recuperado', sinistrado: 'Sinistrado',
@@ -48,7 +57,38 @@ export function AtivoPage() {
   const [busca, setBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('');
 
+  const [docTipo, setDocTipo] = useState('crlv');
+  const [docBusy, setDocBusy] = useState(false);
   const ofertasFixas = useQuery({ queryKey: ['ofertas-fixas'], queryFn: () => simuladorService.ofertasFixas() });
+  // Central de documentos (só ao editar um ativo existente).
+  const documentos = useQuery({
+    queryKey: ['ativo-documentos', editId],
+    queryFn: () => ativoService.documentos(editId!),
+    enabled: !!editId,
+  });
+
+  async function anexarDoc(file: File) {
+    if (!editId) return;
+    setDocBusy(true);
+    try {
+      const conteudo = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result));
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+      await ativoService.anexarDocumento(editId, { tipo: docTipo, nome: file.name, conteudo });
+      await queryClient.invalidateQueries({ queryKey: ['ativo-documentos', editId] });
+      toast.sucesso('Documento anexado.');
+    } catch (e) { toast.erro(mensagemErro(e)); } finally { setDocBusy(false); }
+  }
+
+  async function removerDoc(id: string) {
+    try {
+      await ativoService.removerDocumento(id);
+      await queryClient.invalidateQueries({ queryKey: ['ativo-documentos', editId] });
+    } catch (e) { toast.erro(mensagemErro(e)); }
+  }
   const ativos = useQuery({
     queryKey: ['ativos', filtroStatus, busca],
     queryFn: () => ativoService.listar({
@@ -176,7 +216,9 @@ export function AtivoPage() {
                 {ofertasFixas.data?.filter((o) => o.ativa).map((o) => (
                   <option key={o.id} value={o.id}>{o.nome} · {formatCurrency(o.valorParcela)}/{o.frequencia}</option>
                 ))}
-              </select></label>
+              </select>
+              <Link to="/configuracoes/simulador" className="text-[10.5px] font-semibold" style={{ color: 'var(--navy)' }}>Cadastrar/gerenciar ofertas fixas →</Link>
+            </label>
             {editId && (
               <label className="flex flex-col gap-[4px]"><Lbl>Status</Lbl>
                 <select value={status} onChange={(e) => setStatus(e.target.value)} className={inputCls} style={inStyle}>
@@ -201,6 +243,41 @@ export function AtivoPage() {
             </div>
             {temOC && <div className="mt-[6px] text-[11px]" style={{ color: 'var(--text-muted)' }}>O tipo não muda após criado; ajuste valor/taxa se necessário.</div>}
           </div>
+
+          {/* Central de documentos do veículo (Doc 2 §4.4-A) — só ao editar */}
+          {editId && (
+            <div className="mt-[14px] border-t pt-[14px]" style={{ borderColor: 'var(--border)' }}>
+              <div className="mb-[8px] flex items-center gap-[10px]">
+                <span className="text-[12px] font-semibold" style={{ color: 'var(--text-body)' }}>Documentos do veículo</span>
+                <select value={docTipo} onChange={(e) => setDocTipo(e.target.value)} className="h-[30px] rounded-[8px] px-[8px] text-[12px]" style={inStyle}>
+                  {DOC_TIPOS.map((t) => <option key={t.v} value={t.v}>{t.l}</option>)}
+                </select>
+                <label className="h-[30px] cursor-pointer rounded-[8px] px-[12px] text-[12px] font-semibold leading-[30px]" style={{ background: 'var(--navy)', color: '#fff', opacity: docBusy ? 0.6 : 1 }}>
+                  {docBusy ? 'Anexando…' : '+ Anexar arquivo'}
+                  <input type="file" className="hidden" disabled={docBusy}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void anexarDoc(f); e.target.value = ''; }} />
+                </label>
+              </div>
+              {documentos.data?.length === 0 ? (
+                <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum documento anexado.</div>
+              ) : (
+                <div className="flex flex-col gap-[4px]">
+                  {documentos.data?.map((d) => (
+                    <div key={d.id} className="flex items-center justify-between rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
+                      <span><b>{DOC_TIPOS.find((t) => t.v === d.tipo)?.l ?? d.tipo}</b> · {d.nome} <span style={{ color: 'var(--text-muted)' }}>· {new Date(d.anexadoEm).toLocaleDateString('pt-BR')}</span></span>
+                      <span className="flex items-center gap-[10px]">
+                        <button onClick={() => ativoService.baixarDocumento(d.id, d.nome).catch((e) => toast.erro(mensagemErro(e)))} className="font-semibold" style={{ color: 'var(--navy)' }}>Baixar</button>
+                        <button onClick={() => removerDoc(d.id)} className="text-[13px]" style={{ color: '#c0392b' }} title="Remover">×</button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="mt-[6px] text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                Dica: o preenchimento automático dos campos (placa, chassi…) a partir do documento entra numa próxima etapa (leitura por OCR).
+              </div>
+            </div>
+          )}
 
           <div className="mt-[14px] flex gap-[8px]">
             <button onClick={salvar} disabled={ocupado} className="h-[34px] rounded-[8px] px-[16px] text-[12.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>

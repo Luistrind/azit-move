@@ -38,10 +38,16 @@ export function SimulacoesPage() {
             {sims.data?.length === 0 && (
               <tr><td colSpan={6} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>Nenhuma simulação.</td></tr>
             )}
-            {sims.data?.map((s) => (
+            {sims.data?.map((s) => {
+              const podeContinuar = !['convertida', 'cancelada', 'expirada'].includes(s.status);
+              const ir = () => {
+                if (s.propostaId) navigate(`/propostas/${s.propostaId}`);
+                else if (podeContinuar) navigate(`/originacao?simulacao=${s.id}`);
+              };
+              return (
               <tr key={s.id}
-                className={s.propostaId ? 'cursor-pointer hover:bg-[var(--surface-input)]' : ''}
-                onClick={() => s.propostaId && navigate(`/propostas/${s.propostaId}`)}
+                className={s.propostaId || podeContinuar ? 'cursor-pointer hover:bg-[var(--surface-input)]' : ''}
+                onClick={ir}
                 style={{ borderBottom: '1px solid var(--border-light)' }}>
                 <td className="px-[18px] py-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{s.cliente}</td>
                 <td className="px-[18px] py-[12px]" style={{ color: 'var(--text-body)' }}>{s.ativo}</td>
@@ -62,10 +68,13 @@ export function SimulacoesPage() {
                 <td className="px-[18px] py-[12px]">
                   {s.propostaStatus
                     ? <StatusBadge label={LABEL_STATUS[s.propostaStatus] ?? s.propostaStatus} colors={PROPOSTA_STATUS_COLORS} />
-                    : <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>—</span>}
+                    : podeContinuar
+                      ? <span className="text-[11px] font-semibold" style={{ color: 'var(--navy)' }}>Continuar →</span>
+                      : <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>—</span>}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

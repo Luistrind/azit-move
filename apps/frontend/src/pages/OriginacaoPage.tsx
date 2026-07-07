@@ -1,15 +1,25 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
 import { originacaoService, SimulacaoResultado, OfertaSimulada } from '../services/originacao.service';
 import { simuladorService } from '../services/simulador.service';
 import { mensagemErro } from '../lib/permissoes';
 import { reaisParaCentavos } from '../lib/valor';
+import { buscarCep } from '../lib/cep';
 import { toast } from '../components/Toast';
 
 const FREQ_LABEL: Record<string, string> = { mensal: 'por mês', quinzenal: 'por quinzena', semanal: 'por semana' };
 const TIPO_LABEL: Record<string, string> = { oferta_fixa: 'Oferta especial', padrao: 'Oferta padrão', personalizada: 'Personalizada' };
+const CANAIS: { v: string; l: string }[] = [
+  { v: 'operador_interno', l: 'Operador interno' },
+  { v: 'olx', l: 'OLX' },
+  { v: 'whatsapp', l: 'WhatsApp' },
+  { v: 'instagram', l: 'Instagram/Meta' },
+  { v: 'indicacao', l: 'Indicação' },
+  { v: 'landing_page', l: 'Landing page' },
+  { v: 'outro', l: 'Outro' },
+];
 
 const inputCls = 'h-[36px] rounded-[8px] px-[10px] text-[12.5px]';
 const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' };
@@ -21,11 +31,15 @@ const labelStyle = { color: 'var(--text-label)' };
 export function OriginacaoPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const [ocupado, setOcupado] = useState(false);
 
   const [etapa, setEtapa] = useState<1 | 2 | 3>(1);
   const [nome, setNome] = useState('');
   const [cpf, setCpf] = useState('');
+  const [telefone, setTelefone] = useState('');
+  const [canal, setCanal] = useState('operador_interno');
+  const [buscandoCep, setBuscandoCep] = useState(false);
   const [leadInfo, setLeadInfo] = useState('');
   const [leadId, setLeadId] = useState<string | undefined>();
 
@@ -50,22 +64,53 @@ export function OriginacaoPage() {
   const ativos = useQuery({ queryKey: ['ativos', 'disponiveis'], queryFn: () => originacaoService.ativosDisponiveis() });
 
   function resetWizard() {
-    setEtapa(1); setNome(''); setCpf(''); setLeadInfo(''); setLeadId(undefined);
+    setEtapa(1); setNome(''); setCpf(''); setTelefone(''); setCanal('operador_interno'); setLeadInfo(''); setLeadId(undefined);
     setAtivoId(''); setValorManual(''); setSim(null); setOfertaSel('');
     setMostraPersonalizada(false); setPEntrada(''); setPPrazo('48'); setPFreq('semanal'); setEntParcelada(false);
     setCad({ whatsapp: '', email: '', rg: '', estadoCivil: '', profissao: '', endereco: '', bairro: '', cidade: '', estado: '', cep: '' });
     setComSeg(false); setSeg({ nome: '', cpf: '', whatsapp: '' });
   }
 
+  // Retoma uma simulação a partir da listagem (?simulacao=<id>): carrega as ofertas
+  // já calculadas e o cliente, e salta para a etapa de ofertas/conversão.
+  useEffect(() => {
+    const id = params.get('simulacao');
+    if (!id) return;
+    (async () => {
+      try {
+        const s = await originacaoService.detalheSimulacao(id);
+        if (s.propostaId) { navigate(`/propostas/${s.propostaId}`, { replace: true }); return; }
+        setSim(s);
+        setOfertaSel(s.ofertas.find((o) => o.selecionada)?.id ?? s.ofertas.find((o) => o.tipo === 'oferta_fixa')?.id ?? s.ofertas[0]?.id ?? '');
+        if (s.cliente) { setNome(s.cliente.nome); setCpf(s.cliente.cpf); if (s.cliente.telefone) setTelefone(s.cliente.telefone); }
+        setLeadId(s.leadId ?? undefined);
+        setEtapa(2);
+      } catch (e) { toast.erro(mensagemErro(e)); }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
+
   async function iniciarLead() {
-    if (!nome || !cpf) return;
+    if (!nome || !cpf || telefone.trim().length < 8) return;
     setOcupado(true);
     try {
-      const r = await originacaoService.criarLead({ nome, cpf });
+      const r = await originacaoService.criarLead({ nome, cpf, telefone: telefone.trim(), canalOrigem: canal });
       setLeadInfo(r.tipo === 'titular' ? `CPF já cadastrado: ${r.titular?.nome}. Seguindo como titular existente.` : 'Novo lead criado.');
       setLeadId(r.tipo === 'titular' ? undefined : r.lead?.id);
       setEtapa(2);
-    } catch (e) { alert(mensagemErro(e)); } finally { setOcupado(false); }
+    } catch (e) { toast.erro(mensagemErro(e)); } finally { setOcupado(false); }
+  }
+
+  // CEP → preenche endereço/bairro/cidade/UF (ViaCEP).
+  async function onBlurCep() {
+    const cep = cad.cep.replace(/\D/g, '');
+    if (cep.length !== 8) return;
+    setBuscandoCep(true);
+    try {
+      const end = await buscarCep(cep);
+      if (end) setCad((c) => ({ ...c, endereco: end.endereco || c.endereco, bairro: end.bairro || c.bairro, cidade: end.cidade || c.cidade, estado: end.estado || c.estado }));
+      else toast.erro('CEP não encontrado.');
+    } finally { setBuscandoCep(false); }
   }
 
   // Tela 1→2: cria a simulação (backend calcula ofertas fixa + padrão).
@@ -130,10 +175,15 @@ export function OriginacaoPage() {
       await queryClient.invalidateQueries({ queryKey: ['propostas'] });
       await queryClient.invalidateQueries({ queryKey: ['simulacoes'] });
       resetWizard();
+      toast.sucesso('Proposta criada — siga para a análise.');
       // Vai direto para a análise da proposta (documentos + parecer ficam lá).
       navigate(`/propostas/${prop.id}`);
-    } catch (e) { alert(mensagemErro(e)); } finally { setOcupado(false); }
+    } catch (e) { toast.erro(mensagemErro(e)); } finally { setOcupado(false); }
   }
+
+  // Conversão exige um veículo (proposta = venda de um ativo). Simulação por valor
+  // manual é só cálculo — orienta a refazer com um veículo selecionado.
+  const semAtivo = !!sim && !sim.ativo;
 
   return (
     <div className="flex flex-col gap-[16px]">
@@ -150,10 +200,16 @@ export function OriginacaoPage() {
             <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>Nome</span>
               <input value={nome} onChange={(e) => setNome(e.target.value)} className={`${inputCls} w-[220px]`} style={inputStyle} /></label>
             <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>CPF</span>
-              <input value={cpf} onChange={(e) => setCpf(e.target.value)} className={`${inputCls} w-[160px]`} style={inputStyle} /></label>
-            <button onClick={iniciarLead} disabled={ocupado || !nome || !cpf}
+              <input value={cpf} onChange={(e) => setCpf(e.target.value)} className={`${inputCls} w-[150px]`} style={inputStyle} /></label>
+            <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>Telefone</span>
+              <input value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="(31) 99999-9999" className={`${inputCls} w-[150px]`} style={inputStyle} /></label>
+            <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>Canal de origem</span>
+              <select value={canal} onChange={(e) => setCanal(e.target.value)} className={`${inputCls} w-[170px]`} style={inputStyle}>
+                {CANAIS.map((c) => <option key={c.v} value={c.v}>{c.l}</option>)}
+              </select></label>
+            <button onClick={iniciarLead} disabled={ocupado || !nome || !cpf || telefone.trim().length < 8}
               className="h-[36px] rounded-[8px] px-[16px] text-[12.5px] font-semibold"
-              style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado || !nome || !cpf ? 0.6 : 1 }}>Iniciar</button>
+              style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado || !nome || !cpf || telefone.trim().length < 8 ? 0.6 : 1 }}>Iniciar</button>
           </div>
         )}
 
@@ -237,11 +293,17 @@ export function OriginacaoPage() {
                   </div>
                 )}
 
+                {semAtivo && (
+                  <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: '#fff7e6', color: '#8a5a00' }}>
+                    Simulação por valor manual — para <b>gerar proposta</b>, refaça selecionando um <b>veículo/ativo</b> ("trocar" acima).
+                  </div>
+                )}
+
                 {/* Tela 4 — ações sobre a condição escolhida */}
                 <div className="flex items-center gap-[8px]">
-                  <button onClick={irParaProposta} disabled={ocupado || !ofertaSel}
-                    className="h-[36px] rounded-[8px] px-[16px] text-[12.5px] font-semibold"
-                    style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado || !ofertaSel ? 0.6 : 1 }}>Avançar para proposta</button>
+                  <button onClick={irParaProposta} disabled={ocupado || !ofertaSel || semAtivo}
+                    className="h-[36px] rounded-[8px] px-[16px] text-[12.5px] font-semibold disabled:opacity-50"
+                    style={{ background: 'var(--accent)', color: '#fff' }}>Avançar para proposta</button>
                   <button onClick={apresentar} disabled={ocupado}
                     className="h-[36px] rounded-[8px] px-[14px] text-[12px] font-semibold"
                     style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>Apresentar ao cliente</button>
@@ -270,8 +332,8 @@ export function OriginacaoPage() {
                   <input value={cad.estadoCivil} onChange={(e) => setCad({ ...cad, estadoCivil: e.target.value })} className={inputCls} style={inputStyle} /></label>
                 <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>Profissão</span>
                   <input value={cad.profissao} onChange={(e) => setCad({ ...cad, profissao: e.target.value })} className={inputCls} style={inputStyle} /></label>
-                <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>CEP</span>
-                  <input value={cad.cep} onChange={(e) => setCad({ ...cad, cep: e.target.value })} className={inputCls} style={inputStyle} /></label>
+                <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>CEP {buscandoCep && <span style={{ color: 'var(--text-muted)' }}>· buscando…</span>}</span>
+                  <input value={cad.cep} onChange={(e) => setCad({ ...cad, cep: e.target.value })} onBlur={onBlurCep} placeholder="00000-000" className={inputCls} style={inputStyle} /></label>
                 <label className="flex flex-col gap-[4px] col-span-2"><span className={labelCls} style={labelStyle}>Endereço</span>
                   <input value={cad.endereco} onChange={(e) => setCad({ ...cad, endereco: e.target.value })} className={inputCls} style={inputStyle} /></label>
                 <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>Bairro</span>

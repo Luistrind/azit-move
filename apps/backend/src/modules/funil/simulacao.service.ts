@@ -294,16 +294,27 @@ export class SimulacaoService {
       where: { id: simulacaoId },
       include: {
         ativo: { select: { id: true, descricao: true, placa: true } },
+        lead: { select: { nome: true, cpf: true, telefone: true } },
+        titular: { select: { id: true, nome: true, cpfCnpj: true } },
+        proposta: { select: { id: true } },
         ofertas: { orderBy: { createdAt: 'asc' } },
       },
     });
     if (!s) {
       throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Simulação não encontrada' });
     }
+    const cliente = s.titular
+      ? { nome: s.titular.nome, cpf: s.titular.cpfCnpj, telefone: null as string | null, titularId: s.titular.id }
+      : s.lead
+        ? { nome: s.lead.nome, cpf: s.lead.cpf, telefone: s.lead.telefone, titularId: null }
+        : null;
     return {
       id: s.id,
       status: this.expirada(s) ? 'expirada' : s.status.toLowerCase(),
       validaAte: s.validaAte?.toISOString() ?? null,
+      leadId: s.leadId,
+      cliente,
+      propostaId: s.proposta?.id ?? null,
       ativo: s.ativo ? { id: s.ativo.id, descricao: s.ativo.descricao, placa: s.ativo.placa } : null,
       valorAvista: cent(s.valorAvista),
       valorAvistaManual: s.valorAvistaManual,

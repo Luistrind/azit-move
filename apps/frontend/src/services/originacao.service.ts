@@ -27,6 +27,9 @@ export interface SimulacaoResultado {
   id: string;
   status: string;
   validaAte: string | null;
+  leadId?: string | null;
+  cliente?: { nome: string; cpf: string; telefone: string | null; titularId: string | null } | null;
+  propostaId?: string | null;
   ativo: { id: string; descricao: string; placa: string | null } | null;
   valorAvista: number;
   valorAvistaManual: boolean;
@@ -107,8 +110,12 @@ export const originacaoService = {
     const { data } = await api.get('/api/v1/ativos', { params: { status: 'disponivel', limit: 100 } });
     return data.data;
   },
-  async criarLead(body: { nome: string; cpf: string }): Promise<{ tipo: string; lead?: { id: string }; titular?: { nome: string } }> {
+  async criarLead(body: { nome: string; cpf: string; telefone: string; canalOrigem: string }): Promise<{ tipo: string; lead?: { id: string }; titular?: { nome: string } }> {
     const { data } = await api.post('/api/v1/leads', body);
+    return data;
+  },
+  async detalheSimulacao(id: string): Promise<SimulacaoResultado> {
+    const { data } = await api.get<SimulacaoResultado>(`/api/v1/simulacoes/${id}`);
     return data;
   },
   async simular(body: { ativoId?: string; valorAvista?: number; leadId?: string }): Promise<SimulacaoResultado> {

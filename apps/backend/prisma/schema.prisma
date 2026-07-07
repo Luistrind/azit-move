@@ -255,6 +255,10 @@ enum StatusReajuste {
 enum CanalOrigem {
   OPERADOR_INTERNO
   LANDING_PAGE
+  OLX
+  WHATSAPP
+  INSTAGRAM
+  INDICACAO
   OUTRO
 }
 
@@ -389,6 +393,7 @@ model Lead {
   id             String      @id @default(cuid())
   nome           String
   cpf            String
+  telefone       String? // fase 1 do atendimento (Doc 2 §4-A.1)
   dataNascimento DateTime?
   canalOrigem    CanalOrigem @default(OPERADOR_INTERNO)
   titularId      String?
@@ -505,6 +510,25 @@ model OfertaFixa {
   updatedAt DateTime @updatedAt
 
   @@map("ofertas_fixas")
+}
+
+// Central de documentos do veículo (Doc 2 §4.4-A): CRLV, nota fiscal, etc.
+// Arquivo baixável; dados extraídos podem preencher o cadastro (só campos existentes).
+model AtivoDocumento {
+  id         String   @id @default(cuid())
+  ativoId    String
+  tipo       String // crlv | nota_fiscal | laudo | outro
+  nome       String // nome original do arquivo
+  arquivoRef String // referência no storage
+  criadoPor  String?
+
+  ativo Ativo @relation(fields: [ativoId], references: [id])
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  @@index([ativoId])
+  @@map("ativo_documentos")
 }
 
 // Centro de custo do ativo (Doc 2 §4.4-A): lançamentos de CUSTO por veículo
@@ -656,6 +680,7 @@ model Ativo {
   origemCapital    OrigemCapital?
   ofertaFixa       OfertaFixa?           @relation(fields: [ofertaFixaId], references: [id])
   lancamentosCusto LancamentoCustoAtivo[]
+  documentos       AtivoDocumento[]
   // 1 ativo pode ter vários contratos no tempo (ex: novação gera um novo);
   // a regra "1 ativo = 1 contrato ATIVO" é garantida em runtime (Doc 2 §4.4).
   contratosCredito ContratoCredito[]

@@ -26,13 +26,14 @@ export class LeadService {
       data: {
         nome: dto.nome,
         cpf,
+        telefone: dto.telefone,
         dataNascimento: dto.dataNascimento,
         canalOrigem: dto.canalOrigem.toUpperCase() as CanalOrigem,
       },
     });
     return {
       tipo: 'lead' as const,
-      lead: { id: lead.id, nome: lead.nome, cpf: lead.cpf },
+      lead: { id: lead.id, nome: lead.nome, cpf: lead.cpf, telefone: lead.telefone },
     };
   }
 

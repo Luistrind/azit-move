@@ -90,4 +90,31 @@ export const ativoService = {
     const { data } = await api.patch(`/api/v1/ativos/${ativoId}/origem-capital`, body);
     return data;
   },
+  // Central de documentos do veículo (Doc 2 §4.4-A).
+  async documentos(ativoId: string): Promise<AtivoDocumento[]> {
+    const { data } = await api.get<AtivoDocumento[]>(`/api/v1/ativos/${ativoId}/documentos`);
+    return data;
+  },
+  async anexarDocumento(ativoId: string, body: { tipo: string; nome: string; conteudo: string }): Promise<AtivoDocumento[]> {
+    const { data } = await api.post(`/api/v1/ativos/${ativoId}/documentos`, body);
+    return data;
+  },
+  async removerDocumento(docId: string): Promise<AtivoDocumento[]> {
+    const { data } = await api.delete(`/api/v1/ativos/documentos/${docId}`);
+    return data;
+  },
+  async baixarDocumento(docId: string, nome: string): Promise<void> {
+    const resp = await api.get(`/api/v1/ativos/documentos/${docId}/download`, { responseType: 'blob' });
+    const url = URL.createObjectURL(resp.data as Blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = nome; a.click();
+    URL.revokeObjectURL(url);
+  },
 };
+
+export interface AtivoDocumento {
+  id: string;
+  tipo: string;
+  nome: string;
+  anexadoEm: string;
+}
