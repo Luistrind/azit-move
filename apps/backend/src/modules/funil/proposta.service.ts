@@ -292,6 +292,15 @@ export class PropostaService {
         mensagem: 'Reprovação exige motivo',
       });
     }
+    if (dto.resultado === 'aprovado_com_ressalvas' && !dto.motivosRessalva?.length) {
+      throw new UnprocessableEntityException({
+        erro: 'motivo_obrigatorio',
+        mensagem: 'Aprovação com ressalvas exige ao menos um motivo',
+      });
+    }
+    // Ressalvas: todos os motivos requerem garantidor (referência da análise).
+    const exigeGarantidor = dto.resultado === 'aprovado_com_ressalvas' ? true : dto.exigeGarantidor;
+    const motivosRessalva = dto.motivosRessalva?.length ? dto.motivosRessalva.join(',') : null;
     // Gate: documentos obrigatórios completos antes do parecer (Doc 2 §4-A.5 / §8-A.5).
     const pendencias = await this.pendenciasProposta(propostaId);
     if (pendencias.length) {
@@ -310,13 +319,17 @@ export class PropostaService {
           propostaId,
           resultado: dto.resultado.toUpperCase() as ResultadoParecer,
           motivoReprovacao: dto.motivoReprovacao,
-          exigeGarantidor: dto.exigeGarantidor,
+          motivosRessalva,
+          observacao: dto.observacao,
+          exigeGarantidor,
           analistaId,
         },
         update: {
           resultado: dto.resultado.toUpperCase() as ResultadoParecer,
           motivoReprovacao: dto.motivoReprovacao,
-          exigeGarantidor: dto.exigeGarantidor,
+          motivosRessalva,
+          observacao: dto.observacao,
+          exigeGarantidor,
           analistaId,
         },
       });
@@ -410,6 +423,8 @@ export class PropostaService {
             resultado: p.parecer.resultado.toLowerCase(),
             exigeGarantidor: p.parecer.exigeGarantidor,
             motivoReprovacao: p.parecer.motivoReprovacao,
+            motivosRessalva: p.parecer.motivosRessalva ? p.parecer.motivosRessalva.split(',') : [],
+            observacao: p.parecer.observacao,
           }
         : null,
       // Carrinho: produtos adicionados à proposta (além do âncora financiamento).

@@ -17,8 +17,16 @@ const PAPEL_LABEL: Record<string, string> = {
   comprador_principal: 'Comprador principal', comprador_secundario: 'Comprador secundário', garantidor: 'Garantidor',
 };
 const DOC_LABEL: Record<string, string> = {
-  cnh: 'CNH', comprovante_endereco: 'Comp. endereço', comprovante_renda: 'Comp. renda', relatorio_brick: 'Relatório Brick',
+  cnh: 'CNH', comprovante_endereco: 'Comp. endereço', comprovante_renda: 'Comp. renda', relatorio_brick: 'Relatório Brick', anexo_analise: 'Anexo da análise',
 };
+// Parecer da análise (referência de tela do Luís, 07/07).
+const MOTIVOS_REPROVACAO = ['Renda insuficiente', 'Score de crédito baixo', 'Histórico de crédito negativo', 'Restrição cadastral', 'Documentação inconsistente', 'Outro motivo'];
+const MOTIVOS_RESSALVA = ['Idade incompatível', 'Renda insuficiente', 'Score de crédito baixo', 'Histórico de crédito negativo', 'Documentação pendente', 'Restrição cadastral', 'Tempo de emprego insuficiente', 'Outro motivo'];
+const PARECER_CARDS = [
+  { v: 'aprovado', titulo: 'Aprovado', sub: 'Todos os critérios atendidos', icone: '✓', cor: '#1f9d5b', bg: '#eafaf1' },
+  { v: 'aprovado_com_ressalvas', titulo: 'Aprovado com Ressalvas', sub: 'Requer garantidor ou condições', icone: '⚠', cor: '#c98a0a', bg: '#fef6e9' },
+  { v: 'reprovado', titulo: 'Reprovado', sub: 'Não atende aos critérios', icone: '✕', cor: '#e0413c', bg: '#fdeceb' },
+] as const;
 const STEPS = [
   { key: 'proposta', label: 'Proposta' },
   { key: 'principal', label: 'Principal' },
@@ -51,7 +59,10 @@ export function PropostaDetalhePage() {
   const [garNome, setGarNome] = useState(''); const [garCpf, setGarCpf] = useState(''); const [garZap, setGarZap] = useState('');
   const [showSeg, setShowSeg] = useState(false);
   const [segNome, setSegNome] = useState(''); const [segCpf, setSegCpf] = useState(''); const [segZap, setSegZap] = useState('');
-  const [resultado, setResultado] = useState('aprovado'); const [exigeGar, setExigeGar] = useState(false); const [motivo, setMotivo] = useState('');
+  const [resultado, setResultado] = useState(''); // '' até o analista escolher o card
+  const [motivo, setMotivo] = useState('');
+  const [ressalvas, setRessalvas] = useState<string[]>([]);
+  const [observacao, setObservacao] = useState('');
   const [produtoSel, setProdutoSel] = useState('');
   const catalogo = useQuery({ queryKey: ['produtos'], queryFn: () => produtoService.listar() });
 
@@ -253,33 +264,159 @@ export function PropostaDetalhePage() {
               </div>
             )}
           </div>
+
+          {/* Avanço explícito para a próxima etapa (não só pelo stepper) */}
+          <div className="flex justify-end">
+            <button
+              disabled={!p.documentosCompletos}
+              onClick={() => setStep(2)}
+              title={p.documentosCompletos ? undefined : 'Anexe todos os documentos obrigatórios para liberar a análise'}
+              className="h-[38px] rounded-[9px] px-[18px] text-[13px] font-semibold disabled:opacity-50"
+              style={btn('var(--accent)')}
+            >
+              Próximo: Análise →
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Passo 3 — Análise (parecer) */}
-      {step === 2 && (
-        <div className="rounded-card p-[18px]" style={card}>
-          <div className="mb-[10px] font-display text-[13px] font-bold">Análise de crédito — parecer</div>
-          {p.parecer ? (
-            <div className="text-[12.5px]">Parecer: <b>{p.parecer.resultado}</b>{p.parecer.exigeGarantidor ? ' · exige garantidor' : ''}{p.parecer.motivoReprovacao ? ` · ${p.parecer.motivoReprovacao}` : ''}</div>
-          ) : podeParecer && ['pendente', 'em_analise'].includes(p.status) ? (
-            <div className="flex flex-wrap items-end gap-[10px]">
-              <select value={resultado} onChange={(e) => setResultado(e.target.value)} className={`${inputCls} w-[200px]`} style={inputStyle}>
-                <option value="aprovado">Aprovado</option>
-                <option value="aprovado_com_ressalvas">Aprovado com ressalvas</option>
-                <option value="reprovado">Reprovado</option>
-              </select>
-              <label className="flex items-center gap-[6px] text-[12px]"><input type="checkbox" checked={exigeGar} onChange={(e) => setExigeGar(e.target.checked)} /> exige garantidor</label>
-              {resultado === 'reprovado' && <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo" className={`${inputCls} w-[200px]`} style={inputStyle} />}
-              <button disabled={ocupado}
-                onClick={() => run(() => originacaoService.registrarParecer(id, { resultado, exigeGarantidor: exigeGar, motivoReprovacao: motivo || undefined }))}
-                className="h-[34px] rounded-[8px] px-[14px] text-[12px] font-semibold" style={btn('var(--accent)')}>Registrar parecer</button>
+      {/* Passo 3 — Análise: anexos de embasamento + observação analítica + parecer em cards */}
+      {step === 2 && (() => {
+        const anexos = p.documentos.filter((d) => d.tipo === 'anexo_analise');
+        const podeEditar = !p.parecer && podeParecer && ['pendente', 'em_analise'].includes(p.status);
+        const cardSel = PARECER_CARDS.find((c) => c.v === resultado);
+        const prontoParaRegistrar =
+          !!resultado &&
+          (resultado !== 'reprovado' || !!motivo) &&
+          (resultado !== 'aprovado_com_ressalvas' || ressalvas.length > 0);
+        return (
+        <div className="flex flex-col gap-[14px]">
+          {/* Anexos de embasamento da análise */}
+          <div className="rounded-card p-[18px]" style={card}>
+            <div className="mb-[8px] flex items-center gap-[10px]">
+              <span className="font-display text-[13px] font-bold">Documentos de embasamento</span>
+              {podeParecer && ['pendente', 'em_analise'].includes(p.status) && (
+                <label className="h-[30px] cursor-pointer rounded-[8px] px-[12px] text-[12px] font-semibold leading-[30px]" style={btn('var(--navy)')}>
+                  + Anexar
+                  <input type="file" className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void anexarArquivo(p.titular.id, 'anexo_analise', f); e.target.value = ''; }} />
+                </label>
+              )}
             </div>
-          ) : (
-            <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Sem parecer (sem permissão ou estado inválido).</div>
-          )}
+            {anexos.length === 0 ? (
+              <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum anexo — consultas, extratos e prints que embasam a decisão entram aqui.</div>
+            ) : (
+              <div className="flex flex-col gap-[4px]">
+                {anexos.map((d) => (
+                  <div key={d.id} className="flex items-center justify-between rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
+                    <span>{d.arquivoRef}</span>
+                    <button onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--navy)' }}>baixar</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Parecer */}
+          <div className="rounded-card p-[18px]" style={card}>
+            <div className="mb-[10px] font-display text-[13px] font-bold">Parecer da Análise {podeEditar && '*'}</div>
+
+            {p.parecer ? (
+              <div className="flex flex-col gap-[8px] text-[12.5px]">
+                {(() => {
+                  const c = PARECER_CARDS.find((x) => x.v === p.parecer!.resultado);
+                  return (
+                    <div className="flex items-center gap-[10px] rounded-[10px] p-[12px]" style={{ background: c?.bg, border: `2px solid ${c?.cor}` }}>
+                      <span className="text-[16px]" style={{ color: c?.cor }}>{c?.icone}</span>
+                      <b>{c?.titulo ?? p.parecer!.resultado}</b>
+                      {p.parecer!.exigeGarantidor && <span className="text-[11.5px]" style={{ color: '#8a5a0a' }}>· exige garantidor</span>}
+                    </div>
+                  );
+                })()}
+                {p.parecer.motivoReprovacao && <div><Lbl>Motivo da reprovação</Lbl><div>{p.parecer.motivoReprovacao}</div></div>}
+                {p.parecer.motivosRessalva.length > 0 && <div><Lbl>Motivos da ressalva</Lbl><div>{p.parecer.motivosRessalva.join(' · ')}</div></div>}
+                {p.parecer.observacao && <div><Lbl>Observação analítica</Lbl><div style={{ whiteSpace: 'pre-wrap' }}>{p.parecer.observacao}</div></div>}
+              </div>
+            ) : !podeEditar ? (
+              <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Sem parecer (sem permissão ou estado inválido).</div>
+            ) : (
+              <div className="flex flex-col gap-[12px]">
+                {/* Cards de decisão */}
+                <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-3">
+                  {PARECER_CARDS.map((c) => (
+                    <button key={c.v} onClick={() => setResultado(c.v)}
+                      className="flex flex-col items-start gap-[4px] rounded-[12px] p-[14px] text-left transition-colors"
+                      style={{
+                        border: `2px solid ${resultado === c.v ? c.cor : 'var(--border)'}`,
+                        background: resultado === c.v ? c.bg : 'var(--surface)',
+                      }}>
+                      <span className="flex h-[26px] w-[26px] items-center justify-center rounded-full text-[14px] font-bold" style={{ background: c.bg, color: c.cor }}>{c.icone}</span>
+                      <span className="text-[13px] font-bold">{c.titulo}</span>
+                      <span className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>{c.sub}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Painel condicional: reprovação */}
+                {resultado === 'reprovado' && (
+                  <div className="flex flex-col gap-[8px] rounded-[10px] p-[14px]" style={{ background: '#fdeceb', border: '1px solid #f5c6c3' }}>
+                    <Lbl>Motivo da Reprovação *</Lbl>
+                    <select value={motivo} onChange={(e) => setMotivo(e.target.value)} className={`${inputCls} w-full max-w-[380px]`} style={inputStyle}>
+                      <option value="">Selecione o motivo</option>
+                      {MOTIVOS_REPROVACAO.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {/* Painel condicional: ressalvas (todas exigem garantidor) */}
+                {resultado === 'aprovado_com_ressalvas' && (
+                  <div className="flex flex-col gap-[8px] rounded-[10px] p-[14px]" style={{ background: '#fef6e9', border: '1px solid #f2dcb3' }}>
+                    <Lbl>Motivos da Ressalva *</Lbl>
+                    <div className="text-[11.5px]" style={{ color: '#8a5a0a' }}>Todos os motivos requerem garantidor.</div>
+                    <div className="grid grid-cols-1 gap-[6px] sm:grid-cols-2">
+                      {MOTIVOS_RESSALVA.map((m) => (
+                        <label key={m} className="flex items-center gap-[8px] text-[12.5px]">
+                          <input type="checkbox" checked={ressalvas.includes(m)}
+                            onChange={(e) => setRessalvas(e.target.checked ? [...ressalvas, m] : ressalvas.filter((x) => x !== m))} />
+                          {m}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Observação analítica */}
+                <label className="flex flex-col gap-[4px]">
+                  <Lbl>Observação analítica</Lbl>
+                  <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={3}
+                    placeholder="Contexto, critérios avaliados, fontes consultadas…"
+                    className="rounded-[8px] p-[10px] text-[12.5px]" style={inputStyle} />
+                </label>
+
+                {/* Ação — muda conforme a decisão */}
+                <div className="flex justify-end">
+                  <button
+                    disabled={ocupado || !prontoParaRegistrar}
+                    onClick={() => run(() => originacaoService.registrarParecer(id, {
+                      resultado,
+                      motivoReprovacao: resultado === 'reprovado' ? motivo : undefined,
+                      motivosRessalva: resultado === 'aprovado_com_ressalvas' ? ressalvas : undefined,
+                      observacao: observacao.trim() || undefined,
+                    }))}
+                    className="h-[38px] rounded-[9px] px-[18px] text-[13px] font-semibold disabled:opacity-50"
+                    style={btn(cardSel?.cor ?? 'var(--accent)')}>
+                    {resultado === 'reprovado' ? '✕ Reprovar Proposta'
+                      : resultado === 'aprovado_com_ressalvas' ? '⚠ Aprovar com Ressalvas — Próximo: Revisão'
+                      : resultado === 'aprovado' ? '✓ Aprovar Proposta — Próximo: Revisão'
+                      : 'Selecione o parecer'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Passo 4 — Revisão */}
       {step === 3 && (

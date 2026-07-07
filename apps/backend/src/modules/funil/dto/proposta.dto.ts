@@ -45,7 +45,7 @@ export type AdicionarVinculoDto = z.infer<typeof adicionarVinculoSchema>;
 // + conteúdo (base64). O arquivo é salvo em disco; arquivoRef guarda o nome.
 export const anexarDocumentoSchema = z.object({
   titularId: z.string().min(1),
-  tipo: z.enum(['cnh', 'comprovante_endereco', 'comprovante_renda', 'relatorio_brick', 'outro']),
+  tipo: z.enum(['cnh', 'comprovante_endereco', 'comprovante_renda', 'relatorio_brick', 'anexo_analise', 'outro']),
   arquivoNome: z.string().trim().min(1).optional(),
   arquivoConteudo: z.string().min(1).optional(), // base64 (data URL ou puro)
 });
@@ -62,10 +62,12 @@ export type AdicionarProdutoDto = z.infer<typeof adicionarProdutoSchema>;
 export const assinarSchema = z.object({ parte: z.enum(['titular', 'azit']) });
 export type AssinarDto = z.infer<typeof assinarSchema>;
 
-// 7.8 — parecer da análise de crédito.
+// 7.8 — parecer da análise de crédito. Ressalvas: todos os motivos exigem garantidor.
 export const registrarParecerSchema = z.object({
   resultado: z.enum(['aprovado', 'aprovado_com_ressalvas', 'reprovado']),
   motivoReprovacao: z.string().trim().min(1).optional(),
+  motivosRessalva: z.array(z.string().trim().min(1)).optional(),
+  observacao: z.string().trim().min(1).optional(), // observação analítica
   exigeGarantidor: z.boolean().default(false),
 });
 export type RegistrarParecerDto = z.infer<typeof registrarParecerSchema>;

@@ -289,6 +289,7 @@ enum TipoDocumentoProposta {
   COMPROVANTE_ENDERECO
   COMPROVANTE_RENDA
   RELATORIO_BRICK
+  ANEXO_ANALISE // embasamento da análise de crédito (consultas, extratos...)
   OUTRO
 }
 
@@ -643,6 +644,8 @@ model Parecer {
   propostaId       String           @unique
   resultado        ResultadoParecer
   motivoReprovacao String?
+  motivosRessalva  String? // CSV dos motivos (aprovado com ressalvas — todos exigem garantidor)
+  observacao       String? // observação analítica do analista
   exigeGarantidor  Boolean          @default(false)
   analistaId       String?
   data             DateTime         @default(now())
