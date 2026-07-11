@@ -37,7 +37,7 @@ export function Toaster() {
   const remove = useToastStore((s) => s.remove);
   if (toasts.length === 0) return null;
   return (
-    <div className="fixed bottom-[20px] right-[20px] z-[100] flex w-[340px] flex-col gap-[8px]">
+    <div className="fixed bottom-[20px] right-[20px] z-[100] flex w-[340px] max-w-[calc(100vw-32px)] flex-col gap-[8px]">
       {toasts.map((t) => {
         const c = CORES[t.tipo];
         return (

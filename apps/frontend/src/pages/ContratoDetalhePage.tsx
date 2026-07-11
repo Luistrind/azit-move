@@ -284,10 +284,10 @@ export function ContratoDetalhePage() {
 
       {tab === 'cronograma' && (
         <div
-          className="rounded-card overflow-hidden"
+          className="rounded-card overflow-x-auto"
           style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
         >
-          <table className="w-full border-collapse text-[12.5px]">
+          <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
             <thead>
               <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
                 <th className="px-[18px] py-[11px] text-left font-semibold">Parcela</th>
@@ -325,10 +325,10 @@ export function ContratoDetalhePage() {
 
       {tab === 'extrato' && (
         <div
-          className="rounded-card overflow-hidden"
+          className="rounded-card overflow-x-auto"
           style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
         >
-          <table className="w-full border-collapse text-[12.5px]">
+          <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
             <thead>
               <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
                 <th className="px-[18px] py-[11px] text-left font-semibold">Evento</th>

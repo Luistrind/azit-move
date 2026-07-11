@@ -287,7 +287,7 @@ export function TitularDetalhePage() {
         {contratosCredito.length === 0 ? (
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum contrato vinculado.</div>
         ) : (
-          <table className="w-full border-collapse text-[12.5px]">
+          <div className="overflow-x-auto"><table className="w-full min-w-[620px] border-collapse text-[12.5px]">
             <thead>
               <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
                 <th className="py-[8px] text-left font-semibold">Contrato</th>
@@ -308,7 +308,7 @@ export function TitularDetalhePage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
 
@@ -329,7 +329,7 @@ export function TitularDetalhePage() {
         ) : (faturas.data?.data.length ?? 0) === 0 ? (
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhuma fatura.</div>
         ) : (
-          <table className="w-full border-collapse text-[12.5px]">
+          <div className="overflow-x-auto"><table className="w-full min-w-[620px] border-collapse text-[12.5px]">
             <thead>
               <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
                 <th className="py-[8px] text-left font-semibold">Fatura</th>
@@ -353,7 +353,7 @@ export function TitularDetalhePage() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
 

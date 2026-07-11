@@ -317,7 +317,7 @@ export function OriginacaoPage() {
           <div className="flex flex-col gap-[16px]">
             <div>
               <div className="mb-[8px] text-[12px] font-semibold" style={{ color: 'var(--text-body)' }}>Comprador principal — cadastro completo</div>
-              <div className="grid grid-cols-4 gap-[12px]">
+              <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2 lg:grid-cols-4">
                 <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>Nome</span>
                   <input value={nome} onChange={(e) => setNome(e.target.value)} className={inputCls} style={inputStyle} /></label>
                 <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>CPF</span>
@@ -351,7 +351,7 @@ export function OriginacaoPage() {
                 <input type="checkbox" checked={comSeg} onChange={(e) => setComSeg(e.target.checked)} /> Incluir 2º comprador (opcional)
               </label>
               {comSeg && (
-                <div className="mt-[10px] grid grid-cols-3 gap-[12px]">
+                <div className="mt-[10px] grid grid-cols-1 gap-[12px] sm:grid-cols-3">
                   <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>Nome</span>
                     <input value={seg.nome} onChange={(e) => setSeg({ ...seg, nome: e.target.value })} className={inputCls} style={inputStyle} /></label>
                   <label className="flex flex-col gap-[4px]"><span className={labelCls} style={labelStyle}>CPF</span>

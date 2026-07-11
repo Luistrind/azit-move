@@ -182,7 +182,7 @@ export function SimuladorConfigPage() {
         {ofertas.data?.length === 0 ? (
           <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Nenhuma oferta fixa cadastrada.</div>
         ) : (
-          <table className="w-full border-collapse text-[12.5px]">
+          <div className="overflow-x-auto"><table className="w-full min-w-[620px] border-collapse text-[12.5px]">
             <thead>
               <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
                 <th className="py-[8px] text-left font-semibold">Oferta</th>
@@ -213,7 +213,7 @@ export function SimuladorConfigPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
     </div>

@@ -74,7 +74,7 @@ export function AlcadasPage() {
         {matriz.isLoading || !m ? (
           <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
         ) : (
-          <table className="w-full border-collapse text-[12.5px]">
+          <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
             <thead>
               <tr style={{ color: 'var(--text-muted)' }}>
                 <th className="pb-[10px] text-left font-semibold">Operação</th>

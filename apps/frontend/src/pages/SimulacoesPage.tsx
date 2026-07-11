@@ -22,8 +22,8 @@ export function SimulacoesPage() {
           + Novo atendimento
         </button>
       </div>
-      <div className="rounded-card overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <table className="w-full border-collapse text-[12.5px]">
+      <div className="rounded-card overflow-x-auto" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
           <thead>
             <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
               <th className="px-[18px] py-[12px] text-left font-semibold">Cliente</th>

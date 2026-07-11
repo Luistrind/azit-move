@@ -12,7 +12,7 @@ type StepperProps = {
 export function Stepper({ steps, current, maxReachable, onSelect }: StepperProps) {
   const max = maxReachable ?? steps.length - 1;
   return (
-    <div className="flex items-center gap-[6px]">
+    <div className="flex items-center gap-[6px] overflow-x-auto">
       {steps.map((s, i) => {
         const ativo = i === current;
         const concluido = i < current;
@@ -20,7 +20,7 @@ export function Stepper({ steps, current, maxReachable, onSelect }: StepperProps
         const bg = ativo ? 'var(--accent)' : concluido ? 'var(--navy)' : 'var(--surface-input)';
         const fg = ativo || concluido ? '#fff' : 'var(--text-muted)';
         return (
-          <div key={s.key} className="flex items-center gap-[6px]">
+          <div key={s.key} className="flex flex-none items-center gap-[6px]">
             <button
               onClick={() => navegavel && onSelect(i)}
               disabled={!navegavel}

@@ -70,7 +70,7 @@ export function ProdutosPage() {
       {aberto && podeEditar && (
         <div className="rounded-card p-[18px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
           <div className="mb-[12px] font-display text-[14px] font-bold">{editId ? 'Editar produto' : 'Novo produto'}</div>
-          <div className="grid grid-cols-4 gap-[12px]">
+          <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2 lg:grid-cols-4">
             <label className="flex flex-col gap-[4px] col-span-2"><Lbl>Nome</Lbl>
               <input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} className={inputCls} style={inStyle} /></label>
             <label className="flex flex-col gap-[4px]"><Lbl>Natureza</Lbl>
@@ -103,8 +103,8 @@ export function ProdutosPage() {
         </div>
       )}
 
-      <div className="rounded-card overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <table className="w-full border-collapse text-[12.5px]">
+      <div className="rounded-card overflow-x-auto" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
           <thead>
             <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
               <th className="px-[18px] py-[12px] text-left font-semibold">Produto</th>

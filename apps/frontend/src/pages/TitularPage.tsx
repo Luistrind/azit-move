@@ -79,8 +79,8 @@ export function TitularPage() {
 
       <div className="grid grid-cols-[1fr_1.4fr] gap-[16px]">
         {/* Lista */}
-        <div className="rounded-card overflow-hidden self-start" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <table className="w-full border-collapse text-[12.5px]">
+        <div className="rounded-card overflow-x-auto self-start" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
             <thead>
               <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
                 <th className="px-[14px] py-[10px] text-left font-semibold">Nome</th>
@@ -130,7 +130,7 @@ export function TitularPage() {
                     <div className="rounded-[8px] p-[10px] text-[11.5px]" style={{ background: '#fef6e9', color: '#8a5a0a' }}>
                       Editar altera apenas o <b>cadastro vivo</b> (usado daqui pra frente). Contratos já assinados são imutáveis — seus dados ficam congelados no snapshot da formalização e <b>não</b> mudam.
                     </div>
-                    <div className="grid grid-cols-3 gap-[12px]">
+                    <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-3">
                       <label className="flex flex-col gap-[4px]"><Lbl>Nome</Lbl><input value={form.nome ?? ''} onChange={set('nome')} className={inputCls} style={inStyle} /></label>
                       <label className="flex flex-col gap-[4px]"><Lbl>WhatsApp</Lbl><input value={form.whatsapp ?? ''} onChange={set('whatsapp')} className={inputCls} style={inStyle} /></label>
                       <label className="flex flex-col gap-[4px]"><Lbl>E-mail</Lbl><input value={form.email ?? ''} onChange={set('email')} className={inputCls} style={inStyle} /></label>

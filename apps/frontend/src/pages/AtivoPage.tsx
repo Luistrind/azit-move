@@ -187,7 +187,7 @@ export function AtivoPage() {
       {aberto && podeEditar && (
         <div className="rounded-card p-[18px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
           <div className="mb-[12px] font-display text-[14px] font-bold">{editId ? 'Editar ativo' : 'Novo ativo'}</div>
-          <div className="grid grid-cols-4 gap-[12px]">
+          <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2 lg:grid-cols-4">
             <label className="flex flex-col gap-[4px]"><Lbl>Marca</Lbl><input value={form.marca} onChange={set('marca')} className={inputCls} style={inStyle} /></label>
             <label className="flex flex-col gap-[4px]"><Lbl>Modelo</Lbl><input value={form.modelo} onChange={set('modelo')} className={inputCls} style={inStyle} /></label>
             <label className="flex flex-col gap-[4px]"><Lbl>Ano fab.</Lbl><input value={form.anoFabricacao} onChange={set('anoFabricacao')} className={inputCls} style={inStyle} /></label>
@@ -232,7 +232,7 @@ export function AtivoPage() {
             <div className="mb-[8px] text-[12px] font-semibold" style={{ color: 'var(--text-body)' }}>
               Origem de capital {temOC ? '' : '(necessária para gerar os recebíveis na originação)'}
             </div>
-            <div className="grid grid-cols-4 gap-[12px]">
+            <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2 lg:grid-cols-4">
               <label className="flex flex-col gap-[4px]"><Lbl>Tipo</Lbl>
                 <select value={form.capTipo} onChange={set('capTipo')} disabled={temOC} className={inputCls} style={{ ...inStyle, opacity: temOC ? 0.6 : 1 }}>
                   {Object.entries(CAPITAIS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -289,8 +289,8 @@ export function AtivoPage() {
       )}
 
       {/* Estoque */}
-      <div className="rounded-card overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <table className="w-full border-collapse text-[12.5px]">
+      <div className="rounded-card overflow-x-auto" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
           <thead>
             <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
               <th className="px-[18px] py-[12px] text-left font-semibold">Veículo</th>

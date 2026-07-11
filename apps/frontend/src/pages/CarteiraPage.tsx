@@ -39,7 +39,7 @@ export function CarteiraPage() {
   return (
     <div className="flex flex-col gap-[18px]">
       {/* KPIs (Doc 3 §8.1) */}
-      <div className="grid grid-cols-4 gap-[14px]">
+      <div className="grid grid-cols-2 gap-[10px] lg:grid-cols-4 lg:gap-[14px]">
         <Kpi label="Carteira sob gestão" valor={k ? formatCurrency(k.carteiraSobGestao) : '—'} />
         <Kpi label="Contratos ativos" valor={String(k?.contratosAtivos ?? '—')} />
         <Kpi label="Inadimplência" valor={k ? `${k.inadimplenciaPct}%` : '—'} />
@@ -48,10 +48,10 @@ export function CarteiraPage() {
 
       {/* Posição consolidada por titular */}
       <div
-        className="rounded-card overflow-hidden"
+        className="rounded-card overflow-x-auto"
         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
       >
-        <table className="w-full border-collapse text-[12.5px]">
+        <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
           <thead>
             <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
               <th className="px-[18px] py-[12px] text-left font-semibold">Titular</th>
