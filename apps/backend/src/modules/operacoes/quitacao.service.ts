@@ -1,14 +1,22 @@
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { calcularValorPresente, centavosParaReaisString } from '@azit/utils';
+import { anteciparParcela, centavosParaReaisString } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 const reais = (c: number) => centavosParaReaisString(c);
 const cent = (d: Prisma.Decimal | null): number =>
   d !== null ? Math.round(Number(d.toString()) * 100) : 0;
+const frac = (d: Prisma.Decimal | null | undefined): number =>
+  d !== null && d !== undefined ? Number(d.toString()) : 0;
 
-// 6.6 — Quitação antecipada (Doc 2 §7.4, §8.4). VP = VF/(1+taxa)^tempo por parcela.
+// 6.6 — Quitação antecipada (Doc 2 §7.4; fórmula da planilha do Vicente, 11/07/2026).
+// Cada parcela em aberto separa em CR (comissão recorrente) e PS (capital + remuneração):
+//   VP = CR/(1+dcr)^dias + PS/(1+dps)^dias, com d = (1+taxaMensal)^(1/30) − 1 (taxa diária).
+// dcr = taxaDescontoAntecipacaoCR da versão de parâmetros (default 20% a.m. — serviço
+// distante "isenta" na prática); dps = TR do contrato (a mesma da precificação).
+// Contrato sem versão de parâmetros (legado/crédito avulso): CR = 0 e taxa única
+// taxaDescontoQuitacao — comportamento anterior preservado.
 @Injectable()
 export class QuitacaoService {
   constructor(private readonly prisma: PrismaService) {}
@@ -20,7 +28,7 @@ export class QuitacaoService {
   private async carregar(contratoId: string, parcelaIds?: string[]) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id: contratoId },
-      select: { id: true, taxaDescontoQuitacao: true },
+      select: { id: true, taxaDescontoQuitacao: true, periodicidade: true },
     });
     if (!contrato) {
       throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Contrato não encontrado' });
@@ -31,19 +39,54 @@ export class QuitacaoService {
       where,
       orderBy: { numero: 'asc' },
     });
-    const taxa = contrato.taxaDescontoQuitacao ? Number(contrato.taxaDescontoQuitacao.toString()) : 0;
-    return { contrato, parcelas, taxa };
+
+    // Versão de parâmetros congelada na simulação que originou o contrato
+    // (direto ou como membro do pacote da proposta).
+    const proposta = await this.prisma.db.proposta.findFirst({
+      where: {
+        OR: [{ contratoGeradoId: contratoId }, { contratosPacote: { some: { id: contratoId } } }],
+      },
+      select: { simulacao: { select: { parametroVersao: true } } },
+    });
+    const versao = proposta?.simulacao?.parametroVersao ?? null;
+
+    let taxaCR: number;
+    let taxaPS: number;
+    let crPorParcela: number; // centavos — componente CR embutido em cada parcela
+    if (versao) {
+      taxaCR = frac(versao.taxaDescontoAntecipacaoCR);
+      taxaPS = frac(versao.taxaMensal); // TR
+      const fator =
+        contrato.periodicidade === 'SEMANAL'
+          ? frac(versao.fatorPrecificacaoSemanal)
+          : contrato.periodicidade === 'QUINZENAL'
+            ? frac(versao.fatorPrecificacaoQuinzenal)
+            : 1;
+      crPorParcela = fator > 0 ? Math.round(cent(versao.comissaoRecorrente) / fator) : 0;
+    } else {
+      // Legado: taxa única, sem decomposição de CR.
+      taxaCR = 0;
+      taxaPS = frac(contrato.taxaDescontoQuitacao);
+      crPorParcela = 0;
+    }
+    return { contrato, parcelas, taxaCR, taxaPS, crPorParcela };
   }
 
   async simular(contratoId: string, parcelaIds?: string[]) {
-    const { parcelas, taxa } = await this.carregar(contratoId, parcelaIds);
+    const { parcelas, taxaCR, taxaPS, crPorParcela } = await this.carregar(contratoId, parcelaIds);
     const hoje = this.hojeUTC();
     let valorNominalTotal = 0;
     let valorQuitacao = 0;
     const detalhe = parcelas.map((p) => {
       const dias = Math.max(0, Math.floor((p.dataVencimento.getTime() - hoje.getTime()) / DIA_MS));
       const vf = cent(p.valorNominal);
-      const vp = Math.round(calcularValorPresente(vf, taxa, dias));
+      const { valorPresente: vp } = anteciparParcela({
+        valorNominal: vf,
+        componenteCR: crPorParcela,
+        dias,
+        taxaDescontoCR: taxaCR,
+        taxaDescontoPS: taxaPS,
+      });
       valorNominalTotal += vf;
       valorQuitacao += vp;
       return { id: p.id, display: p.display, valorNominal: vf, valorPresente: vp, diasAteVencimento: dias };

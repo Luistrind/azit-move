@@ -761,16 +761,23 @@ Quando o valor pago é insuficiente para cobrir todos os itens, a aplicação se
 3. **Principal** — amortização do parcelamento do veículo
 
 ### 7.4 Fórmula de Quitação Antecipada
+
+> **Decisão 2026-07-11, Vicente (planilha "Extrato parcelas") — antecipação com duas taxas.** Cada parcela em aberto é decomposta em **CR** (comissão recorrente — serviço) e **PS** (capital + remuneração). Cada componente desconta com sua própria taxa; o desconto forte do CR (20% a.m.) é a forma prática de "isentar" o serviço das parcelas distantes, mantendo o capital + TR integrais.
+
 ```
-VP = VF / (1 + taxa)^tempo
+d(tm)  = (1 + tm)^(1/30) − 1          // taxa DIÁRIA equivalente à mensal tm
+VP     = CR / (1 + d(dcr))^dias  +  PS / (1 + d(dps))^dias
 ```
 Onde:
-- `VP` = valor presente (o que o cliente paga)
-- `VF` = valor futuro (valor nominal da parcela)
-- `taxa` = taxa diária de desconto (parametrizável por contrato)
-- `tempo` = número de dias entre a data de consulta/pagamento e a data de vencimento da parcela
+- `CR` = componente de comissão recorrente da parcela = CR mensal da versão de parâmetros ÷ fator de precificação da frequência (semanal ÷4, quinzenal ÷2, mensal ÷1)
+- `PS` = valor nominal da parcela − CR (capital + remuneração)
+- `dcr` = taxa de desconto do CR (`taxaDescontoAntecipacaoCR` da versão de parâmetros; padrão **20% a.m.**)
+- `dps` = **TR do contrato** (a `taxaMensal` da mesma versão de parâmetros congelada na simulação)
+- `dias` = dias entre a data de consulta/pagamento e o vencimento da parcela (vencida/hoje = 0, sem desconto)
 
 A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma dos VP de todas as parcelas restantes.
+
+**Contratos sem versão de parâmetros** (legado/crédito avulso): CR = 0 e taxa única `taxaDescontoQuitacao` do contrato — comportamento anterior preservado.
 
 **Modalidades de quitação antecipada:**
 1. **Parcelas específicas** — cliente seleciona uma ou mais parcelas futuras; sistema calcula VP de cada uma

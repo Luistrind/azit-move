@@ -91,3 +91,24 @@ describe('precificarCreditoAvulso', () => {
     expect(r.valorParcela).toBeGreaterThan(100_000);
   });
 });
+
+import { anteciparParcela } from './precificacao';
+
+describe('anteciparParcela (planilha Vicente 11/07)', () => {
+  it('reproduz a linha da planilha (3 dias): CR 147,2801 + PS 790,0839', () => {
+    const r = anteciparParcela({
+      valorNominal: 94_200,
+      componenteCR: 14_999,
+      dias: 3,
+      taxaDescontoCR: 0.2,
+      taxaDescontoPS: 0.0246482,
+    });
+    expect(r.crHoje).toBe(14_728); // R$ 147,28
+    expect(r.psHoje).toBe(79_008); // R$ 790,08
+    expect(r.valorPresente).toBe(93_736); // R$ 937,36
+  });
+  it('vencida/hoje: sem desconto', () => {
+    const r = anteciparParcela({ valorNominal: 94_200, componenteCR: 14_999, dias: 0, taxaDescontoCR: 0.2, taxaDescontoPS: 0.02 });
+    expect(r.valorPresente).toBe(94_200);
+  });
+});

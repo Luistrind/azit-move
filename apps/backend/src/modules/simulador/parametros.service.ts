@@ -17,6 +17,7 @@ export interface ParametrosVigentes {
   comissaoInicial: number; // centavos
   comissaoRecorrente: number; // centavos
   taxaMensal: number; // fração
+  taxaDescontoAntecipacaoCR: number; // fração a.m. (desconto do CR na antecipação)
   entradaMinima: number; // centavos
   prazoMinMeses: number;
   prazoMaxMeses: number;
@@ -41,6 +42,7 @@ export class ParametrosService {
     comissaoInicial: Prisma.Decimal;
     comissaoRecorrente: Prisma.Decimal;
     taxaMensal: Prisma.Decimal;
+    taxaDescontoAntecipacaoCR: Prisma.Decimal;
     entradaMinima: Prisma.Decimal;
     prazoMinMeses: number;
     prazoMaxMeses: number;
@@ -58,6 +60,7 @@ export class ParametrosService {
       comissaoInicial: cent(v.comissaoInicial),
       comissaoRecorrente: cent(v.comissaoRecorrente),
       taxaMensal: Number(v.taxaMensal.toString()),
+      taxaDescontoAntecipacaoCR: Number(v.taxaDescontoAntecipacaoCR.toString()),
       entradaMinima: cent(v.entradaMinima),
       prazoMinMeses: v.prazoMinMeses,
       prazoMaxMeses: v.prazoMaxMeses,
@@ -103,6 +106,7 @@ export class ParametrosService {
       comissaoInicial: number;
       comissaoRecorrente: number;
       taxaMensal: number;
+      taxaDescontoAntecipacaoCR: number;
       entradaMinima: number;
       prazoMinMeses: number;
       prazoMaxMeses: number;
@@ -124,6 +128,7 @@ export class ParametrosService {
         comissaoInicial: reais(dto.comissaoInicial),
         comissaoRecorrente: reais(dto.comissaoRecorrente),
         taxaMensal: dto.taxaMensal.toFixed(6),
+        taxaDescontoAntecipacaoCR: dto.taxaDescontoAntecipacaoCR.toFixed(6),
         entradaMinima: reais(dto.entradaMinima),
         prazoMinMeses: dto.prazoMinMeses,
         prazoMaxMeses: dto.prazoMaxMeses,

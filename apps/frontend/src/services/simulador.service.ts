@@ -12,6 +12,7 @@ export interface ParametrosSimulador {
   comissaoInicial: number;
   comissaoRecorrente: number;
   taxaMensal: number; // fração (0.02 = 2% a.m.)
+  taxaDescontoAntecipacaoCR: number;
   entradaMinima: number;
   prazoMinMeses: number;
   prazoMaxMeses: number;

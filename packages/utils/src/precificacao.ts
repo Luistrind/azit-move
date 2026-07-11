@@ -114,6 +114,33 @@ export function precificarCreditoAvulso(p: {
   return { valorParcela: Math.round(pmt) };
 }
 
+// ============================================================
+// ANTECIPAÇÃO DE PARCELA (planilha do Vicente, 11/07/2026): cada parcela em
+// aberto separa em CR (comissão) e PS (capital + remuneração). Valor presente
+// com taxa DIÁRIA equivalente à mensal: VP = VF / (1+d)^dias, d = (1+tm)^(1/30)−1.
+// CR desconta forte (20% a.m. — "isenção" prática do serviço distante); PS
+// desconta na TR do contrato (a mesma da precificação).
+// ============================================================
+export function valorPresenteMensal(vf: number, taxaMensal: number, dias: number): number {
+  if (dias <= 0 || taxaMensal <= 0) return vf;
+  const d = Math.pow(1 + taxaMensal, 1 / 30) - 1;
+  return vf / Math.pow(1 + d, dias);
+}
+
+export function anteciparParcela(p: {
+  valorNominal: number; // centavos
+  componenteCR: number; // centavos (comissão embutida na parcela)
+  dias: number; // até o vencimento
+  taxaDescontoCR: number; // fração a.m. (ex: 0.20)
+  taxaDescontoPS: number; // fração a.m. (TR do contrato)
+}): { valorPresente: number; crHoje: number; psHoje: number } {
+  const cr = Math.min(Math.max(0, p.componenteCR), p.valorNominal);
+  const ps = p.valorNominal - cr;
+  const crHoje = valorPresenteMensal(cr, p.taxaDescontoCR, p.dias);
+  const psHoje = valorPresenteMensal(ps, p.taxaDescontoPS, p.dias);
+  return { valorPresente: Math.round(crHoje + psHoje), crHoje: Math.round(crHoje), psHoje: Math.round(psHoje) };
+}
+
 // PMT da Tabela Price: PV * i / (1 - (1+i)^-n). Para i=0, PMT = PV/n.
 export function precificarPrice(p: ParametrosPrecificacao): ResultadoPrecificacao {
   const i = p.taxaSemanal ?? TAXA_SEMANAL_PROVISORIA;

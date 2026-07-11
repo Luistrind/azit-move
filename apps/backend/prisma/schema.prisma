@@ -477,6 +477,7 @@ model VersaoParametrosSimulacao {
   prazoMinMeses      Int
   prazoMaxMeses      Int
   prazosPadronizados String // ex: "6,12,24,36,48"
+  taxaDescontoAntecipacaoCR  Decimal @db.Decimal(8, 6) @default(0.2) // desconto do CR na antecipação (planilha Vicente)
   fatorPrecificacaoSemanal   Decimal @db.Decimal(8, 4) @default(4) // parcela exibida (reunião 11/07)
   fatorPrecificacaoQuinzenal Decimal @db.Decimal(8, 4) @default(2)
   fatorSemanal       Decimal  @db.Decimal(8, 4) // 4.3450 semanas/mês — Nº de parcelas do CONTRATO

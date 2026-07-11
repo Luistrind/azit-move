@@ -19,6 +19,7 @@ const criarVersaoSchema = z.object({
   comissaoInicial: z.number().int().min(0), // centavos
   comissaoRecorrente: z.number().int().min(0),
   taxaMensal: z.number().min(0).max(1), // fração a.m.
+  taxaDescontoAntecipacaoCR: z.number().min(0).max(1),
   entradaMinima: z.number().int().min(0),
   prazoMinMeses: z.number().int().min(1),
   prazoMaxMeses: z.number().int().min(1),
