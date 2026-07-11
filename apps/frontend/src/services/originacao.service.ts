@@ -190,8 +190,8 @@ export const originacaoService = {
     const { data } = await api.post(`/api/v1/propostas/${id}/parecer`, body);
     return data;
   },
-  async formalizar(id: string): Promise<{ contratoId: string; numero: string; status: string; documento: string }> {
-    const { data } = await api.post(`/api/v1/propostas/${id}/formalizar`, {});
+  async formalizar(id: string, dataPrimeiraParcela?: string): Promise<{ contratoId: string; numero: string; status: string; documento: string }> {
+    const { data } = await api.post(`/api/v1/propostas/${id}/formalizar`, dataPrimeiraParcela ? { dataPrimeiraParcela } : {});
     return data;
   },
   async statusContrato(contratoId: string): Promise<{

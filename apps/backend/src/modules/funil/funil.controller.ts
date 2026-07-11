@@ -186,8 +186,13 @@ export class FunilController {
   // --- 7.10 Formalização ---
   @Post('propostas/:id/formalizar')
   @HttpCode(201)
-  formalizar(@Param('id') id: string) {
-    return this.formalizacao.formalizar(id);
+  formalizar(
+    @Param('id') id: string,
+    @Body() body?: { dataPrimeiraParcela?: string },
+  ) {
+    return this.formalizacao.formalizar(id, {
+      dataPrimeiraParcela: body?.dataPrimeiraParcela ? new Date(body.dataPrimeiraParcela) : undefined,
+    });
   }
 
   // --- Assinatura (titular + Azit) e status do contrato ---

@@ -51,8 +51,12 @@ export interface ParametrosSimulacaoV3 {
   comissaoInicial: number; // centavos (CI)
   comissaoRecorrente: number; // centavos (CR)
   taxaMensal: number; // fração a.m. (TR, ex: 0.02)
-  fatorSemanal: number; // semanas/mês (4.345)
-  fatorQuinzenal: number; // quinzenas/mês (2.1725)
+  // PRECIFICAÇÃO (reunião 11/07): parcela exibida divide por 4 / 2 (números comerciais).
+  fatorPrecificacaoSemanal: number; // 4
+  fatorPrecificacaoQuinzenal: number; // 2
+  // CONTRATO (parametrização): nº exato de parcelas usa semanas/mês reais.
+  fatorSemanal: number; // 4.345
+  fatorQuinzenal: number; // 2.1725
 }
 
 export interface ResultadoSimulacaoV3 {
@@ -74,14 +78,20 @@ export function precificarSimulacao(p: ParametrosSimulacaoV3): ResultadoSimulaca
   const pm1 =
     vp === 0 ? 0 : i === 0 ? vp / pc : (vp * (i * Math.pow(1 + i, pc))) / (Math.pow(1 + i, pc) - 1);
   const pmt = pm1 + p.comissaoRecorrente;
-  const fator =
+  const fatorPrec =
+    p.frequencia === 'mensal'
+      ? 1
+      : p.frequencia === 'quinzenal'
+        ? p.fatorPrecificacaoQuinzenal
+        : p.fatorPrecificacaoSemanal;
+  const fatorContrato =
     p.frequencia === 'mensal' ? 1 : p.frequencia === 'quinzenal' ? p.fatorQuinzenal : p.fatorSemanal;
   return {
     valorParcelamento: vp,
     parcelaMensalBase: Math.round(pm1),
     parcelaMensalTotal: Math.round(pmt),
-    parcelaFinal: Math.round(pmt / fator),
-    numeroParcelas: Math.max(1, Math.round(pc * fator)),
+    parcelaFinal: Math.round(pmt / fatorPrec),
+    numeroParcelas: Math.max(1, Math.round(pc * fatorContrato)),
     totalAPagar: p.valorEntrada + Math.round(pmt * pc),
   };
 }

@@ -180,6 +180,8 @@ export class SimulacaoService {
         comissaoInicial: params.comissaoInicial,
         comissaoRecorrente: params.comissaoRecorrente,
         taxaMensal: params.taxaMensal,
+        fatorPrecificacaoSemanal: params.fatorPrecificacaoSemanal,
+        fatorPrecificacaoQuinzenal: params.fatorPrecificacaoQuinzenal,
         fatorSemanal: params.fatorSemanal,
         fatorQuinzenal: params.fatorQuinzenal,
       });
@@ -222,6 +224,8 @@ export class SimulacaoService {
       comissaoInicial: params.comissaoInicial,
       comissaoRecorrente: params.comissaoRecorrente,
       taxaMensal: params.taxaMensal,
+      fatorPrecificacaoSemanal: params.fatorPrecificacaoSemanal,
+      fatorPrecificacaoQuinzenal: params.fatorPrecificacaoQuinzenal,
       fatorSemanal: params.fatorSemanal,
       fatorQuinzenal: params.fatorQuinzenal,
     });

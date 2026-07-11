@@ -50,6 +50,8 @@ const BASE = {
   comissaoInicial: 399_000,
   comissaoRecorrente: 59_900,
   taxaMensal: 0.02,
+  fatorPrecificacaoSemanal: 4,
+  fatorPrecificacaoQuinzenal: 2,
   fatorSemanal: 4.345,
   fatorQuinzenal: 2.1725,
 } as const;
@@ -64,19 +66,13 @@ describe('precificarSimulacao (V3 — planilha Vicente)', () => {
     expect(r.numeroParcelas).toBe(30);
   });
 
-  it('converte por frequência com os fatores da reunião 04/07 (4,345 / 2,1725)', () => {
+  it('reunião 11/07: PARCELA divide por 4/2 (precificação); Nº DE PARCELAS usa 4,345 (contrato)', () => {
     const semanal = precificarSimulacao({ ...BASE, frequencia: 'semanal' });
-    expect(semanal.parcelaFinal).toBe(Math.round(271_942.48 / 4.345)); // 62.588c
-    expect(semanal.numeroParcelas).toBe(Math.round(30 * 4.345)); // 130
+    expect(semanal.parcelaFinal).toBe(67_986); // PMT/4 = R$ 679,86 (memória validada na reunião)
+    expect(semanal.numeroParcelas).toBe(Math.round(30 * 4.345)); // 130 parcelas
     const quinzenal = precificarSimulacao({ ...BASE, frequencia: 'quinzenal' });
-    expect(quinzenal.numeroParcelas).toBe(Math.round(30 * 2.1725)); // 65
-  });
-
-  it('com os índices da planilha (ICQ=2, ICS=4) bate PQ e PS da memória de cálculo', () => {
-    const q = precificarSimulacao({ ...BASE, frequencia: 'quinzenal', fatorQuinzenal: 2, fatorSemanal: 4 });
-    expect(q.parcelaFinal).toBe(135_971); // R$ 1.359,71
-    const s = precificarSimulacao({ ...BASE, frequencia: 'semanal', fatorQuinzenal: 2, fatorSemanal: 4 });
-    expect(s.parcelaFinal).toBe(67_986); // R$ 679,86
+    expect(quinzenal.parcelaFinal).toBe(135_971); // PMT/2 = R$ 1.359,71
+    expect(quinzenal.numeroParcelas).toBe(Math.round(30 * 2.1725)); // 65 parcelas
   });
 
   it('taxa zero: PM1 = VP / PC', () => {

@@ -21,7 +21,9 @@ export interface ParametrosVigentes {
   prazoMinMeses: number;
   prazoMaxMeses: number;
   prazosPadronizados: number[];
-  fatorSemanal: number;
+  fatorPrecificacaoSemanal: number; // parcela exibida (÷4 / ÷2 — reunião 11/07)
+  fatorPrecificacaoQuinzenal: number;
+  fatorSemanal: number; // nº de parcelas do contrato (4,345)
   fatorQuinzenal: number;
   validadeDias: number;
   ofertasPadrao: OfertaPadraoConfig[];
@@ -43,6 +45,8 @@ export class ParametrosService {
     prazoMinMeses: number;
     prazoMaxMeses: number;
     prazosPadronizados: string;
+    fatorPrecificacaoSemanal: Prisma.Decimal;
+    fatorPrecificacaoQuinzenal: Prisma.Decimal;
     fatorSemanal: Prisma.Decimal;
     fatorQuinzenal: Prisma.Decimal;
     validadeDias: number;
@@ -61,6 +65,8 @@ export class ParametrosService {
         .split(',')
         .map((s) => parseInt(s.trim(), 10))
         .filter((n) => Number.isInteger(n)),
+      fatorPrecificacaoSemanal: Number(v.fatorPrecificacaoSemanal.toString()),
+      fatorPrecificacaoQuinzenal: Number(v.fatorPrecificacaoQuinzenal.toString()),
       fatorSemanal: Number(v.fatorSemanal.toString()),
       fatorQuinzenal: Number(v.fatorQuinzenal.toString()),
       validadeDias: v.validadeDias,
@@ -101,6 +107,8 @@ export class ParametrosService {
       prazoMinMeses: number;
       prazoMaxMeses: number;
       prazosPadronizados: number[];
+      fatorPrecificacaoSemanal: number;
+      fatorPrecificacaoQuinzenal: number;
       fatorSemanal: number;
       fatorQuinzenal: number;
       validadeDias: number;
@@ -120,6 +128,8 @@ export class ParametrosService {
         prazoMinMeses: dto.prazoMinMeses,
         prazoMaxMeses: dto.prazoMaxMeses,
         prazosPadronizados: dto.prazosPadronizados.join(','),
+        fatorPrecificacaoSemanal: dto.fatorPrecificacaoSemanal.toFixed(4),
+        fatorPrecificacaoQuinzenal: dto.fatorPrecificacaoQuinzenal.toFixed(4),
         fatorSemanal: dto.fatorSemanal.toFixed(4),
         fatorQuinzenal: dto.fatorQuinzenal.toFixed(4),
         validadeDias: dto.validadeDias,

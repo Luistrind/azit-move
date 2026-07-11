@@ -16,6 +16,8 @@ export interface ParametrosSimulador {
   prazoMinMeses: number;
   prazoMaxMeses: number;
   prazosPadronizados: number[];
+  fatorPrecificacaoSemanal: number;
+  fatorPrecificacaoQuinzenal: number;
   fatorSemanal: number;
   fatorQuinzenal: number;
   validadeDias: number;

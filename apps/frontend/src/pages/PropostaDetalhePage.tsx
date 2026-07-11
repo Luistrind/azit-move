@@ -64,6 +64,12 @@ export function PropostaDetalhePage() {
   const [ressalvas, setRessalvas] = useState<string[]>([]);
   const [observacao, setObservacao] = useState('');
   const [produtoSel, setProdutoSel] = useState('');
+  // Parametrização do contrato (reunião 11/07): default = próxima segunda-feira.
+  const [dataPrimeira, setDataPrimeira] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7));
+    return d.toISOString().slice(0, 10);
+  });
   const catalogo = useQuery({ queryKey: ['produtos'], queryFn: () => produtoService.listar() });
 
   const q = useQuery({ queryKey: ['proposta', id], queryFn: () => originacaoService.detalheProposta(id), enabled: !!id });
@@ -437,10 +443,19 @@ export function PropostaDetalhePage() {
         <div className="rounded-card p-[18px]" style={card}>
           <div className="mb-[10px] font-display text-[13px] font-bold">Conclusão</div>
 
-          {/* a) Formalizar (gera o contrato em Aguardando assinatura, SEM cronograma) */}
+          {/* a) Parametrização do contrato (reunião 11/07): o operador define a
+              data da 1ª parcela (ex.: segunda-feira p/ motorista de app) e então
+              formaliza. Nº de parcelas vem do fator de contrato (4,345). */}
           {podeFormalizar && (
-            <button disabled={ocupado} onClick={() => run(async () => { const r = await originacaoService.formalizar(id); setDocumento(r.documento); })}
-              className="h-[34px] rounded-[8px] px-[14px] text-[12px] font-semibold" style={btn('var(--accent)')}>Formalizar (gerar contrato)</button>
+            <div className="flex flex-wrap items-end gap-[10px]">
+              <label className="flex flex-col gap-[4px]"><Lbl>1ª parcela (vencimento)</Lbl>
+                <input type="date" value={dataPrimeira} onChange={(e) => setDataPrimeira(e.target.value)} className={`${inputCls} w-[160px]`} style={inputStyle} /></label>
+              <span className="pb-[8px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+                {p.numeroParcelas} parcelas de {formatCurrency(p.valorParcela)}
+              </span>
+              <button disabled={ocupado} onClick={() => run(async () => { const r = await originacaoService.formalizar(id, dataPrimeira || undefined); setDocumento(r.documento); })}
+                className="h-[34px] rounded-[8px] px-[14px] text-[12px] font-semibold" style={btn('var(--accent)')}>Formalizar (gerar contrato)</button>
+            </div>
           )}
 
           {/* b) Pacote de contratos formalizado → assinar CADA contrato → cobrança → ativação */}

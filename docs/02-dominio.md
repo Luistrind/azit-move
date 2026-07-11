@@ -184,6 +184,8 @@ Uma opção concreta apresentada na simulação. **Três origens**:
 
 > **Conversão em contrato:** periodicidade = frequência; nº de parcelas = prazo_meses × fator (mensal 1×, quinzenal 2,1725×, semanal 4,345×, arredondado); total idêntico ao plano mensal (resíduo na última parcela).
 
+> **Decisão 2026-07-11 (reunião Vicente) — dois fatores, dois momentos:** na **precificação/simulação**, a parcela exibida divide o PMT por **4** (semanal) e **2** (quinzenal) — números comerciais, congelados no snapshot; o **4,345/2,1725** é usado só na **PARAMETRIZAÇÃO DO CONTRATO** para o nº exato de parcelas. A **quantidade de parcelas não aparece na simulação** (só prazo em meses + parcela + entrada). **Parametrização** é etapa própria antes da formalização: o operador define a **data da 1ª parcela** (ex.: segunda p/ motorista de app); a versão do texto do contrato carrega automática (a mais atual — admin gerencia, operador não escolhe). Mudança de parâmetro NUNCA afeta contratos/simulações existentes (snapshot). **Antecipação de parcela** (§7.4): parcela = capital + remuneração do capital + serviço → antecipando, **serviço é isento**, **remuneração recebe desconto na TR** e o capital é pago integral — *fórmula final das grandezas com o Vicente (pendente)*. **Capital: tratar tudo como capital de INVESTIDOR** (Popcarros = investidor) para simplificar o modelo — implementação plena junto com o breakdown do recebível.
+
 > **Intermediárias (entrada parcelada):** quando a entrada é parcelada, no **mínimo 60%** vai numa única parcela à vista (a primeira), e o **restante (até 40%)** é diluído em parcelas-balão que concorrem com as parcelas do contrato (entram nas faturas seguintes como ItemFatura — ver 4.12).
 
 ### 4-A.4 Proposta

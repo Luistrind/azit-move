@@ -23,6 +23,8 @@ const criarVersaoSchema = z.object({
   prazoMinMeses: z.number().int().min(1),
   prazoMaxMeses: z.number().int().min(1),
   prazosPadronizados: z.array(z.number().int().min(1)).min(1),
+  fatorPrecificacaoSemanal: z.number().min(1),
+  fatorPrecificacaoQuinzenal: z.number().min(1),
   fatorSemanal: z.number().min(1),
   fatorQuinzenal: z.number().min(1),
   validadeDias: z.number().int().min(1).max(90),

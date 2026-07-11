@@ -260,7 +260,7 @@ export function OriginacaoPage() {
                       <span className="font-display text-[17px] font-bold" style={{ color: 'var(--accent)' }}>
                         {formatCurrency(of.valorParcela)} <span className="text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>{FREQ_LABEL[of.frequencia]}</span>
                       </span>
-                      <span className="text-[11.5px]" style={{ color: 'var(--text-body)' }}>Entrada {formatCurrency(of.valorEntrada)} · {of.numeroParcelas} parcelas</span>
+                      <span className="text-[11.5px]" style={{ color: 'var(--text-body)' }}>Entrada {formatCurrency(of.valorEntrada)}</span>
                     </label>
                   ))}
                 </div>

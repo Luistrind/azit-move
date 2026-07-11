@@ -34,6 +34,8 @@ export function SimuladorConfigPage() {
       prazoMinMeses: String(p.prazoMinMeses),
       prazoMaxMeses: String(p.prazoMaxMeses),
       prazosPadronizados: p.prazosPadronizados.join(', '),
+      fatorPrecSemanal: String(p.fatorPrecificacaoSemanal),
+      fatorPrecQuinzenal: String(p.fatorPrecificacaoQuinzenal),
       fatorSemanal: String(p.fatorSemanal),
       fatorQuinzenal: String(p.fatorQuinzenal),
       validadeDias: String(p.validadeDias),
@@ -52,6 +54,8 @@ export function SimuladorConfigPage() {
         prazoMinMeses: Number(form.prazoMinMeses),
         prazoMaxMeses: Number(form.prazoMaxMeses),
         prazosPadronizados: form.prazosPadronizados.split(',').map((s) => Number(s.trim())).filter(Boolean),
+        fatorPrecificacaoSemanal: Number(form.fatorPrecSemanal.replace(',', '.')),
+        fatorPrecificacaoQuinzenal: Number(form.fatorPrecQuinzenal.replace(',', '.')),
         fatorSemanal: Number(form.fatorSemanal.replace(',', '.')),
         fatorQuinzenal: Number(form.fatorQuinzenal.replace(',', '.')),
         validadeDias: Number(form.validadeDias),
@@ -96,8 +100,10 @@ export function SimuladorConfigPage() {
     { chave: 'prazoMinMeses', rotulo: 'Prazo mín. (meses)' },
     { chave: 'prazoMaxMeses', rotulo: 'Prazo máx. (meses)' },
     { chave: 'prazosPadronizados', rotulo: 'Prazos padronizados' },
-    { chave: 'fatorSemanal', rotulo: 'Fator semanal (sem./mês)' },
-    { chave: 'fatorQuinzenal', rotulo: 'Fator quinzenal' },
+    { chave: 'fatorPrecSemanal', rotulo: 'Divisor da parcela semanal' },
+    { chave: 'fatorPrecQuinzenal', rotulo: 'Divisor da parcela quinzenal' },
+    { chave: 'fatorSemanal', rotulo: 'Fator nº parcelas semanal' },
+    { chave: 'fatorQuinzenal', rotulo: 'Fator nº parcelas quinzenal' },
     { chave: 'validadeDias', rotulo: 'Validade da simulação (dias)' },
   ];
 
@@ -128,8 +134,8 @@ export function SimuladorConfigPage() {
             <Metrica rotulo="Entrada mín." valor={formatCurrency(p.entradaMinima)} />
             <Metrica rotulo="Prazo" valor={`${p.prazoMinMeses}–${p.prazoMaxMeses} meses`} />
             <Metrica rotulo="Prazos padrão" valor={p.prazosPadronizados.join(', ')} />
-            <Metrica rotulo="Fator semanal" valor={String(p.fatorSemanal)} />
-            <Metrica rotulo="Fator quinzenal" valor={String(p.fatorQuinzenal)} />
+            <Metrica rotulo="Divisor parcela (sem·quinz)" valor={`÷${p.fatorPrecificacaoSemanal} · ÷${p.fatorPrecificacaoQuinzenal}`} />
+            <Metrica rotulo="Fator nº parcelas" valor={`${p.fatorSemanal} · ${p.fatorQuinzenal}`} />
             <Metrica rotulo="Validade" valor={`${p.validadeDias} dias`} />
             <Metrica rotulo="Ofertas padrão" valor={p.ofertasPadrao.map((o) => `${o.prazoMeses}m/${o.frequencia.toLowerCase()}`).join(' · ')} />
           </div>

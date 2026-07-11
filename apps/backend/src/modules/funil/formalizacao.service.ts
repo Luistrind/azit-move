@@ -89,7 +89,7 @@ export class FormalizacaoService {
   ) {}
 
   // 7.10 — congela snapshot, gera documento, cria o contrato.
-  async formalizar(propostaId: string) {
+  async formalizar(propostaId: string, parametros?: { dataPrimeiraParcela?: Date }) {
     const proposta = await this.prisma.db.proposta.findFirst({
       where: { id: propostaId },
       include: {
@@ -145,7 +145,12 @@ export class FormalizacaoService {
       | 'quinzenal'
       | 'mensal';
     const passoDias = periodicidadeApi === 'mensal' ? 30 : periodicidadeApi === 'quinzenal' ? 14 : 7;
-    const dataPrimeira = new Date(dataAssinatura.getTime() + passoDias * DIA_MS);
+    // Parametrização do contrato (reunião 11/07): o operador define a data da
+    // primeira parcela (ex.: "toda segunda"); sem escolha, cai no passo padrão.
+    const dataPrimeira =
+      parametros?.dataPrimeiraParcela && parametros.dataPrimeiraParcela > dataAssinatura
+        ? parametros.dataPrimeiraParcela
+        : new Date(dataAssinatura.getTime() + passoDias * DIA_MS);
 
     // Carrinho: produtos apartados (seguro) viram contratos próprios; os demais
     // entram como itens recorrentes na cesta do contrato do veículo (§4.8).
