@@ -10,6 +10,7 @@ import {
   centavosParaReaisString,
   renderTemplate,
   valorPorExtenso,
+  numeroPorExtenso,
   dataPorExtenso,
   formatCurrency,
 } from '@azit/utils';
@@ -21,25 +22,37 @@ import { PropostaService } from './proposta.service';
 const cent = (d: Prisma.Decimal): number => reaisParaCentavos(d.toString());
 const DIA_MS = 24 * 60 * 60 * 1000;
 
-// Template provisório do instrumento de crédito (7.9/7.10) — substituível.
-const CONTRATO_TEMPLATE = `INSTRUMENTO PARTICULAR DE FINANCIAMENTO COM RESERVA DE DOMÍNIO
+// Contrato PADRÃO de compra e venda de veículo (modelo oficial — layout fixo,
+// dados por placeholder). Ver templates/contrato-veiculo.template.ts.
+import { CONTRATO_VEICULO_TEMPLATE } from './templates/contrato-veiculo.template';
 
-Contrato nº {{numero}}, firmado em {{dataAssinatura}}.
-
-CREDOR: Azit Move.
-DEVEDOR(A): {{cliente}}, CPF/CNPJ {{cpf}}.
-{{papeisLinha}}
-
-OBJETO: {{ativo}}.
-
-CONDIÇÕES:
-- Valor total: {{valorTotal}} ({{valorTotalExtenso}}).
-- Entrada: {{valorEntrada}}.
-- Parcelas: {{numeroParcelas}} de {{valorParcela}}, periodicidade {{periodicidade}}.
-- Primeira parcela em {{dataPrimeiraParcela}}.
-
-A reserva de domínio do veículo permanece com o credor até a quitação integral.
-Documento gerado automaticamente (assinatura digital MOCK — provisória).`;
+// Qualificação da parte no padrão do contrato oficial (campos ausentes são omitidos).
+function qualificarParte(t: {
+  nome: string;
+  cpfCnpj: string;
+  rg?: string | null;
+  estadoCivil?: string | null;
+  profissao?: string | null;
+  endereco?: string | null;
+  bairro?: string | null;
+  cidade?: string | null;
+  estado?: string | null;
+  cep?: string | null;
+  whatsapp?: string | null;
+  email?: string | null;
+}): string {
+  let txt = [t.nome, 'brasileiro(a)', t.estadoCivil, t.profissao].filter(Boolean).join(', ');
+  txt += `, portador(a) do CPF nº ${t.cpfCnpj}`;
+  if (t.rg) txt += ` e RG nº ${t.rg}`;
+  const endereco = [t.endereco, t.bairro, [t.cidade, t.estado].filter(Boolean).join(' - ')]
+    .filter(Boolean)
+    .join(', ');
+  if (endereco) txt += `, residente e domiciliado(a) na ${endereco}`;
+  if (t.cep) txt += `, CEP ${t.cep}`;
+  if (t.whatsapp) txt += `, contato WhatsApp ${t.whatsapp}`;
+  if (t.email) txt += `, e-mail ${t.email}`;
+  return txt;
+}
 
 // Instrumento dos contratos APARTADOS (ex: proteção veicular / seguro). Jurídica e
 // tributariamente independente do financiamento — NÃO há reserva de domínio.
@@ -83,7 +96,7 @@ export class FormalizacaoService {
         titular: true,
         ativo: true,
         parecer: true,
-        vinculos: { include: { titular: { select: { id: true, nome: true, cpfCnpj: true } } } },
+        vinculos: { include: { titular: true } }, // qualificação completa no contrato
         simulacao: { include: { ofertas: true } },
         itens: true,
       },
@@ -228,24 +241,71 @@ export class FormalizacaoService {
       });
     }
 
-    // Snapshot congelado + documento gerado.
-    const papeisLinha = proposta.vinculos
-      .map((v) => `${v.papel.toLowerCase()}: ${v.titular.nome} (CPF ${v.titular.cpfCnpj})`)
-      .join('\n');
-    const documento = renderTemplate(CONTRATO_TEMPLATE, {
+    // Snapshot congelado + documento gerado (contrato oficial — dados × layout).
+    const taxas = await this.prisma.db.contratoCredito.findFirst({
+      where: { id: novo.id },
+      select: { taxaMultaAtraso: true, taxaJurosAtraso: true },
+    });
+    const secundarios = proposta.vinculos.filter((v) => v.papel === 'COMPRADOR_SECUNDARIO');
+    const garantidores = proposta.vinculos.filter((v) => v.papel === 'GARANTIDOR');
+    const letras = ['A', 'B', 'C', 'D'];
+    const compradoresBloco = [proposta.titular, ...secundarios.map((v) => v.titular)]
+      .map((t, i) => `${letras[i] ?? '•'}) ${qualificarParte(t)}, doravante denominado simplesmente "COMPRADOR".`)
+      .join('\n\n');
+    const garantidorBloco = garantidores.length
+      ? `\nGARANTIDOR (DEVEDOR SOLIDÁRIO):\n${garantidores
+          .map((v) => `${qualificarParte(v.titular)}, que assume, em caráter solidário, todas as obrigações do COMPRADOR previstas neste contrato.`)
+          .join('\n\n')}\n`
+      : '';
+    const valorSaldo = valorTotal - valorEntrada;
+    const vencimentoPorFreq: Record<string, string> = {
+      semanal: 'no mesmo dia das semanas subsequentes',
+      quinzenal: 'a cada 15 (quinze) dias, mantendo o mesmo dia da semana',
+      mensal: 'no mesmo dia dos meses subsequentes',
+    };
+    const pluralPorFreq: Record<string, string> = {
+      semanal: 'semanais',
+      quinzenal: 'quinzenais',
+      mensal: 'mensais',
+    };
+    const assinaturasAdicionais = [...secundarios, ...garantidores]
+      .map((v) => `\n\n___________________________________________\n${v.titular.nome}\nCPF: ${v.titular.cpfCnpj} (${v.papel === 'GARANTIDOR' ? 'Garantidor' : 'Comprador solidário'})`)
+      .join('');
+
+    const documento = renderTemplate(CONTRATO_VEICULO_TEMPLATE, {
       numero: novo.numero,
-      dataAssinatura: dataPorExtenso(dataAssinatura),
-      cliente: proposta.titular.nome,
-      cpf: proposta.titular.cpfCnpj,
-      papeisLinha,
-      ativo: proposta.ativo.descricao,
+      compradoresBloco,
+      garantidorBloco,
+      veiculoDescricao: proposta.ativo.descricao,
+      veiculoAnoFabricacao: proposta.ativo.anoFabricacao ?? '—',
+      veiculoAnoModelo: proposta.ativo.anoModelo ?? '—',
+      veiculoCor: proposta.ativo.cor ?? '—',
+      veiculoPlaca: proposta.ativo.placa ?? '—',
+      veiculoChassi: proposta.ativo.chassi ?? '—',
+      veiculoRenavam: proposta.ativo.renavam ?? '—',
+      veiculoOrigem: proposta.ativo.origem
+        ? proposta.ativo.origem.charAt(0) + proposta.ativo.origem.slice(1).toLowerCase()
+        : '—',
+      veiculoCombustivel: proposta.ativo.combustivel?.toLowerCase() ?? '—',
+      veiculoKm: proposta.ativo.quilometragemEntrada ?? '—',
       valorTotal: formatCurrency(valorTotal),
       valorTotalExtenso: valorPorExtenso(valorTotal),
       valorEntrada: formatCurrency(valorEntrada),
+      valorEntradaExtenso: valorPorExtenso(valorEntrada),
+      valorSaldo: formatCurrency(valorSaldo),
+      valorSaldoExtenso: valorPorExtenso(valorSaldo),
       numeroParcelas: proposta.numeroParcelas,
+      numeroParcelasExtenso: numeroPorExtenso(proposta.numeroParcelas),
+      periodicidadePlural: pluralPorFreq[periodicidadeApi] ?? 'semanais',
       valorParcela: formatCurrency(valorParcela),
-      periodicidade: 'semanal',
-      dataPrimeiraParcela: dataPorExtenso(dataPrimeira),
+      valorParcelaExtenso: valorPorExtenso(valorParcela),
+      dataPrimeiraParcela: dataPrimeira.toLocaleDateString('pt-BR'),
+      vencimentoSubsequente: vencimentoPorFreq[periodicidadeApi] ?? vencimentoPorFreq.semanal,
+      taxaMulta: taxas ? Number(taxas.taxaMultaAtraso.toString()) : 2,
+      taxaJuros: taxas ? Number(taxas.taxaJurosAtraso.toString()) : 1,
+      dataAssinaturaLinha: `VITORIA/ES, ${dataPorExtenso(dataAssinatura)}.`,
+      compradorAssinatura: `${proposta.titular.nome}\nCPF: ${proposta.titular.cpfCnpj}`,
+      assinaturasAdicionais,
     });
     const snapshot = {
       contrato: { numero: novo.numero, valorTotal, valorEntrada, numeroParcelas: proposta.numeroParcelas, valorParcela },
