@@ -240,8 +240,9 @@ export class TitularService {
     return titular ? titularParaApi(titular) : null;
   }
 
-  async atualizar(id: string, dto: AtualizarTitularDto): Promise<TitularApi> {
+  async atualizar(id: string, dto: AtualizarTitularDto, usuarioId?: string): Promise<TitularApi> {
     await this.garantirExiste(id);
+    const anterior = await this.prisma.db.titular.findFirst({ where: { id } });
 
     const data: Prisma.TitularUpdateInput = {
       nome: dto.nome,
@@ -265,13 +266,32 @@ export class TitularService {
     }
 
     const titular = await this.prisma.db.titular.update({ where: { id }, data });
+    // Auditoria: alteração de dados cadastrais é evento sensível (reunião 13/07).
+    await this.prisma.db.logAuditoria.create({
+      data: {
+        usuarioId,
+        acao: 'titular_alterado',
+        entidade: 'titular',
+        entidadeId: id,
+        antes: anterior ? JSON.parse(JSON.stringify(titularParaApi(anterior))) : undefined,
+        depois: JSON.parse(JSON.stringify(titularParaApi(titular))),
+      },
+    });
     return titularParaApi(titular);
   }
 
-  async remover(id: string): Promise<void> {
+  async remover(id: string, usuarioId?: string): Promise<void> {
     await this.garantirExiste(id);
     // Soft delete via extensão (preenche deletedAt).
     await this.prisma.db.titular.delete({ where: { id } });
+    await this.prisma.db.logAuditoria.create({
+      data: {
+        usuarioId,
+        acao: 'titular_removido',
+        entidade: 'titular',
+        entidadeId: id,
+      },
+    });
   }
 
   // --- helpers ---

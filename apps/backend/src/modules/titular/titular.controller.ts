@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { TitularService } from './titular.service';
 import { criarTitularSchema, CriarTitularDto } from './dto/criar-titular.dto';
@@ -88,14 +89,15 @@ export class TitularController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(atualizarTitularSchema))
     dto: AtualizarTitularDto,
+    @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.titularService.atualizar(id, dto);
+    return this.titularService.atualizar(id, dto, user.id);
   }
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Delete(':id')
   @HttpCode(204)
-  async remover(@Param('id') id: string) {
-    await this.titularService.remover(id);
+  async remover(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    await this.titularService.remover(id, user.id);
   }
 }

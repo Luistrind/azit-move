@@ -113,8 +113,9 @@ export class OperacoesController {
   quitar(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(quitacaoSchema)) dto: QuitacaoBody,
+    @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.quitacao.quitar(id, dto.parcelaIds);
+    return this.quitacao.quitar(id, dto.parcelaIds, user.id);
   }
 
   // --- Sinistro (6.7) ---
@@ -124,8 +125,9 @@ export class OperacoesController {
   registrarSinistro(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(sinistroSchema)) dto: SinistroBody,
+    @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.sinistro.registrar(id, dto.valorIndenizacao);
+    return this.sinistro.registrar(id, dto.valorIndenizacao, user.id);
   }
 
   // --- Reajuste IPCA (6.8) ---

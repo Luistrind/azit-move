@@ -15,7 +15,7 @@ const cent = (d: Prisma.Decimal | null): number =>
 export class SinistroService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async registrar(contratoId: string, valorIndenizacao: number) {
+  async registrar(contratoId: string, valorIndenizacao: number, usuarioId?: string) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id: contratoId },
       select: { id: true },
@@ -73,6 +73,15 @@ export class SinistroService {
     const saldoRemanescente = abertas
       .slice(quitadas)
       .reduce((s, p) => s + cent(p.valorNominal), 0);
+    await this.prisma.db.logAuditoria.create({
+      data: {
+        usuarioId,
+        acao: 'sinistro_registrado',
+        entidade: 'contrato',
+        entidadeId: contratoId,
+        depois: { valorIndenizacao, amortizado, parcelasQuitadas: quitadas, sobraAoCliente: restante },
+      },
+    });
     return {
       amortizado,
       parcelasQuitadas: quitadas,

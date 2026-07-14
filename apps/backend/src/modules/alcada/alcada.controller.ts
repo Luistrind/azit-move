@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
 import { RoleUsuario } from '@prisma/client';
 import { z } from 'zod';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AlcadaService } from './alcada.service';
 
@@ -40,15 +41,21 @@ export class AlcadaController {
   // Admin edita uma célula da matriz.
   @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
   @Put()
-  salvar(@Body(new ZodValidationPipe(salvarCelulaSchema)) dto: SalvarCelulaBody) {
-    return this.alcada.salvarCelula(dto);
+  salvar(
+    @Body(new ZodValidationPipe(salvarCelulaSchema)) dto: SalvarCelulaBody,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.alcada.salvarCelula(dto, user.id);
   }
 
   // Admin cadastra um novo tipo de operação (ex.: outra modalidade de renegociação).
   @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
   @Post('operacoes')
-  criarOperacao(@Body(new ZodValidationPipe(criarOperacaoSchema)) dto: CriarOperacaoBody) {
-    return this.alcada.criarOperacao(dto);
+  criarOperacao(
+    @Body(new ZodValidationPipe(criarOperacaoSchema)) dto: CriarOperacaoBody,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.alcada.criarOperacao(dto, user.id);
   }
 
   // Admin ajusta uma operação (nº de aprovações exigidas, nome, ativo).
@@ -57,7 +64,8 @@ export class AlcadaController {
   salvarOperacao(
     @Param('chave') chave: string,
     @Body(new ZodValidationPipe(salvarOperacaoSchema)) dto: SalvarOperacaoBody,
+    @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.alcada.salvarOperacao(chave, dto);
+    return this.alcada.salvarOperacao(chave, dto, user.id);
   }
 }

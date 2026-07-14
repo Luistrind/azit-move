@@ -100,12 +100,15 @@ export class AlcadaService {
     limiteMaximo?: number;
     ilimitado?: boolean;
     ativo?: boolean;
-  }) {
+  }, usuarioId?: string) {
     const op = await this.prisma.db.tipoOperacaoAlcada.findUnique({
       where: { chave: dto.tipoOperacao },
     });
     if (!op) throw new NotFoundException({ erro: 'operacao_inexistente' });
 
+    const anterior = await this.prisma.db.alcada.findUnique({
+      where: { papel_tipoOperacao: { papel: dto.papel as any, tipoOperacao: dto.tipoOperacao } },
+    });
     const limiteReais = ((dto.limiteMaximo ?? 0) / 100).toFixed(2);
     const data = {
       limiteMaximo: limiteReais,
@@ -117,11 +120,22 @@ export class AlcadaService {
       update: data,
       create: { papel: dto.papel as any, tipoOperacao: dto.tipoOperacao, ...data },
     });
+    // Auditoria: mudança de alçada é evento sensível (reunião 13/07).
+    await this.prisma.db.logAuditoria.create({
+      data: {
+        usuarioId,
+        acao: 'alcada_celula_alterada',
+        entidade: 'alcada',
+        entidadeId: `${dto.papel}:${dto.tipoOperacao}`,
+        antes: anterior ? JSON.parse(JSON.stringify(anterior)) : undefined,
+        depois: JSON.parse(JSON.stringify(data)),
+      },
+    });
     return this.matriz();
   }
 
   // Admin ajusta o nº de aprovações exigidas (princípio dos 4 olhos — Doc 2 §7.9-A).
-  async salvarOperacao(chave: string, dto: { aprovacoesNecessarias?: number; nome?: string; ativo?: boolean }) {
+  async salvarOperacao(chave: string, dto: { aprovacoesNecessarias?: number; nome?: string; ativo?: boolean }, usuarioId?: string) {
     const op = await this.prisma.db.tipoOperacaoAlcada.findUnique({ where: { chave } });
     if (!op) throw new NotFoundException({ erro: 'operacao_inexistente' });
     await this.prisma.db.tipoOperacaoAlcada.update({
@@ -132,10 +146,20 @@ export class AlcadaService {
         ativo: dto.ativo,
       },
     });
+    await this.prisma.db.logAuditoria.create({
+      data: {
+        usuarioId,
+        acao: 'alcada_operacao_alterada',
+        entidade: 'tipo_operacao_alcada',
+        entidadeId: chave,
+        antes: JSON.parse(JSON.stringify(op)),
+        depois: JSON.parse(JSON.stringify(dto)),
+      },
+    });
     return this.matriz();
   }
 
-  async criarOperacao(dto: { chave: string; nome: string }) {
+  async criarOperacao(dto: { chave: string; nome: string }, usuarioId?: string) {
     const chave = dto.chave
       .trim()
       .toLowerCase()
@@ -145,6 +169,15 @@ export class AlcadaService {
       where: { chave },
       update: { nome: dto.nome, ativo: true },
       create: { chave, nome: dto.nome },
+    });
+    await this.prisma.db.logAuditoria.create({
+      data: {
+        usuarioId,
+        acao: 'alcada_operacao_criada',
+        entidade: 'tipo_operacao_alcada',
+        entidadeId: chave,
+        depois: { chave, nome: dto.nome },
+      },
     });
     return this.matriz();
   }

@@ -7,7 +7,7 @@ import { simuladorService } from '../services/simulador.service';
 import { StatusBadge } from '../components/StatusBadge';
 import { ATIVO_STATUS_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
-import { reaisParaCentavos } from '../lib/valor';
+import { reaisParaCentavos, numeroBR, inteiroBR } from '../lib/valor';
 import { toast } from '../components/Toast';
 
 const DOC_TIPOS: { v: string; l: string }[] = [
@@ -40,7 +40,7 @@ const EMPTY: FormState = {
 };
 
 const reais = (v: string) => reaisParaCentavos(v);
-const num = (v: string) => (v === '' ? undefined : Number(v));
+const num = (v: string) => inteiroBR(v);
 const str = (v: string) => (v.trim() === '' ? undefined : v.trim());
 
 export function AtivoPage() {
@@ -111,14 +111,14 @@ export function AtivoPage() {
         marca: a.marca ?? '', modelo: a.modelo ?? '', anoFabricacao: a.anoFabricacao?.toString() ?? '',
         anoModelo: a.anoModelo?.toString() ?? '', cor: a.cor ?? '', placa: a.placa ?? '', chassi: a.chassi ?? '',
         renavam: a.renavam ?? '', combustivel: a.combustivel ?? 'flex', origem: a.origem ?? '',
-        quilometragemEntrada: a.quilometragemEntrada?.toString() ?? '',
-        valorAquisicao: a.valorAquisicao ? (a.valorAquisicao / 100).toString() : '',
-        valorVenda: a.valorVenda ? (a.valorVenda / 100).toString() : '',
+        quilometragemEntrada: a.quilometragemEntrada?.toLocaleString('pt-BR') ?? '',
+        valorAquisicao: a.valorAquisicao ? (a.valorAquisicao / 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '',
+        valorVenda: a.valorVenda ? (a.valorVenda / 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '',
         pacoteOfertaId: a.pacoteOfertaId ?? '',
         ofertaFixaId: a.ofertaFixaId ?? '',
         capTipo: oc?.tipo ?? 'capital_proprio',
-        capValor: oc ? (oc.valorAportado / 100).toString() : '',
-        capTaxa: oc?.taxaRetorno != null ? (oc.taxaRetorno * 100).toString() : '',
+        capValor: oc ? (oc.valorAportado / 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '',
+        capTaxa: oc?.taxaRetorno != null ? (oc.taxaRetorno * 100).toLocaleString('pt-BR', { maximumFractionDigits: 4 }) : '',
       });
       setTemOC(!!oc);
       setStatus(a.status);
@@ -146,7 +146,7 @@ export function AtivoPage() {
         ? {
             tipo: form.capTipo,
             valorAportado: reais(form.capValor),
-            taxaRetorno: form.capTaxa ? Number(form.capTaxa) / 100 : undefined,
+            taxaRetorno: form.capTaxa ? numeroBR(form.capTaxa) / 100 : undefined,
             dataAporte: new Date().toISOString().slice(0, 10),
           }
         : null;

@@ -99,7 +99,7 @@ export class QuitacaoService {
     };
   }
 
-  async quitar(contratoId: string, parcelaIds?: string[]) {
+  async quitar(contratoId: string, parcelaIds?: string[], usuarioId?: string) {
     const sim = await this.simular(contratoId, parcelaIds);
     if (sim.parcelas.length === 0) {
       throw new UnprocessableEntityException({
@@ -134,6 +134,21 @@ export class QuitacaoService {
           data: { status: 'QUITADO_AGUARDANDO_TRANSFERENCIA', dataEncerramento: hoje, motivoEncerramento: 'QUITACAO' },
         });
       }
+    });
+    // Auditoria: quitação/antecipação é evento sensível (reunião 13/07).
+    await this.prisma.db.logAuditoria.create({
+      data: {
+        usuarioId,
+        acao: 'quitacao_antecipada',
+        entidade: 'contrato',
+        entidadeId: contratoId,
+        depois: {
+          quitadas: sim.parcelas.length,
+          valorNominalTotal: sim.valorNominalTotal,
+          valorQuitacao: sim.valorQuitacao,
+          parcelas: sim.parcelas.map((p) => p.id),
+        },
+      },
     });
     return { quitadas: sim.parcelas.length, valorQuitacao: sim.valorQuitacao };
   }

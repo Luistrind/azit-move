@@ -2,6 +2,7 @@ import { Controller, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/commo
 import { RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
+import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ReguaService } from './regua.service';
 
 @Controller()
@@ -17,15 +18,15 @@ export class ReguaController {
   // 5.4 — Bloqueio D+3 (regra absoluta, registrado manualmente pelo operador).
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('contratos/:id/bloquear')
-  bloquear(@Param('id') id: string) {
-    return this.regua.bloquear(id);
+  bloquear(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.regua.bloquear(id, user.id);
   }
 
   // 5.5 — Desbloqueio manual.
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('contratos/:id/desbloquear')
-  desbloquear(@Param('id') id: string) {
-    return this.regua.desbloquear(id);
+  desbloquear(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.regua.desbloquear(id, user.id);
   }
 
   // Dev: roda a régua (varre inadimplência + dispara cobrança D+1/D+2).

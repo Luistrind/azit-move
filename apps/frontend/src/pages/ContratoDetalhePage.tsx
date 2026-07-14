@@ -11,6 +11,7 @@ import {
   PARCELA_STATUS_COLORS,
 } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, ROLE_REAJUSTE, mensagemErro } from '../lib/permissoes';
+import { reaisParaCentavos, numeroBR } from '../lib/valor';
 
 const ORIGEM_CAPITAL_LABEL: Record<string, string> = {
   CAPITAL_PROPRIO: 'Capital próprio',
@@ -120,7 +121,7 @@ export function ContratoDetalhePage() {
     if (!v) return;
     setSimulando(true);
     try {
-      await operacoesService.registrarSinistro(id, Math.round(Number(v) * 100));
+      await operacoesService.registrarSinistro(id, reaisParaCentavos(v));
       await recarregar();
     } catch (e) {
       alert(mensagemErro(e));
@@ -131,11 +132,11 @@ export function ContratoDetalhePage() {
 
   // 6.8 — Reajuste IPCA (gera -> aprova -> aplica nas parcelas futuras).
   async function reajustar() {
-    const v = window.prompt('Índice IPCA acumulado (%):', '4.5');
+    const v = window.prompt('Índice IPCA acumulado (%):', '4,5');
     if (!v) return;
     setSimulando(true);
     try {
-      await operacoesService.reajustar(id, Number(v));
+      await operacoesService.reajustar(id, numeroBR(v));
       await recarregar();
     } catch (e) {
       alert(mensagemErro(e));

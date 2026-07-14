@@ -119,7 +119,7 @@ export class ReguaService {
 
   // 5.4 — Bloqueio D+3 (regra absoluta, registrado no sistema; integração externa
   // é placeholder). Só permitido a partir de D+3.
-  async bloquear(contratoId: string) {
+  async bloquear(contratoId: string, usuarioId?: string) {
     const { contrato, diasAtraso } = await this.contratoComAtraso(contratoId);
     if (contrato.status !== 'INADIMPLENTE') {
       throw new UnprocessableEntityException({
@@ -137,13 +137,24 @@ export class ReguaService {
       where: { id: contratoId },
       data: { status: 'BLOQUEADO' },
     });
+    // Auditoria: bloqueio é evento sensível — registra o responsável (reunião 13/07).
+    await this.prisma.db.logAuditoria.create({
+      data: {
+        usuarioId,
+        acao: 'contrato_bloqueado',
+        entidade: 'contrato',
+        entidadeId: contratoId,
+        antes: { status: contrato.status },
+        depois: { status: 'BLOQUEADO', diasAtraso },
+      },
+    });
     // Placeholder: integração de bloqueio remoto do veículo (telemetria).
     this.logger.warn(`[bloqueio] veículo do contrato ${contrato.numero} — comando remoto (stub)`);
     return { resultado: 'bloqueado' };
   }
 
   // 5.5 — Desbloqueio sempre manual, após confirmação de regularização.
-  async desbloquear(contratoId: string) {
+  async desbloquear(contratoId: string, usuarioId?: string) {
     const { contrato, diasAtraso } = await this.contratoComAtraso(contratoId);
     if (contrato.status !== 'BLOQUEADO') {
       throw new UnprocessableEntityException({
@@ -156,6 +167,16 @@ export class ReguaService {
     await this.prisma.db.contratoCredito.update({
       where: { id: contratoId },
       data: { status: novoStatus },
+    });
+    await this.prisma.db.logAuditoria.create({
+      data: {
+        usuarioId,
+        acao: 'contrato_desbloqueado',
+        entidade: 'contrato',
+        entidadeId: contratoId,
+        antes: { status: 'BLOQUEADO' },
+        depois: { status: novoStatus, diasAtraso },
+      },
     });
     this.logger.warn(`[desbloqueio] contrato ${contrato.numero} -> ${novoStatus} (stub remoto)`);
     return { resultado: 'desbloqueado', status: novoStatus };
