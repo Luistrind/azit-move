@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '@azit/utils';
+import { analiseService } from '../services/analise.service';
 import { originacaoService } from '../services/originacao.service';
 import { produtoService } from '../services/produto.service';
 import { StatusBadge } from '../components/StatusBadge';
@@ -287,6 +288,15 @@ export function PropostaDetalhePage() {
       )}
 
       {/* Passo 3 — Análise: anexos de embasamento + observação analítica + parecer em cards */}
+      <div className="mb-[10px]">
+        <button
+          className="rounded-[8px] bg-[var(--primary)] px-[12px] py-[7px] text-[12px] font-bold text-white"
+          onClick={() => { void (async () => { try { const a = await analiseService.iniciar(id); navigate(`/analises/${a.id}`); } catch (e) { alert(mensagemErro(e)); } })(); }}
+        >
+          Análise de Cadastro (Política v1.0) →
+        </button>
+      </div>
+
       {step === 2 && (() => {
         const anexos = p.documentos.filter((d) => d.tipo === 'anexo_analise');
         const podeEditar = !p.parecer && podeParecer && ['pendente', 'em_analise'].includes(p.status);

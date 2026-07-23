@@ -10,6 +10,7 @@ import { OriginacaoPage } from './pages/OriginacaoPage';
 import { SimulacoesPage } from './pages/SimulacoesPage';
 import { PropostasPage } from './pages/PropostasPage';
 import { PropostaDetalhePage } from './pages/PropostaDetalhePage';
+import { AnalisePage } from './pages/AnalisePage';
 import { AtivoPage } from './pages/AtivoPage';
 import { ProdutosPage } from './pages/ProdutosPage';
 import { TitularPage } from './pages/TitularPage';
@@ -64,6 +65,10 @@ export const router = createBrowserRouter([
       {
         path: 'propostas/:id',
         element: <PropostaDetalhePage />,
+      },
+      {
+        path: 'analises/:id',
+        element: <AnalisePage />,
       },
       {
         path: 'ativos',
