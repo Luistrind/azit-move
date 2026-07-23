@@ -286,6 +286,11 @@ enum PapelTitular {
 
 enum TipoDocumentoProposta {
   CNH
+  RG
+  EXTRATO_BANCARIO
+  EXTRATO_APLICATIVO
+  MEI_CNPJ
+  COMPROVANTE_ATIVIDADE
   COMPROVANTE_ENDERECO
   COMPROVANTE_RENDA
   RELATORIO_BRICK
@@ -355,6 +360,8 @@ model Titular {
   propostas     Proposta[]
   vinculosPapel VinculoPapel[]
   documentos    DocumentoProposta[]
+
+  participantesAnalise ParticipanteAnalise[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -595,6 +602,7 @@ model Proposta {
   vinculos       VinculoPapel[]
   documentos     DocumentoProposta[]
   parecer        Parecer?
+  analiseCadastro AnaliseCadastro?
   itens          ItemProposta[]
   contratoGerado ContratoCredito?    @relation("PropostaContrato", fields: [contratoGeradoId], references: [id])
   contratosPacote ContratoCredito[]  @relation("PacoteProposta")
@@ -1186,4 +1194,284 @@ model RefreshToken {
   @@index([usuarioId])
   @@index([token])
   @@map("refresh_tokens")
+}
+
+// ============================================================
+// ANALISE DE CADASTRO - Politica v1.0 / Processo v1.1 / Requisitos v0.2
+// (doc 02 sec.14). Fase 1: consultas manuais (placeholder funcional).
+// ============================================================
+
+enum StatusAnalise {
+  ATENDIMENTO_INICIADO
+  SIMULACAO_REALIZADA
+  CADASTRO_EM_PREENCHIMENTO
+  DOCUMENTOS_ENVIADOS
+  CONSULTA_INICIAL_REALIZADA
+  EM_TRIAGEM_INICIAL
+  PENDENTE_DE_COMPLEMENTO
+  EM_ANALISE_COMPLEMENTAR
+  SCORE_CONSULTADO
+  RESTRICOES_CONSULTADAS
+  PARECER_EMITIDO
+  APROVADO_ALCADA_ANALISTA
+  AGUARDANDO_COCAD
+  APROVADO_COCAD
+  APROVADO_COM_RESSALVAS
+  RESSALVA_EM_TRATAMENTO
+  PENDENTE_COMPLEMENTO_COCAD
+  LIBERADO_PARA_FORMALIZACAO
+  NAO_APROVADO
+  PROPOSTA_ENCERRADA
+}
+
+enum TipoConsultaExterna {
+  CAMADA1
+  SCORE_QUOD
+  RESTRITIVOS
+}
+
+enum SituacaoConsulta {
+  CONCLUIDA
+  FALHA
+}
+
+enum SituacaoPendencia {
+  ABERTA
+  CUMPRIDA
+  EXPIRADA
+}
+
+enum TipoRessalva {
+  AUMENTO_ENTRADA
+  REDUCAO_PROPOSTA
+  GARANTIDOR
+  DOCUMENTO_ADICIONAL
+  AJUSTE_CONDICAO
+}
+
+enum SituacaoRessalva {
+  PENDENTE
+  CUMPRIDA
+  VALIDADA
+  EXPIRADA
+}
+
+enum NivelAlertaFraude {
+  DUVIDA_DOCUMENTAL
+  INDICIO_RELEVANTE
+  INDICIO_CONFIRMADO
+  RESOLVIDO
+}
+
+enum MotivoEncerramentoAnalise {
+  NAO_APROVACAO
+  DESISTENCIA
+  AUSENCIA_RETORNO
+  EXPIRACAO
+}
+
+// Parametros versionados da analise (Politica sec.31; RF-24). Nova config = nova versao.
+model VersaoParametrosAnalise {
+  id                           String   @id @default(cuid())
+  comprometimentoAlcada        Decimal  @default(0.40) @db.Decimal(6, 4)
+  comprometimentoIntermediario Decimal  @default(0.50) @db.Decimal(6, 4)
+  scoreQuodMinimo              Int      @default(600)
+  restritivoNaoFinanceiroMax   Decimal  @default(500) @db.Decimal(12, 2)
+  fatorSemanal                 Decimal  @default(4.345) @db.Decimal(8, 4)
+  fatorQuinzenal               Decimal  @default(2.17) @db.Decimal(8, 4)
+  validadeConsultaDias         Int      @default(30)
+  validadeAprovacaoDiasUteis   Int      @default(10)
+  prazoComplementoDiasUteis    Int      @default(3)
+  prazoRessalvaDiasUteis       Int      @default(5)
+  validadeRessalvaDiasCorridos Int      @default(7)
+  textoAutorizacao             String   @default("Confirmo que o cliente autorizou a realizacao das consultas cadastrais necessarias a analise da proposta.")
+  versaoAutorizacao            Int      @default(1)
+  politicaVersao               String   @default("1.0")
+  criadoPor                    String?
+  vigenteDesde                 DateTime @default(now())
+
+  analises AnaliseCadastro[]
+
+  createdAt DateTime @default(now())
+
+  @@map("versoes_parametros_analise")
+}
+
+model AnaliseCadastro {
+  id                         String                     @id @default(cuid())
+  propostaId                 String                     @unique
+  parametroVersaoId          String
+  status                     StatusAnalise              @default(ATENDIMENTO_INICIADO)
+  condutorPrincipalTitularId String?
+  parcelaMensalEquivalente   Decimal?                   @db.Decimal(12, 2)
+  rendaApuradaTotal          Decimal?                   @db.Decimal(12, 2)
+  comprometimento            Decimal?                   @db.Decimal(6, 2)
+  aprovadaEm                 DateTime?
+  aprovadaPor                String?
+  liberadaEm                 DateTime?
+  liberadaPor                String?
+  encerradaEm                DateTime?
+  motivoEncerramento         MotivoEncerramentoAnalise?
+  codigoNaoAprovacao         String?
+  aprovacaoId                String?
+
+  proposta        Proposta                @relation(fields: [propostaId], references: [id])
+  parametroVersao VersaoParametrosAnalise @relation(fields: [parametroVersaoId], references: [id])
+  participantes   ParticipanteAnalise[]
+  autorizacoes    AutorizacaoConsulta[]
+  consultas       ConsultaExterna[]
+  pendencias      PendenciaAnalise[]
+  ressalvas       RessalvaAnalise[]
+  alertasFraude   AlertaFraude[]
+  transicoes      TransicaoAnalise[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@map("analises_cadastro")
+}
+
+// Dados da analise por participante (RF-02/07/08). Rendas em REAIS, tres campos
+// independentes - o sistema nunca deriva um do outro (feedback 22/07 sec.5).
+model ParticipanteAnalise {
+  id                          String       @id @default(cuid())
+  analiseId                   String
+  titularId                   String
+  papel                       PapelTitular
+  rendaDeclarada              Decimal?     @db.Decimal(12, 2)
+  rendaPresumida              Decimal?     @db.Decimal(12, 2)
+  rendaApurada                Decimal?     @db.Decimal(12, 2)
+  rendaParcialmenteComprovada Boolean      @default(false)
+  identidadeValidada          Boolean      @default(false)
+  cnhValida                   Boolean      @default(false)
+  documentoAlternativo        Boolean      @default(false)
+  atividadeComprovada         Boolean      @default(false)
+  evidenciaAtividade          String?
+  processosRelevantes         Boolean      @default(false)
+  observacoes                 String?
+
+  analise AnaliseCadastro @relation(fields: [analiseId], references: [id])
+  titular Titular         @relation(fields: [titularId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([analiseId, titularId])
+  @@map("participantes_analise")
+}
+
+// Autorizacao de consulta via WhatsApp (RF-05) - individual por participante.
+model AutorizacaoConsulta {
+  id           String   @id @default(cuid())
+  analiseId    String
+  titularId    String
+  atendenteId  String
+  dataHora     DateTime @default(now())
+  texto        String
+  canal        String   @default("WHATSAPP")
+  versao       Int
+  evidenciaRef String?
+
+  analise AnaliseCadastro @relation(fields: [analiseId], references: [id])
+
+  @@unique([analiseId, titularId])
+  @@map("autorizacoes_consulta")
+}
+
+// Consulta externa (RF-10). Fase 1: registro manual. resultado (Json) normalizado:
+// { score?, restritivosFinanceiros?, restritivosNaoFinanceiros?, protestoChequeExecucao?, resumo? }
+model ConsultaExterna {
+  id            String              @id @default(cuid())
+  analiseId     String
+  titularId     String
+  tipo          TipoConsultaExterna
+  fornecedor    String
+  protocolo     String?
+  dataConsulta  DateTime            @default(now())
+  custo         Decimal?            @db.Decimal(12, 2)
+  situacao      SituacaoConsulta
+  motivoFalha   String?
+  tentativas    Int                 @default(1)
+  resultado     Json?
+  registradaPor String?
+
+  analise AnaliseCadastro @relation(fields: [analiseId], references: [id])
+
+  @@index([analiseId, titularId, tipo])
+  @@map("consultas_externas")
+}
+
+// Pendencia/complemento (RF-15) - especifica, com prazo e retorno a etapa de origem.
+model PendenciaAnalise {
+  id           String            @id @default(cuid())
+  analiseId    String
+  titularId    String?
+  codigo       String
+  descricao    String
+  prazo        DateTime?
+  origemStatus StatusAnalise
+  situacao     SituacaoPendencia @default(ABERTA)
+  resolvidaEm  DateTime?
+  resolvidaPor String?
+  criadaPor    String?
+
+  analise AnaliseCadastro @relation(fields: [analiseId], references: [id])
+
+  @@index([analiseId, situacao])
+  @@map("pendencias_analise")
+}
+
+// Ressalva (RF-19) - aprovacao condicionada; bloqueia formalizacao ate validacao.
+model RessalvaAnalise {
+  id           String           @id @default(cuid())
+  analiseId    String
+  tipo         TipoRessalva
+  condicao     String
+  prazo        DateTime?
+  situacao     SituacaoRessalva @default(PENDENTE)
+  evidenciaRef String?
+  cumpridaEm   DateTime?
+  validadaPor  String?
+  validadaEm   DateTime?
+  criadaPor    String?
+
+  analise AnaliseCadastro @relation(fields: [analiseId], references: [id])
+
+  @@index([analiseId, situacao])
+  @@map("ressalvas_analise")
+}
+
+// Alerta de fraude por nivel (RF-20) - evidencias preservadas.
+model AlertaFraude {
+  id           String            @id @default(cuid())
+  analiseId    String
+  titularId    String?
+  nivel        NivelAlertaFraude
+  descricao    String
+  criadoPor    String?
+  resolvidoPor String?
+  resolvidoEm  DateTime?
+
+  analise AnaliseCadastro @relation(fields: [analiseId], references: [id])
+
+  @@index([analiseId])
+  @@map("alertas_fraude")
+}
+
+// Historico de transicoes da maquina de estados (RF-14).
+model TransicaoAnalise {
+  id        String         @id @default(cuid())
+  analiseId String
+  de        StatusAnalise?
+  para      StatusAnalise
+  usuarioId String?
+  motivo    String?
+
+  analise AnaliseCadastro @relation(fields: [analiseId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([analiseId])
+  @@map("transicoes_analise")
 }

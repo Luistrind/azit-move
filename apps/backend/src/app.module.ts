@@ -22,6 +22,7 @@ import { CreditoModule } from './modules/credito/credito.module';
 import { OperacoesModule } from './modules/operacoes/operacoes.module';
 import { OriginacaoModule } from './modules/originacao/originacao.module';
 import { FunilModule } from './modules/funil/funil.module';
+import { AnaliseModule } from './modules/analise/analise.module';
 import { ProdutoModule } from './modules/produto/produto.module';
 import { InvestimentoModule } from './modules/investimento/investimento.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -53,6 +54,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     OperacoesModule,
     OriginacaoModule,
     FunilModule,
+    AnaliseModule,
     ProdutoModule,
     InvestimentoModule,
   ],

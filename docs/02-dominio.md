@@ -1016,5 +1016,27 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 
 ---
 
+## 14. Análise de Cadastro (Política v1.0 — Fase 1)
+
+> **Decisão 2026-07-22, Vicente + Luís.** A análise de cadastro passa a seguir a **Política de Análise de Cadastro v1.0**, o **Processo v1.1** e o **Documento de Requisitos v0.2** (docs/requisitos-analise-cadastro-v0.2.md — fonte normativa detalhada; esta seção é o resumo de domínio). Termo oficial: *análise de cadastro*. A operação é *venda parcelada*, nunca "financiamento".
+
+**Conceitos estruturais:**
+- **Participantes por papel** (comprador principal, segundo comprador, garantidor) — cada um com cadastro, documentos, autorização de consulta, consultas e análise individuais. Garantidor é mitigador, nunca soma renda automaticamente.
+- **CNH e condutor principal**: pelo menos um comprador com CNH válida; o outro pode usar RG; o sistema registra o **condutor principal** (comprador com CNH válida). Sem CNH em nenhum comprador, a proposta não é liberada para formalização.
+- **Autorização de consulta** (gate LGPD): obtida por WhatsApp e registrada por participante (atendente, data/hora, texto vigente, canal, versão). Nenhuma consulta sem ela.
+- **Três rendas manuais e independentes**: declarada (cliente), presumida (fontes externas — NUNCA entra em cálculo), **apurada** (analista, com justificativa para alterar). O comprometimento usa a renda apurada: parcela mensal equivalente (semanal ×4,345; quinzenal ×2,17; mensal ×1 — fatores versionados, sem alterar o cronograma) ÷ renda apurada total.
+- **Motor de regras**: avalia os critérios objetivos (identidade, CNH, autorização, atividade, renda, comprometimento ≤40%, Score Quod ≥600, restritivos — financeiro ativo ou não financeiro >R$500 sobem, protesto/cheque/execução sobem —, processos, fraude) e produz saída estruturada com código de motivo (APR/COC/COM/NAP) e bloqueios. **Nunca reprova automaticamente** — bloqueia aprovação direta e encaminha.
+- **Alçadas**: analista aprova sozinho apenas com TODOS os critérios conformes; fora disso a proposta sobe ao **COCAD** (Comitê de Cadastro — implementado sobre o motor de aprovação §7.9-A; parecer do analista = recomendação; segundo membro decide; composição provisória: Aprovador/Diretor). Decisões do COCAD: aprovar, aprovar com ressalvas, solicitar complemento, não aprovar.
+- **Falha/ausência de consulta não trava o fluxo**: bloqueia aprovação direta e eleva a alçada mínima ao COCAD, com registro (motivo, tentativas, responsável). Ausência nunca é interpretada como favorável.
+- **Complemento ≠ COCAD**: falta de informação gera pendência específica com prazo e retorno à etapa de origem; risco conhecido sobe de alçada.
+- **Ressalvas** são entidades com condição objetiva, prazo, evidência e validação — aprovação com ressalva não libera formalização; expiração volta ao COCAD (nunca vira não-aprovação automática).
+- **Máquina de estados**: os 20 status oficiais da Política §25, um ativo por vez, transições com pré-condições e histórico. **Encerramentos classificados**: não aprovação ≠ desistência ≠ ausência de retorno ≠ expiração.
+- **Pacote mínimo** bloqueante para liberar a Contratos e Ativação (decisão válida, parecer + códigos, documentos, CNH do condutor, consultas válidas ou ausência decidida pelo COCAD, renda apurada, sem pendência, ressalvas cumpridas, garantidor aceito, versão da política, responsável).
+- **Parâmetros versionados** (mesma mecânica do simulador): limites, fatores, validades (consultas 30d, aprovação 10du), prazos e texto da autorização. Cada análise congela a versão aplicada.
+
+**Fase 1**: consultas (BigDataCorp Camada 1, Score Quod, Boa Vista) registradas manualmente pelo analista — placeholder funcional. **Fase 2**: adaptadores automáticos. **Fora do escopo** (evolução futura): Azit Score, automação da renda média ajustada, interpretação da conversa de WhatsApp.
+
+---
+
 *Documento vivo — atualizar a cada decisão validada.*
 *Versão 2.0 — 2026-06-27 — expansão de escopo: originação absorvida do PopHub, distinção Acordo/Novação, telas do operador, refinamentos da reunião de 26/06 com Vicente.*

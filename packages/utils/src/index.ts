@@ -9,3 +9,4 @@ export * from './regua';
 export * from './precificacao';
 export * from './templates';
 export * from './imputacao';
+export * from './analise-cadastro';

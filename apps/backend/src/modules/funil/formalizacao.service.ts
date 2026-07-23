@@ -90,6 +90,19 @@ export class FormalizacaoService {
 
   // 7.10 — congela snapshot, gera documento, cria o contrato.
   async formalizar(propostaId: string, parametros?: { dataPrimeiraParcela?: Date }) {
+    // Gate da Análise de Cadastro (Requisitos v0.2 RF-22): se a proposta tem análise,
+    // só formaliza com status LIBERADO_PARA_FORMALIZACAO. Propostas sem análise seguem
+    // o fluxo legado (parecer) — transição suave, sem propostas reais no banco.
+    const analiseGate = await this.prisma.db.analiseCadastro.findUnique({
+      where: { propostaId },
+      select: { status: true },
+    });
+    if (analiseGate && analiseGate.status !== 'LIBERADO_PARA_FORMALIZACAO') {
+      throw new UnprocessableEntityException({
+        erro: 'analise_nao_liberada',
+        mensagem: `Análise de cadastro em ${analiseGate.status} — libere a análise antes de formalizar`,
+      });
+    }
     const proposta = await this.prisma.db.proposta.findFirst({
       where: { id: propostaId },
       include: {
