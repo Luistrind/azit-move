@@ -9,7 +9,7 @@ import { mensagemErro } from '../lib/permissoes';
 
 const inputCls = 'w-full rounded-[8px] border border-[var(--border)] bg-[var(--surface)] px-[10px] py-[7px] text-[13px]';
 const btn = 'rounded-[8px] px-[12px] py-[7px] text-[12px] font-bold';
-const btnP = `${btn} bg-[var(--primary)] text-white disabled:opacity-40`;
+const btnP = `${btn} bg-[var(--navy)] text-white disabled:opacity-40`;
 const btnS = `${btn} border border-[var(--border)]`;
 const card = 'rounded-[12px] border border-[var(--border)] bg-[var(--surface)] p-[16px]';
 

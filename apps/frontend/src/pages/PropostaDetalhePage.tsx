@@ -288,12 +288,17 @@ export function PropostaDetalhePage() {
       )}
 
       {/* Passo 3 — Análise: anexos de embasamento + observação analítica + parecer em cards */}
-      <div className="mb-[10px]">
+      <div className="mb-[10px] flex flex-wrap items-center justify-between gap-[8px] rounded-[12px] border-2 border-[var(--navy)] bg-[var(--surface)] p-[14px]">
+        <div>
+          <div className="font-display text-[13px] font-bold">Análise de Cadastro — Política v1.0</div>
+          <div className="text-[12px] text-[var(--text-muted)]">Workspace oficial: participantes, rendas, autorização, consultas, COCAD e liberação.</div>
+        </div>
         <button
-          className="rounded-[8px] bg-[var(--primary)] px-[12px] py-[7px] text-[12px] font-bold text-white"
+          className="h-[36px] rounded-[8px] px-[16px] text-[12px] font-bold"
+          style={{ background: 'var(--navy)', color: '#fff' }}
           onClick={() => { void (async () => { try { const a = await analiseService.iniciar(id); navigate(`/analises/${a.id}`); } catch (e) { alert(mensagemErro(e)); } })(); }}
         >
-          Análise de Cadastro (Política v1.0) →
+          Abrir análise →
         </button>
       </div>
 
