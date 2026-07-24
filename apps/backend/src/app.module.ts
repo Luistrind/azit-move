@@ -23,6 +23,7 @@ import { OperacoesModule } from './modules/operacoes/operacoes.module';
 import { OriginacaoModule } from './modules/originacao/originacao.module';
 import { FunilModule } from './modules/funil/funil.module';
 import { AnaliseModule } from './modules/analise/analise.module';
+import { CapitalModule } from './modules/capital/capital.module';
 import { ProdutoModule } from './modules/produto/produto.module';
 import { InvestimentoModule } from './modules/investimento/investimento.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -55,6 +56,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     OriginacaoModule,
     FunilModule,
     AnaliseModule,
+    CapitalModule,
     ProdutoModule,
     InvestimentoModule,
   ],

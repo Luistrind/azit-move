@@ -363,6 +363,9 @@ model Titular {
 
   participantesAnalise ParticipanteAnalise[]
 
+  classificacoes TitularClassificacao[]
+  investimentosEstrutura InvestidorEstrutura[]
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -712,6 +715,7 @@ model Ativo {
 }
 
 model OrigemCapital {
+  estruturaId String? // camada de capital (doc 02 sec.15)
   id                     String              @id @default(cuid())
   ativoId                String              @unique
   tipo                   TipoOrigemCapital
@@ -730,6 +734,7 @@ model OrigemCapital {
 
   @@index([contratoInvestimentoId])
   @@map("origens_capital")
+  estrutura EstruturaJuridica? @relation(fields: [estruturaId], references: [id])
 }
 
 model ContratoInvestimento {
@@ -1474,4 +1479,74 @@ model TransicaoAnalise {
 
   @@index([analiseId])
   @@map("transicoes_analise")
+}
+
+// ============================================================
+// PESSOAS/CLASSIFICACOES + CAMADA DE CAPITAL (doc 02 sec.15, reuniao 18/07)
+// ============================================================
+
+enum ClassificacaoTitular {
+  INVESTIDOR
+  FORNECEDOR
+  PARCEIRO
+}
+
+enum TipoEstruturaJuridica {
+  SPE
+  FUNDO
+  OUTRA
+}
+
+model TitularClassificacao {
+  id            String               @id @default(cuid())
+  titularId     String
+  classificacao ClassificacaoTitular
+  observacao    String?
+
+  titular Titular @relation(fields: [titularId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([titularId, classificacao])
+  @@map("titular_classificacoes")
+}
+
+// Estrutura juridica basica (SPE/fundo por rodada). Juridico final em definicao
+// (Claudio/Sebastiao) - placeholder funcional, nao bloqueante (Regra 12).
+model EstruturaJuridica {
+  id          String                @id @default(cuid())
+  nome        String
+  tipo        TipoEstruturaJuridica @default(SPE)
+  cnpj        String?
+  rodada      String?
+  ativo       Boolean               @default(true)
+  observacoes String?
+
+  investidores InvestidorEstrutura[]
+  origensCapital OrigemCapital[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("estruturas_juridicas")
+}
+
+// N <-> N investidor (titular) x estrutura. Instrumento padrao: mutuo.
+model InvestidorEstrutura {
+  id              String   @id @default(cuid())
+  titularId       String
+  estruturaId     String
+  valorAportado   Decimal? @db.Decimal(14, 2)
+  tipoInstrumento String   @default("MUTUO")
+  dataAporte      DateTime?
+  observacao      String?
+
+  titular   Titular           @relation(fields: [titularId], references: [id])
+  estrutura EstruturaJuridica @relation(fields: [estruturaId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([titularId, estruturaId])
+  @@map("investidores_estrutura")
 }

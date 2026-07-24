@@ -1038,5 +1038,16 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 
 ---
 
+## 15. Pessoas, Classificações e Camada de Capital (reunião 18/07)
+
+> **Decisão 2026-07-18/23, Vicente + Luís.** Pessoas cadastradas (cliente, investidor, fornecedor, parceiro) NÃO têm acesso ao sistema — usuários são internos (governança). Ficha cadastral única (Titular) com campos/visões por tipo.
+
+- **Classificações do Titular**: INVESTIDOR, FORNECEDOR e PARCEIRO são classificações manuais múltiplas sobre o cadastro único; CLIENTE continua derivado (contrato). As "abas" de cadastro são visões filtradas do mesmo dado.
+- **Camada de capital (estrutura básica, jurídico em definição — placeholder Regra 12)**: investidor PF nunca é dono direto do ativo. Entra a **Estrutura Jurídica** (SPE/fundo; pode ser uma por rodada de captação). Relações N↔N: um investidor em N estruturas, uma estrutura com N investidores (instrumento padrão: mútuo, com valor e data do aporte). A estrutura é a dona do capital dos ativos: a Origem de Capital do ativo aponta para a estrutura.
+- Cadeia navegável exigida pelo MVP: **veículo → estrutura jurídica → investidores** (+ cliente/contrato pelo lado da carteira). Relatórios por ativo amarram nesse cadastro.
+- Fornecedor: por ora só classificação + ficha; mecânica de contas a pagar entra com o ERP enxuto (prazo 07/08).
+
+---
+
 *Documento vivo — atualizar a cada decisão validada.*
 *Versão 2.0 — 2026-06-27 — expansão de escopo: originação absorvida do PopHub, distinção Acordo/Novação, telas do operador, refinamentos da reunião de 26/06 com Vicente.*
