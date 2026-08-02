@@ -32,6 +32,7 @@ const NAV_ITEMS: NavItemDef[] = [
 const NAV_CONFIG: NavItemDef[] = [
   { to: '/configuracoes/alcadas', label: 'Alçadas' },
   { to: '/configuracoes/simulador', label: 'Simulador' },
+  { to: '/configuracoes/usuarios', label: 'Usuários e permissões' },
 ];
 const ROLES_CONFIG = ['ADMIN', 'DIRETOR'];
 

@@ -48,7 +48,7 @@ export class UsuariosController {
     return { areas: await this.areasEfetivas(user.id) };
   }
 
-  @Roles(RoleUsuario.ADMIN)
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
   @Get('usuarios')
   async listar() {
     const usuarios = await this.prisma.db.usuario.findMany({
@@ -70,7 +70,7 @@ export class UsuariosController {
     );
   }
 
-  @Roles(RoleUsuario.ADMIN)
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
   @Post('usuarios')
   @HttpCode(201)
   async criar(
@@ -90,7 +90,7 @@ export class UsuariosController {
     return { id: criado.id };
   }
 
-  @Roles(RoleUsuario.ADMIN)
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
   @Patch('usuarios/:id')
   async atualizar(
     @Param('id') id: string,
@@ -109,7 +109,7 @@ export class UsuariosController {
     return { resultado: 'ok' };
   }
 
-  @Roles(RoleUsuario.ADMIN)
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
   @Post('usuarios/:id/senha')
   @HttpCode(200)
   async redefinirSenha(
@@ -124,7 +124,7 @@ export class UsuariosController {
   }
 
   // --- Matriz papel × área (padrões que o papel carrega) ---
-  @Roles(RoleUsuario.ADMIN)
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
   @Get('permissoes/matriz')
   async matriz() {
     const linhas = await this.prisma.db.permissaoPapelArea.findMany();
@@ -135,7 +135,7 @@ export class UsuariosController {
     };
   }
 
-  @Roles(RoleUsuario.ADMIN)
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
   @Put('permissoes/matriz')
   async salvarCelula(
     @Body(new ZodValidationPipe(celulaMatrizSchema)) dto: z.infer<typeof celulaMatrizSchema>,
@@ -155,7 +155,7 @@ export class UsuariosController {
   }
 
   // --- Exceções por usuário (concede/revoga área específica) ---
-  @Roles(RoleUsuario.ADMIN)
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
   @Get('usuarios/:id/permissoes')
   async permissoesUsuario(@Param('id') id: string) {
     const usuario = await this.prisma.db.usuario.findFirst({
@@ -172,7 +172,7 @@ export class UsuariosController {
     };
   }
 
-  @Roles(RoleUsuario.ADMIN)
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
   @Put('usuarios/:id/permissoes')
   async definirExcecao(
     @Param('id') id: string,
