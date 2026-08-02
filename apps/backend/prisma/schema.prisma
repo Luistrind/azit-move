@@ -1165,6 +1165,8 @@ model Usuario {
   aprovacoesSolicitadas Aprovacao[]        @relation("AprovacaoSolicitante")
   decisoesAprovacao     AprovacaoDecisao[] @relation("DecisaoUsuario")
 
+  permissoesArea PermissaoUsuarioArea[]
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -1549,4 +1551,50 @@ model InvestidorEstrutura {
 
   @@unique([titularId, estruturaId])
   @@map("investidores_estrutura")
+}
+
+// ============================================================
+// GESTAO DE USUARIOS E PERMISSOES POR AREA (doc 02 sec.16)
+// ============================================================
+
+enum AreaSistema {
+  COMERCIAL
+  ANALISE_CADASTRO
+  CONTRATOS
+  CARTEIRA_COBRANCA
+  PESSOAS
+  ATIVOS_FROTA
+  CAPITAL_INVESTIMENTO
+  PRODUTOS
+  APROVACOES
+  CONFIGURACOES
+}
+
+// Matriz papel x area: padrao que cada papel carrega (editavel pelo admin).
+model PermissaoPapelArea {
+  id        String      @id @default(cuid())
+  papel     RoleUsuario
+  area      AreaSistema
+  permitido Boolean     @default(true)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([papel, area])
+  @@map("permissoes_papel_area")
+}
+
+// Excecao por usuario: concede (true) ou revoga (false) uma area especifica.
+model PermissaoUsuarioArea {
+  id        String      @id @default(cuid())
+  usuarioId String
+  area      AreaSistema
+  concedida Boolean
+  motivo    String?
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([usuarioId, area])
+  @@map("permissoes_usuario_area")
 }

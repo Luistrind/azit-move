@@ -1049,5 +1049,15 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 
 ---
 
+## 16. Gestão de Usuários e Permissões por Área (domínio Plataforma)
+
+> **Decisão 2026-08, Luís.** Usuários internos são um domínio próprio (Plataforma/Governança). Modelo de permissão em dois níveis:
+> 1. **Papel → áreas**: cada papel (Admin, Diretor, Aprovador, Operador, Financeiro) carrega por padrão as áreas de sistema do seu domínio, via **matriz papel × área** editável pelo administrador.
+> 2. **Exceções por usuário**: concessões ou revogações de áreas específicas por usuário, com motivo, sem mexer no papel.
+>
+> Áreas de sistema = as áreas de navegação da proposta de UX (Comercial, Análise de Cadastro, Contratos, Carteira & Cobrança, Pessoas, Ativos & Frota, Capital & Investimento, Produtos, Aprovações, Configurações). Permissões efetivas = união das áreas dos papéis ± exceções. Ações sensíveis dentro das áreas continuam protegidas por papel/alçada (nível 2); permissão fina por ação é evolução futura sem retrabalho (nível 3). Toda mutação de usuário/permissão é evento sensível auditado (responsável + antes/depois).
+
+---
+
 *Documento vivo — atualizar a cada decisão validada.*
 *Versão 2.0 — 2026-06-27 — expansão de escopo: originação absorvida do PopHub, distinção Acordo/Novação, telas do operador, refinamentos da reunião de 26/06 com Vicente.*
