@@ -153,7 +153,7 @@ function DetalheProduto({ id }: { id: string }) {
 
       {aba === 'produto' && (
         <TabelaParametros
-          titulo={`Nível produto — versão ${d.versaoProduto ?? '—'} (vale para todas as variantes)`}
+          titulo={`Nível produto — ${d.versaoProduto ? `V${d.versaoProduto}` : 'sem versão'} (vale para todas as variantes)`}
           parametros={d.parametrosProduto}
           origem={() => 'produto'}
           podeEditar={podeEditar}
@@ -163,7 +163,7 @@ function DetalheProduto({ id }: { id: string }) {
 
       {varianteAtiva && (
         <TabelaParametros
-          titulo={`Variante ${varianteAtiva.nome} — versão ${varianteAtiva.versao ?? '—'} (efetivo = produto + sobrescritas da variante)`}
+          titulo={`Variante ${varianteAtiva.nome} — ${varianteAtiva.versao ? `V${varianteAtiva.versao}` : 'sem versão'} (efetivo = produto + sobrescritas da variante)`}
           parametros={varianteAtiva.parametrosEfetivos}
           origem={(chave) => (chave in varianteAtiva.parametros ? 'variante' : 'produto')}
           podeEditar={podeEditar}
@@ -175,7 +175,7 @@ function DetalheProduto({ id }: { id: string }) {
         <div className="flex flex-col gap-[6px]">
           {d.versoes.map((v) => (
             <div key={v.id} className="rounded-[10px] p-[10px] text-[12px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-              <b>Versão {v.numero}</b> · nível {v.nivel} · vigente desde {new Date(v.vigenteDesde).toLocaleDateString('pt-BR')}
+              <b>V{v.numero}</b> · nível {v.nivel} · vigente desde {new Date(v.vigenteDesde).toLocaleDateString('pt-BR')}
               {v.vigenteAte ? ` até ${new Date(v.vigenteAte).toLocaleDateString('pt-BR')}` : ' (vigente)'}
               {v.observacao && <div style={{ color: 'var(--text-muted)' }}>{v.observacao}</div>}
             </div>

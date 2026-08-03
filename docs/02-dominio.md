@@ -1079,6 +1079,17 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 > 5. **Governança sem workflow**: Diretoria edita direto (área Produtos + auditoria antes/depois).
 > 6. Dinheiro nos parâmetros em **centavos** (inteiro); percentuais em fração decimal (0,017).
 >
+>
+> **Decisões 2026-08-02 (Luís, respostas às perguntas da v0.1 dos requisitos):**
+> - **Numeração de versão exibida como V1, V2, V3…**, sequencial por produto e por variante.
+> - **Proteção dentro da Compra Parcelada acompanha a frequência do contrato**, com preço de
+>   referência **semanal**: contrato semanal cobra o valor semanal; mensal cobra semanal × fator
+>   semana→mês (4,3452). Quinzenal ×2 e diária ÷7 pendentes de confirmação. A base mensal da
+>   planilha deixa de ser a referência quando a Proteção Veicular for homologada.
+> - **Fatores de conversão de prazo: seguir o Catálogo (4,3452 semanal / 2,1726 quinzenal)** como
+>   padrão único a partir da F2; a análise de cadastro atualiza seu parâmetro versionado na mesma
+>   virada, sem recálculo retroativo.
+> - **Visão do cliente (Membro): desenhar antes de desenvolver** — mockup para validação na F6.
 > O model `Produto` existente (itens avulsos de contrato — proteção, rastreador, taxa) continua
 > separado: ele é item contratável, não produto comercial do catálogo. Convergência avaliada na F3.
 
