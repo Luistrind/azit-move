@@ -1598,3 +1598,75 @@ model PermissaoUsuarioArea {
   @@unique([usuarioId, area])
   @@map("permissoes_usuario_area")
 }
+
+// ============================================================
+// CATALOGO DE PRODUTOS — Produto > Variante > Versao (doc 02 sec.17)
+// ============================================================
+
+enum CicloProduto {
+  RASCUNHO
+  ATIVO
+  SUSPENSO
+  ENCERRADO
+}
+
+model ProdutoCatalogo {
+  id            String       @id @default(cuid())
+  chave         String       @unique // compra_parcelada, reembolso_parcelado, protecao_veicular
+  nome          String
+  finalidade    String?
+  classificacao String? // Principal | Complementar (texto do catalogo)
+  status        CicloProduto @default(RASCUNHO)
+  descricao     String?
+
+  variantes VarianteProduto[]
+  versoes   VersaoProduto[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("produtos_catalogo")
+}
+
+model VarianteProduto {
+  id        String       @id @default(cuid())
+  produtoId String
+  chave     String // carro, moto, outro, leves, duas_rodas, utilitarios
+  nome      String
+  status    CicloProduto @default(RASCUNHO)
+  ordem     Int          @default(0)
+
+  produto ProdutoCatalogo @relation(fields: [produtoId], references: [id])
+  versoes VersaoProduto[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@unique([produtoId, chave])
+  @@map("variantes_produto")
+}
+
+// Versao = conjunto de parametros CONGELADO. varianteId null = nivel produto
+// (vale para todas as variantes; a versao da variante sobrescreve chave a chave).
+// Dinheiro em CENTAVOS (Int no Json); percentual em fracao decimal (0.017).
+model VersaoProduto {
+  id          String    @id @default(cuid())
+  produtoId   String
+  varianteId  String?
+  numero      Int
+  parametros  Json
+  observacao  String?
+  criadaPor   String?
+  vigenteDesde DateTime @default(now())
+  vigenteAte  DateTime?
+
+  produto  ProdutoCatalogo  @relation(fields: [produtoId], references: [id])
+  variante VarianteProduto? @relation(fields: [varianteId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([produtoId, varianteId])
+  @@map("versoes_produto")
+}

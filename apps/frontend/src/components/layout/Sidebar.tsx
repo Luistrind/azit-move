@@ -70,7 +70,10 @@ const GRUPOS_NAV: GrupoNav[] = [
   {
     area: 'PRODUTOS',
     titulo: 'Produtos',
-    itens: [{ to: '/produtos', label: 'Produtos' }],
+    itens: [
+      { to: '/catalogo', label: 'Catálogo de produtos' },
+      { to: '/produtos', label: 'Itens avulsos de contrato' },
+    ],
   },
   {
     area: 'APROVACOES',

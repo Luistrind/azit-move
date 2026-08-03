@@ -1059,5 +1059,30 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 
 ---
 
+## 17. Catálogo de Produtos — Produto, Variante e Versão (F1 da Gestão de Produtos)
+
+> **Decisão 2026-08, Luís + docs do Vicente (Modelo de Gestão / Catálogo).** O produto comercial
+> passa a ser gerido em três níveis: **Produto** (natureza — ex.: Compra Parcelada) → **Variante**
+> (segmentação — Carro/Moto/Outro; Leves/Duas Rodas/Utilitários) → **Versão** (conjunto de
+> parâmetros congelado, com numeração sequencial e vigência).
+>
+> Regras estruturais (Requisitos — Gestão de Produtos v0.1, §2):
+> 1. **Herança com sobrescrita**: parâmetros da versão de nível produto valem para todas as
+>    variantes; a versão de nível variante sobrescreve chave a chave. A leitura efetiva é o merge.
+> 2. **Alteração material versiona; cadastral não.** Parâmetro que afeta preço/prazo/encargo/regra
+>    gera versão nova; nome e descrição editam a atual. Contrato fica preso à versão contratada —
+>    nunca recalcular o passado.
+> 3. **Ciclo de vida**: Rascunho → Ativo ⇄ Suspenso → Encerrado. Só Ativo aparece para simulação e
+>    venda. O catálogo NASCE em Rascunho: o simulador atual continua sendo a fonte até a F2
+>    (migração do simulador para consumir o catálogo), validada com o Vicente.
+> 4. **Oferta não é entidade**: ofertas padrão são parâmetros da variante.
+> 5. **Governança sem workflow**: Diretoria edita direto (área Produtos + auditoria antes/depois).
+> 6. Dinheiro nos parâmetros em **centavos** (inteiro); percentuais em fração decimal (0,017).
+>
+> O model `Produto` existente (itens avulsos de contrato — proteção, rastreador, taxa) continua
+> separado: ele é item contratável, não produto comercial do catálogo. Convergência avaliada na F3.
+
+---
+
 *Documento vivo — atualizar a cada decisão validada.*
 *Versão 2.0 — 2026-06-27 — expansão de escopo: originação absorvida do PopHub, distinção Acordo/Novação, telas do operador, refinamentos da reunião de 26/06 com Vicente.*

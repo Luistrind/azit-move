@@ -18,6 +18,7 @@ import { PropostaDetalhePage } from './pages/PropostaDetalhePage';
 import { AnalisePage } from './pages/AnalisePage';
 import { AtivoPage } from './pages/AtivoPage';
 import { ProdutosPage } from './pages/ProdutosPage';
+import { CatalogoPage } from './pages/CatalogoPage';
 import { TitularPage } from './pages/TitularPage';
 import { TitularDetalhePage } from './pages/TitularDetalhePage';
 import { AprovacoesPage } from './pages/AprovacoesPage';
@@ -103,6 +104,10 @@ export const router = createBrowserRouter([
       {
         path: 'produtos',
         element: <ProdutosPage />,
+      },
+      {
+        path: 'catalogo',
+        element: <CatalogoPage />,
       },
       {
         path: 'titulares',
