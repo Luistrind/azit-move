@@ -74,6 +74,7 @@ export const usuarioService = {
 // Nomes por extenso em tela — nunca siglas/códigos internos (decisão 2026-08, Luís).
 export const NOME_AREA: Record<string, string> = {
   COMERCIAL: 'Comercial',
+  FINANCEIRO_ADMINISTRATIVO: 'Financeiro administrativo',
   ANALISE_CADASTRO: 'Análise de cadastro',
   CONTRATOS: 'Contratos',
   CARTEIRA_COBRANCA: 'Carteira e cobrança',

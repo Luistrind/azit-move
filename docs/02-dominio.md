@@ -1102,5 +1102,30 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 
 ---
 
+## 18. Contas a Pagar — Financeiro Administrativo / ERP Enxuto (doc AZH-FIN-PROC-001)
+
+> **Decisões 2026-08-03, Luís (sobre o Processo de Contas a Pagar V1.0 e o Contexto e Racional):**
+> 1. **Objetos separados e vinculados** (Contexto §12.1): Entidade Legal, Conta Bancária, Fornecedor
+>    (dados bancários VERSIONADOS com aprovação em 2 etapas), Natureza Financeira, Centro de Custo
+>    organizacional, Solicitação de Orçamento (+ propostas), Título a Pagar, Lote (versionado, UMA
+>    entidade + UMA conta), Pagamento e Conciliação. **Pago ≠ Conciliado** (RCPG019).
+> 2. **Alçadas por TIPO de aprovação com mínimo e máximo parametrizáveis por célula** (decisão 1 de
+>    03/08): a matriz papel×operação ganha `limiteMinimo`; cada tipo (orçamento, despesa, lote,
+>    fornecedor bancário, reabertura, reembolso, renegociação…) tem faixas próprias. Seed com os
+>    valores anteriores (100/1.000). ⚠️ Papel "gestor do centro de custo" EM ABERTO — placeholder:
+>    faixa intermediária no papel Aprovador; centro de custo já nasce com campo responsável.
+> 3. **Entidade Legal é cadastro próprio** com vínculo opcional à Estrutura Jurídica (Capital).
+> 4. **Centro de custo é organizacional (CC01–CC07)** — veículo/investidor/produto NUNCA viram
+>    centro de custo (anti-padrão); a tela antiga "Centros de custo" é a visão de custo POR ATIVO
+>    (dimensão ativo/placa) e foi renomeada.
+> 5. **Desembolso do Reembolso Parcelado**: a efetivação do RP gera automaticamente o Título a
+>    Pagar de desembolso de produto, vinculado a operação/cliente/veículo/recebível (RCPG006/029).
+> 6. Aprovações usam o MOTOR EXISTENTE (tipos novos); segregação solicitante ≠ decisor cobre o
+>    conflito de interesse do Diretor. Estados do título/lote conforme Processo §3.5. Campos
+>    críticos congelam pós-aprovação; correção só por devolução/reabertura autorizada (RCPG021-022).
+> 7. Fora do MVP (deliberado): DRE/contábil, API bancária, OCR, portal de fornecedores (RCPG033).
+
+---
+
 *Documento vivo — atualizar a cada decisão validada.*
 *Versão 2.0 — 2026-06-27 — expansão de escopo: originação absorvida do PopHub, distinção Acordo/Novação, telas do operador, refinamentos da reunião de 26/06 com Vicente.*

@@ -47,6 +47,15 @@ const GRUPOS_NAV: GrupoNav[] = [
     ],
   },
   {
+    area: 'FINANCEIRO_ADMINISTRATIVO',
+    titulo: 'Financeiro administrativo',
+    itens: [
+      { to: '/contas-a-pagar', label: 'Contas a pagar' },
+      { to: '/fornecedores-financeiro', label: 'Fornecedores' },
+      { to: '/financeiro-configuracao', label: 'Configuração do financeiro' },
+    ],
+  },
+  {
     area: 'PESSOAS',
     titulo: 'Pessoas',
     itens: [
@@ -59,7 +68,7 @@ const GRUPOS_NAV: GrupoNav[] = [
     titulo: 'Ativos e frota',
     itens: [
       { to: '/ativos', label: 'Estoque de ativos' },
-      { to: '/centros-custo', label: 'Centros de custo' },
+      { to: '/centros-custo', label: 'Custo por ativo' },
     ],
   },
   {

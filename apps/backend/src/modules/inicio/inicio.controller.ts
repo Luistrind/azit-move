@@ -155,6 +155,31 @@ export class InicioController {
       });
     }
 
+
+    if (areas.has(AreaSistema.FINANCEIRO_ADMINISTRATIVO)) {
+      const [aguardando, pagosNaoConciliados] = await Promise.all([
+        this.prisma.db.tituloPagar.findMany({
+          where: { status: { in: ['SOLICITADO', 'EM_VALIDACAO', 'BLOQUEADO'] }, deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+          include: { fornecedor: true },
+        }),
+        this.prisma.db.tituloPagar.count({ where: { status: 'PAGO', deletedAt: null } }),
+      ]);
+      blocos.push({
+        area: AreaSistema.FINANCEIRO_ADMINISTRATIVO,
+        titulo: 'Contas a pagar aguardando validação',
+        quantidade: aguardando.length,
+        vazio: pagosNaoConciliados > 0 ? `Nada para validar — ${pagosNaoConciliados} pagamento(s) aguardando conciliação.` : 'Nenhum título aguardando validação.',
+        rota: '/contas-a-pagar',
+        rotaRotulo: 'Abrir contas a pagar',
+        itens: aguardando.slice(0, 5).map((t) => ({
+          titulo: `${t.fornecedor.nome} — ${t.descricao}`,
+          subtitulo: t.status,
+          rota: '/contas-a-pagar',
+        })),
+      });
+    }
+
     return { blocos };
   }
 

@@ -9,7 +9,8 @@ import { AlcadaService } from './alcada.service';
 const salvarCelulaSchema = z.object({
   papel: z.nativeEnum(RoleUsuario),
   tipoOperacao: z.string().min(1),
-  limiteMaximo: z.number().int().min(0).optional(), // centavos
+  limiteMaximo: z.number().int().min(0).optional(),
+  limiteMinimo: z.number().int().min(0).optional(), // centavos
   ilimitado: z.boolean().optional(),
   ativo: z.boolean().optional(),
 });

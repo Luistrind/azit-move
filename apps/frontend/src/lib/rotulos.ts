@@ -51,12 +51,58 @@ export const ROTULO_STATUS_CONTRATO: Record<string, string> = {
   QUITADO_TRANSFERENCIA_EFETIVADA: 'Quitado — transferência efetivada',
 };
 
+
+export const ROTULO_STATUS_TITULO_PAGAR: Record<string, string> = {
+  RASCUNHO: 'Rascunho',
+  SOLICITADO: 'Solicitado',
+  EM_VALIDACAO: 'Em validação',
+  DEVOLVIDO: 'Devolvido para ajuste',
+  AGUARDANDO_APROVACAO: 'Aguardando aprovação',
+  APROVADO: 'Aprovado para pagamento',
+  PROGRAMADO: 'Programado',
+  ENVIADO_BPO: 'Enviado ao BPO',
+  AGUARDANDO_CORA: 'Aguardando aprovação no banco',
+  PAGO: 'Pago (aguardando conciliação)',
+  CONCILIADO: 'Conciliado',
+  CANCELADO: 'Cancelado',
+  BLOQUEADO: 'Bloqueado para análise',
+};
+
+export const ROTULO_STATUS_LOTE: Record<string, string> = {
+  EM_PREPARACAO: 'Em preparação',
+  APROVADO: 'Liberado para envio',
+  ENVIADO_BPO: 'Enviado ao BPO',
+  CADASTRADO_CORA: 'Cadastrado no banco',
+  AGUARDANDO_APROVACAO_BANCO: 'Aguardando aprovação no banco',
+  APROVADO_BANCO: 'Aprovado no banco',
+  PARCIALMENTE_PAGO: 'Parcialmente pago',
+  PAGO: 'Pago',
+  CANCELADO: 'Cancelado',
+};
+
+export const ROTULO_STATUS_FORNECEDOR: Record<string, string> = {
+  EM_CADASTRO: 'Em cadastro',
+  AGUARDANDO_APROVACAO: 'Aguardando aprovação',
+  ATIVO: 'Ativo',
+  BLOQUEADO: 'Bloqueado',
+  INATIVO: 'Inativo',
+};
+
+export const ROTULO_RESPONSAVEL_ECONOMICO: Record<string, string> = {
+  AZIT: 'Azitmove',
+  INVESTIDOR: 'Investidor',
+  CLIENTE: 'Cliente',
+  OUTRA_ENTIDADE: 'Outra entidade',
+};
+
 // Fallback genérico: converte QUALQUER_COISA_ASSIM em "Qualquer coisa assim".
 export function rotuloStatus(status: string): string {
   return (
     ROTULO_STATUS_ANALISE[status] ??
     ROTULO_STATUS_PROPOSTA[status] ??
     ROTULO_STATUS_CONTRATO[status] ??
+    ROTULO_STATUS_TITULO_PAGAR[status] ??
+    ROTULO_STATUS_LOTE[status] ??
     (status.charAt(0) + status.slice(1).toLowerCase()).replace(/_/g, ' ')
   );
 }

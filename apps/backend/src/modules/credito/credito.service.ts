@@ -13,6 +13,7 @@ import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { ParametrosService } from '../simulador/parametros.service';
 import { CatalogoFonteService, ParametrosCatalogoReembolso } from '../catalogo/catalogo-fonte.service';
+import { ContasPagarService } from '../contas-pagar/contas-pagar.service';
 import {
   OriginarCreditoDto,
   SimularCreditoDto,
@@ -36,6 +37,7 @@ export class CreditoService implements OnModuleInit {
     private readonly asaas: AsaasService,
     private readonly parametros: ParametrosService,
     private readonly catalogoFonte: CatalogoFonteService,
+    private readonly contasPagar: ContasPagarService,
   ) {}
 
   onModuleInit() {
@@ -343,7 +345,21 @@ export class CreditoService implements OnModuleInit {
       data: { aprovadoPor: decisorId, dataAprovacao: new Date() },
     });
     await this.contrato.ativarComCronograma(contrato.id);
-    return `Crédito ${contrato.numero} aprovado e ativado — parcelas lançadas nas faturas do titular.`;
+    // Decisão 5 (03/08, RCPG029): Reembolso Parcelado gera o TÍTULO DE
+    // DESEMBOLSO no contas a pagar, vinculado à operação e ao recebível.
+    if (await this.ehReembolso(contrato.id)) {
+      await this.contasPagar.criarDesembolsoReembolso(
+        {
+          id: contrato.id,
+          numero: contrato.numero,
+          valorCentavos: this.cent(contrato.valorTotal),
+          clienteNome: contrato.conta.titular.nome,
+          ativoId: contrato.ativoId,
+        },
+        decisorId,
+      );
+    }
+    return `Crédito ${contrato.numero} aprovado e ativado — parcelas lançadas nas faturas do titular; desembolso encaminhado ao contas a pagar quando aplicável.`;
   }
 
   // Reprovação (via motor): cancela o contrato e libera o ativo sintético.
@@ -365,6 +381,14 @@ export class CreditoService implements OnModuleInit {
       where: { id: contrato.ativoId },
       data: { status: 'DISPONIVEL' },
     });
+  }
+
+  // O contrato veio de uma solicitação de Reembolso Parcelado? (aprovação com esse tipo)
+  private async ehReembolso(contratoId: string): Promise<boolean> {
+    const a = await this.prisma.db.aprovacao.findFirst({
+      where: { referenciaTipo: 'contrato_credito', referenciaId: contratoId, tipoOperacao: 'reembolso_parcelado' },
+    });
+    return !!a;
   }
 
   // Garante o cliente no Asaas (idempotente) — mesmo padrão da formalização.

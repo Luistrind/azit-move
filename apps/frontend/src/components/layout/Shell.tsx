@@ -11,6 +11,9 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
   '/atendimento': { title: 'Novo atendimento', subtitle: 'Simulação na frente do cliente' },
   '/catalogo': { title: 'Catálogo de produtos', subtitle: 'Produto, variantes e versões de parâmetros' },
   '/protecao': { title: 'Proteção veicular', subtitle: 'Simulação da contribuição — valores em homologação' },
+  '/contas-a-pagar': { title: 'Contas a pagar', subtitle: 'Financeiro administrativo — do pedido ao extrato' },
+  '/fornecedores-financeiro': { title: 'Fornecedores', subtitle: 'Cadastro mestre com dados bancários versionados' },
+  '/financeiro-configuracao': { title: 'Configuração do financeiro', subtitle: 'Entidades, contas, naturezas e centros de custo' },
   '/carteira': { title: 'Carteira Operacional', subtitle: 'Posição consolidada por titular' },
   '/analises': { title: 'Análises de cadastro', subtitle: 'Fila de análises em andamento' },
   '/pessoas': { title: 'Pessoas', subtitle: 'Investidores, fornecedores e parceiros' },
@@ -21,7 +24,7 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
   '/aprovacoes': { title: 'Central de Aprovações', subtitle: 'Solicitações pendentes de alçada' },
   '/configuracoes/alcadas': { title: 'Alçadas', subtitle: 'Matriz de aprovação por papel' },
   '/configuracoes/simulador': { title: 'Simulador', subtitle: 'Parâmetros versionados e ofertas fixas' },
-  '/centros-custo': { title: 'Centros de custo', subtitle: 'Quanto gastamos × quanto recebemos, por ativo' },
+  '/centros-custo': { title: 'Custo por ativo', subtitle: 'Quanto gastamos × quanto recebemos, por veículo' },
 };
 
 export function Shell() {

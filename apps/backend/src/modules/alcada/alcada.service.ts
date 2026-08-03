@@ -48,20 +48,30 @@ export class AlcadaService {
       return { aprovado: true, ilimitado: true, limiteMaximo: null };
     }
 
+    // Decisão 03/08 (Contas a Pagar): a célula tem FAIXA — limite mínimo e
+    // máximo por tipo de aprovação. O valor precisa caber na faixa do papel.
     const cobre = alcadas
+      .filter(
+        (a) =>
+          valorCentavos >= this.reaisParaCentavos(a.limiteMinimo) &&
+          valorCentavos <= this.reaisParaCentavos(a.limiteMaximo),
+      )
       .map((a) => this.reaisParaCentavos(a.limiteMaximo))
-      .filter((c) => c >= valorCentavos)
       .sort((a, b) => a - b)[0];
 
     if (cobre !== undefined) {
       return { aprovado: true, ilimitado: false, limiteMaximo: cobre };
     }
+    const abaixoDoMinimo = alcadas.some(
+      (a) => valorCentavos < this.reaisParaCentavos(a.limiteMinimo),
+    );
     return {
       aprovado: false,
       ilimitado: false,
       limiteMaximo: null,
-      motivo:
-        'Operação excede a alçada do papel do usuário para este tipo — requer aprovação superior',
+      motivo: abaixoDoMinimo
+        ? 'Valor abaixo da faixa deste papel para este tipo — cabe a um papel de faixa inferior'
+        : 'Operação excede a alçada do papel do usuário para este tipo — requer aprovação superior',
     };
   }
 
@@ -87,6 +97,7 @@ export class AlcadaService {
         papel: a.papel,
         tipoOperacao: a.tipoOperacao,
         limiteMaximo: this.reaisParaCentavos(a.limiteMaximo), // centavos
+        limiteMinimo: this.reaisParaCentavos(a.limiteMinimo), // centavos
         ilimitado: a.ilimitado,
         ativo: a.ativo,
       })),
@@ -98,6 +109,7 @@ export class AlcadaService {
     papel: string;
     tipoOperacao: string;
     limiteMaximo?: number;
+    limiteMinimo?: number;
     ilimitado?: boolean;
     ativo?: boolean;
   }, usuarioId?: string) {
@@ -112,6 +124,7 @@ export class AlcadaService {
     const limiteReais = ((dto.limiteMaximo ?? 0) / 100).toFixed(2);
     const data = {
       limiteMaximo: limiteReais,
+      limiteMinimo: ((dto.limiteMinimo ?? 0) / 100).toFixed(2),
       ilimitado: dto.ilimitado ?? false,
       ativo: dto.ativo ?? true,
     };

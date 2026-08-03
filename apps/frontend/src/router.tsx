@@ -20,6 +20,9 @@ import { AtivoPage } from './pages/AtivoPage';
 import { ProdutosPage } from './pages/ProdutosPage';
 import { CatalogoPage } from './pages/CatalogoPage';
 import { ProtecaoPage } from './pages/ProtecaoPage';
+import { ContasPagarPage } from './pages/ContasPagarPage';
+import { FornecedoresPage } from './pages/FornecedoresPage';
+import { FinanceiroConfigPage } from './pages/FinanceiroConfigPage';
 import { TitularPage } from './pages/TitularPage';
 import { TitularDetalhePage } from './pages/TitularDetalhePage';
 import { AprovacoesPage } from './pages/AprovacoesPage';
@@ -113,6 +116,18 @@ export const router = createBrowserRouter([
       {
         path: 'protecao',
         element: <ProtecaoPage />,
+      },
+      {
+        path: 'contas-a-pagar',
+        element: <ContasPagarPage />,
+      },
+      {
+        path: 'fornecedores-financeiro',
+        element: <FornecedoresPage />,
+      },
+      {
+        path: 'financeiro-configuracao',
+        element: <FinanceiroConfigPage />,
       },
       {
         path: 'titulares',

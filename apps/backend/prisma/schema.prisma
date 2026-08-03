@@ -1141,6 +1141,7 @@ model Alcada {
   papel         RoleUsuario // OPERADOR | APROVADOR | ADMIN | DIRETOR | FINANCEIRO
   tipoOperacao  String // FK lógica para TipoOperacaoAlcada.chave
   limiteMaximo  Decimal     @default(0) @db.Decimal(12, 2)
+  limiteMinimo  Decimal     @default(0) @db.Decimal(12, 2) // decisao 03/08: faixas por tipo
   ilimitado     Boolean     @default(false)
   ativo         Boolean     @default(true)
 
@@ -1566,6 +1567,7 @@ model InvestidorEstrutura {
 
 enum AreaSistema {
   COMERCIAL
+  FINANCEIRO_ADMINISTRATIVO
   ANALISE_CADASTRO
   CONTRATOS
   CARTEIRA_COBRANCA
@@ -1676,4 +1678,369 @@ model VersaoProduto {
 
   @@index([produtoId, varianteId])
   @@map("versoes_produto")
+}
+
+// ============================================================
+// CONTAS A PAGAR — Financeiro Administrativo / ERP Enxuto (doc 02 sec.18)
+// Codigos RCPG/RF referem-se ao Processo de Contas a Pagar V1.0.
+// ============================================================
+
+enum StatusFornecedorFin {
+  EM_CADASTRO
+  AGUARDANDO_APROVACAO
+  ATIVO
+  BLOQUEADO
+  INATIVO
+}
+
+enum StatusTituloPagar {
+  RASCUNHO
+  SOLICITADO
+  EM_VALIDACAO
+  DEVOLVIDO
+  AGUARDANDO_APROVACAO
+  APROVADO
+  PROGRAMADO
+  ENVIADO_BPO
+  AGUARDANDO_CORA
+  PAGO
+  CONCILIADO
+  CANCELADO
+  BLOQUEADO
+}
+
+enum StatusLotePagamento {
+  EM_PREPARACAO
+  APROVADO
+  ENVIADO_BPO
+  CADASTRADO_CORA
+  AGUARDANDO_APROVACAO_BANCO
+  APROVADO_BANCO
+  PARCIALMENTE_PAGO
+  PAGO
+  CANCELADO
+}
+
+enum StatusConciliacaoTitulo {
+  PENDENTE
+  CONCILIADA
+  DIVERGENTE
+  AJUSTADA
+}
+
+enum StatusOrcamentoCompra {
+  EM_COTACAO
+  AGUARDANDO_APROVACAO
+  APROVADO
+  RECUSADO
+  CANCELADO
+  CONVERTIDO
+}
+
+enum UrgenciaDespesa {
+  NORMAL
+  PRIORIDADE
+  EMERGENCIA
+}
+
+enum ResponsavelEconomico {
+  AZIT
+  INVESTIDOR
+  CLIENTE
+  OUTRA_ENTIDADE
+}
+
+// RCPG001: todo titulo pertence a UMA entidade legal (CNPJ que assume a obrigacao).
+model EntidadeLegal {
+  id           String  @id @default(cuid())
+  razaoSocial  String
+  cnpj         String? @unique
+  unidadeNegocio String? // recorte gerencial (Azit Move, Reembolso Parcelado)
+  estruturaId  String? // vinculo OPCIONAL com a Estrutura Juridica (Capital) — decisao 3
+  ativo        Boolean @default(true)
+
+  contas  ContaBancaria[]
+  titulos TituloPagar[]
+  lotes   LotePagamento[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("entidades_legais")
+}
+
+model ContaBancaria {
+  id         String  @id @default(cuid())
+  entidadeId String
+  banco      String
+  agencia    String?
+  conta      String?
+  tipo       String? // corrente | pagamento | poupanca
+  finalidade String?
+  ativo      Boolean @default(true)
+
+  entidade EntidadeLegal   @relation(fields: [entidadeId], references: [id])
+  lotes    LotePagamento[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("contas_bancarias")
+}
+
+// RCPG007/008: cadastro mestre da contraparte; dados bancarios versionados;
+// Financeiro cadastra, Diretor aprova. Nunca excluido com historico (RCPG023).
+model FornecedorFin {
+  id          String              @id @default(cuid())
+  cpfCnpj     String              @unique
+  nome        String
+  contato     String?
+  email       String?
+  status      StatusFornecedorFin @default(EM_CADASTRO)
+  titularId   String? // vinculo opcional ao cadastro unico (classificacao FORNECEDOR)
+  // RCPG025: alerta no primeiro pagamento apos alteracao bancaria
+  alertaProximoPagamento Boolean @default(false)
+  motivoBloqueio String?
+
+  dadosBancarios FornecedorDadosBancarios[]
+  titulos        TituloPagar[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("fornecedores_financeiro")
+}
+
+model FornecedorDadosBancarios {
+  id           String  @id @default(cuid())
+  fornecedorId String
+  banco        String?
+  agencia      String?
+  conta        String?
+  chavePix     String?
+  versao       Int
+  ativo        Boolean @default(false) // so ativa com aprovacao do Diretor
+  criadoPor    String?
+  aprovadoPor  String?
+  motivo       String?
+
+  fornecedor FornecedorFin @relation(fields: [fornecedorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@map("fornecedores_dados_bancarios")
+}
+
+// Natureza operacional (nao substitui plano contabil do BPO — RCPG030/031).
+model NaturezaFinanceira {
+  id                 String  @id @default(cuid())
+  codigo             String  @unique
+  nome               String
+  exigeAtivo         Boolean @default(false) // RCPG005: despesas veiculares
+  exigeCotacao       Boolean @default(false)
+  especial           Boolean @default(false) // RCPG013: Diretor sempre
+  exigeJustificativa Boolean @default(false) // RCPG031: despesas diversas
+  ativo              Boolean @default(true)
+
+  titulos TituloPagar[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("naturezas_financeiras")
+}
+
+// Centro de custo ORGANIZACIONAL (CC01-CC07) — decisao 4. Veiculo/investidor/
+// produto sao dimensoes proprias, nunca centro de custo.
+model CentroCustoArea {
+  id                   String  @id @default(cuid())
+  codigo               String  @unique
+  nome                 String
+  responsavelUsuarioId String? // futuro aprovador da faixa intermediaria (decisao 2 em aberto)
+  ativo                Boolean @default(true)
+
+  titulos TituloPagar[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("centros_custo_areas")
+}
+
+// FA-CP-02: cotacao/orcamento — controle ANTES da obrigacao (nao e divida).
+model SolicitacaoOrcamento {
+  id                   String                @id @default(cuid())
+  entidadeId           String
+  solicitanteId        String?
+  descricao            String
+  naturezaId           String?
+  centroCustoAreaId    String?
+  ativoId              String?
+  urgencia             UrgenciaDespesa       @default(NORMAL)
+  status               StatusOrcamentoCompra @default(EM_COTACAO)
+  justificativaDispensa String?
+  decisaoMotivo        String?
+  tituloGeradoId       String?
+
+  propostas OrcamentoFornecedor[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("solicitacoes_orcamento")
+}
+
+model OrcamentoFornecedor {
+  id             String  @id @default(cuid())
+  solicitacaoId  String
+  fornecedorId   String?
+  nomeFornecedor String? // proposta de fornecedor ainda nao cadastrado
+  valor          Decimal @db.Decimal(12, 2)
+  prazo          String?
+  garantia       String?
+  condicao       String?
+  selecionado    Boolean @default(false)
+  motivoSelecao  String?
+
+  solicitacao SolicitacaoOrcamento @relation(fields: [solicitacaoId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@map("orcamentos_fornecedor")
+}
+
+// A obrigacao financeira individual (Processo §3.4). Campos criticos congelam
+// apos aprovacao (RCPG021); correcao por devolucao/reabertura (RCPG022/034).
+model TituloPagar {
+  id                   String               @id @default(cuid())
+  entidadeId           String
+  fornecedorId         String
+  descricao            String
+  valor                Decimal              @db.Decimal(12, 2)
+  vencimento           DateTime
+  competencia          String?
+  naturezaId           String
+  centroCustoAreaId    String
+  responsavelEconomico ResponsavelEconomico @default(AZIT)
+  formaPagamento       String               @default("pix") // forma ≠ natureza (RCPG030)
+  status               StatusTituloPagar    @default(RASCUNHO)
+  urgente              Boolean              @default(false)
+  justificativaUrgencia String?
+  justificativaNatureza String? // RCPG031 (despesas diversas)
+  ativoId              String? // RCPG005
+  contratoCreditoId    String? // operacao de produto (RP) — RCPG006/029
+  origemSolicitacaoId  String? // orcamento convertido (RF-06)
+  dadosBancariosId     String? // versao dos dados bancarios usada
+  loteId               String?
+  dataProgramada       DateTime?
+  motivoDevolucao      String?
+  motivoBloqueio       String?
+  motivoCancelamento   String?
+  prazoPrestacaoContas DateTime? // adiantamentos (RF-21)
+  prestacaoContasEm    DateTime?
+  criadoPor            String?
+
+  entidade   EntidadeLegal      @relation(fields: [entidadeId], references: [id])
+  fornecedor FornecedorFin      @relation(fields: [fornecedorId], references: [id])
+  natureza   NaturezaFinanceira @relation(fields: [naturezaId], references: [id])
+  centro     CentroCustoArea    @relation(fields: [centroCustoAreaId], references: [id])
+  lote       LotePagamento?     @relation(fields: [loteId], references: [id])
+  documentos DocumentoTitulo[]
+  pagamentos PagamentoTitulo[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([status])
+  @@index([entidadeId])
+  @@map("titulos_pagar")
+}
+
+// RCPG026: documento substituido mantem a versao anterior.
+model DocumentoTitulo {
+  id                 String  @id @default(cuid())
+  tituloId           String
+  tipo               String
+  nome               String
+  arquivoRef         String?
+  versao             Int     @default(1)
+  ativo              Boolean @default(true)
+  motivoSubstituicao String?
+  criadoPor          String?
+
+  titulo TituloPagar @relation(fields: [tituloId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@map("documentos_titulo")
+}
+
+// RCPG002/028: UMA entidade + UMA conta por lote; versionado.
+model LotePagamento {
+  id              String              @id @default(cuid())
+  entidadeId      String
+  contaBancariaId String
+  dataProgramada  DateTime
+  versao          Int                 @default(1)
+  status          StatusLotePagamento @default(EM_PREPARACAO)
+  totalValor      Decimal             @default(0) @db.Decimal(12, 2)
+  totalItens      Int                 @default(0)
+  urgente         Boolean             @default(false)
+  enviadoEm       DateTime?
+  enviadoPor      String?
+  resumoRef       String? // arquivo/resumo enviado ao BPO (RF-15/16)
+  observacao      String?
+
+  entidade EntidadeLegal  @relation(fields: [entidadeId], references: [id])
+  conta    ContaBancaria  @relation(fields: [contaBancariaId], references: [id])
+  titulos  TituloPagar[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("lotes_pagamento")
+}
+
+// Execucao bancaria (RF-18): pode divergir do programado — objeto proprio.
+model PagamentoTitulo {
+  id             String  @id @default(cuid())
+  tituloId       String
+  loteId         String?
+  dataEfetiva    DateTime
+  valorEfetivo   Decimal @db.Decimal(12, 2)
+  identificador  String?
+  comprovanteNome String?
+  comprovanteRef String?
+  divergencia    String?
+  registradoPor  String?
+
+  titulo      TituloPagar        @relation(fields: [tituloId], references: [id])
+  conciliacao ConciliacaoTitulo?
+
+  createdAt DateTime @default(now())
+
+  @@map("pagamentos_titulo")
+}
+
+// RCPG019/020: conciliacao manual confirma a saida no extrato.
+model ConciliacaoTitulo {
+  id            String                  @id @default(cuid())
+  pagamentoId   String                  @unique
+  dataSaida     DateTime
+  valorExtrato  Decimal                 @db.Decimal(12, 2)
+  evidenciaRef  String?
+  status        StatusConciliacaoTitulo @default(PENDENTE)
+  observacao    String?
+  responsavelId String?
+
+  pagamento PagamentoTitulo @relation(fields: [pagamentoId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@map("conciliacoes_titulo")
 }
