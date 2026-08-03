@@ -2,6 +2,7 @@ import { api } from '../lib/api';
 
 // Cadastro/estoque de Ativo (Bloco 7 — tela de apoio). Valores em centavos.
 export interface Ativo {
+  varianteCatalogo?: string;
   id: string;
   tipo: string;
   descricao: string;
@@ -32,6 +33,7 @@ export interface OrigemCapital {
 }
 
 export interface CriarAtivoBody {
+  varianteCatalogo?: string;
   descricao: string;
   marca?: string;
   modelo?: string;

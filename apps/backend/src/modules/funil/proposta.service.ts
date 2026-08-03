@@ -16,6 +16,7 @@ import { limparDocumento, reaisParaCentavos, centavosParaReaisString } from '@az
 import { PrismaService } from '../../database/prisma.service';
 import { TitularService } from '../titular/titular.service';
 import { ContaService } from '../conta/conta.service';
+import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import {
   CriarPropostaDto,
   AdicionarVinculoDto,
@@ -71,6 +72,7 @@ export class PropostaService {
     private readonly prisma: PrismaService,
     private readonly titular: TitularService,
     private readonly conta: ContaService,
+    private readonly aprovacao: AprovacaoService,
   ) {}
 
   async criar(dto: CriarPropostaDto) {
@@ -128,6 +130,9 @@ export class PropostaService {
         frequencia: oferta.frequencia,
         valorParcela: oferta.valorParcela,
         numeroParcelas: oferta.numeroParcelas,
+        // Condição fora do parâmetro (decisão 03/08): a proposta herda a marca
+        // da oferta e exigirá aprovação de alçada antes da formalização.
+        foraParametro: oferta.foraParametro,
         status: 'PENDENTE',
         vinculos: {
           create: { titularId, papel: 'COMPRADOR_PRINCIPAL' },
@@ -374,8 +379,43 @@ export class PropostaService {
       numeroParcelas: p.numeroParcelas,
       prazoSemanas: p.prazoSemanas,
       contratoGeradoId: p.contratoGeradoId,
+      foraParametro: p.foraParametro,
       createdAt: p.createdAt.toISOString(),
     }));
+  }
+
+
+  // Condição fora do parâmetro (decisão 03/08): solicita a aprovação de alçada
+  // que o gate da formalização exige. Valor de alçada = total do plano.
+  async solicitarAprovacaoForaParametro(propostaId: string, usuarioId: string) {
+    const p = await this.prisma.db.proposta.findFirst({
+      where: { id: propostaId },
+      include: { titular: { select: { id: true, nome: true } }, simulacao: { include: { ofertas: { where: { selecionada: true } } } } },
+    });
+    if (!p) throw this.naoEncontrada();
+    if (!p.foraParametro) {
+      throw new UnprocessableEntityException({
+        erro: 'dentro_do_parametro',
+        mensagem: 'A proposta está dentro do parâmetro — não precisa de aprovação de alçada',
+      });
+    }
+    const existente = await this.prisma.db.aprovacao.findFirst({
+      where: { tipoOperacao: 'condicao_fora_parametro', referenciaTipo: 'proposta', referenciaId: propostaId, status: { in: ['PENDENTE', 'APROVADA'] } },
+    });
+    if (existente) {
+      return { id: existente.id, status: existente.status.toLowerCase() };
+    }
+    const motivo = p.simulacao?.ofertas[0]?.foraParametroMotivo ?? 'condição fora do parâmetro';
+    const total = Math.round(Number(p.valorParcela.toString()) * 100) * p.numeroParcelas;
+    return this.aprovacao.criar({
+      tipoOperacao: 'condicao_fora_parametro',
+      referenciaTipo: 'proposta',
+      referenciaId: propostaId,
+      titularId: p.titular.id,
+      valorCentavos: total,
+      resumo: `Fora do parâmetro — ${p.titular.nome}: entrada R$ ${Number(p.valorEntrada.toString()).toFixed(2)}, ${p.numeroParcelas}x R$ ${Number(p.valorParcela.toString()).toFixed(2)} (${motivo})`,
+      solicitanteId: usuarioId,
+    });
   }
 
   async detalhe(id: string) {
@@ -391,6 +431,12 @@ export class PropostaService {
       },
     });
     if (!p) throw this.naoEncontrada();
+    const aprovacaoFp = p.foraParametro
+      ? await this.prisma.db.aprovacao.findFirst({
+          where: { tipoOperacao: 'condicao_fora_parametro', referenciaTipo: 'proposta', referenciaId: id },
+          orderBy: { createdAt: 'desc' },
+        })
+      : null;
     const pendencias = this.calcPendencias(p.vinculos, p.documentos);
     return {
       id: p.id,
@@ -403,6 +449,8 @@ export class PropostaService {
       numeroParcelas: p.numeroParcelas,
       prazoSemanas: p.prazoSemanas,
       contratoGeradoId: p.contratoGeradoId,
+      foraParametro: p.foraParametro,
+      aprovacaoForaParametro: aprovacaoFp ? aprovacaoFp.status.toLowerCase() : null,
       // Documentos obrigatórios (Doc 2 §4-A.5) — para a UI exibir pendência e travar avanço.
       documentosObrigatorios: DOCS_OBRIGATORIOS.map((t) => t.toLowerCase()),
       pendenciasDocumentos: pendencias,

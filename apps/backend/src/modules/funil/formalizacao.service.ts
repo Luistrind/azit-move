@@ -103,6 +103,29 @@ export class FormalizacaoService {
         mensagem: `Análise de cadastro em ${analiseGate.status} — libere a análise antes de formalizar`,
       });
     }
+    // Gate de condição fora do parâmetro (decisão 03/08, opção b): proposta
+    // marcada só formaliza com aprovação de alçada APROVADA no motor.
+    const marcada = await this.prisma.db.proposta.findFirst({
+      where: { id: propostaId },
+      select: { foraParametro: true },
+    });
+    if (marcada?.foraParametro) {
+      const aprovada = await this.prisma.db.aprovacao.findFirst({
+        where: {
+          tipoOperacao: 'condicao_fora_parametro',
+          referenciaTipo: 'proposta',
+          referenciaId: propostaId,
+          status: 'APROVADA',
+        },
+      });
+      if (!aprovada) {
+        throw new UnprocessableEntityException({
+          erro: 'fora_parametro_sem_aprovacao',
+          mensagem:
+            'Condição comercial fora do parâmetro — solicite a aprovação de alçada na proposta e aguarde a decisão antes de formalizar',
+        });
+      }
+    }
     const proposta = await this.prisma.db.proposta.findFirst({
       where: { id: propostaId },
       include: {

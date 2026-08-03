@@ -466,6 +466,8 @@ model Oferta {
   valorParcela     Decimal             @db.Decimal(12, 2) // PF gravada — nunca recalculada
   numeroParcelas   Int
   selecionada      Boolean             @default(false)
+  foraParametro       Boolean @default(false) // fora dos limites da variante — sobe de alcada (decisao 03/08)
+  foraParametroMotivo String?
 
   simulacao Simulacao @relation(fields: [simulacaoId], references: [id])
 
@@ -597,6 +599,7 @@ model Proposta {
   valorParcela     Decimal            @db.Decimal(12, 2)
   numeroParcelas   Int
   status           StatusProposta     @default(PENDENTE)
+  foraParametro    Boolean            @default(false) // exige aprovacao de alcada antes de formalizar
   contratoGeradoId String?            @unique
 
   simulacao      Simulacao?          @relation(fields: [simulacaoId], references: [id])
@@ -676,6 +679,7 @@ model Parecer {
 model Ativo {
   id                   String           @id @default(cuid())
   tipo                 TipoAtivo        @default(VEICULO)
+  varianteCatalogo     String           @default("carro") // chave da variante do Catalogo (carro/moto/outro)
   descricao            String
   marca                String?
   modelo               String?

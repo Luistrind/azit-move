@@ -8,6 +8,11 @@ import { precificarSimulacao, FrequenciaSimulacao } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { ParametrosService, ParametrosVigentes } from '../simulador/parametros.service';
 import { OfertaFixaService } from '../simulador/oferta-fixa.service';
+import {
+  CatalogoFonteService,
+  FATORES_CATALOGO,
+  ParametrosCatalogoCompraParcelada,
+} from '../catalogo/catalogo-fonte.service';
 import { CriarSimulacaoDto, SimularOpcaoDto } from './dto/simulacao.dto';
 
 const cent = (d: Prisma.Decimal | null): number =>
@@ -37,7 +42,62 @@ export class SimulacaoService {
     private readonly prisma: PrismaService,
     private readonly parametros: ParametrosService,
     private readonly ofertaFixa: OfertaFixaService,
+    private readonly catalogoFonte: CatalogoFonteService,
   ) {}
+
+  // F2 (doc 02 §17): quando o produto compra_parcelada e a variante do ativo
+  // estão ATIVOS no Catálogo, os parâmetros vêm de lá; senão, motor legado.
+  private async fonteCatalogo(ativoId: string | null | undefined): Promise<ParametrosCatalogoCompraParcelada | null> {
+    if (!ativoId) return null;
+    const a = await this.prisma.db.ativo.findFirst({
+      where: { id: ativoId },
+      select: { varianteCatalogo: true },
+    });
+    if (!a) return null;
+    return this.catalogoFonte.compraParcelada(a.varianteCatalogo);
+  }
+
+  // Preço no modo catálogo: motor V3 + componente de proteção (RF-CP12 — base
+  // semanal; mensal = semanal × 4,3452) + fatores do Catálogo (4,3452/2,1726).
+  private precificarCatalogo(
+    cat: ParametrosCatalogoCompraParcelada,
+    valorAvista: number,
+    valorEntrada: number,
+    prazoMeses: number,
+    frequencia: FrequenciaSimulacao,
+  ) {
+    const r = precificarSimulacao({
+      valorAvista,
+      valorEntrada,
+      prazoMeses,
+      frequencia,
+      comissaoInicial: cat.comissaoInicial,
+      comissaoRecorrente: cat.comissaoRecorrenteMensal,
+      taxaMensal: cat.taxaMensal,
+      fatorPrecificacaoSemanal: FATORES_CATALOGO.precificacaoSemanal,
+      fatorPrecificacaoQuinzenal: FATORES_CATALOGO.precificacaoQuinzenal,
+      fatorSemanal: FATORES_CATALOGO.contratoSemanal,
+      fatorQuinzenal: FATORES_CATALOGO.contratoQuinzenal,
+    });
+    const protecao = this.catalogoFonte.protecaoPorPeriodo(cat.protecaoSemanal, frequencia);
+    return { ...r, parcelaFinal: r.parcelaFinal + protecao };
+  }
+
+  // Fora do parâmetro (decisão 03/08, opção b): no modo catálogo NÃO bloqueia —
+  // a oferta é marcada e a proposta exigirá alçada antes de formalizar.
+  private avaliarForaParametro(
+    cat: ParametrosCatalogoCompraParcelada,
+    dto: { valorEntrada: number; prazoMeses: number },
+  ): string | null {
+    const motivos: string[] = [];
+    if (dto.valorEntrada < cat.entradaMinima) {
+      motivos.push(`entrada abaixo da mínima da variante (R$ ${reais(cat.entradaMinima)})`);
+    }
+    if (dto.prazoMeses < cat.prazoMinMeses || dto.prazoMeses > cat.prazoMaxMeses) {
+      motivos.push(`prazo fora da faixa (${cat.prazoMinMeses} a ${cat.prazoMaxMeses} meses)`);
+    }
+    return motivos.length > 0 ? `Condição fora do parâmetro: ${motivos.join('; ')}` : null;
+  }
 
   private expirada(s: { validaAte: Date | null; status: string }): boolean {
     return (
@@ -168,23 +228,30 @@ export class SimulacaoService {
       }
     }
 
-    // Ofertas PADRÃO (combos parametrizados) — pula combos cuja entrada não cabe no VA.
-    for (const combo of params.ofertasPadrao) {
+    // Ofertas PADRÃO — pula combos cuja entrada não cabe no VA. Fonte: Catálogo
+    // (produto/variante ATIVOS) ou combos legados dos parâmetros do simulador.
+    const cat = await this.fonteCatalogo(ativo?.id);
+    const combosPadrao = cat
+      ? cat.ofertasPadrao.map((o) => ({ valorEntrada: o.valorEntrada, prazoMeses: o.prazoMeses, frequencia: o.frequencia }))
+      : params.ofertasPadrao;
+    for (const combo of combosPadrao) {
       if (combo.valorEntrada >= valorAvista) continue;
       const freqApi = FREQ_API[combo.frequencia] ?? 'semanal';
-      const r = precificarSimulacao({
-        valorAvista,
-        valorEntrada: combo.valorEntrada,
-        prazoMeses: combo.prazoMeses,
-        frequencia: freqApi,
-        comissaoInicial: params.comissaoInicial,
-        comissaoRecorrente: params.comissaoRecorrente,
-        taxaMensal: params.taxaMensal,
-        fatorPrecificacaoSemanal: params.fatorPrecificacaoSemanal,
-        fatorPrecificacaoQuinzenal: params.fatorPrecificacaoQuinzenal,
-        fatorSemanal: params.fatorSemanal,
-        fatorQuinzenal: params.fatorQuinzenal,
-      });
+      const r = cat
+        ? this.precificarCatalogo(cat, valorAvista, combo.valorEntrada, combo.prazoMeses, freqApi)
+        : precificarSimulacao({
+            valorAvista,
+            valorEntrada: combo.valorEntrada,
+            prazoMeses: combo.prazoMeses,
+            frequencia: freqApi,
+            comissaoInicial: params.comissaoInicial,
+            comissaoRecorrente: params.comissaoRecorrente,
+            taxaMensal: params.taxaMensal,
+            fatorPrecificacaoSemanal: params.fatorPrecificacaoSemanal,
+            fatorPrecificacaoQuinzenal: params.fatorPrecificacaoQuinzenal,
+            fatorSemanal: params.fatorSemanal,
+            fatorQuinzenal: params.fatorQuinzenal,
+          });
       await this.prisma.db.oferta.create({
         data: {
           simulacaoId: simulacao.id,
@@ -204,31 +271,50 @@ export class SimulacaoService {
       valorAvista,
       manual,
       parametroVersaoId: params.id,
+      fonte: cat ? 'catalogo' : 'parametros_simulador',
+      ...(cat ? { catalogo: { variante: cat.varianteChave, versaoProduto: cat.versaoProduto, versaoVariante: cat.versaoVariante } } : {}),
     });
     return this.detalhe(simulacao.id, avisoDivergencia);
   }
 
-  // Tela 3: cenário personalizado ("Simular outras opções") — valida bloqueios.
+  // Tela 3: cenário personalizado ("Simular outras opções"). No modo catálogo,
+  // entrada/prazo fora da faixa NÃO bloqueiam (decisão 03/08): a oferta nasce
+  // marcada "fora do parâmetro" e a proposta exigirá alçada na formalização.
   async simularOpcao(simulacaoId: string, dto: SimularOpcaoDto) {
     const s = await this.buscar(simulacaoId);
     this.garantirEditavel(s);
-    const params = await this.parametros.vigente();
     const valorAvista = cent(s.valorAvista);
-    this.validarCenario(params, valorAvista, dto);
+    const cat = await this.fonteCatalogo(s.ativoId);
 
-    const r = precificarSimulacao({
-      valorAvista,
-      valorEntrada: dto.valorEntrada,
-      prazoMeses: dto.prazoMeses,
-      frequencia: dto.frequencia,
-      comissaoInicial: params.comissaoInicial,
-      comissaoRecorrente: params.comissaoRecorrente,
-      taxaMensal: params.taxaMensal,
-      fatorPrecificacaoSemanal: params.fatorPrecificacaoSemanal,
-      fatorPrecificacaoQuinzenal: params.fatorPrecificacaoQuinzenal,
-      fatorSemanal: params.fatorSemanal,
-      fatorQuinzenal: params.fatorQuinzenal,
-    });
+    let foraParametroMotivo: string | null = null;
+    let r: { parcelaFinal: number; numeroParcelas: number };
+    if (cat) {
+      // Entrada >= valor à vista continua sendo erro duro em qualquer modo.
+      if (dto.valorEntrada >= valorAvista) {
+        throw new UnprocessableEntityException({
+          erro: 'entrada_invalida',
+          mensagem: 'A entrada não pode ser maior ou igual ao valor à vista',
+        });
+      }
+      foraParametroMotivo = this.avaliarForaParametro(cat, dto);
+      r = this.precificarCatalogo(cat, valorAvista, dto.valorEntrada, dto.prazoMeses, dto.frequencia);
+    } else {
+      const params = await this.parametros.vigente();
+      this.validarCenario(params, valorAvista, dto);
+      r = precificarSimulacao({
+        valorAvista,
+        valorEntrada: dto.valorEntrada,
+        prazoMeses: dto.prazoMeses,
+        frequencia: dto.frequencia,
+        comissaoInicial: params.comissaoInicial,
+        comissaoRecorrente: params.comissaoRecorrente,
+        taxaMensal: params.taxaMensal,
+        fatorPrecificacaoSemanal: params.fatorPrecificacaoSemanal,
+        fatorPrecificacaoQuinzenal: params.fatorPrecificacaoQuinzenal,
+        fatorSemanal: params.fatorSemanal,
+        fatorQuinzenal: params.fatorQuinzenal,
+      });
+    }
     await this.prisma.db.oferta.create({
       data: {
         simulacaoId,
@@ -240,9 +326,15 @@ export class SimulacaoService {
         frequencia: FREQ_PRISMA[dto.frequencia],
         valorParcela: reais(r.parcelaFinal),
         numeroParcelas: r.numeroParcelas,
+        foraParametro: foraParametroMotivo !== null,
+        foraParametroMotivo,
       },
     });
-    await this.auditar('simulacao_cenario_calculado', simulacaoId, dto);
+    await this.auditar('simulacao_cenario_calculado', simulacaoId, {
+      ...dto,
+      fonte: cat ? 'catalogo' : 'parametros_simulador',
+      foraParametro: foraParametroMotivo !== null,
+    });
     return this.detalhe(simulacaoId);
   }
 
@@ -333,6 +425,8 @@ export class SimulacaoService {
         valorParcela: cent(o.valorParcela),
         numeroParcelas: o.numeroParcelas,
         selecionada: o.selecionada,
+        foraParametro: o.foraParametro,
+        foraParametroMotivo: o.foraParametroMotivo,
       })),
     };
   }

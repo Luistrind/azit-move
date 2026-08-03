@@ -287,6 +287,34 @@ export function PropostaDetalhePage() {
         </div>
       )}
 
+      {/* Condição fora do parâmetro (decisão 03/08): banner + solicitação de alçada */}
+      {p.foraParametro && (
+        <div className="mb-[10px] flex flex-wrap items-center justify-between gap-[8px] rounded-[12px] p-[14px]" style={{ background: '#fff3d6', border: '2px solid #d9a62e' }}>
+          <div>
+            <div className="font-display text-[13px] font-bold" style={{ color: '#8a5a00' }}>Condição comercial fora do parâmetro</div>
+            <div className="text-[12px]" style={{ color: '#8a5a00' }}>
+              {p.aprovacaoForaParametro === 'aprovada'
+                ? 'Aprovada pela alçada superior — a formalização está liberada.'
+                : p.aprovacaoForaParametro === 'pendente'
+                  ? 'Aguardando decisão na Central de Aprovações — a formalização fica travada até lá.'
+                  : p.aprovacaoForaParametro === 'reprovada'
+                    ? 'Reprovada pela alçada — ajuste a condição (nova simulação) ou solicite novamente.'
+                    : 'Entrada ou prazo fora da faixa da variante. Solicite a aprovação de alçada — sem ela a formalização fica travada.'}
+            </div>
+          </div>
+          {(!p.aprovacaoForaParametro || p.aprovacaoForaParametro === 'reprovada') && (
+            <button
+              className="h-[36px] rounded-[8px] px-[16px] text-[12px] font-bold"
+              style={{ background: '#8a5a00', color: '#fff' }}
+              disabled={ocupado}
+              onClick={() => run(() => originacaoService.solicitarAprovacaoForaParametro(id))}
+            >
+              Solicitar aprovação de alçada
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Passo 3 — Análise: anexos de embasamento + observação analítica + parecer em cards */}
       <div className="mb-[10px] flex flex-wrap items-center justify-between gap-[8px] rounded-[12px] border-2 border-[var(--navy)] bg-[var(--surface)] p-[14px]">
         <div>

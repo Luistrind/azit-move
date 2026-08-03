@@ -21,6 +21,8 @@ export interface OfertaSimulada {
   valorParcela: number;
   numeroParcelas: number;
   selecionada: boolean;
+  foraParametro?: boolean;
+  foraParametroMotivo?: string | null;
 }
 
 export interface SimulacaoResultado {
@@ -62,6 +64,8 @@ export interface PropostaDetalhe {
   numeroParcelas: number;
   prazoSemanas: number;
   contratoGeradoId: string | null;
+  foraParametro?: boolean;
+  aprovacaoForaParametro?: string | null;
   papeis: { id: string; papel: string; titular: { id: string; nome: string; cpfCnpj: string } }[];
   documentos: { id: string; tipo: string; titularId: string; arquivoRef: string }[];
   parecer: { resultado: string; exigeGarantidor: boolean; motivoReprovacao: string | null; motivosRessalva: string[]; observacao: string | null } | null;
@@ -188,6 +192,10 @@ export const originacaoService = {
   },
   async registrarParecer(id: string, body: { resultado: string; motivoReprovacao?: string; motivosRessalva?: string[]; observacao?: string; exigeGarantidor?: boolean }): Promise<PropostaDetalhe> {
     const { data } = await api.post(`/api/v1/propostas/${id}/parecer`, body);
+    return data;
+  },
+  async solicitarAprovacaoForaParametro(id: string): Promise<{ id: string; status: string }> {
+    const { data } = await api.post(`/api/v1/propostas/${id}/solicitar-aprovacao-fora-parametro`);
     return data;
   },
   async formalizar(id: string, dataPrimeiraParcela?: string): Promise<{ contratoId: string; numero: string; status: string; documento: string }> {

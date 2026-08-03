@@ -35,6 +35,7 @@ export class AtivoService {
       data: {
         tipo: mapearAtivoEnums.tipoParaPrisma(dto.tipo),
         descricao: dto.descricao,
+        varianteCatalogo: dto.varianteCatalogo ?? 'carro',
         marca: dto.marca,
         modelo: dto.modelo,
         anoFabricacao: dto.anoFabricacao,
@@ -119,6 +120,7 @@ export class AtivoService {
 
     const data: Prisma.AtivoUpdateInput = {
       descricao: dto.descricao,
+      varianteCatalogo: dto.varianteCatalogo,
       marca: dto.marca,
       modelo: dto.modelo,
       anoFabricacao: dto.anoFabricacao,

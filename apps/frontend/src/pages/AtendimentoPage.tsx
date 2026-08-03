@@ -452,13 +452,20 @@ function CartaoOferta({
         minHeight: 44,
       }}
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-[6px]">
         <span className="text-[13px] font-semibold" style={{ color: 'var(--text-muted)' }}>{titulo}</span>
-        {oferta.selecionada && (
-          <span className="rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: 'var(--navy)', color: '#fff' }}>
-            Escolhida
-          </span>
-        )}
+        <span className="flex gap-[6px]">
+          {oferta.foraParametro && (
+            <span className="rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: '#fff3d6', color: '#8a5a00' }} title={oferta.foraParametroMotivo ?? ''}>
+              Fora do parâmetro
+            </span>
+          )}
+          {oferta.selecionada && (
+            <span className="rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: 'var(--navy)', color: '#fff' }}>
+              Escolhida
+            </span>
+          )}
+        </span>
       </div>
       <div className="font-display text-[26px] font-extrabold" style={{ color: 'var(--navy)' }}>
         {reais(oferta.valorParcela)}

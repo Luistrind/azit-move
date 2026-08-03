@@ -183,6 +183,13 @@ export class FunilController {
     return this.proposta.registrarParecer(id, dto, user.id);
   }
 
+  // Condição fora do parâmetro: solicita aprovação de alçada (decisão 03/08).
+  @Post('propostas/:id/solicitar-aprovacao-fora-parametro')
+  @HttpCode(201)
+  solicitarAprovacaoForaParametro(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.proposta.solicitarAprovacaoForaParametro(id, user.id);
+  }
+
   // --- 7.10 Formalização ---
   @Post('propostas/:id/formalizar')
   @HttpCode(201)

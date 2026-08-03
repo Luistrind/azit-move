@@ -34,7 +34,7 @@ const Lbl = ({ children }: { children: React.ReactNode }) => (
 
 type FormState = Record<string, string>;
 const EMPTY: FormState = {
-  marca: '', modelo: '', anoFabricacao: '', anoModelo: '', cor: '', placa: '', chassi: '', renavam: '',
+  marca: '', modelo: '', anoFabricacao: '', anoModelo: '', cor: '', placa: '', chassi: '', renavam: '', varianteCatalogo: 'carro',
   combustivel: 'flex', origem: '', quilometragemEntrada: '', valorAquisicao: '', valorVenda: '', pacoteOfertaId: '', ofertaFixaId: '',
   capTipo: 'capital_proprio', capValor: '', capTaxa: '',
 };
@@ -109,7 +109,7 @@ export function AtivoPage() {
       const [a, oc] = await Promise.all([ativoService.buscarPorId(id), ativoService.origemCapital(id)]);
       setForm({
         marca: a.marca ?? '', modelo: a.modelo ?? '', anoFabricacao: a.anoFabricacao?.toString() ?? '',
-        anoModelo: a.anoModelo?.toString() ?? '', cor: a.cor ?? '', placa: a.placa ?? '', chassi: a.chassi ?? '',
+        anoModelo: a.anoModelo?.toString() ?? '', cor: a.cor ?? '', placa: a.placa ?? '', chassi: a.chassi ?? '', varianteCatalogo: a.varianteCatalogo ?? 'carro',
         renavam: a.renavam ?? '', combustivel: a.combustivel ?? 'flex', origem: a.origem ?? '',
         quilometragemEntrada: a.quilometragemEntrada?.toLocaleString('pt-BR') ?? '',
         valorAquisicao: a.valorAquisicao ? (a.valorAquisicao / 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '',
@@ -132,7 +132,7 @@ export function AtivoPage() {
     const body: CriarAtivoBody = {
       descricao,
       marca: str(form.marca), modelo: str(form.modelo), anoFabricacao: num(form.anoFabricacao),
-      anoModelo: num(form.anoModelo), cor: str(form.cor), placa: str(form.placa), chassi: str(form.chassi),
+      anoModelo: num(form.anoModelo), cor: str(form.cor), placa: str(form.placa), chassi: str(form.chassi), varianteCatalogo: form.varianteCatalogo,
       renavam: str(form.renavam), combustivel: form.combustivel || undefined, origem: str(form.origem),
       quilometragemEntrada: num(form.quilometragemEntrada),
       valorAquisicao: form.valorAquisicao ? reais(form.valorAquisicao) : undefined,
@@ -194,6 +194,12 @@ export function AtivoPage() {
             <label className="flex flex-col gap-[4px]"><Lbl>Ano modelo</Lbl><input value={form.anoModelo} onChange={set('anoModelo')} className={inputCls} style={inStyle} /></label>
             <label className="flex flex-col gap-[4px]"><Lbl>Cor</Lbl><input value={form.cor} onChange={set('cor')} className={inputCls} style={inStyle} /></label>
             <label className="flex flex-col gap-[4px]"><Lbl>Placa</Lbl><input value={form.placa} onChange={set('placa')} className={inputCls} style={inStyle} /></label>
+            <label className="flex flex-col gap-[4px]"><Lbl>Tipo de bem (variante do produto)</Lbl>
+              <select value={form.varianteCatalogo} onChange={set('varianteCatalogo')} className={inputCls} style={inStyle}>
+                <option value="carro">Carro</option>
+                <option value="moto">Moto</option>
+                <option value="outro">Outro</option>
+              </select></label>
             <label className="flex flex-col gap-[4px]"><Lbl>Chassi</Lbl><input value={form.chassi} onChange={set('chassi')} className={inputCls} style={inStyle} /></label>
             <label className="flex flex-col gap-[4px]"><Lbl>RENAVAM</Lbl><input value={form.renavam} onChange={set('renavam')} className={inputCls} style={inStyle} /></label>
             <label className="flex flex-col gap-[4px]"><Lbl>Combustível</Lbl>

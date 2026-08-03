@@ -4,6 +4,8 @@ import { z } from 'zod';
 // CENTAVOS inteiros (convenção do domínio). Mapeamento para Prisma no service.
 export const criarAtivoSchema = z.object({
   tipo: z.enum(['veiculo', 'outro']).default('veiculo'),
+  // variante do Catálogo de Produtos (F2): define os parâmetros da simulação
+  varianteCatalogo: z.enum(['carro', 'moto', 'outro']).optional(),
   descricao: z.string().trim().min(1, 'Descrição é obrigatória'),
   marca: z.string().trim().optional(),
   modelo: z.string().trim().optional(),

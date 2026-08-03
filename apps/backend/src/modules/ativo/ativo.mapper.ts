@@ -86,6 +86,7 @@ export const valorAquisicaoParaPrisma = (centavos: number): string =>
 export interface AtivoApi {
   id: string;
   tipo: TipoApi;
+  varianteCatalogo: string;
   descricao: string;
   marca: string | null;
   modelo: string | null;
@@ -111,6 +112,7 @@ export function ativoParaApi(a: Ativo): AtivoApi {
   return {
     id: a.id,
     tipo: tipo.paraApi[a.tipo],
+    varianteCatalogo: a.varianteCatalogo,
     descricao: a.descricao,
     marca: a.marca,
     modelo: a.modelo,

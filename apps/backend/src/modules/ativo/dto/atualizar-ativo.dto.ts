@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 // Atualização parcial do ativo (item 2.3 / api-spec §4.9: ex. quilometragem, status).
 export const atualizarAtivoSchema = z.object({
+  varianteCatalogo: z.enum(['carro', 'moto', 'outro']).optional(),
   tipo: z.enum(['veiculo', 'outro']).optional(),
   descricao: z.string().trim().min(1).optional(),
   marca: z.string().trim().nullish(),
