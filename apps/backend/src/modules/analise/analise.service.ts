@@ -323,17 +323,27 @@ export class AnaliseService implements OnModuleInit {
         registradaPor: usuarioId,
       },
     });
-    // Avança o status de etapa quando a consulta conclui (transições do Processo §7).
+    // Avanço automático ENCADEADO (UX-3): a consulta concluída puxa a análise pela
+    // trilha de etapas até o estado correspondente, registrando cada transição.
+    // Nunca marca documentos como enviados sozinha (isso é confirmação humana).
     if (dto.situacao === 'concluida') {
-      const alvo: StatusAnalise | null =
-        tipo === 'CAMADA1' && a.status === 'DOCUMENTOS_ENVIADOS'
-          ? 'CONSULTA_INICIAL_REALIZADA'
-          : tipo === 'SCORE_QUOD' && ['EM_ANALISE_COMPLEMENTAR', 'EM_TRIAGEM_INICIAL'].includes(a.status)
-            ? 'SCORE_CONSULTADO'
-            : tipo === 'RESTRITIVOS' && a.status === 'SCORE_CONSULTADO'
-              ? 'RESTRICOES_CONSULTADAS'
-              : null;
-      if (alvo) await this.mudarStatus(analiseId, alvo, usuarioId, `Consulta ${tipo} concluída`);
+      const CADEIA: StatusAnalise[] = [
+        'DOCUMENTOS_ENVIADOS',
+        'CONSULTA_INICIAL_REALIZADA',
+        'EM_TRIAGEM_INICIAL',
+        'EM_ANALISE_COMPLEMENTAR',
+        'SCORE_CONSULTADO',
+        'RESTRICOES_CONSULTADAS',
+      ];
+      const alvo: StatusAnalise =
+        tipo === 'CAMADA1' ? 'CONSULTA_INICIAL_REALIZADA' : tipo === 'SCORE_QUOD' ? 'SCORE_CONSULTADO' : 'RESTRICOES_CONSULTADAS';
+      const de = CADEIA.indexOf(a.status);
+      const ate = CADEIA.indexOf(alvo);
+      if (de >= 0 && de < ate) {
+        for (let i = de; i < ate; i++) {
+          await this.mudarStatus(analiseId, CADEIA[i + 1], usuarioId, `Consulta ${tipo} concluída (avanço automático)`);
+        }
+      }
     }
     await this.auditar(usuarioId, 'analise_consulta_registrada', analiseId, undefined, { ...dto });
     return this.dossie(analiseId);
