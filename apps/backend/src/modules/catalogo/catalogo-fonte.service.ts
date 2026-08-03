@@ -41,6 +41,19 @@ export interface ParametrosCatalogoCompraParcelada {
   ofertasPadrao: OfertaPadraoCatalogo[];
 }
 
+export interface ParametrosCatalogoReembolso {
+  versao: number;
+  valorMinimo: number; // centavos
+  valorMaximo: number; // centavos
+  prazoMaximoMeses: number;
+  valorMinimoParcela: number; // centavos
+  encargoMensal: number; // fração a.m.
+  taxaInicialPct: number; // fração
+  taxaInicialMinima: number; // centavos
+  limiteParcelaAcessoria: number; // fração da parcela do contrato principal
+  ofertasPadrao: { valor: number; parcelas: number; frequencia: string }[];
+}
+
 type Parametros = Record<string, string | number | boolean>;
 
 const num = (v: unknown, padrao = 0): number => (typeof v === 'number' ? v : padrao);
@@ -98,6 +111,47 @@ export class CatalogoFonteService {
       protecaoSemanal: protecaoObrigatoria ? Math.round(protecaoMensal / FATORES_CATALOGO.precificacaoSemanal) : 0,
       ofertasPadrao,
     };
+  }
+
+  // Parâmetros do Reembolso Parcelado (F3), ou null se o produto não está ATIVO.
+  async reembolsoParcelado(): Promise<ParametrosCatalogoReembolso | null> {
+    const produto = await this.prisma.db.produtoCatalogo.findFirst({
+      where: { chave: 'reembolso_parcelado', deletedAt: null },
+      include: { versoes: true },
+    });
+    if (!produto || produto.status !== 'ATIVO') return null;
+    const vigente = produto.versoes
+      .filter((x) => !x.varianteId && !x.vigenteAte)
+      .sort((a, b) => b.numero - a.numero)[0];
+    if (!vigente) return null;
+    const p = vigente.parametros as Parametros;
+    const ofertasPadrao: { valor: number; parcelas: number; frequencia: string }[] = [];
+    for (const n of [1, 2, 3]) {
+      const valor = num(p[`oferta${n}Valor`]);
+      const parcelas = num(p[`oferta${n}Parcelas`]);
+      if (valor > 0 && parcelas > 0) {
+        ofertasPadrao.push({ valor, parcelas, frequencia: String(p[`oferta${n}Frequencia`] ?? 'semanal') });
+      }
+    }
+    return {
+      versao: vigente.numero,
+      valorMinimo: num(p.valorMinimoOperacao),
+      valorMaximo: num(p.valorMaximoOperacao),
+      prazoMaximoMeses: num(p.prazoMaximoMeses, 12),
+      valorMinimoParcela: num(p.valorMinimoParcela),
+      encargoMensal: num(p.encargoMensalProcessamento),
+      taxaInicialPct: num(p.taxaInicialProcessamento),
+      taxaInicialMinima: num(p.taxaMinimaProcessamento),
+      limiteParcelaAcessoria: num(p.limiteParcelaAcessoria, 0.3),
+      ofertasPadrao,
+    };
+  }
+
+  // Máximo de parcelas por frequência = prazo máximo × índice de conversão de
+  // prazo do Catálogo (12 meses → 12 / 26 / 52).
+  maxParcelasReembolso(prazoMaximoMeses: number, frequencia: 'mensal' | 'quinzenal' | 'semanal'): number {
+    const icpf = frequencia === 'mensal' ? 1 : frequencia === 'quinzenal' ? FATORES_CATALOGO.contratoQuinzenal : FATORES_CATALOGO.contratoSemanal;
+    return Math.round(prazoMaximoMeses * icpf);
   }
 
   // Proteção por período conforme a frequência do contrato (RF-CP12):

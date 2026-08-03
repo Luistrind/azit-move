@@ -103,6 +103,14 @@ export function TitularDetalhePage() {
     cValorCent > 0 && cNumParcelas > 0
       ? Math.round((cValorCent - cEntradaCent) / cNumParcelas)
       : 0;
+  // Prévia REAL no servidor (F3: se o Reembolso Parcelado está ativo no Catálogo,
+  // vem com taxa inicial, encargo e limite de 30% da parcela principal).
+  const previa = useQuery({
+    queryKey: ['credito-previa', id, cValorCent, cEntradaCent, cNumParcelas, cPeriodicidade],
+    queryFn: () => creditoService.simular({ valor: cValorCent, numeroParcelas: cNumParcelas, valorEntrada: cEntradaCent, periodicidade: cPeriodicidade, titularId: id }),
+    enabled: creditoOpen && cValorCent > 0 && cNumParcelas > 0,
+    retry: false,
+  });
 
   async function contratarCredito() {
     if (cValorCent <= 0 || cNumParcelas <= 0) return;
@@ -465,10 +473,36 @@ export function TitularDetalhePage() {
               </select>
             </label>
           </div>
-          <div className="flex items-center justify-between rounded-[10px] px-[12px] py-[10px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
-            <span style={{ color: 'var(--text-muted)' }}>Parcela estimada <span title="Juros a definir (Vicente) — cálculo provisório">(provisório)</span></span>
-            <span className="font-bold tabular-nums">{cNumParcelas}× {formatCurrency(cParcelaPrev)}</span>
-          </div>
+          {previa.data ? (
+            <div className="flex flex-col gap-[6px] rounded-[10px] px-[12px] py-[10px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
+              <div className="flex items-center justify-between">
+                <span style={{ color: 'var(--text-muted)' }}>
+                  {previa.data.produto === 'reembolso_parcelado' ? 'Reembolso Parcelado (produto do Catálogo)' : 'Parcela estimada (provisório)'}
+                </span>
+                <span className="font-bold tabular-nums">{previa.data.numeroParcelas}× {formatCurrency(previa.data.valorParcela)}</span>
+              </div>
+              {previa.data.produto === 'reembolso_parcelado' && (
+                <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+                  Taxa inicial de processamento {formatCurrency(previa.data.taxaInicial)} (financiada) · encargo {(previa.data.encargoMensal * 100).toFixed(2).replace('.', ',')}% ao mês
+                  {previa.data.limiteParcela !== null && ` · limite da parcela: ${formatCurrency(previa.data.limiteParcela)}`}
+                </div>
+              )}
+              {previa.data.excedeLimite && (
+                <div className="rounded-[8px] p-[6px] text-[11.5px] font-semibold" style={{ background: '#fdecec', color: '#a12622' }}>
+                  A parcela ultrapassa 30% da parcela do contrato principal — aumente o prazo ou reduza o valor.
+                </div>
+              )}
+            </div>
+          ) : previa.error ? (
+            <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: '#fdecec', color: '#a12622' }}>
+              {mensagemErro(previa.error)}
+            </div>
+          ) : (
+            <div className="flex items-center justify-between rounded-[10px] px-[12px] py-[10px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Parcela estimada <span title="Juros a definir (Vicente) — cálculo provisório">(provisório)</span></span>
+              <span className="font-bold tabular-nums">{cNumParcelas}× {formatCurrency(cParcelaPrev)}</span>
+            </div>
+          )}
           <button
             disabled={creditoBusy || cValorCent <= 0 || cNumParcelas <= 0}
             onClick={contratarCredito}

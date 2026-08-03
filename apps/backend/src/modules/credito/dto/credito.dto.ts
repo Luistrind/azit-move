@@ -13,6 +13,7 @@ export type OriginarCreditoDto = z.infer<typeof originarCreditoSchema>;
 
 // Prévia da parcela (não persiste) — alimenta o "simular" da tela.
 export const simularCreditoSchema = z.object({
+  titularId: z.string().optional(), // p/ checar o limite de 30% do Reembolso Parcelado
   valor: z.coerce.number().int().min(1),
   numeroParcelas: z.coerce.number().int().min(1).max(120),
   valorEntrada: z.coerce.number().int().min(0).default(0),

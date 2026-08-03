@@ -4,10 +4,11 @@ import { CreditoService } from './credito.service';
 import { AtivoModule } from '../ativo/ativo.module';
 import { OrigemCapitalModule } from '../origem-capital/origem-capital.module';
 import { ContratoModule } from '../contrato/contrato.module';
+import { CatalogoModule } from '../catalogo/catalogo.module';
 
 // Crédito de manutenção (Doc 2 §4.7-A). AlcadaService e AsaasService vêm de módulos globais.
 @Module({
-  imports: [AtivoModule, OrigemCapitalModule, ContratoModule],
+  imports: [AtivoModule, OrigemCapitalModule, ContratoModule, CatalogoModule],
   controllers: [CreditoController],
   providers: [CreditoService],
 })

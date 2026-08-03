@@ -41,7 +41,7 @@ describe('precificarPrice (PROVISÓRIA — Vicente)', () => {
 // Simulação V3 — caso de verificação da planilha do Vicente (HB20S):
 // VA 50.000, EN 6.500, 30 meses, CI 3.990, CR 599, TR 2% a.m. → PMT R$ 2.719,42
 // ============================================================
-import { precificarSimulacao, precificarCreditoAvulso } from './precificacao';
+import { precificarSimulacao, precificarCreditoAvulso, precificarReembolsoParcelado } from './precificacao';
 
 const BASE = {
   valorAvista: 5_000_000,
@@ -110,5 +110,45 @@ describe('anteciparParcela (planilha Vicente 11/07)', () => {
   it('vencida/hoje: sem desconto', () => {
     const r = anteciparParcela({ valorNominal: 94_200, componenteCR: 14_999, dias: 0, taxaDescontoCR: 0.2, taxaDescontoPS: 0.02 });
     expect(r.valorPresente).toBe(94_200);
+  });
+});
+
+describe('precificarReembolsoParcelado (Catálogo F3 — planilha do Vicente)', () => {
+  const params = {
+    encargoMensal: 0.1999,
+    taxaInicialPct: 0.0999,
+    taxaInicialMinima: 9990,
+  };
+
+  it('caso de ouro personalizada: R$ 3.000 em 26 semanas → R$ 214,26', () => {
+    const r = precificarReembolsoParcelado({
+      valorReembolso: 300000,
+      numeroParcelas: 26,
+      frequencia: 'semanal',
+      ...params,
+    });
+    expect(r.taxaInicial).toBe(29970); // 9,99% de 3.000 (acima da mínima 99,90)
+    expect(r.valorFinanciado).toBe(329970);
+    expect(r.valorParcela).toBe(21426);
+  });
+
+  it('oferta padrão 1: R$ 3.000 em 12 semanas → R$ 358,64', () => {
+    const r = precificarReembolsoParcelado({
+      valorReembolso: 300000,
+      numeroParcelas: 12,
+      frequencia: 'semanal',
+      ...params,
+    });
+    expect(r.valorParcela).toBe(35864);
+  });
+
+  it('taxa mínima de processamento vale para valores pequenos', () => {
+    const r = precificarReembolsoParcelado({
+      valorReembolso: 50000, // R$ 500 → 9,99% = 49,95 < mínima 99,90
+      numeroParcelas: 4,
+      frequencia: 'semanal',
+      ...params,
+    });
+    expect(r.taxaInicial).toBe(9990);
   });
 });

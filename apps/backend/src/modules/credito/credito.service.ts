@@ -4,7 +4,7 @@ import {
   OnModuleInit,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { precificarCreditoAvulso, centavosParaReaisString } from '@azit/utils';
+import { precificarCreditoAvulso, precificarReembolsoParcelado, centavosParaReaisString } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AtivoService } from '../ativo/ativo.service';
 import { OrigemCapitalService } from '../origem-capital/origem-capital.service';
@@ -12,6 +12,7 @@ import { ContratoService } from '../contrato/contrato.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { ParametrosService } from '../simulador/parametros.service';
+import { CatalogoFonteService, ParametrosCatalogoReembolso } from '../catalogo/catalogo-fonte.service';
 import {
   OriginarCreditoDto,
   SimularCreditoDto,
@@ -34,15 +35,68 @@ export class CreditoService implements OnModuleInit {
     private readonly aprovacao: AprovacaoService,
     private readonly asaas: AsaasService,
     private readonly parametros: ParametrosService,
+    private readonly catalogoFonte: CatalogoFonteService,
   ) {}
 
   onModuleInit() {
-    this.aprovacao.registrarEfetivador('credito_avulso', {
-      aprovada: async (a) => this.efetivar(a.referenciaId, a.decisorId),
-      reprovada: async (a) => {
+    const efetivador = {
+      aprovada: async (a: { referenciaId: string; decisorId: string }) => this.efetivar(a.referenciaId, a.decisorId),
+      reprovada: async (a: { referenciaId: string; decisorId: string }) => {
         await this.cancelar(a.referenciaId, a.decisorId);
       },
+    };
+    this.aprovacao.registrarEfetivador('credito_avulso', efetivador);
+    // F3: o Reembolso Parcelado usa o MESMO ciclo de efetivação, com alçada própria.
+    this.aprovacao.registrarEfetivador('reembolso_parcelado', efetivador);
+  }
+
+  // F3: valida o pedido contra as regras do produto do Catálogo. O limite de 30%
+  // usa a MAIOR parcela entre os contratos ativos da conta (parcela principal).
+  private async validarReembolso(
+    rp: ParametrosCatalogoReembolso,
+    dto: { valor: number; numeroParcelas: number; valorEntrada: number; periodicidade?: string },
+    titularId?: string,
+  ): Promise<{ limiteParcela: number | null }> {
+    const reaisFmt = (c: number) => `R$ ${centavosParaReaisString(c)}`;
+    if (dto.valorEntrada > 0) {
+      throw new UnprocessableEntityException({
+        erro: 'entrada_nao_permitida',
+        mensagem: 'O Reembolso Parcelado não tem entrada — o valor integral é parcelado',
+      });
+    }
+    if (dto.valor < rp.valorMinimo || dto.valor > rp.valorMaximo) {
+      throw new UnprocessableEntityException({
+        erro: 'valor_fora_da_faixa',
+        mensagem: `O valor do reembolso deve estar entre ${reaisFmt(rp.valorMinimo)} e ${reaisFmt(rp.valorMaximo)}`,
+      });
+    }
+    const freq = (dto.periodicidade ?? 'mensal') as 'mensal' | 'quinzenal' | 'semanal';
+    const maxParcelas = this.catalogoFonte.maxParcelasReembolso(rp.prazoMaximoMeses, freq);
+    if (dto.numeroParcelas > maxParcelas) {
+      throw new UnprocessableEntityException({
+        erro: 'prazo_maximo',
+        mensagem: `No ${freq} o máximo é ${maxParcelas} parcelas (prazo do produto: ${rp.prazoMaximoMeses} meses)`,
+      });
+    }
+    if (!titularId) return { limiteParcela: null };
+    const contaComContratos = await this.prisma.db.conta.findFirst({
+      where: { titularId },
+      include: {
+        contratosCredito: {
+          where: { status: { in: ['ATIVO', 'INADIMPLENTE'] } },
+          select: { valorParcelaInicial: true },
+        },
+      },
     });
+    const parcelas = (contaComContratos?.contratosCredito ?? []).map((c) => this.cent(c.valorParcelaInicial));
+    if (parcelas.length === 0) {
+      throw new UnprocessableEntityException({
+        erro: 'sem_contrato_ativo',
+        mensagem: 'O Reembolso Parcelado exige um contrato ativo — o titular não tem contrato vigente',
+      });
+    }
+    const limiteParcela = Math.round(Math.max(...parcelas) * rp.limiteParcelaAcessoria);
+    return { limiteParcela };
   }
 
   private cent(v: unknown): number {
@@ -53,14 +107,44 @@ export class CreditoService implements OnModuleInit {
     return periodicidade === 'mensal' ? 30 : periodicidade === 'quinzenal' ? 14 : 7;
   }
 
-  // Precificação com a TAXA VIGENTE do simulador (TR a.m. convertida à taxa
-  // periódica equivalente). Provisório até o Vicente formalizar a régua do avulso.
-  private async precificar(dto: {
-    valor: number;
-    numeroParcelas: number;
-    valorEntrada: number;
-    periodicidade?: string;
-  }) {
+  // Precificação. Se o produto Reembolso Parcelado está ATIVO no Catálogo (F3),
+  // valem as regras dele (encargo 19,99% a.m. equivalente + taxa inicial
+  // financiada); senão, o provisório com a taxa vigente do simulador.
+  private async precificar(
+    dto: { valor: number; numeroParcelas: number; valorEntrada: number; periodicidade?: string },
+    titularId?: string,
+  ) {
+    const rp = await this.catalogoFonte.reembolsoParcelado();
+    if (rp) {
+      const { limiteParcela } = await this.validarReembolso(rp, dto, titularId);
+      const freq = (dto.periodicidade ?? 'mensal') as 'mensal' | 'quinzenal' | 'semanal';
+      const r = precificarReembolsoParcelado({
+        valorReembolso: dto.valor,
+        numeroParcelas: dto.numeroParcelas,
+        frequencia: freq,
+        encargoMensal: rp.encargoMensal,
+        taxaInicialPct: rp.taxaInicialPct,
+        taxaInicialMinima: rp.taxaInicialMinima,
+      });
+      if (r.valorParcela < rp.valorMinimoParcela) {
+        throw new UnprocessableEntityException({
+          erro: 'parcela_minima',
+          mensagem: `A parcela ficou abaixo da mínima do produto (R$ ${centavosParaReaisString(rp.valorMinimoParcela)}) — reduza o número de parcelas`,
+        });
+      }
+      return {
+        produto: 'reembolso_parcelado' as const,
+        valorFinanciado: r.valorFinanciado,
+        taxaInicial: r.taxaInicial,
+        encargoMensal: rp.encargoMensal,
+        limiteParcela,
+        valorParcela: r.valorParcela,
+        numeroParcelas: dto.numeroParcelas,
+        totalAPagar: r.totalAPagar,
+        taxaMensal: rp.encargoMensal,
+        provisorio: false as const,
+      };
+    }
     const params = await this.parametros.vigente();
     const periodicidade = dto.periodicidade ?? 'mensal';
     const fator =
@@ -73,7 +157,11 @@ export class CreditoService implements OnModuleInit {
       fator,
     });
     return {
+      produto: 'credito_avulso' as const,
       valorFinanciado,
+      taxaInicial: 0,
+      encargoMensal: params.taxaMensal,
+      limiteParcela: null as number | null,
       valorParcela,
       numeroParcelas: dto.numeroParcelas,
       totalAPagar: dto.valorEntrada + valorParcela * dto.numeroParcelas,
@@ -84,11 +172,16 @@ export class CreditoService implements OnModuleInit {
 
   // Prévia da parcela para a tela (não persiste).
   async simular(dto: SimularCreditoDto) {
-    const p = await this.precificar(dto);
+    const p = await this.precificar(dto, dto.titularId);
     return {
+      produto: p.produto,
       valor: dto.valor,
       valorEntrada: dto.valorEntrada,
       valorFinanciado: p.valorFinanciado,
+      taxaInicial: p.taxaInicial,
+      encargoMensal: p.encargoMensal,
+      limiteParcela: p.limiteParcela,
+      excedeLimite: p.limiteParcela !== null && p.valorParcela > p.limiteParcela,
       numeroParcelas: p.numeroParcelas,
       valorParcela: p.valorParcela,
       totalAPagar: p.totalAPagar,
@@ -117,11 +210,19 @@ export class CreditoService implements OnModuleInit {
       });
     }
 
-    const p = await this.precificar(dto);
+    const p = await this.precificar(dto, titularId);
+    // RF-RP04: na CONTRATAÇÃO o limite de 30% da parcela principal bloqueia.
+    if (p.limiteParcela !== null && p.valorParcela > p.limiteParcela) {
+      throw new UnprocessableEntityException({
+        erro: 'limite_parcela_acessoria',
+        mensagem: `A parcela (R$ ${centavosParaReaisString(p.valorParcela)}) ultrapassa 30% da parcela do contrato principal (limite R$ ${centavosParaReaisString(p.limiteParcela)}) — aumente o prazo ou reduza o valor`,
+      });
+    }
+    const ehReembolso = p.produto === 'reembolso_parcelado';
 
     const ativo = await this.ativo.criar({
       tipo: 'outro',
-      descricao: `${dto.descricao} — ${titular.nome}`,
+      descricao: `${ehReembolso ? 'Reembolso Parcelado' : dto.descricao} — ${titular.nome}`,
       valorVenda: dto.valor,
     });
     await this.origem.criar(ativo.id, {
@@ -155,14 +256,17 @@ export class CreditoService implements OnModuleInit {
       data: { solicitadoPor: solicitanteId },
     });
 
-    // Solicitação no motor (Doc 2 §7.9-A) — a decisão acontece na Central de Aprovações.
+    // Solicitação no motor (Doc 2 §7.9-A) — a decisão acontece na Central de
+    // Aprovações. Alçada POR PRODUTO (decisão 13/07): reembolso tem tipo próprio.
     await this.aprovacao.criar({
-      tipoOperacao: 'credito_avulso',
+      tipoOperacao: ehReembolso ? 'reembolso_parcelado' : 'credito_avulso',
       referenciaTipo: 'contrato_credito',
       referenciaId: contrato.id,
       titularId,
       valorCentavos: p.totalAPagar,
-      resumo: `${dto.descricao} — ${dto.numeroParcelas}× de R$ ${centavosParaReaisString(p.valorParcela)}`,
+      resumo: ehReembolso
+        ? `Reembolso Parcelado (termo TRP001) — ${dto.descricao} — ${dto.numeroParcelas}× de R$ ${centavosParaReaisString(p.valorParcela)} (taxa inicial R$ ${centavosParaReaisString(p.taxaInicial)} financiada)`
+        : `${dto.descricao} — ${dto.numeroParcelas}× de R$ ${centavosParaReaisString(p.valorParcela)}`,
       solicitanteId,
     });
 

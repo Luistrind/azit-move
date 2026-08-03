@@ -165,3 +165,58 @@ export function precificarPrice(p: ParametrosPrecificacao): ResultadoPrecificaca
     provisorio: true,
   };
 }
+
+// ============================================================
+// REEMBOLSO PARCELADO (Catálogo F3 — Requisitos v0.3 §4)
+//   TP  = max(VR × taxaInicialPct, taxaInicialMinima)  — entra no financiado
+//   VF  = VR + TP
+//   i_p = (1 + encargoMensal)^(dias ÷ 30) − 1  (equivalência financeira —
+//         NUNCA dividir a parcela mensal pelo índice de valor; regra da planilha)
+//   parcela = Price(VF, i_p, n); resíduo de arredondamento na ÚLTIMA parcela
+//   (o cronograma do núcleo já absorve o resíduo na última — RF-RP05)
+// ============================================================
+
+export type FrequenciaReembolso = 'mensal' | 'quinzenal' | 'semanal';
+
+const DIAS_INTERVALO: Record<FrequenciaReembolso, number> = {
+  mensal: 30,
+  quinzenal: 14,
+  semanal: 7,
+};
+
+export interface ParametrosReembolso {
+  valorReembolso: number; // centavos (VR)
+  numeroParcelas: number;
+  frequencia: FrequenciaReembolso;
+  encargoMensal: number; // fração a.m. (ex.: 0.1999)
+  taxaInicialPct: number; // fração (ex.: 0.0999)
+  taxaInicialMinima: number; // centavos (ex.: 9990)
+}
+
+export interface ResultadoReembolso {
+  taxaInicial: number; // centavos (TP)
+  valorFinanciado: number; // centavos (VF = VR + TP)
+  taxaPeriodo: number; // fração por período
+  valorParcela: number; // centavos
+  totalAPagar: number; // centavos (parcela × n)
+}
+
+export function precificarReembolsoParcelado(p: ParametrosReembolso): ResultadoReembolso {
+  if (!Number.isInteger(p.numeroParcelas) || p.numeroParcelas < 1) {
+    throw new Error('numeroParcelas deve ser inteiro >= 1');
+  }
+  const taxaInicial = Math.max(Math.round(p.valorReembolso * p.taxaInicialPct), p.taxaInicialMinima);
+  const vf = p.valorReembolso + taxaInicial;
+  const dias = DIAS_INTERVALO[p.frequencia];
+  const i = Math.pow(1 + p.encargoMensal, dias / 30) - 1;
+  const n = p.numeroParcelas;
+  const pmt = i === 0 ? vf / n : (vf * (i * Math.pow(1 + i, n))) / (Math.pow(1 + i, n) - 1);
+  const valorParcela = Math.round(pmt);
+  return {
+    taxaInicial,
+    valorFinanciado: vf,
+    taxaPeriodo: i,
+    valorParcela,
+    totalAPagar: valorParcela * n,
+  };
+}
