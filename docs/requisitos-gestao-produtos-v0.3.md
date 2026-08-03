@@ -1,10 +1,10 @@
-# Requisitos — Gestão de Produtos v0.2 — Azit Hub
+# Requisitos — Gestão de Produtos v0.3 — Azit Hub
 
-**Data:** 02/08/2026 · **Status:** v0.2 — decisões do Luís (02/08) incorporadas; segue para validação do Vicente · **Autor:** Luís / assistente
+**Data:** 03/08/2026 · **Status:** v0.3 — todas as perguntas do Luís respondidas (02–03/08); segue para validação do Vicente · **Autor:** Luís / assistente
 
 **Fontes:** Modelo de Gestão de Produtos; Contexto e Racional; Catálogo de Produtos; planilhas Compra Parcelada, Reembolso Parcelado e Proteção Veicular (fórmulas extraídas célula a célula); decisões de 02/08/2026.
 
-**O que mudou da v0.1 para a v0.2:** respostas às perguntas abertas 1, 3, 6, 7 e 8; perguntas 4 e 5 reformuladas (não estavam claras); a Fase 1 (fundação Produto → Variante → Versão) **já está construída** — os três produtos estão cadastrados no sistema em situação Rascunho, com os parâmetros das planilhas, sem nenhum efeito sobre o simulador atual.
+**O que mudou até a v0.3:** v0.2 incorporou as decisões 1, 3, 6, 7 e 8; a v0.3 fecha as perguntas 4 (condição fora da faixa segue com alçada — ponto de atenção) e 5 (instrumento próprio vinculado à conta). A Fase 1 (fundação Produto → Variante → Versão) **já está construída** — os três produtos estão cadastrados no sistema em situação Rascunho, com os parâmetros das planilhas, sem nenhum efeito sobre o simulador atual.
 
 ---
 
@@ -16,9 +16,11 @@
 | 3 | Proteção dentro da Compra Parcelada | A cobrança da proteção **acompanha a frequência do contrato**. A referência de preço é **semanal**: contrato semanal cobra o valor semanal; contrato mensal cobra o valor semanal × fator semana→mês. Ver RF-CP12. |
 | 6 | IPCA | Fonte/integração fica **em aberto**; placeholder funcional segue valendo. |
 | 7 | Fatores de conversão | **Seguir o Catálogo**: índice de conversão de prazo 4,3452 (semanal) e 2,1726 (quinzenal). Vale como padrão único do sistema a partir da F2; o parâmetro da análise de cadastro (hoje 4,345) será atualizado por nova versão de parâmetros na mesma virada. |
+| 4 | Condição fora da faixa | **Opção (b): deixa simular e seguir**, com a proposta marcada "fora do parâmetro" e exigindo **aprovação de alçada superior** antes de formalizar. ⚠️ **PONTO DE ATENÇÃO (Luís, 03/08): decisão pode ser revista** — implementar como parâmetro configurável do produto (bloquear × seguir com alçada), para trocar sem código. |
+| 5 | Instrumento do Reembolso Parcelado | **Contrato à parte, com natureza de TERMO**, vinculado à **conta do cliente** na Azitmove — não ao contrato do veículo. Elegibilidade continua exigindo contrato ativo, mas o instrumento é próprio (coerente com a arquitetura conta-cêntrica: o mesmo padrão do acordo de renegociação). |
 | 8 | Visão do cliente ("Membro") | **Desenhar agora, sem desenvolver**: será produzida uma proposta de telas (mockup) da visão do cliente para validação, antes de qualquer código. Entra como entregável de design na F6. |
 
-Continuam **em aberto** (sem bloquear as fases 1–3): homologação da Proteção Veicular (pergunta 2), alertas × bloqueios (pergunta 4, reformulada abaixo), instrumento do Reembolso Parcelado (pergunta 5, reformulada abaixo).
+Continuam **em aberto** (sem bloquear as fases 1–3): homologação da Proteção Veicular (pergunta 2) e os fatores da proteção nas frequências quinzenal/diária (pergunta 10).
 
 ---
 
@@ -73,7 +75,7 @@ Gerais (nível produto): atualização monetária IPCA; multa 2%; juros de mora 
 - **RF-CP02.** Parcela mensal do bem pelo Sistema Price (taxa mensal de remuneração, prazo em meses).
 - **RF-CP03.** Conversão para a frequência pelo **índice de conversão de valor** (Mensal 1, Quinzenal 2, Semanal 4, Diária 28) para o bem e para a comissão recorrente.
 - **RF-CP04.** Parcela total do período = bem + comissão + proteção do período, arredondada a 2 casas.
-- **RF-CP05.** Validações de entrada mínima e prazo: ver **pergunta 4** (reformulada).
+- **RF-CP05 (DECIDIDA 03/08).** Entrada abaixo da mínima ou prazo fora da faixa **não bloqueiam** a simulação: a proposta segue marcada **"fora do parâmetro"** e exige **aprovação de alçada superior** antes da formalização (via motor de aprovação existente, tipo de operação próprio). ⚠️ Ponto de atenção: o comportamento (bloquear × seguir com alçada) será um **parâmetro configurável do produto**, porque a decisão pode ser revista.
 - **RF-CP06.** **Caso de ouro (teste de aceite):** HB20S, R$ 50.000, entrada R$ 1.990, 36 meses, semanal → parcela total R$ 743,24 por semana; 156 parcelas; total R$ 117.935,47.
 - **RF-CP12 (NOVA — decisão 02/08).** **Proteção dentro da Compra Parcelada:** a cobrança da proteção acompanha a **frequência do contrato**, e a referência de preço é **semanal**:
   - contrato semanal → cobra o valor semanal da proteção;
@@ -92,7 +94,7 @@ Gerais (nível produto): atualização monetária IPCA; multa 2%; juros de mora 
 
 *(sem mudanças em relação à v0.1 — parâmetros e RF-RP01 a RF-RP08 mantidos: Price com taxa equivalente à frequência — (1+taxa mensal)^(dias÷30)−1 —, índice de prazo 4,3452/2,1726, taxa inicial mínima R$ 99,90, limite de 30% da parcela principal, ajuste na última parcela, liquidação a valor presente, cobrança na fatura do contrato principal.)*
 
-Pendência específica: **pergunta 5** (instrumento contratual, reformulada abaixo).
+- **RF-RP09 (NOVA — decisão 03/08).** Instrumento: **contrato próprio com natureza de termo**, vinculado à **conta do titular** (não ao contrato do veículo). A elegibilidade exige contrato ativo, mas a vida do reembolso é independente da do contrato âncora — a dívida vive na conta (mesma lógica conta-cêntrica do acordo). Modelo de documento próprio (código a definir com o jurídico, ex.: TRP001).
 
 ---
 
@@ -126,15 +128,6 @@ Pendência específica: **pergunta 5** (instrumento contratual, reformulada abai
 ## 9. Perguntas que permanecem abertas
 
 **2. Proteção Veicular — homologação** *(em aberto, sem resposta agora)*: valores (taxas, administração, assistência, Utilitários), coberturas de verdade (limites, franquias, carências, exclusões, sinistro) e instrumento jurídico.
-
-**4. Entrada e prazo fora da faixa — reformulada.** Hoje o sistema **bloqueia** a simulação quando a entrada fica abaixo da mínima ou o prazo sai da faixa. A planilha do Catálogo diz que esses avisos **não bloqueiam** a simulação. A pergunta é operacional: quando o vendedor montar uma condição fora da faixa, o sistema deve
-   (a) **impedir** de seguir (como hoje), ou
-   (b) **deixar simular e seguir**, marcando a proposta como "fora do parâmetro" e exigindo **aprovação de alçada superior** antes de formalizar (combina com a decisão de 13/07 "fora do parâmetro sobe de alçada")?
-
-**5. Instrumento do Reembolso Parcelado — reformulada.** Quando o cliente contratar um Reembolso Parcelado, **o que ele assina?**
-   (a) um **aditivo** ao contrato de Compra Parcelada que ele já tem, ou
-   (b) um **contrato próprio**, separado, só do reembolso?
-   Isso define o modelo de documento (como os CNTC003/CNTM001/CNTO001 da Compra Parcelada) e como o jurídico enxerga a operação.
 
 **Nova — 10. Fatores da proteção nas demais frequências** (derivada da decisão 3): confirmar quinzenal = semanal × 2 e diária = semanal ÷ 7, ou definir outros fatores.
 

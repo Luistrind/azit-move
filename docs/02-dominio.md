@@ -1090,6 +1090,13 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 >   padrão único a partir da F2; a análise de cadastro atualiza seu parâmetro versionado na mesma
 >   virada, sem recálculo retroativo.
 > - **Visão do cliente (Membro): desenhar antes de desenvolver** — mockup para validação na F6.
+> - **Condição fora da faixa (decisão 2026-08-03): segue com alçada.** Entrada/prazo fora dos
+>   limites da variante não bloqueiam a simulação; a proposta nasce marcada "fora do parâmetro" e
+>   exige aprovação de alçada superior antes da formalização. ⚠️ Ponto de atenção: comportamento
+>   configurável por produto (bloquear × seguir com alçada) — o Luís pode rever.
+> - **Reembolso Parcelado (decisão 2026-08-03): instrumento próprio com natureza de termo,
+>   vinculado à CONTA do titular** — não ao contrato do veículo. Elegibilidade exige contrato
+>   ativo; a obrigação vive na conta (mesmo padrão conta-cêntrico do acordo).
 > O model `Produto` existente (itens avulsos de contrato — proteção, rastreador, taxa) continua
 > separado: ele é item contratável, não produto comercial do catálogo. Convergência avaliada na F3.
 
