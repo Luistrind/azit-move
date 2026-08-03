@@ -10,7 +10,7 @@
     {
       "name": "backend",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "backend", "start:dev"],
+      "runtimeArgs": ["--filter", "backend", "dev"],
       "port": 3001
     }
   ]

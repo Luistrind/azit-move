@@ -4,6 +4,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { authService } from '../../services/auth.service';
 import { aprovacaoService } from '../../services/aprovacao.service';
 import { usuarioService } from '../../services/usuario.service';
+import { queryClient } from '../../lib/queryClient';
 
 // Sidebar 236px navy — Doc 3 §7.2. Logo (fallback bloco âmbar "a" até o SVG oficial),
 // nav e footer de usuário. Os itens reais entram conforme as telas dos blocos seguintes.
@@ -112,6 +113,7 @@ export function Sidebar() {
   async function onLogout() {
     await authService.logout();
     limpar();
+    queryClient.clear();
     navigate('/login', { replace: true });
   }
 

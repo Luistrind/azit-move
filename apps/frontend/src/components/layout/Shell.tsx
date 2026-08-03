@@ -7,7 +7,12 @@ import { Toaster } from '../Toast';
 // Shell da aplicação — Doc 3 §7.1. Sidebar + Topbar + área de scroll.
 // O título da topbar é derivado da rota atual (mapa simples por enquanto).
 const TITULOS: Record<string, { title: string; subtitle: string }> = {
-  '/': { title: 'Carteira Operacional', subtitle: 'Posição consolidada por titular' },
+  '/': { title: 'Início', subtitle: 'Sua fila de trabalho' },
+  '/carteira': { title: 'Carteira Operacional', subtitle: 'Posição consolidada por titular' },
+  '/analises': { title: 'Análises de cadastro', subtitle: 'Fila de análises em andamento' },
+  '/pessoas': { title: 'Pessoas', subtitle: 'Investidores, fornecedores e parceiros' },
+  '/estruturas': { title: 'Estruturas jurídicas', subtitle: 'Capital por rodada de captação' },
+  '/configuracoes/usuarios': { title: 'Usuários e permissões', subtitle: 'Acesso por papel e por área' },
   '/regua': { title: 'Régua de Cobrança', subtitle: 'Gestão de inadimplência' },
   '/acordos': { title: 'Renegociações', subtitle: 'Acompanhamento de acordos e novações' },
   '/aprovacoes': { title: 'Central de Aprovações', subtitle: 'Solicitações pendentes de alçada' },

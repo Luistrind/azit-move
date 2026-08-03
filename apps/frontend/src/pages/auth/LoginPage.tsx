@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { authService } from '../../services/auth.service';
 import { useAuthStore } from '../../stores/authStore';
+import { queryClient } from '../../lib/queryClient';
 
 // Tela de login (Doc 7 item 1.6). Form email+senha → guarda tokens → redireciona.
 export function LoginPage() {
@@ -24,6 +25,8 @@ export function LoginPage() {
     try {
       const resp = await authService.login(email, senha);
       setSessao(resp);
+      // Sessão nova = cache novo: sem isso, menu/permissões do usuário anterior vazam.
+      queryClient.clear();
       navigate(destino, { replace: true });
     } catch {
       // Mensagem genérica — não revela se foi e-mail ou senha (Doc 6 §11.3).
