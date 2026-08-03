@@ -11,6 +11,7 @@ import { ContratoDetalhePage } from './pages/ContratoDetalhePage';
 import { ReguaPage } from './pages/ReguaPage';
 import { AcordosPage } from './pages/AcordosPage';
 import { OriginacaoPage } from './pages/OriginacaoPage';
+import { AtendimentoPage } from './pages/AtendimentoPage';
 import { SimulacoesPage } from './pages/SimulacoesPage';
 import { PropostasPage } from './pages/PropostasPage';
 import { PropostaDetalhePage } from './pages/PropostaDetalhePage';
@@ -74,6 +75,10 @@ export const router = createBrowserRouter([
       {
         path: 'originacao',
         element: <OriginacaoPage />,
+      },
+      {
+        path: 'atendimento',
+        element: <AtendimentoPage />,
       },
       {
         path: 'simulacoes',

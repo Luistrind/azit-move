@@ -26,7 +26,8 @@ const GRUPOS_NAV: GrupoNav[] = [
     area: 'COMERCIAL',
     titulo: 'Comercial',
     itens: [
-      { to: '/originacao', label: 'Novo atendimento' },
+      { to: '/atendimento', label: 'Novo atendimento' },
+      { to: '/originacao', label: 'Atendimento (escritório)' },
       { to: '/simulacoes', label: 'Simulações' },
       { to: '/propostas', label: 'Propostas' },
     ],

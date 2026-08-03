@@ -8,6 +8,7 @@ import { Toaster } from '../Toast';
 // O título da topbar é derivado da rota atual (mapa simples por enquanto).
 const TITULOS: Record<string, { title: string; subtitle: string }> = {
   '/': { title: 'Início', subtitle: 'Sua fila de trabalho' },
+  '/atendimento': { title: 'Novo atendimento', subtitle: 'Simulação na frente do cliente' },
   '/carteira': { title: 'Carteira Operacional', subtitle: 'Posição consolidada por titular' },
   '/analises': { title: 'Análises de cadastro', subtitle: 'Fila de análises em andamento' },
   '/pessoas': { title: 'Pessoas', subtitle: 'Investidores, fornecedores e parceiros' },

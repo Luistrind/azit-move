@@ -157,7 +157,7 @@ export function PropostaDetalhePage() {
               {/* âncora — sempre o financiamento do veículo */}
               <div className="flex items-center gap-[10px] text-[12.5px]">
                 <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>Âncora</span>
-                <span>Financiamento veicular — {p.numeroParcelas}× {formatCurrency(p.valorParcela)}</span>
+                <span>Venda parcelada do veículo — {p.numeroParcelas}× {formatCurrency(p.valorParcela)}</span>
               </div>
               {p.itens.map((it) => (
                 <div key={it.id} className="flex items-center gap-[10px] text-[12.5px]">
