@@ -63,6 +63,7 @@ export interface ResultadoSimulacaoV3 {
   valorParcelamento: number; // VP centavos
   parcelaMensalBase: number; // PM1 centavos
   parcelaMensalTotal: number; // PMT centavos
+  parcelaMensalTotalExata: number; // PMT SEM arredondar (fração de centavo) — p/ arredondamento único da parcela final
   parcelaFinal: number; // PF centavos, conforme frequência
   numeroParcelas: number; // round(PC × fator)
   totalAPagar: number; // entrada + PMT × PC (total do plano mensal)
@@ -90,6 +91,7 @@ export function precificarSimulacao(p: ParametrosSimulacaoV3): ResultadoSimulaca
     valorParcelamento: vp,
     parcelaMensalBase: Math.round(pm1),
     parcelaMensalTotal: Math.round(pmt),
+    parcelaMensalTotalExata: pmt,
     parcelaFinal: Math.round(pmt / fatorPrec),
     numeroParcelas: Math.max(1, Math.round(pc * fatorContrato)),
     totalAPagar: p.valorEntrada + Math.round(pmt * pc),

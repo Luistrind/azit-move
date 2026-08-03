@@ -79,8 +79,11 @@ export class SimulacaoService {
       fatorSemanal: FATORES_CATALOGO.contratoSemanal,
       fatorQuinzenal: FATORES_CATALOGO.contratoQuinzenal,
     });
-    const protecao = this.catalogoFonte.protecaoPorPeriodo(cat.protecaoSemanal, frequencia);
-    return { ...r, parcelaFinal: r.parcelaFinal + protecao };
+    // Arredondamento ÚNICO na soma dos componentes (como a planilha faz o ROUND):
+    // parcela = round(pmt_exato ÷ fator + proteção_exata).
+    const fatorPrec = frequencia === 'mensal' ? 1 : frequencia === 'quinzenal' ? FATORES_CATALOGO.precificacaoQuinzenal : FATORES_CATALOGO.precificacaoSemanal;
+    const protecaoExata = this.catalogoFonte.protecaoPorPeriodoExata(cat.protecaoSemanalExata, frequencia);
+    return { ...r, parcelaFinal: Math.round(r.parcelaMensalTotalExata / fatorPrec + protecaoExata) };
   }
 
   // Fora do parâmetro (decisão 03/08, opção b): no modo catálogo NÃO bloqueia —

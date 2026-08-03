@@ -38,6 +38,7 @@ export interface ParametrosCatalogoCompraParcelada {
   // Enquanto a Proteção Veicular não é homologada, deriva da base mensal da
   // planilha: semanal = mensal ÷ 4 (índice de conversão de valor).
   protecaoSemanal: number;
+  protecaoSemanalExata: number; // SEM arredondar — p/ arredondamento único da parcela
   // Antecipação por componente (F4): taxas de desconto e isenções na liquidação.
   taxaDescontoBem: number;
   taxaDescontoComissao: number;
@@ -127,6 +128,7 @@ export class CatalogoFonteService {
       comissaoRecorrenteMensal: num(p.comissaoRecorrenteMensal),
       protecaoObrigatoria,
       protecaoSemanal: protecaoObrigatoria ? Math.round(protecaoMensal / FATORES_CATALOGO.precificacaoSemanal) : 0,
+      protecaoSemanalExata: protecaoObrigatoria ? protecaoMensal / FATORES_CATALOGO.precificacaoSemanal : 0,
       taxaDescontoBem: num(p.taxaDescontoBemAntecipacao),
       taxaDescontoComissao: num(p.taxaDescontoComissaoAntecipacao),
       taxaDescontoProtecao: num(p.taxaDescontoProtecaoAntecipacao),
@@ -235,9 +237,15 @@ export class CatalogoFonteService {
   // semanal = base; quinzenal = ×2; mensal = × fator semana→mês (4,3452); os
   // fatores quinzenal/diária aguardam confirmação (pergunta 10 da v0.3).
   protecaoPorPeriodo(protecaoSemanal: number, frequencia: 'mensal' | 'quinzenal' | 'semanal'): number {
+    return Math.round(this.protecaoPorPeriodoExata(protecaoSemanal, frequencia));
+  }
+
+  // Versão SEM arredondar (fração de centavo) — a parcela final arredonda UMA vez,
+  // como a planilha (ROUND na soma dos componentes).
+  protecaoPorPeriodoExata(protecaoSemanal: number, frequencia: 'mensal' | 'quinzenal' | 'semanal'): number {
     if (protecaoSemanal <= 0) return 0;
     if (frequencia === 'semanal') return protecaoSemanal;
-    if (frequencia === 'quinzenal') return Math.round(protecaoSemanal * 2);
-    return Math.round(protecaoSemanal * FATORES_CATALOGO.contratoSemanal);
+    if (frequencia === 'quinzenal') return protecaoSemanal * 2;
+    return protecaoSemanal * FATORES_CATALOGO.contratoSemanal;
   }
 }
