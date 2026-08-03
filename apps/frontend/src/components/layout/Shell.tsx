@@ -10,6 +10,7 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
   '/': { title: 'Início', subtitle: 'Sua fila de trabalho' },
   '/atendimento': { title: 'Novo atendimento', subtitle: 'Simulação na frente do cliente' },
   '/catalogo': { title: 'Catálogo de produtos', subtitle: 'Produto, variantes e versões de parâmetros' },
+  '/protecao': { title: 'Proteção veicular', subtitle: 'Simulação da contribuição — valores em homologação' },
   '/carteira': { title: 'Carteira Operacional', subtitle: 'Posição consolidada por titular' },
   '/analises': { title: 'Análises de cadastro', subtitle: 'Fila de análises em andamento' },
   '/pessoas': { title: 'Pessoas', subtitle: 'Investidores, fornecedores e parceiros' },

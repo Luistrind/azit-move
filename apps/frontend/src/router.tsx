@@ -19,6 +19,7 @@ import { AnalisePage } from './pages/AnalisePage';
 import { AtivoPage } from './pages/AtivoPage';
 import { ProdutosPage } from './pages/ProdutosPage';
 import { CatalogoPage } from './pages/CatalogoPage';
+import { ProtecaoPage } from './pages/ProtecaoPage';
 import { TitularPage } from './pages/TitularPage';
 import { TitularDetalhePage } from './pages/TitularDetalhePage';
 import { AprovacoesPage } from './pages/AprovacoesPage';
@@ -108,6 +109,10 @@ export const router = createBrowserRouter([
       {
         path: 'catalogo',
         element: <CatalogoPage />,
+      },
+      {
+        path: 'protecao',
+        element: <ProtecaoPage />,
       },
       {
         path: 'titulares',

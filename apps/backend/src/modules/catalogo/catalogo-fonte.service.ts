@@ -38,6 +38,12 @@ export interface ParametrosCatalogoCompraParcelada {
   // Enquanto a Proteção Veicular não é homologada, deriva da base mensal da
   // planilha: semanal = mensal ÷ 4 (índice de conversão de valor).
   protecaoSemanal: number;
+  // Antecipação por componente (F4): taxas de desconto e isenções na liquidação.
+  taxaDescontoBem: number;
+  taxaDescontoComissao: number;
+  taxaDescontoProtecao: number;
+  isencaoComissaoLiquidacao: boolean;
+  isencaoProtecaoLiquidacao: boolean;
   ofertasPadrao: OfertaPadraoCatalogo[];
 }
 
@@ -78,6 +84,18 @@ export class CatalogoFonteService {
       xs.filter((x) => !x.vigenteAte).sort((a, b) => b.numero - a.numero)[0] ?? null;
     const vProduto = vigente(produto.versoes.filter((x) => !x.varianteId));
     const vVariante = vigente(produto.versoes.filter((x) => x.varianteId === variante.id));
+    return this.montarCompraParcelada(produto.id, variante.id, varianteChave, vProduto, vVariante);
+  }
+
+  // Monta os parâmetros efetivos (herança produto + variante) — usado tanto pela
+  // leitura vigente (F2) quanto pela referência congelada do contrato (F4).
+  private montarCompraParcelada(
+    produtoId: string,
+    varianteId: string,
+    varianteChave: string,
+    vProduto: { numero: number; parametros: unknown } | null,
+    vVariante: { numero: number; parametros: unknown } | null,
+  ): ParametrosCatalogoCompraParcelada {
     const p: Parametros = {
       ...((vProduto?.parametros as Parametros) ?? {}),
       ...((vVariante?.parametros as Parametros) ?? {}),
@@ -96,8 +114,8 @@ export class CatalogoFonteService {
     }
 
     return {
-      produtoId: produto.id,
-      varianteId: variante.id,
+      produtoId,
+      varianteId,
       varianteChave,
       versaoProduto: vProduto?.numero ?? null,
       versaoVariante: vVariante?.numero ?? null,
@@ -109,8 +127,37 @@ export class CatalogoFonteService {
       comissaoRecorrenteMensal: num(p.comissaoRecorrenteMensal),
       protecaoObrigatoria,
       protecaoSemanal: protecaoObrigatoria ? Math.round(protecaoMensal / FATORES_CATALOGO.precificacaoSemanal) : 0,
+      taxaDescontoBem: num(p.taxaDescontoBemAntecipacao),
+      taxaDescontoComissao: num(p.taxaDescontoComissaoAntecipacao),
+      taxaDescontoProtecao: num(p.taxaDescontoProtecaoAntecipacao),
+      isencaoComissaoLiquidacao: bool(p.isencaoComissaoLiquidacao),
+      isencaoProtecaoLiquidacao: bool(p.isencaoProtecaoLiquidacao),
       ofertasPadrao,
     };
+  }
+
+
+  // F4: parâmetros CONGELADOS pela referência gravada no contrato na contratação
+  // ({variante, vp, vv}). Ignora ciclo de vida e vigência — snapshot é snapshot.
+  async compraParceladaPorRef(ref: string): Promise<ParametrosCatalogoCompraParcelada | null> {
+    let parsed: { variante?: string; vp?: number | null; vv?: number | null };
+    try {
+      parsed = JSON.parse(ref) as { variante?: string; vp?: number | null; vv?: number | null };
+    } catch {
+      return null;
+    }
+    if (!parsed.variante) return null;
+    const produto = await this.prisma.db.produtoCatalogo.findFirst({
+      where: { chave: 'compra_parcelada', deletedAt: null },
+      include: { variantes: true, versoes: true },
+    });
+    if (!produto) return null;
+    const variante = produto.variantes.find((v) => v.chave === parsed.variante);
+    if (!variante) return null;
+    const vProduto = produto.versoes.find((x) => !x.varianteId && x.numero === (parsed.vp ?? -1)) ?? null;
+    const vVariante = produto.versoes.find((x) => x.varianteId === variante.id && x.numero === (parsed.vv ?? -1)) ?? null;
+    if (!vProduto && !vVariante) return null;
+    return this.montarCompraParcelada(produto.id, variante.id, parsed.variante, vProduto, vVariante);
   }
 
   // Parâmetros do Reembolso Parcelado (F3), ou null se o produto não está ATIVO.
@@ -144,6 +191,36 @@ export class CatalogoFonteService {
       taxaInicialMinima: num(p.taxaMinimaProcessamento),
       limiteParcelaAcessoria: num(p.limiteParcelaAcessoria, 0.3),
       ofertasPadrao,
+    };
+  }
+
+
+  // Proteção Veicular (F5): parâmetros efetivos por variante/oferta. Devolve
+  // mesmo em RASCUNHO (para SIMULAÇÃO interna); a comercialização exige ATIVO —
+  // quem chama decide pelo campo status. Valores em homologação (pergunta 2).
+  async protecaoVeicular(): Promise<{
+    status: string;
+    versao: number | null;
+    parametros: Parametros;
+    variantes: { chave: string; nome: string; parametros: Parametros }[];
+  } | null> {
+    const produto = await this.prisma.db.produtoCatalogo.findFirst({
+      where: { chave: 'protecao_veicular', deletedAt: null },
+      include: { variantes: { where: { deletedAt: null }, orderBy: { ordem: 'asc' } }, versoes: true },
+    });
+    if (!produto) return null;
+    const vigente = <T extends { vigenteAte: Date | null; numero: number }>(xs: T[]) =>
+      xs.filter((x) => !x.vigenteAte).sort((a, b) => b.numero - a.numero)[0] ?? null;
+    const vProduto = vigente(produto.versoes.filter((x) => !x.varianteId));
+    return {
+      status: produto.status,
+      versao: vProduto?.numero ?? null,
+      parametros: (vProduto?.parametros as Parametros) ?? {},
+      variantes: produto.variantes.map((v) => ({
+        chave: v.chave,
+        nome: v.nome,
+        parametros: (vigente(produto.versoes.filter((x) => x.varianteId === v.id))?.parametros as Parametros) ?? {},
+      })),
     };
   }
 

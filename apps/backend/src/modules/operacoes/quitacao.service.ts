@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { anteciparParcela, centavosParaReaisString } from '@azit/utils';
+import { anteciparParcela, anteciparParcelaComponentes, centavosParaReaisString } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
+import { CatalogoFonteService, ParametrosCatalogoCompraParcelada } from '../catalogo/catalogo-fonte.service';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 const reais = (c: number) => centavosParaReaisString(c);
@@ -19,7 +20,10 @@ const frac = (d: Prisma.Decimal | null | undefined): number =>
 // taxaDescontoQuitacao — comportamento anterior preservado.
 @Injectable()
 export class QuitacaoService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly catalogoFonte: CatalogoFonteService,
+  ) {}
 
   private hojeUTC(): Date {
     return new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
@@ -28,7 +32,12 @@ export class QuitacaoService {
   private async carregar(contratoId: string, parcelaIds?: string[]) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id: contratoId },
-      select: { id: true, taxaDescontoQuitacao: true, periodicidade: true },
+      select: {
+        id: true,
+        taxaDescontoQuitacao: true,
+        periodicidade: true,
+        catalogoVersaoRef: true,
+      },
     });
     if (!contrato) {
       throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Contrato não encontrado' });
@@ -50,6 +59,15 @@ export class QuitacaoService {
     });
     const versao = proposta?.simulacao?.parametroVersao ?? null;
 
+    // F4 (Catálogo): antecipação POR COMPONENTE com taxas/isenções da versão
+    // CONGELADA na contratação (snapshot — nunca a vigente).
+    // Snapshot: só contratos que NASCERAM do catálogo (referência congelada na
+    // formalização) usam as regras por componente — legados seguem o caminho antigo.
+    let cat: ParametrosCatalogoCompraParcelada | null = null;
+    if (contrato.catalogoVersaoRef) {
+      cat = await this.catalogoFonte.compraParceladaPorRef(contrato.catalogoVersaoRef);
+    }
+
     let taxaCR: number;
     let taxaPS: number;
     let crPorParcela: number; // centavos — componente CR embutido em cada parcela
@@ -69,17 +87,68 @@ export class QuitacaoService {
       taxaPS = frac(contrato.taxaDescontoQuitacao);
       crPorParcela = 0;
     }
-    return { contrato, parcelas, taxaCR, taxaPS, crPorParcela };
+    return { contrato, parcelas, taxaCR, taxaPS, crPorParcela, cat };
   }
 
   async simular(contratoId: string, parcelaIds?: string[]) {
-    const { parcelas, taxaCR, taxaPS, crPorParcela } = await this.carregar(contratoId, parcelaIds);
+    const { contrato, parcelas, taxaCR, taxaPS, crPorParcela, cat } = await this.carregar(contratoId, parcelaIds);
     const hoje = this.hojeUTC();
+
+    // Liquidação TOTAL = todas as parcelas em aberto do contrato estão na seleção.
+    const totalEmAberto = await this.prisma.db.parcela.count({
+      where: { contratoId, status: null, acordoId: null },
+    });
+    const liquidacaoTotal = parcelas.length === totalEmAberto;
+
     let valorNominalTotal = 0;
     let valorQuitacao = 0;
+    let comissaoIsentada = 0;
+    let protecaoIsentada = 0;
+
+    const freqApi = contrato.periodicidade === 'SEMANAL' ? 'semanal' : contrato.periodicidade === 'QUINZENAL' ? 'quinzenal' : 'mensal';
     const detalhe = parcelas.map((p) => {
       const dias = Math.max(0, Math.floor((p.dataVencimento.getTime() - hoje.getTime()) / DIA_MS));
       const vf = cent(p.valorNominal);
+      valorNominalTotal += vf;
+
+      if (cat) {
+        // F4 — por componente (bem / comissão / proteção) com as regras da versão.
+        const fatorValor = freqApi === 'semanal' ? 4 : freqApi === 'quinzenal' ? 2 : 1;
+        const comissao = Math.round(cat.comissaoRecorrenteMensal / fatorValor);
+        const protecao = this.catalogoFonte.protecaoPorPeriodo(cat.protecaoSemanal, freqApi);
+        const r = anteciparParcelaComponentes({
+          valorNominal: vf,
+          componenteComissao: comissao,
+          componenteProtecao: protecao,
+          dias,
+          taxaDescontoBem: cat.taxaDescontoBem,
+          taxaDescontoComissao: cat.taxaDescontoComissao,
+          taxaDescontoProtecao: cat.taxaDescontoProtecao,
+          isentarComissao: liquidacaoTotal && cat.isencaoComissaoLiquidacao && dias > 0,
+          isentarProtecao: liquidacaoTotal && cat.isencaoProtecaoLiquidacao && dias > 0,
+        });
+        valorQuitacao += r.valorPresente;
+        if (liquidacaoTotal && dias > 0) {
+          if (cat.isencaoComissaoLiquidacao) comissaoIsentada += comissao;
+          if (cat.isencaoProtecaoLiquidacao) protecaoIsentada += protecao;
+        }
+        return {
+          id: p.id,
+          display: p.display,
+          valorNominal: vf,
+          valorPresente: r.valorPresente,
+          diasAteVencimento: dias,
+          componentes: {
+            bem: r.bemNominal,
+            bemPresente: r.bemPresente,
+            comissao,
+            comissaoCobrada: r.comissaoCobrada,
+            protecao,
+            protecaoCobrada: r.protecaoCobrada,
+          },
+        };
+      }
+
       const { valorPresente: vp } = anteciparParcela({
         valorNominal: vf,
         componenteCR: crPorParcela,
@@ -87,11 +156,14 @@ export class QuitacaoService {
         taxaDescontoCR: taxaCR,
         taxaDescontoPS: taxaPS,
       });
-      valorNominalTotal += vf;
       valorQuitacao += vp;
-      return { id: p.id, display: p.display, valorNominal: vf, valorPresente: vp, diasAteVencimento: dias };
+      return { id: p.id, display: p.display, valorNominal: vf, valorPresente: vp, diasAteVencimento: dias, componentes: null };
     });
     return {
+      fonte: cat ? ('catalogo' as const) : ('parametros' as const),
+      liquidacaoTotal,
+      comissaoIsentada,
+      protecaoIsentada,
       parcelas: detalhe,
       valorNominalTotal,
       valorQuitacao,

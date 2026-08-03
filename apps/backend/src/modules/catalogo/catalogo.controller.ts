@@ -5,6 +5,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { PrismaService } from '../../database/prisma.service';
+import { contribuicaoProtecaoVeicular } from '@azit/utils';
+import { CatalogoFonteService } from './catalogo-fonte.service';
 
 // Catálogo de Produtos F1 (doc 02 §17): Produto → Variante → Versão.
 // Alteração MATERIAL cria versão nova (numeração sequencial, fecha a anterior);
@@ -31,6 +33,14 @@ const varianteSchema = z.object({
   ordem: z.number().int().optional(),
 });
 
+const simularProtecaoSchema = z.object({
+  variante: z.string().min(2),
+  fipe: z.coerce.number().int().min(1), // centavos
+  oferta: z.enum(['essencial', 'protecao', 'completa']),
+  frequencia: z.enum(['mensal', 'quinzenal', 'semanal']),
+  acrescimoPerfil: z.coerce.number().int().min(0).optional(),
+});
+
 const versaoSchema = z.object({
   varianteId: z.string().nullable().optional(), // null/ausente = nível produto
   parametros: z.record(z.union([z.string(), z.number(), z.boolean()])),
@@ -49,7 +59,10 @@ type Parametros = Record<string, string | number | boolean>;
 
 @Controller('catalogo')
 export class CatalogoController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly fonte: CatalogoFonteService,
+  ) {}
 
   @Get()
   async listar() {
@@ -235,6 +248,40 @@ export class CatalogoController {
       anterior ? { numero: anterior.numero, parametros: anterior.parametros } : undefined,
       { numero, varianteId, parametros: dto.parametros, observacao: dto.observacao });
     return { id: nova.id, numero };
+  }
+
+  // --- Proteção Veicular (F5): simulação interna da contribuição ---
+  // Funciona mesmo com o produto em Rascunho (valores em homologação) — a
+  // resposta carrega o status para a tela avisar que não é comercializável.
+  @Post('protecao/simular')
+  @HttpCode(200)
+  async simularProtecao(
+    @Body(new ZodValidationPipe(simularProtecaoSchema)) dto: z.infer<typeof simularProtecaoSchema>,
+  ) {
+    const pv = await this.fonte.protecaoVeicular();
+    if (!pv) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Produto Proteção Veicular não cadastrado' });
+    const variante = pv.variantes.find((v) => v.chave === dto.variante);
+    if (!variante) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Variante não encontrada' });
+    const num = (v: unknown, padrao = 0) => (typeof v === 'number' ? v : padrao);
+    const oferta = dto.oferta; // essencial | protecao | completa
+    const prefixo = oferta === 'essencial' ? 'ofertaEssencial' : oferta === 'protecao' ? 'ofertaProtecao' : 'ofertaCompleta';
+    const r = contribuicaoProtecaoVeicular({
+      fipe: dto.fipe,
+      contribuicaoMinimaMensal: num(variante.parametros.contribuicaoMinimaMensal),
+      taxaFipeMensal: num(pv.parametros[`${prefixo}TaxaFipe`]),
+      taxaAdministracaoMensal: num(pv.parametros.taxaAdministracaoMensal),
+      custoAssistenciaMensal: num(pv.parametros[`${prefixo}Assistencia`]),
+      acrescimoPerfilMensal: dto.acrescimoPerfil ?? 0,
+      frequencia: dto.frequencia,
+    });
+    return {
+      statusProduto: pv.status,
+      comercializavel: pv.status === 'ATIVO',
+      statusValores: pv.parametros.statusValores ?? null,
+      cobertura: pv.parametros[`${prefixo}Cobertura`] ?? null,
+      vigenciaMeses: num(pv.parametros.vigenciaPadraoMeses, 12),
+      ...r,
+    };
   }
 
   // --- internos ---

@@ -41,7 +41,7 @@ describe('precificarPrice (PROVISÓRIA — Vicente)', () => {
 // Simulação V3 — caso de verificação da planilha do Vicente (HB20S):
 // VA 50.000, EN 6.500, 30 meses, CI 3.990, CR 599, TR 2% a.m. → PMT R$ 2.719,42
 // ============================================================
-import { precificarSimulacao, precificarCreditoAvulso, precificarReembolsoParcelado } from './precificacao';
+import { precificarSimulacao, precificarCreditoAvulso, precificarReembolsoParcelado, anteciparParcelaComponentes, contribuicaoProtecaoVeicular } from './precificacao';
 
 const BASE = {
   valorAvista: 5_000_000,
@@ -150,5 +150,68 @@ describe('precificarReembolsoParcelado (Catálogo F3 — planilha do Vicente)', 
       ...params,
     });
     expect(r.taxaInicial).toBe(9990);
+  });
+});
+
+describe('anteciparParcelaComponentes (Catálogo F4)', () => {
+  // Parcela do caso de ouro da Compra Parcelada: 743,24 = bem 485,78 + comissão 199,99 + proteção 57,47
+  const parcela = {
+    valorNominal: 74324,
+    componenteComissao: 19999,
+    componenteProtecao: 5747,
+    taxaDescontoBem: 0.016, // TRD Carro
+    taxaDescontoComissao: 0, // sem desconto — cobra cheia
+    taxaDescontoProtecao: 0,
+  };
+
+  it('parcial 30 dias antes: bem descontado por 1,6%, comissão e proteção CHEIAS', () => {
+    const r = anteciparParcelaComponentes({ ...parcela, dias: 30, isentarComissao: false, isentarProtecao: false });
+    expect(r.bemNominal).toBe(48578);
+    expect(r.bemPresente).toBe(Math.round(48578 / 1.016)); // 47813
+    expect(r.comissaoCobrada).toBe(19999);
+    expect(r.protecaoCobrada).toBe(5747);
+    expect(r.valorPresente).toBe(r.bemPresente + 19999 + 5747);
+  });
+
+  it('liquidação total: comissão e proteção futuras ISENTAS — paga só o bem descontado', () => {
+    const r = anteciparParcelaComponentes({ ...parcela, dias: 30, isentarComissao: true, isentarProtecao: true });
+    expect(r.comissaoCobrada).toBe(0);
+    expect(r.protecaoCobrada).toBe(0);
+    expect(r.valorPresente).toBe(r.bemPresente);
+  });
+
+  it('parcela vencendo hoje: sem desconto em nada', () => {
+    const r = anteciparParcelaComponentes({ ...parcela, dias: 0, isentarComissao: false, isentarProtecao: false });
+    expect(r.valorPresente).toBe(74324);
+  });
+});
+
+describe('contribuicaoProtecaoVeicular (Catálogo F5 — planilha do Vicente)', () => {
+  it('caso de ouro: Leves, FIPE 50.000, oferta Essencial → R$ 229,86/mês e R$ 57,47/semana', () => {
+    const r = contribuicaoProtecaoVeicular({
+      fipe: 5000000,
+      contribuicaoMinimaMensal: 19996,
+      taxaFipeMensal: 0.0035,
+      taxaAdministracaoMensal: 2990,
+      custoAssistenciaMensal: 0,
+      acrescimoPerfilMensal: 0,
+      frequencia: 'semanal',
+    });
+    expect(r.baseFipe).toBe(17500); // abaixo da mínima 199,96 → vale a mínima
+    expect(r.contribuicaoMensal).toBe(22986);
+    expect(r.contribuicaoPeriodo).toBe(5747); // 57,47 por semana (planilha A13)
+  });
+
+  it('FIPE alta: a taxa sobre a FIPE supera a mínima', () => {
+    const r = contribuicaoProtecaoVeicular({
+      fipe: 10000000, // R$ 100.000 × 0,5% = 500 > mínima
+      contribuicaoMinimaMensal: 19996,
+      taxaFipeMensal: 0.005,
+      taxaAdministracaoMensal: 2990,
+      custoAssistenciaMensal: 1990,
+      acrescimoPerfilMensal: 0,
+      frequencia: 'mensal',
+    });
+    expect(r.contribuicaoMensal).toBe(50000 + 2990 + 1990);
   });
 });

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CatalogoModule } from '../catalogo/catalogo.module';
 import { BullModule } from '@nestjs/bullmq';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { ContratoModule } from '../contrato/contrato.module';
@@ -13,7 +14,7 @@ import { EfetivarAcordoProcessor } from './efetivar-acordo.processor';
 // Bloco 6 — operações sobre contratos: renegociação (novação), quitação
 // antecipada, sinistro. AsaasService e AlcadaService vêm de módulos globais.
 @Module({
-  imports: [
+  imports: [CatalogoModule, 
     ContratoModule,
     BullModule.registerQueue(
       { name: QUEUE_NAMES.EFETIVAR_ACORDO },

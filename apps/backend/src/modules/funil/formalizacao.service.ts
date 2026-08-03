@@ -18,6 +18,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { ContratoService } from '../contrato/contrato.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { PropostaService } from './proposta.service';
+import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 
 const cent = (d: Prisma.Decimal): number => reaisParaCentavos(d.toString());
 const DIA_MS = 24 * 60 * 60 * 1000;
@@ -86,6 +87,7 @@ export class FormalizacaoService {
     private readonly contrato: ContratoService,
     private readonly asaas: AsaasService,
     private readonly proposta: PropostaService,
+    private readonly catalogoFonte: CatalogoFonteService,
   ) {}
 
   // 7.10 — congela snapshot, gera documento, cria o contrato.
@@ -356,9 +358,19 @@ export class FormalizacaoService {
       documento,
     };
 
+    // F4: congela a referência da versão do Catálogo usada na contratação —
+    // a quitação por componente lê ESTE snapshot, nunca a versão vigente.
+    const varianteContratada = proposta.ativo.varianteCatalogo ?? 'carro';
+    const catContratacao = await this.catalogoFonte.compraParcelada(varianteContratada);
     await this.prisma.db.contratoCredito.update({
       where: { id: novo.id },
-      data: { snapshotJson: snapshot as unknown as Prisma.InputJsonValue, snapshotLockedAt: new Date() },
+      data: {
+        snapshotJson: snapshot as unknown as Prisma.InputJsonValue,
+        snapshotLockedAt: new Date(),
+        catalogoVersaoRef: catContratacao
+          ? JSON.stringify({ variante: varianteContratada, vp: catContratacao.versaoProduto, vv: catContratacao.versaoVariante })
+          : null,
+      },
     });
     await this.prisma.db.proposta.update({
       where: { id: propostaId },

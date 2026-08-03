@@ -220,3 +220,98 @@ export function precificarReembolsoParcelado(p: ParametrosReembolso): ResultadoR
     totalAPagar: valorParcela * n,
   };
 }
+
+// ============================================================
+// ANTECIPAÇÃO POR COMPONENTE (Catálogo F4 — Requisitos v0.3 §7)
+//   Cada parcela separa em BEM (capital+remuneração), COMISSÃO e PROTEÇÃO.
+//   VP de cada componente = valor ÷ (1 + taxa_diária)^dias, com
+//   taxa_diária = (1 + taxaMensal)^(1/30) − 1. Taxa 0 → componente CHEIO.
+//   LIQUIDAÇÃO TOTAL: comissão e proteção futuras podem ser ISENTAS (flags da
+//   versão do produto). Antecipação PARCIAL: cobra comissão e proteção cheias.
+// ============================================================
+
+export interface ParametrosAntecipacaoComponentes {
+  valorNominal: number; // centavos — parcela total
+  componenteComissao: number; // centavos
+  componenteProtecao: number; // centavos
+  dias: number; // até o vencimento (>= 0)
+  taxaDescontoBem: number; // fração a.m. (TRD da variante)
+  taxaDescontoComissao: number; // fração a.m. (0 = sem desconto, cobra cheia)
+  taxaDescontoProtecao: number; // fração a.m. (0 = sem desconto, cobra cheia)
+  isentarComissao: boolean; // true só na liquidação total (flag da versão)
+  isentarProtecao: boolean;
+}
+
+export interface ResultadoAntecipacaoComponentes {
+  valorPresente: number; // centavos
+  bemNominal: number;
+  bemPresente: number;
+  comissaoCobrada: number; // 0 quando isenta
+  protecaoCobrada: number; // 0 quando isenta
+}
+
+function vpDiario(valor: number, taxaMensal: number, dias: number): number {
+  if (valor <= 0) return 0;
+  if (taxaMensal <= 0 || dias <= 0) return valor;
+  const d = Math.pow(1 + taxaMensal, 1 / 30) - 1;
+  return valor / Math.pow(1 + d, dias);
+}
+
+export function anteciparParcelaComponentes(
+  p: ParametrosAntecipacaoComponentes,
+): ResultadoAntecipacaoComponentes {
+  const bemNominal = Math.max(0, p.valorNominal - p.componenteComissao - p.componenteProtecao);
+  const bemPresente = Math.round(vpDiario(bemNominal, p.taxaDescontoBem, p.dias));
+  const comissaoCobrada = p.isentarComissao
+    ? 0
+    : Math.round(vpDiario(p.componenteComissao, p.taxaDescontoComissao, p.dias));
+  const protecaoCobrada = p.isentarProtecao
+    ? 0
+    : Math.round(vpDiario(p.componenteProtecao, p.taxaDescontoProtecao, p.dias));
+  return {
+    valorPresente: bemPresente + comissaoCobrada + protecaoCobrada,
+    bemNominal,
+    bemPresente,
+    comissaoCobrada,
+    protecaoCobrada,
+  };
+}
+
+// ============================================================
+// PROTEÇÃO VEICULAR (Catálogo F5 — Requisitos v0.3 §5)
+//   Contribuição mensal = MÁX(contribuição mínima da variante; FIPE × taxa da
+//   oferta) + administração + assistência + acréscimo por perfil (RF-PV01).
+//   Conversão para o período pelo índice de conversão de valor (planilha):
+//   semanal ÷4, quinzenal ÷2. ⚠️ Valores do catálogo em HOMOLOGAÇÃO (pergunta 2).
+// ============================================================
+
+export interface ParametrosProtecao {
+  fipe: number; // centavos
+  contribuicaoMinimaMensal: number; // centavos (variante)
+  taxaFipeMensal: number; // fração (oferta)
+  taxaAdministracaoMensal: number; // centavos
+  custoAssistenciaMensal: number; // centavos (oferta)
+  acrescimoPerfilMensal: number; // centavos
+  frequencia: 'mensal' | 'quinzenal' | 'semanal';
+}
+
+export interface ResultadoProtecao {
+  baseFipe: number; // centavos — FIPE × taxa
+  contribuicaoMensal: number; // centavos
+  contribuicaoPeriodo: number; // centavos, na frequência pedida
+}
+
+export function contribuicaoProtecaoVeicular(p: ParametrosProtecao): ResultadoProtecao {
+  const baseFipe = Math.round(p.fipe * p.taxaFipeMensal);
+  const contribuicaoMensal =
+    Math.max(p.contribuicaoMinimaMensal, baseFipe) +
+    p.taxaAdministracaoMensal +
+    p.custoAssistenciaMensal +
+    p.acrescimoPerfilMensal;
+  const divisor = p.frequencia === 'semanal' ? 4 : p.frequencia === 'quinzenal' ? 2 : 1;
+  return {
+    baseFipe,
+    contribuicaoMensal,
+    contribuicaoPeriodo: Math.round(contribuicaoMensal / divisor),
+  };
+}

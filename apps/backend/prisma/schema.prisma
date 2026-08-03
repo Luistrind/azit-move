@@ -773,6 +773,9 @@ model ContratoInvestimento {
 // ============================================================
 
 model ContratoCredito {
+  // Referência CONGELADA da versão do Catálogo na contratação (snapshot — F4).
+  // null = contrato legado/pré-catálogo: quitação segue as regras antigas.
+  catalogoVersaoRef String?
   id                   String                @id @default(cuid())
   numero               String                @unique
   contaId              String

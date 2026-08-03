@@ -72,6 +72,7 @@ const GRUPOS_NAV: GrupoNav[] = [
     titulo: 'Produtos',
     itens: [
       { to: '/catalogo', label: 'Catálogo de produtos' },
+      { to: '/protecao', label: 'Proteção veicular (simulação)' },
       { to: '/produtos', label: 'Itens avulsos de contrato' },
     ],
   },

@@ -47,6 +47,10 @@ export interface ElegivelConta {
 }
 
 export interface SimulacaoQuitacao {
+  fonte?: 'catalogo' | 'parametros';
+  liquidacaoTotal?: boolean;
+  comissaoIsentada?: number; // centavos — isenção na liquidação total (Catálogo)
+  protecaoIsentada?: number;
   parcelas: { id: string; display: string; valorNominal: number; valorPresente: number; diasAteVencimento: number }[];
   valorNominalTotal: number;
   valorQuitacao: number;

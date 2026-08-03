@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
 import { contratoService } from '../services/contrato.service';
-import { operacoesService } from '../services/operacoes.service';
+import { operacoesService, SimulacaoQuitacao } from '../services/operacoes.service';
 import { StatusBadge } from '../components/StatusBadge';
 import { Modal } from '../components/Modal';
 import {
@@ -94,19 +94,21 @@ export function ContratoDetalhePage() {
     }
   }
 
-  // 6.6 — Quitação antecipada: simula (VP), confirma, aplica.
+  // 6.6 — Quitação antecipada (F4: por componente quando o Catálogo está ativo).
+  // Modal com o resumo e as isenções — princípio P6 (nunca confirm/prompt).
+  const [simQuitacao, setSimQuitacao] = useState<SimulacaoQuitacao | null>(null);
   async function quitar() {
-    const sim = await operacoesService.simularQuitacao(id);
-    const ok = window.confirm(
-      `Quitação antecipada de ${sim.parcelas.length} parcela(s):\n` +
-        `Valor nominal: ${(sim.valorNominalTotal / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n` +
-        `Valor presente (quitação): ${(sim.valorQuitacao / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n` +
-        `Desconto: ${(sim.desconto / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n\nConfirmar?`,
-    );
-    if (!ok) return;
+    try {
+      setSimQuitacao(await operacoesService.simularQuitacao(id));
+    } catch (e) {
+      alert(mensagemErro(e));
+    }
+  }
+  async function confirmarQuitacao() {
     setSimulando(true);
     try {
       await operacoesService.quitar(id);
+      setSimQuitacao(null);
       await recarregar();
     } catch (e) {
       alert(mensagemErro(e));
@@ -149,6 +151,34 @@ export function ContratoDetalhePage() {
 
   return (
     <div className="flex flex-col gap-[16px]">
+      {simQuitacao && (
+        <Modal open onClose={() => setSimQuitacao(null)} title="Quitação antecipada">
+          <div className="flex flex-col gap-[10px] text-[12.5px]">
+            <div>
+              {simQuitacao.liquidacaoTotal ? 'Liquidação TOTAL do contrato' : 'Antecipação parcial'} — {simQuitacao.parcelas.length} parcela(s).
+            </div>
+            <div className="rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)' }}>
+              <div className="flex justify-between"><span>Valor nominal</span><b>{formatCurrency(simQuitacao.valorNominalTotal)}</b></div>
+              <div className="flex justify-between"><span>Valor para quitar hoje</span><b>{formatCurrency(simQuitacao.valorQuitacao)}</b></div>
+              <div className="flex justify-between" style={{ color: '#1c7a3d' }}><span>Desconto</span><b>{formatCurrency(simQuitacao.desconto)}</b></div>
+            </div>
+            {simQuitacao.fonte === 'catalogo' && (
+              <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+                Cálculo por componente (regras do produto no Catálogo): o bem é trazido a valor presente pela taxa de desconto da variante
+                {simQuitacao.liquidacaoTotal
+                  ? `; comissão recorrente e proteção futuras ISENTAS na liquidação total (comissão ${formatCurrency(simQuitacao.comissaoIsentada ?? 0)} + proteção ${formatCurrency(simQuitacao.protecaoIsentada ?? 0)}).`
+                  : '; na antecipação parcial a comissão recorrente e a proteção são cobradas integralmente.'}
+              </div>
+            )}
+            <div className="flex justify-end gap-[8px]">
+              <button className="rounded-[8px] border border-[var(--border)] px-[12px] py-[7px] text-[12px] font-bold" onClick={() => setSimQuitacao(null)}>Cancelar</button>
+              <button className="rounded-[8px] bg-[var(--navy)] px-[12px] py-[7px] text-[12px] font-bold text-white disabled:opacity-50" disabled={simulando} onClick={confirmarQuitacao}>
+                {simulando ? 'Quitando…' : 'Confirmar quitação'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       <button
         onClick={() => navigate('/carteira')}
         className="self-start text-[12px] font-semibold"
