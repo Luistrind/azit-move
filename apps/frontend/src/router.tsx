@@ -3,6 +3,10 @@ import { Shell } from './components/layout/Shell';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginPage } from './pages/auth/LoginPage';
 import { CarteiraPage } from './pages/CarteiraPage';
+import { InicioPage } from './pages/InicioPage';
+import { AnalisesPage } from './pages/AnalisesPage';
+import { PessoasPage } from './pages/PessoasPage';
+import { EstruturasPage } from './pages/EstruturasPage';
 import { ContratoDetalhePage } from './pages/ContratoDetalhePage';
 import { ReguaPage } from './pages/ReguaPage';
 import { AcordosPage } from './pages/AcordosPage';
@@ -37,7 +41,23 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
+        element: <InicioPage />,
+      },
+      {
+        path: 'carteira',
         element: <CarteiraPage />,
+      },
+      {
+        path: 'analises',
+        element: <AnalisesPage />,
+      },
+      {
+        path: 'pessoas',
+        element: <PessoasPage />,
+      },
+      {
+        path: 'estruturas',
+        element: <EstruturasPage />,
       },
       {
         path: 'contratos/:id',

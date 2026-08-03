@@ -28,7 +28,21 @@ export interface DossieAnalise {
   transicoes: { de: string | null; para: string; motivo: string | null; createdAt: string }[];
 }
 
+export interface AnaliseResumo {
+  id: string;
+  propostaId: string;
+  status: string;
+  titular: string;
+  comprometimento: number | null;
+  criadaEm: string;
+  atualizadaEm: string;
+}
+
 export const analiseService = {
+  async listar(): Promise<AnaliseResumo[]> {
+    const { data } = await api.get<AnaliseResumo[]>('/api/v1/analises');
+    return data;
+  },
   async iniciar(propostaId: string): Promise<DossieAnalise> {
     const { data } = await api.post(`/api/v1/propostas/${propostaId}/analise`);
     return data;

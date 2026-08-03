@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../stores/authStore';
 import { authService } from '../../services/auth.service';
 import { aprovacaoService } from '../../services/aprovacao.service';
+import { usuarioService } from '../../services/usuario.service';
 
 // Sidebar 236px navy — Doc 3 §7.2. Logo (fallback bloco âmbar "a" até o SVG oficial),
 // nav e footer de usuário. Os itens reais entram conforme as telas dos blocos seguintes.
@@ -14,27 +15,76 @@ function iniciais(nome: string): string {
   return ((partes[0]?.[0] ?? '') + (partes[1]?.[0] ?? '')).toUpperCase() || 'A';
 }
 
-const NAV_ITEMS: NavItemDef[] = [
-  { to: '/', label: 'Carteira' },
-  { to: '/originacao', label: 'Novo atendimento' },
-  { to: '/simulacoes', label: 'Simulações' },
-  { to: '/propostas', label: 'Propostas' },
-  { to: '/ativos', label: 'Estoque de ativos' },
-  { to: '/produtos', label: 'Produtos' },
-  { to: '/titulares', label: 'Titulares' },
-  { to: '/regua', label: 'Régua' },
-  { to: '/acordos', label: 'Renegociações' },
-  { to: '/aprovacoes', label: 'Aprovações' },
-  { to: '/centros-custo', label: 'Centros de custo' },
-];
+// Menu por áreas de trabalho (proposta UX §3): cada grupo é uma área do sistema
+// e só aparece se o usuário tem a área (matriz papel×área ± exceções — GET /me/areas).
+type GrupoNav = { area: string | null; titulo: string; itens: NavItemDef[] };
 
-// Itens de configuração — visíveis só para administradores.
-const NAV_CONFIG: NavItemDef[] = [
-  { to: '/configuracoes/alcadas', label: 'Alçadas' },
-  { to: '/configuracoes/simulador', label: 'Simulador' },
-  { to: '/configuracoes/usuarios', label: 'Usuários e permissões' },
+const GRUPOS_NAV: GrupoNav[] = [
+  { area: null, titulo: '', itens: [{ to: '/', label: 'Início' }] },
+  {
+    area: 'COMERCIAL',
+    titulo: 'Comercial',
+    itens: [
+      { to: '/originacao', label: 'Novo atendimento' },
+      { to: '/simulacoes', label: 'Simulações' },
+      { to: '/propostas', label: 'Propostas' },
+    ],
+  },
+  {
+    area: 'ANALISE_CADASTRO',
+    titulo: 'Análise de cadastro',
+    itens: [{ to: '/analises', label: 'Análises' }],
+  },
+  {
+    area: 'CARTEIRA_COBRANCA',
+    titulo: 'Carteira e cobrança',
+    itens: [
+      { to: '/carteira', label: 'Carteira' },
+      { to: '/regua', label: 'Régua de cobrança' },
+      { to: '/acordos', label: 'Renegociações' },
+    ],
+  },
+  {
+    area: 'PESSOAS',
+    titulo: 'Pessoas',
+    itens: [
+      { to: '/titulares', label: 'Titulares' },
+      { to: '/pessoas', label: 'Investidores, fornecedores e parceiros' },
+    ],
+  },
+  {
+    area: 'ATIVOS_FROTA',
+    titulo: 'Ativos e frota',
+    itens: [
+      { to: '/ativos', label: 'Estoque de ativos' },
+      { to: '/centros-custo', label: 'Centros de custo' },
+    ],
+  },
+  {
+    area: 'CAPITAL_INVESTIMENTO',
+    titulo: 'Capital e investimento',
+    itens: [{ to: '/estruturas', label: 'Estruturas jurídicas' }],
+  },
+  {
+    area: 'PRODUTOS',
+    titulo: 'Produtos',
+    itens: [{ to: '/produtos', label: 'Produtos' }],
+  },
+  {
+    area: 'APROVACOES',
+    titulo: 'Aprovações',
+    itens: [{ to: '/aprovacoes', label: 'Aprovações' }],
+  },
+  {
+    area: 'CONFIGURACOES',
+    titulo: 'Configuração',
+    itens: [
+      { to: '/configuracoes/alcadas', label: 'Alçadas' },
+      { to: '/configuracoes/simulador', label: 'Simulador' },
+      { to: '/configuracoes/usuarios', label: 'Usuários e permissões' },
+    ],
+  },
 ];
-const ROLES_CONFIG = ['ADMIN', 'DIRETOR'];
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -47,6 +97,17 @@ export function Sidebar() {
     refetchInterval: 60_000,
   });
   const pendentes = contagem.data ?? 0;
+  // Áreas efetivas do usuário (matriz papel×área ± exceções). Enquanto carrega,
+  // mostra só o Início — evita piscar itens que serão removidos.
+  const areasQuery = useQuery({
+    queryKey: ['me-areas'],
+    queryFn: () => usuarioService.minhasAreas(),
+    staleTime: 5 * 60_000,
+  });
+  const areas = areasQuery.data;
+  const grupos = GRUPOS_NAV.filter(
+    (g) => g.area === null || (areas ? areas.includes(g.area) : false),
+  );
 
   async function onLogout() {
     await authService.logout();
@@ -76,61 +137,42 @@ export function Sidebar() {
         style={{ background: 'rgba(255,255,255,.08)' }}
       />
 
-      <nav className="flex flex-col gap-[2px] px-[12px]">
-        <div
-          className="mx-[8px] mb-[8px] mt-[10px] text-[10px] uppercase tracking-[0.14em]"
-          style={{ color: 'var(--navy-text-muted)' }}
-        >
-          Operação
-        </div>
-        {NAV_ITEMS.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === '/'}
-            className="flex items-center gap-[11px] rounded-[9px] px-[11px] py-[10px] text-[13px] transition-colors"
-            style={({ isActive }) =>
-              isActive
-                ? { background: 'rgba(255,255,255,.08)', color: '#fff', fontWeight: 700 }
-                : { color: 'var(--navy-text)', fontWeight: 500 }
-            }
-          >
-            <span className="flex-1">{item.label}</span>
-            {item.to === '/aprovacoes' && pendentes > 0 && (
-              <span
-                className="rounded-full px-[7px] py-[1px] text-[10.5px] font-bold"
-                style={{ background: 'var(--accent)', color: 'var(--navy)' }}
+      <nav className="flex flex-col gap-[2px] overflow-y-auto px-[12px]">
+        {grupos.map((grupo) => (
+          <div key={grupo.area ?? 'inicio'} className="flex flex-col gap-[2px]">
+            {grupo.titulo && (
+              <div
+                className="mx-[8px] mb-[6px] mt-[14px] text-[10px] uppercase tracking-[0.14em]"
+                style={{ color: 'var(--navy-text-muted)' }}
               >
-                {pendentes}
-              </span>
+                {grupo.titulo}
+              </div>
             )}
-          </NavLink>
-        ))}
-
-        {ROLES_CONFIG.some((r) => usuario?.roles?.includes(r)) && (
-          <>
-            <div
-              className="mx-[8px] mb-[8px] mt-[16px] text-[10px] uppercase tracking-[0.14em]"
-              style={{ color: 'var(--navy-text-muted)' }}
-            >
-              Configuração
-            </div>
-            {NAV_CONFIG.map((item) => (
+            {grupo.itens.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
-                className="flex items-center gap-[11px] rounded-[9px] px-[11px] py-[10px] text-[13px] transition-colors"
+                end={item.to === '/'}
+                className="flex items-center gap-[11px] rounded-[9px] px-[11px] py-[9px] text-[13px] transition-colors"
                 style={({ isActive }) =>
                   isActive
                     ? { background: 'rgba(255,255,255,.08)', color: '#fff', fontWeight: 700 }
                     : { color: 'var(--navy-text)', fontWeight: 500 }
                 }
               >
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {item.to === '/aprovacoes' && pendentes > 0 && (
+                  <span
+                    className="rounded-full px-[7px] py-[1px] text-[10.5px] font-bold"
+                    style={{ background: 'var(--accent)', color: 'var(--navy)' }}
+                  >
+                    {pendentes}
+                  </span>
+                )}
               </NavLink>
             ))}
-          </>
-        )}
+          </div>
+        ))}
       </nav>
 
       <div className="flex-1" />

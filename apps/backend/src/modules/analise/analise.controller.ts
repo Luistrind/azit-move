@@ -82,6 +82,11 @@ export class AnaliseController {
     return this.analise.iniciar(propostaId, user.id);
   }
 
+  @Get('analises')
+  listar() {
+    return this.analise.listar();
+  }
+
   @Get('analises/:id')
   dossie(@Param('id') id: string) {
     return this.analise.dossie(id);

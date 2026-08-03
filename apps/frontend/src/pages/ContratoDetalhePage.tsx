@@ -150,7 +150,7 @@ export function ContratoDetalhePage() {
   return (
     <div className="flex flex-col gap-[16px]">
       <button
-        onClick={() => navigate('/')}
+        onClick={() => navigate('/carteira')}
         className="self-start text-[12px] font-semibold"
         style={{ color: 'var(--text-body)' }}
       >

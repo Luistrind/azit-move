@@ -114,6 +114,24 @@ export class AnaliseService implements OnModuleInit {
     return this.dossie(analise.id);
   }
 
+  // Listagem para a fila de análises (menu Análise de Cadastro).
+  async listar() {
+    const analises = await this.prisma.db.analiseCadastro.findMany({
+      include: { proposta: { include: { titular: true } } },
+      orderBy: { updatedAt: 'desc' },
+      take: 200,
+    });
+    return analises.map((a) => ({
+      id: a.id,
+      propostaId: a.propostaId,
+      status: a.status,
+      titular: a.proposta.titular.nome,
+      comprometimento: a.comprometimento ? Number(a.comprometimento) : null,
+      criadaEm: a.createdAt,
+      atualizadaEm: a.updatedAt,
+    }));
+  }
+
   async dossie(analiseId: string) {
     const a = await this.carregar(analiseId);
     const avaliacao = this.avaliar(a);
