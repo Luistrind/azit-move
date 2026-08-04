@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 // Contas a Pagar — Financeiro Administrativo (doc 02 §18). Valores em CENTAVOS.
 
 export interface ConfiguracaoFinanceiro {
-  entidades: { id: string; razaoSocial: string; cnpj: string | null; unidadeNegocio: string | null; ativo: boolean; contas: { id: string; banco: string; agencia: string | null; conta: string | null; tipo: string | null; ativo: boolean }[] }[];
+  entidades: { id: string; razaoSocial: string; cnpj: string | null; unidadeNegocio: string | null; estruturaId?: string | null; estruturaNome?: string | null; ativo: boolean; contas: { id: string; banco: string; agencia: string | null; conta: string | null; tipo: string | null; ativo: boolean }[] }[];
   naturezas: { id: string; codigo: string; nome: string; exigeAtivo: boolean; exigeCotacao: boolean; especial: boolean; exigeJustificativa: boolean; ativo: boolean }[];
   centros: { id: string; codigo: string; nome: string; responsavelUsuarioId: string | null; ativo: boolean }[];
 }
@@ -77,7 +77,7 @@ export const financeiroService = {
     const { data } = await api.get('/api/v1/financeiro/configuracao');
     return data;
   },
-  async criarEntidade(body: { razaoSocial: string; cnpj?: string; unidadeNegocio?: string }) {
+  async criarEntidade(body: { razaoSocial: string; cnpj?: string; unidadeNegocio?: string; estruturaId?: string }) {
     const { data } = await api.post('/api/v1/financeiro/entidades', body);
     return data;
   },

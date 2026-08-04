@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { financeiroService } from '../services/financeiro.service';
+import { capitalService } from '../services/capital.service';
 import { toast } from '../components/Toast';
 import { mensagemErro } from '../lib/permissoes';
 
@@ -17,7 +18,10 @@ const btnP = 'rounded-[8px] bg-[var(--navy)] px-[12px] py-[7px] text-[12px] font
 export function FinanceiroConfigPage() {
   const qc = useQueryClient();
   const config = useQuery({ queryKey: ['fin-config'], queryFn: () => financeiroService.configuracao() });
-  const [novaEntidade, setNovaEntidade] = useState({ razaoSocial: '', cnpj: '', unidadeNegocio: '' });
+  const [novaEntidade, setNovaEntidade] = useState({ razaoSocial: '', cnpj: '', unidadeNegocio: '', estruturaId: '' });
+  // Estruturas jurídicas (Capital): vínculo opcional da entidade — homologação
+  // 04/08: cada produto (PV, RP) vira estrutura própria com conta separada.
+  const estruturas = useQuery({ queryKey: ['estruturas'], queryFn: () => capitalService.estruturas() });
   const [novaConta, setNovaConta] = useState({ entidadeId: '', banco: '', agencia: '', conta: '' });
   const [novaNatureza, setNovaNatureza] = useState({ codigo: '', nome: '', exigeAtivo: false, especial: false });
   const [novoCentro, setNovoCentro] = useState({ codigo: '', nome: '' });
@@ -49,7 +53,7 @@ export function FinanceiroConfigPage() {
             <div className="mb-[8px] font-display text-[13px] font-bold">Entidades legais e contas bancárias</div>
             {c.entidades.map((e) => (
               <div key={e.id} className="border-t py-[8px] text-[12.5px]" style={{ borderColor: 'var(--border-light)' }}>
-                <b>{e.razaoSocial}</b>{e.cnpj ? ` · CNPJ ${e.cnpj}` : ' · CNPJ a preencher'}{e.unidadeNegocio ? ` · unidade: ${e.unidadeNegocio}` : ''}
+                <b>{e.razaoSocial}</b>{e.cnpj ? ` · CNPJ ${e.cnpj}` : ' · CNPJ a preencher'}{e.unidadeNegocio ? ` · unidade: ${e.unidadeNegocio}` : ''}{e.estruturaNome ? ` · estrutura: ${e.estruturaNome}` : ''}
                 <div style={{ color: 'var(--text-muted)' }}>
                   {e.contas.length === 0 ? 'Sem conta bancária cadastrada — necessária para formar lote.' : e.contas.map((ct) => `${ct.banco}${ct.agencia ? ` ag ${ct.agencia}` : ''}${ct.conta ? ` c/c ${ct.conta}` : ''}`).join(' · ')}
                 </div>
@@ -62,8 +66,13 @@ export function FinanceiroConfigPage() {
                 <input className={`${inputCls} block w-[150px]`} style={inputStyle} value={novaEntidade.cnpj} onChange={(e) => setNovaEntidade({ ...novaEntidade, cnpj: e.target.value })} /></label>
               <label className="text-[11px] font-semibold">Unidade de negócio
                 <input className={`${inputCls} block w-[160px]`} style={inputStyle} value={novaEntidade.unidadeNegocio} onChange={(e) => setNovaEntidade({ ...novaEntidade, unidadeNegocio: e.target.value })} /></label>
+              <label className="text-[11px] font-semibold">Estrutura jurídica (Capital)
+                <select className={`${inputCls} block w-[180px]`} style={inputStyle} value={novaEntidade.estruturaId} onChange={(e) => setNovaEntidade({ ...novaEntidade, estruturaId: e.target.value })}>
+                  <option value="">Sem vínculo</option>
+                  {estruturas.data?.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                </select></label>
               <button className={btnP} disabled={ocupado || novaEntidade.razaoSocial.trim().length < 2}
-                onClick={() => rodar(() => financeiroService.criarEntidade({ razaoSocial: novaEntidade.razaoSocial.trim(), cnpj: novaEntidade.cnpj || undefined, unidadeNegocio: novaEntidade.unidadeNegocio || undefined }), 'Entidade criada.')}>
+                onClick={() => rodar(() => financeiroService.criarEntidade({ razaoSocial: novaEntidade.razaoSocial.trim(), cnpj: novaEntidade.cnpj || undefined, unidadeNegocio: novaEntidade.unidadeNegocio || undefined, estruturaId: novaEntidade.estruturaId || undefined }), 'Entidade criada.')}>
                 + Entidade
               </button>
             </div>

@@ -21,6 +21,8 @@ export interface Ativo {
   valorVenda: number | null;
   pacoteOfertaId: string | null;
   ofertaFixaId: string | null;
+  // Estrutura jurídica DONA do ativo (tag — homologação 04/08); null nos legados.
+  estruturaJuridica?: { id: string; nome: string } | null;
   status: string;
 }
 
@@ -33,6 +35,8 @@ export interface OrigemCapital {
 }
 
 export interface CriarAtivoBody {
+  // Obrigatória ao criar (homologação 04/08): estrutura jurídica dona do ativo.
+  estruturaJuridicaId: string;
   varianteCatalogo?: string;
   descricao: string;
   marca?: string;

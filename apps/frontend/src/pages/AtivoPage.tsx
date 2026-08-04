@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
 import { ativoService, CriarAtivoBody } from '../services/ativo.service';
+import { capitalService } from '../services/capital.service';
 import { simuladorService } from '../services/simulador.service';
 import { StatusBadge } from '../components/StatusBadge';
 import { ATIVO_STATUS_COLORS } from '../config/statusColors';
@@ -34,6 +35,7 @@ const Lbl = ({ children }: { children: React.ReactNode }) => (
 
 type FormState = Record<string, string>;
 const EMPTY: FormState = {
+  estruturaJuridicaId: '',
   marca: '', modelo: '', anoFabricacao: '', anoModelo: '', cor: '', placa: '', chassi: '', renavam: '', varianteCatalogo: 'carro',
   combustivel: 'flex', origem: '', quilometragemEntrada: '', valorAquisicao: '', valorVenda: '', pacoteOfertaId: '', ofertaFixaId: '',
   capTipo: 'capital_proprio', capValor: '', capTaxa: '',
@@ -60,6 +62,8 @@ export function AtivoPage() {
   const [docTipo, setDocTipo] = useState('crlv');
   const [docBusy, setDocBusy] = useState(false);
   const ofertasFixas = useQuery({ queryKey: ['ofertas-fixas'], queryFn: () => simuladorService.ofertasFixas() });
+  // Estruturas jurídicas: todo ativo nasce com a DONA definida (tag 04/08).
+  const estruturas = useQuery({ queryKey: ['estruturas'], queryFn: () => capitalService.estruturas() });
   // Central de documentos (só ao editar um ativo existente).
   const documentos = useQuery({
     queryKey: ['ativo-documentos', editId],
@@ -108,6 +112,7 @@ export function AtivoPage() {
     try {
       const [a, oc] = await Promise.all([ativoService.buscarPorId(id), ativoService.origemCapital(id)]);
       setForm({
+        estruturaJuridicaId: a.estruturaJuridica?.id ?? '',
         marca: a.marca ?? '', modelo: a.modelo ?? '', anoFabricacao: a.anoFabricacao?.toString() ?? '',
         anoModelo: a.anoModelo?.toString() ?? '', cor: a.cor ?? '', placa: a.placa ?? '', chassi: a.chassi ?? '', varianteCatalogo: a.varianteCatalogo ?? 'carro',
         renavam: a.renavam ?? '', combustivel: a.combustivel ?? 'flex', origem: a.origem ?? '',
@@ -128,8 +133,13 @@ export function AtivoPage() {
   }
 
   async function salvar() {
-    const descricao = `${form.marca} ${form.modelo} ${form.anoModelo}`.trim() || 'Veículo';
+    if (!form.estruturaJuridicaId) {
+      toast.erro('Vincule a estrutura jurídica dona do ativo — todo ativo pertence a exatamente uma.');
+      return;
+    }
+    const descricao = `${form.marca} ${form.modelo} ${form.anoModelo}`.trim() || 'Ativo';
     const body: CriarAtivoBody = {
+      estruturaJuridicaId: form.estruturaJuridicaId,
       descricao,
       marca: str(form.marca), modelo: str(form.modelo), anoFabricacao: num(form.anoFabricacao),
       anoModelo: num(form.anoModelo), cor: str(form.cor), placa: str(form.placa), chassi: str(form.chassi), varianteCatalogo: form.varianteCatalogo,
@@ -188,6 +198,15 @@ export function AtivoPage() {
         <div className="rounded-card p-[18px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
           <div className="mb-[12px] font-display text-[14px] font-bold">{editId ? 'Editar ativo' : 'Novo ativo'}</div>
           <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2 lg:grid-cols-4">
+            <label className="flex flex-col gap-[4px]"><Lbl>Estrutura jurídica dona (obrigatória)</Lbl>
+              <select value={form.estruturaJuridicaId} onChange={set('estruturaJuridicaId')} className={inputCls} style={inStyle}>
+                <option value="">Selecione a estrutura…</option>
+                {estruturas.data?.filter((e) => e.ativo !== false).map((e) => (
+                  <option key={e.id} value={e.id}>{e.nome}</option>
+                ))}
+              </select>
+              <Link to="/estruturas" className="text-[10.5px] font-semibold" style={{ color: 'var(--navy)' }}>Cadastrar/gerenciar estruturas →</Link>
+            </label>
             <label className="flex flex-col gap-[4px]"><Lbl>Marca</Lbl><input value={form.marca} onChange={set('marca')} className={inputCls} style={inStyle} /></label>
             <label className="flex flex-col gap-[4px]"><Lbl>Modelo</Lbl><input value={form.modelo} onChange={set('modelo')} className={inputCls} style={inStyle} /></label>
             <label className="flex flex-col gap-[4px]"><Lbl>Ano fab.</Lbl><input value={form.anoFabricacao} onChange={set('anoFabricacao')} className={inputCls} style={inStyle} /></label>
@@ -299,9 +318,9 @@ export function AtivoPage() {
         <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
           <thead>
             <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Veículo</th>
+              <th className="px-[18px] py-[12px] text-left font-semibold">Ativo</th>
               <th className="px-[18px] py-[12px] text-left font-semibold">Placa</th>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Chassi</th>
+              <th className="px-[18px] py-[12px] text-left font-semibold">Estrutura jurídica</th>
               <th className="px-[18px] py-[12px] text-right font-semibold">Valor de venda</th>
               <th className="px-[18px] py-[12px] text-left font-semibold">Status</th>
             </tr>
@@ -315,7 +334,13 @@ export function AtivoPage() {
                 onClick={() => podeEditar && editar(a.id)} style={{ borderBottom: '1px solid var(--border-light)' }}>
                 <td className="px-[18px] py-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{a.descricao}</td>
                 <td className="px-[18px] py-[12px]" style={{ color: 'var(--text-body)' }}>{a.placa ?? '—'}</td>
-                <td className="px-[18px] py-[12px]" style={{ color: 'var(--text-body)' }}>{a.chassi ?? '—'}</td>
+                <td className="px-[18px] py-[12px]" style={{ color: 'var(--text-body)' }}>
+                  {a.estruturaJuridica?.nome ?? (
+                    <span className="rounded-full px-[8px] py-[2px] text-[11px] font-bold" style={{ background: '#fff3d6', color: '#8a5a00' }}>
+                      Sem estrutura — vincular
+                    </span>
+                  )}
+                </td>
                 <td className="px-[18px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>{a.valorVenda ? formatCurrency(a.valorVenda) : '—'}</td>
                 <td className="px-[18px] py-[12px]"><StatusBadge label={STATUS_LABEL[a.status] ?? a.status} colors={ATIVO_STATUS_COLORS} /></td>
               </tr>

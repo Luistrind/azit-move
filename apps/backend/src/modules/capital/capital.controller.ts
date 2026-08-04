@@ -106,19 +106,36 @@ export class CapitalController {
       where: { deletedAt: null },
       include: {
         investidores: { include: { titular: { select: { nome: true, cpfCnpj: true } } } },
+        // TAG (04/08): ativos cuja DONA é a estrutura — vínculo direto no ativo.
+        ativos: { where: { deletedAt: null }, select: { id: true, descricao: true, placa: true } },
         origensCapital: { include: { ativo: { select: { id: true, descricao: true, placa: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     });
-    return es.map((e) => ({
-      id: e.id, nome: e.nome, tipo: e.tipo, cnpj: e.cnpj, rodada: e.rodada, ativo: e.ativo, observacoes: e.observacoes,
-      investidores: e.investidores.map((i) => ({
-        titularId: i.titularId, nome: i.titular.nome, cpfCnpj: i.titular.cpfCnpj,
-        valorAportado: cent(i.valorAportado), tipoInstrumento: i.tipoInstrumento, dataAporte: i.dataAporte,
-      })),
-      ativos: e.origensCapital.map((o) => ({ ativoId: o.ativo?.id, descricao: o.ativo?.descricao, placa: o.ativo?.placa })),
-      totalAportado: e.investidores.reduce((s, i) => s + (cent(i.valorAportado) ?? 0), 0),
-    }));
+    return es.map((e) => {
+      // União: vínculo direto (tag) + origem de capital legada apontada.
+      const vistos = new Set<string>();
+      const ativos: { ativoId: string; descricao: string; placa: string | null }[] = [];
+      for (const a of e.ativos) {
+        vistos.add(a.id);
+        ativos.push({ ativoId: a.id, descricao: a.descricao, placa: a.placa });
+      }
+      for (const o of e.origensCapital) {
+        if (o.ativo && !vistos.has(o.ativo.id)) {
+          vistos.add(o.ativo.id);
+          ativos.push({ ativoId: o.ativo.id, descricao: o.ativo.descricao, placa: o.ativo.placa });
+        }
+      }
+      return {
+        id: e.id, nome: e.nome, tipo: e.tipo, cnpj: e.cnpj, rodada: e.rodada, ativo: e.ativo, observacoes: e.observacoes,
+        investidores: e.investidores.map((i) => ({
+          titularId: i.titularId, nome: i.titular.nome, cpfCnpj: i.titular.cpfCnpj,
+          valorAportado: cent(i.valorAportado), tipoInstrumento: i.tipoInstrumento, dataAporte: i.dataAporte,
+        })),
+        ativos,
+        totalAportado: e.investidores.reduce((s, i) => s + (cent(i.valorAportado) ?? 0), 0),
+      };
+    });
   }
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.DIRETOR)
@@ -179,16 +196,15 @@ export class CapitalController {
     await this.prisma.db.investidorEstrutura.deleteMany({ where: { estruturaId, titularId } });
   }
 
-  // Apontar a origem de capital de um ativo para a estrutura (dona do capital).
+  // Vincular ativo à estrutura DONA (tag direta — homologação 04/08). Se o ativo
+  // tiver origem de capital, o apontamento antigo é sincronizado junto.
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.DIRETOR)
   @Post('estruturas/:id/ativos/:ativoId')
   @HttpCode(200)
   async vincularAtivo(@Param('id') estruturaId: string, @Param('ativoId') ativoId: string, @CurrentUser() user: UsuarioAutenticado) {
+    await this.prisma.db.ativo.update({ where: { id: ativoId }, data: { estruturaJuridicaId: estruturaId } });
     const oc = await this.prisma.db.origemCapital.findFirst({ where: { ativoId } });
-    if (!oc) {
-      return { erro: 'sem_origem_capital', mensagem: 'Defina a origem de capital do ativo antes (cadastro do ativo)' };
-    }
-    await this.prisma.db.origemCapital.update({ where: { id: oc.id }, data: { estruturaId } });
+    if (oc) await this.prisma.db.origemCapital.update({ where: { id: oc.id }, data: { estruturaId } });
     await this.prisma.db.logAuditoria.create({
       data: { usuarioId: user.id, acao: 'ativo_vinculado_estrutura', entidade: 'estrutura_juridica', entidadeId: estruturaId, depois: { ativoId } },
     });

@@ -4,6 +4,10 @@ import { z } from 'zod';
 // CENTAVOS inteiros (convenção do domínio). Mapeamento para Prisma no service.
 export const criarAtivoSchema = z.object({
   tipo: z.enum(['veiculo', 'outro']).default('veiculo'),
+  // Homologação 04/08: VEÍCULO nasce com a estrutura jurídica DONA (tag) —
+  // obrigatória no refine abaixo. Ativo OUTRO (interno, ex.: crédito avulso)
+  // dispensa.
+  estruturaJuridicaId: z.string().trim().min(1).optional(),
   // variante do Catálogo de Produtos (F2): define os parâmetros da simulação
   varianteCatalogo: z.enum(['carro', 'moto', 'outro']).optional(),
   descricao: z.string().trim().min(1, 'Descrição é obrigatória'),
@@ -27,6 +31,14 @@ export const criarAtivoSchema = z.object({
   pacoteOfertaId: z.string().trim().min(1).optional(),
   // oferta fixa desenhada (Doc 2 §4-A.3) — seletor no cadastro
   ofertaFixaId: z.string().trim().min(1).nullish(),
+}).superRefine((data, ctx) => {
+  if (data.tipo !== 'outro' && !data.estruturaJuridicaId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['estruturaJuridicaId'],
+      message: 'Vincule a estrutura jurídica dona do ativo — todo veículo pertence a exatamente uma',
+    });
+  }
 });
 
 export type CriarAtivoDto = z.infer<typeof criarAtivoSchema>;

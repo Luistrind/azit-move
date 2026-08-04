@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 // Atualização parcial do ativo (item 2.3 / api-spec §4.9: ex. quilometragem, status).
 export const atualizarAtivoSchema = z.object({
+  // Vincular/corrigir a estrutura jurídica dona (legados anteriores a 04/08).
+  estruturaJuridicaId: z.string().trim().min(1).optional(),
   varianteCatalogo: z.enum(['carro', 'moto', 'outro']).optional(),
   tipo: z.enum(['veiculo', 'outro']).optional(),
   descricao: z.string().trim().min(1).optional(),

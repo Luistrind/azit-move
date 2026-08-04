@@ -1150,5 +1150,34 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 
 ---
 
+## 19. Estrutura Jurídica como TAG (MVP do capital — homologação 2026-08-04)
+
+> **Decisões 2026-08-04 (Luís + Vicente, homologação em produção):**
+> 1. **Investidor sempre passa por uma estrutura jurídica** — não existe investidor
+>    pessoa física direto. A pessoa investidora é um Titular (cadastro único, Regra 8)
+>    com classificação INVESTIDOR, vinculado à estrutura (N↔N com aporte).
+> 2. **No MVP a Estrutura Jurídica é uma TAG**: marca existência e vincula
+>    **pessoas, ativos e despesas**. Relacionamento com o investidor (comunicação,
+>    prestação de contas, portal) fica para depois — explicitamente não prioritário.
+> 3. **Ativo pertence a exatamente UMA estrutura; estrutura tem N ativos.**
+>    Campo direto `Ativo.estruturaJuridicaId` (a tag), obrigatório ao CRIAR ativo;
+>    legados anteriores ficam nulos até serem vinculados em tela. A Origem de
+>    Capital continua sendo a camada financeira (aporte/taxa) — apontamentos
+>    antigos são sincronizados quando o vínculo muda.
+> 4. **Despesa não passa obrigatoriamente pelo veículo** — pode ser lançada direto
+>    na estrutura (despesa do fundo). O Contas a Pagar já suporta (título sem
+>    ativo + responsável econômico); despesa de veículo pode ser do comprador OU
+>    do fundo.
+> 5. **Cada produto vira estrutura jurídica própria com conta bancária própria**
+>    (Proteção Veicular, Reembolso Parcelado) — para o split: a receita de cada
+>    produto cai na conta da sua entidade. Materializa-se pelo vínculo
+>    EntidadeLegal.estruturaId (decisão 3 de 03/08), agora exposto em tela.
+> 6. **Branding do universo do investidor: "Azit Capital"**; no MVP a segregação é
+>    por ocultação de blocos (perfis não-master não veem capital); portal
+>    exclusivo no futuro.
+> 7. **Atendimento = ORQUESTRADOR por fases** (ver §17, decisões da homologação).
+
+---
+
 *Documento vivo — atualizar a cada decisão validada.*
 *Versão 2.0 — 2026-06-27 — expansão de escopo: originação absorvida do PopHub, distinção Acordo/Novação, telas do operador, refinamentos da reunião de 26/06 com Vicente.*

@@ -60,6 +60,12 @@ export interface AtualizarTitularBody {
 }
 
 export const titularService = {
+  // Cadastro direto (ex.: pessoa investidora — homologação 04/08); o cliente do
+  // funil continua nascendo Lead → promoção.
+  async criar(body: { nome: string; tipoPessoa: 'pf' | 'pj'; cpfCnpj: string; whatsapp: string; email?: string }): Promise<Titular> {
+    const { data } = await api.post<Titular>('/api/v1/titulares', body);
+    return data;
+  },
   async listar(params: { cpfCnpj?: string; nome?: string } = {}): Promise<{ total: number; data: Titular[] }> {
     const { data } = await api.get('/api/v1/titulares', { params: { limit: 100, ...params } });
     return data;

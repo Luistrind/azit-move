@@ -88,7 +88,7 @@ export class ContasPagarService implements OnModuleInit {
   // ---------------------------------------------------------------------------
 
   async configuracao() {
-    const [entidades, naturezas, centros] = await Promise.all([
+    const [entidades, naturezas, centros, estruturas] = await Promise.all([
       this.prisma.db.entidadeLegal.findMany({
         where: { deletedAt: null },
         include: { contas: { where: { deletedAt: null } } },
@@ -96,13 +96,19 @@ export class ContasPagarService implements OnModuleInit {
       }),
       this.prisma.db.naturezaFinanceira.findMany({ orderBy: { codigo: 'asc' } }),
       this.prisma.db.centroCustoArea.findMany({ orderBy: { codigo: 'asc' } }),
+      this.prisma.db.estruturaJuridica.findMany({ where: { deletedAt: null }, select: { id: true, nome: true } }),
     ]);
+    const nomeEstrutura = new Map(estruturas.map((s) => [s.id, s.nome]));
     return {
       entidades: entidades.map((e) => ({
         id: e.id,
         razaoSocial: e.razaoSocial,
         cnpj: e.cnpj,
         unidadeNegocio: e.unidadeNegocio,
+        // Vínculo com a Estrutura Jurídica do Capital (decisão 3 de 03/08 +
+        // homologação 04/08: produtos viram estruturas próprias).
+        estruturaId: e.estruturaId,
+        estruturaNome: e.estruturaId ? (nomeEstrutura.get(e.estruturaId) ?? null) : null,
         ativo: e.ativo,
         contas: e.contas.map((c) => ({ id: c.id, banco: c.banco, agencia: c.agencia, conta: c.conta, tipo: c.tipo, ativo: c.ativo })),
       })),

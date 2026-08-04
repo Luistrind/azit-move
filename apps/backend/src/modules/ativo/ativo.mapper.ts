@@ -103,12 +103,14 @@ export interface AtivoApi {
   valorVenda: number | null; // centavos — base da precificação
   pacoteOfertaId: string | null;
   ofertaFixaId: string | null;
+  // Estrutura jurídica DONA do ativo (tag — homologação 04/08); null nos legados.
+  estruturaJuridica: { id: string; nome: string } | null;
   status: StatusApi;
   createdAt: string;
   updatedAt: string;
 }
 
-export function ativoParaApi(a: Ativo): AtivoApi {
+export function ativoParaApi(a: Ativo & { estruturaJuridica?: { id: string; nome: string } | null }): AtivoApi {
   return {
     id: a.id,
     tipo: tipo.paraApi[a.tipo],
@@ -133,6 +135,9 @@ export function ativoParaApi(a: Ativo): AtivoApi {
       a.valorVenda !== null ? reaisParaCentavos(a.valorVenda.toString()) : null,
     pacoteOfertaId: a.pacoteOfertaId,
     ofertaFixaId: a.ofertaFixaId,
+    estruturaJuridica: a.estruturaJuridica
+      ? { id: a.estruturaJuridica.id, nome: a.estruturaJuridica.nome }
+      : null,
     status: status.paraApi[a.status],
     createdAt: a.createdAt.toISOString(),
     updatedAt: a.updatedAt.toISOString(),

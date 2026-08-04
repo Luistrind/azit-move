@@ -30,10 +30,12 @@ export class AtivoService {
   async criar(dto: CriarAtivoDto): Promise<AtivoApi> {
     if (dto.placa) await this.garantirPlacaLivre(dto.placa);
     if (dto.chassi) await this.garantirChassiLivre(dto.chassi);
+    if (dto.estruturaJuridicaId) await this.garantirEstrutura(dto.estruturaJuridicaId);
 
     const ativo = await this.prisma.db.ativo.create({
       data: {
         tipo: mapearAtivoEnums.tipoParaPrisma(dto.tipo),
+        estruturaJuridicaId: dto.estruturaJuridicaId,
         descricao: dto.descricao,
         varianteCatalogo: dto.varianteCatalogo ?? 'carro',
         marca: dto.marca,
@@ -62,6 +64,7 @@ export class AtivoService {
         pacoteOfertaId: dto.pacoteOfertaId,
         ofertaFixaId: dto.ofertaFixaId ?? undefined,
       },
+      include: { estruturaJuridica: { select: { id: true, nome: true } } },
     });
     return ativoParaApi(ativo);
   }
@@ -79,6 +82,7 @@ export class AtivoService {
         orderBy: { createdAt: 'desc' },
         skip: (filtros.page - 1) * filtros.limit,
         take: filtros.limit,
+        include: { estruturaJuridica: { select: { id: true, nome: true } } },
       }),
     ]);
 
@@ -91,7 +95,10 @@ export class AtivoService {
   }
 
   async buscarPorId(id: string): Promise<AtivoApi> {
-    const ativo = await this.prisma.db.ativo.findFirst({ where: { id } });
+    const ativo = await this.prisma.db.ativo.findFirst({
+      where: { id },
+      include: { estruturaJuridica: { select: { id: true, nome: true } } },
+    });
     if (!ativo) throw this.naoEncontrado();
     return ativoParaApi(ativo);
   }
@@ -118,9 +125,13 @@ export class AtivoService {
   async atualizar(id: string, dto: AtualizarAtivoDto): Promise<AtivoApi> {
     await this.garantirExiste(id);
 
+    if (dto.estruturaJuridicaId) await this.garantirEstrutura(dto.estruturaJuridicaId);
     const data: Prisma.AtivoUpdateInput = {
       descricao: dto.descricao,
       varianteCatalogo: dto.varianteCatalogo,
+      ...(dto.estruturaJuridicaId
+        ? { estruturaJuridica: { connect: { id: dto.estruturaJuridicaId } } }
+        : {}),
       marca: dto.marca,
       modelo: dto.modelo,
       anoFabricacao: dto.anoFabricacao,
@@ -175,6 +186,20 @@ export class AtivoService {
   }
 
   // --- helpers ---
+
+  // Homologação 04/08: ativo nasce com a estrutura jurídica dona (tag 1:N).
+  private async garantirEstrutura(id: string): Promise<void> {
+    const existe = await this.prisma.db.estruturaJuridica.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true },
+    });
+    if (!existe) {
+      throw new BadRequestException({
+        erro: 'estrutura_invalida',
+        mensagem: 'Estrutura jurídica não encontrada — cadastre a estrutura dona do ativo antes (tela Estruturas jurídicas)',
+      });
+    }
+  }
 
   private async garantirExiste(id: string): Promise<void> {
     const existe = await this.prisma.db.ativo.findFirst({

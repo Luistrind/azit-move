@@ -187,6 +187,13 @@ function PainelEstrutura({ estrutura, onMudou }: { estrutura: EstruturaJuridica;
   const [valorAporte, setValorAporte] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
   const [buscaAtivo, setBuscaAtivo] = useState('');
+  // Cadastro de pessoa investidora direto na estrutura (homologação 04/08 —
+  // "não achei onde cadastrar o investidor"): cria o titular e já vincula.
+  const [novoAberto, setNovoAberto] = useState(false);
+  const [novoNome, setNovoNome] = useState('');
+  const [novoDoc, setNovoDoc] = useState('');
+  const [novoZap, setNovoZap] = useState('');
+  const [criando, setCriando] = useState(false);
 
   const candidatos = useQuery({
     queryKey: ['titulares-busca-estrutura', buscaInvestidor],
@@ -222,6 +229,29 @@ function PainelEstrutura({ estrutura, onMudou }: { estrutura: EstruturaJuridica;
       await onMudou();
     } catch (e) {
       setMsg(mensagemErro(e));
+    }
+  }
+
+  async function criarEVincular() {
+    setMsg(null);
+    setCriando(true);
+    try {
+      const digitos = novoDoc.replace(/\D/g, '');
+      const t = await titularService.criar({
+        nome: novoNome.trim(),
+        tipoPessoa: digitos.length > 11 ? 'pj' : 'pf',
+        cpfCnpj: digitos,
+        whatsapp: novoZap.replace(/\D/g, ''),
+      });
+      await vincular(t.id);
+      setNovoAberto(false);
+      setNovoNome('');
+      setNovoDoc('');
+      setNovoZap('');
+    } catch (e) {
+      setMsg(mensagemErro(e));
+    } finally {
+      setCriando(false);
     }
   }
 
@@ -300,6 +330,38 @@ function PainelEstrutura({ estrutura, onMudou }: { estrutura: EstruturaJuridica;
             ))}
           </div>
         )}
+        {novoAberto ? (
+          <div className="mt-[8px] flex flex-wrap items-end gap-[8px] rounded-[10px] p-[10px]" style={{ background: '#fff', border: '1px dashed var(--border)' }}>
+            <Campo rotulo="Nome completo da pessoa investidora">
+              <input value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className={`${inputCls} w-[220px]`} style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+            </Campo>
+            <Campo rotulo="CPF ou CNPJ">
+              <input value={novoDoc} onChange={(e) => setNovoDoc(e.target.value)} className={`${inputCls} w-[160px]`} style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+            </Campo>
+            <Campo rotulo="WhatsApp">
+              <input value={novoZap} onChange={(e) => setNovoZap(e.target.value)} className={`${inputCls} w-[140px]`} style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+            </Campo>
+            <button
+              onClick={criarEVincular}
+              disabled={criando || novoNome.trim().length < 3 || novoDoc.replace(/\D/g, '').length < 11 || novoZap.replace(/\D/g, '').length < 10}
+              className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-bold disabled:opacity-40"
+              style={{ background: 'var(--navy)', color: '#fff' }}
+            >
+              {criando ? 'Cadastrando…' : 'Cadastrar e vincular'}
+            </button>
+            <button onClick={() => setNovoAberto(false)} className="rounded-[8px] px-[10px] py-[7px] text-[12px] font-semibold" style={{ background: '#fff', border: '1px solid var(--border)' }}>
+              Cancelar
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setNovoAberto(true)}
+            className="mt-[8px] rounded-[8px] px-[10px] py-[6px] text-[12px] font-semibold"
+            style={{ background: '#fff', border: '1px dashed var(--border)', color: 'var(--text-muted)' }}
+          >
+            + Cadastrar pessoa investidora nova
+          </button>
+        )}
       </div>
 
       {/* Ativos financiados */}
@@ -316,7 +378,7 @@ function PainelEstrutura({ estrutura, onMudou }: { estrutura: EstruturaJuridica;
             ))}
           </div>
         )}
-        <Campo rotulo="Buscar ativo pela placa (mínimo 3 caracteres) — o ativo precisa ter origem de capital definida">
+        <Campo rotulo="Buscar ativo pela placa (mínimo 3 caracteres) — o vínculo marca esta estrutura como DONA do ativo">
           <input value={buscaAtivo} onChange={(e) => setBuscaAtivo(e.target.value.toUpperCase())} className={`${inputCls} w-[200px]`} style={{ background: '#fff', border: '1px solid var(--border)' }} />
         </Campo>
         {buscaAtivo.trim().length >= 3 && (

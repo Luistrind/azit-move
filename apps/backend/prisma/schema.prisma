@@ -679,6 +679,10 @@ model Parecer {
 model Ativo {
   id                   String           @id @default(cuid())
   tipo                 TipoAtivo        @default(VEICULO)
+  // TAG da estrutura juridica DONA do ativo (homologacao 04/08): 1 estrutura : N
+  // ativos; cada ativo pertence a exatamente UMA. Obrigatoria ao criar (runtime);
+  // nullable no banco so pelos legados anteriores a decisao.
+  estruturaJuridicaId  String?
   varianteCatalogo     String           @default("carro") // chave da variante do Catalogo (carro/moto/outro)
   descricao            String
   marca                String?
@@ -699,6 +703,7 @@ model Ativo {
   status               StatusAtivo      @default(DISPONIVEL)
 
   origemCapital    OrigemCapital?
+  estruturaJuridica EstruturaJuridica?   @relation(fields: [estruturaJuridicaId], references: [id])
   ofertaFixa       OfertaFixa?           @relation(fields: [ofertaFixaId], references: [id])
   lancamentosCusto LancamentoCustoAtivo[]
   documentos       AtivoDocumento[]
@@ -1534,6 +1539,7 @@ model EstruturaJuridica {
 
   investidores InvestidorEstrutura[]
   origensCapital OrigemCapital[]
+  ativos       Ativo[] // TAG: ativos de que esta estrutura e dona (04/08)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
