@@ -122,7 +122,7 @@ export const originacaoService = {
     const { data } = await api.get<SimulacaoResultado>(`/api/v1/simulacoes/${id}`);
     return data;
   },
-  async simular(body: { ativoId?: string; valorAvista?: number; leadId?: string }): Promise<SimulacaoResultado> {
+  async simular(body: { ativoId?: string; valorAvista?: number; leadId?: string; titularId?: string }): Promise<SimulacaoResultado> {
     const { data } = await api.post('/api/v1/simulacoes', body);
     return data;
   },
