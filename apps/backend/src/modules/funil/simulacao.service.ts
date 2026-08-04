@@ -47,18 +47,34 @@ export class SimulacaoService {
 
   // F2 (doc 02 §17): quando o produto compra_parcelada e a variante do ativo
   // estão ATIVOS no Catálogo, os parâmetros vêm de lá; senão, motor legado.
+  // Homologação 04/08 (fonte ÚNICA): simulação SEM ativo usa a variante padrão
+  // 'carro' — o valor manual nunca mais cai no motor legado com Catálogo ativo.
   private async fonteCatalogo(ativoId: string | null | undefined): Promise<ParametrosCatalogoCompraParcelada | null> {
-    if (!ativoId) return null;
-    const a = await this.prisma.db.ativo.findFirst({
-      where: { id: ativoId },
-      select: { varianteCatalogo: true },
-    });
-    if (!a) return null;
-    return this.catalogoFonte.compraParcelada(a.varianteCatalogo);
+    let variante = 'carro';
+    if (ativoId) {
+      const a = await this.prisma.db.ativo.findFirst({
+        where: { id: ativoId },
+        select: { varianteCatalogo: true },
+      });
+      if (!a) return null;
+      variante = a.varianteCatalogo;
+    }
+    return this.catalogoFonte.compraParcelada(variante);
   }
 
-  // Preço no modo catálogo: motor V3 + componente de proteção (RF-CP12 — base
-  // semanal; mensal = semanal × 4,3452) + fatores do Catálogo (4,3452/2,1726).
+  // Homologação 04/08: proteção embutida CALCULADA do produto PV (Essencial),
+  // base = valor à vista (proxy da FIPE). O chumbado da versão fica de fallback.
+  private async aplicarProtecaoPV(cat: ParametrosCatalogoCompraParcelada, valorAvista: number): Promise<void> {
+    if (!cat.protecaoObrigatoria) return;
+    const semanalExata = await this.catalogoFonte.protecaoEssencialSemanalExata(cat.varianteChave, valorAvista);
+    if (semanalExata !== null) {
+      cat.protecaoSemanalExata = semanalExata;
+      cat.protecaoSemanal = Math.round(semanalExata);
+    }
+  }
+
+  // Preço no modo catálogo: motor V3 + componente de proteção (fatores de VALOR
+  // 4/2 — homologação 04/08) + fatores de PRAZO do Catálogo (4,3452/2,1726).
   private precificarCatalogo(
     cat: ParametrosCatalogoCompraParcelada,
     valorAvista: number,
@@ -234,6 +250,7 @@ export class SimulacaoService {
     // Ofertas PADRÃO — pula combos cuja entrada não cabe no VA. Fonte: Catálogo
     // (produto/variante ATIVOS) ou combos legados dos parâmetros do simulador.
     const cat = await this.fonteCatalogo(ativo?.id);
+    if (cat) await this.aplicarProtecaoPV(cat, valorAvista);
     const combosPadrao = cat
       ? cat.ofertasPadrao.map((o) => ({ valorEntrada: o.valorEntrada, prazoMeses: o.prazoMeses, frequencia: o.frequencia }))
       : params.ofertasPadrao;
@@ -288,6 +305,7 @@ export class SimulacaoService {
     this.garantirEditavel(s);
     const valorAvista = cent(s.valorAvista);
     const cat = await this.fonteCatalogo(s.ativoId);
+    if (cat) await this.aplicarProtecaoPV(cat, valorAvista);
 
     let foraParametroMotivo: string | null = null;
     let r: { parcelaFinal: number; numeroParcelas: number };

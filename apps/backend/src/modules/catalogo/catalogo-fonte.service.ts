@@ -34,9 +34,10 @@ export interface ParametrosCatalogoCompraParcelada {
   comissaoInicial: number;
   comissaoRecorrenteMensal: number;
   protecaoObrigatoria: boolean;
-  // RF-CP12 (decisão 02/08): preço de referência da proteção é SEMANAL.
-  // Enquanto a Proteção Veicular não é homologada, deriva da base mensal da
-  // planilha: semanal = mensal ÷ 4 (índice de conversão de valor).
+  // Homologação 04/08: a proteção vem CALCULADA do produto PV (Essencial) via
+  // protecaoEssencialSemanalExata(), ou congelada na ref do contrato (protS).
+  // O valor abaixo (derivado do protecaoMensal chumbado na versão) é só
+  // FALLBACK para versões antigas/refs congeladas sem protS.
   protecaoSemanal: number;
   protecaoSemanalExata: number; // SEM arredondar — p/ arredondamento único da parcela
   // Antecipação por componente (F4): taxas de desconto e isenções na liquidação.
@@ -142,9 +143,11 @@ export class CatalogoFonteService {
   // F4: parâmetros CONGELADOS pela referência gravada no contrato na contratação
   // ({variante, vp, vv}). Ignora ciclo de vida e vigência — snapshot é snapshot.
   async compraParceladaPorRef(ref: string): Promise<ParametrosCatalogoCompraParcelada | null> {
-    let parsed: { variante?: string; vp?: number | null; vv?: number | null };
+    // protS = proteção semanal exata (centavos) CONGELADA na formalização — a
+    // partir de 04/08 a proteção é calculada do produto PV e congelada aqui.
+    let parsed: { variante?: string; vp?: number | null; vv?: number | null; protS?: number };
     try {
-      parsed = JSON.parse(ref) as { variante?: string; vp?: number | null; vv?: number | null };
+      parsed = JSON.parse(ref) as { variante?: string; vp?: number | null; vv?: number | null; protS?: number };
     } catch {
       return null;
     }
@@ -159,7 +162,12 @@ export class CatalogoFonteService {
     const vProduto = produto.versoes.find((x) => !x.varianteId && x.numero === (parsed.vp ?? -1)) ?? null;
     const vVariante = produto.versoes.find((x) => x.varianteId === variante.id && x.numero === (parsed.vv ?? -1)) ?? null;
     if (!vProduto && !vVariante) return null;
-    return this.montarCompraParcelada(produto.id, variante.id, parsed.variante, vProduto, vVariante);
+    const params = this.montarCompraParcelada(produto.id, variante.id, parsed.variante, vProduto, vVariante);
+    if (typeof parsed.protS === 'number' && parsed.protS >= 0) {
+      params.protecaoSemanalExata = parsed.protS;
+      params.protecaoSemanal = Math.round(parsed.protS);
+    }
+    return params;
   }
 
   // Parâmetros do Reembolso Parcelado (F3), ou null se o produto não está ATIVO.
@@ -233,9 +241,10 @@ export class CatalogoFonteService {
     return Math.round(prazoMaximoMeses * icpf);
   }
 
-  // Proteção por período conforme a frequência do contrato (RF-CP12):
-  // semanal = base; quinzenal = ×2; mensal = × fator semana→mês (4,3452); os
-  // fatores quinzenal/diária aguardam confirmação (pergunta 10 da v0.3).
+  // Proteção por período conforme a frequência do contrato (homologação 04/08):
+  // 4/2 são fatores de VALOR (mensal = semanal × 4; quinzenal = semanal × 2) —
+  // 4,3452/2,1726 são fatores de PRAZO e não se aplicam aqui. A planilha calcula
+  // o mês primeiro e deriva a semana ÷ 4. (Reverte a decisão de 02/08.)
   protecaoPorPeriodo(protecaoSemanal: number, frequencia: 'mensal' | 'quinzenal' | 'semanal'): number {
     return Math.round(this.protecaoPorPeriodoExata(protecaoSemanal, frequencia));
   }
@@ -245,7 +254,32 @@ export class CatalogoFonteService {
   protecaoPorPeriodoExata(protecaoSemanal: number, frequencia: 'mensal' | 'quinzenal' | 'semanal'): number {
     if (protecaoSemanal <= 0) return 0;
     if (frequencia === 'semanal') return protecaoSemanal;
-    if (frequencia === 'quinzenal') return protecaoSemanal * 2;
-    return protecaoSemanal * FATORES_CATALOGO.contratoSemanal;
+    if (frequencia === 'quinzenal') return protecaoSemanal * FATORES_CATALOGO.precificacaoQuinzenal;
+    return protecaoSemanal * FATORES_CATALOGO.precificacaoSemanal;
+  }
+
+  // Homologação 04/08: a proteção embutida na CP é sempre CALCULADA do produto
+  // Proteção Veicular (oferta Essencial, variante pela categoria do ativo) — o
+  // parâmetro chumbado protecaoMensal da CP morreu (era herança da planilha).
+  // Base = valor à vista do ativo como PROXY da FIPE (placeholder Regra 12, até
+  // existir campo FIPE no cadastro). Retorna a contribuição SEMANAL exata (mensal
+  // ÷ 4, fator de valor) em centavos, ou null se o produto PV não existir.
+  async protecaoEssencialSemanalExata(varianteCP: string, baseCentavos: number): Promise<number | null> {
+    if (baseCentavos <= 0) return null;
+    const pv = await this.protecaoVeicular();
+    if (!pv) return null;
+    const mapa: Record<string, string> = { carro: 'leves', moto: 'duas_rodas', outro: 'utilitarios' };
+    const chavePv = mapa[varianteCP] ?? 'leves';
+    const variante =
+      pv.variantes.find((v) => v.chave === chavePv) ??
+      pv.variantes.find((v) => v.chave.startsWith(chavePv.slice(0, 4))) ??
+      pv.variantes[0];
+    if (!variante) return null;
+    const baseFipe = Math.round(baseCentavos * num(pv.parametros.ofertaEssencialTaxaFipe));
+    const mensal =
+      Math.max(num(variante.parametros.contribuicaoMinimaMensal), baseFipe) +
+      num(pv.parametros.taxaAdministracaoMensal) +
+      num(pv.parametros.ofertaEssencialAssistencia);
+    return mensal / FATORES_CATALOGO.precificacaoSemanal;
   }
 }

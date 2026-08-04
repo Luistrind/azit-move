@@ -82,6 +82,23 @@ export function CatalogoPage() {
   );
 }
 
+// Homologação 04/08: parâmetros que DEIXARAM de pertencer à Compra Parcelada —
+// a proteção embutida agora é calculada do produto Proteção Veicular (Essencial)
+// e o desconto por antecipação pertence a ele. Some da tela e das versões novas;
+// versões antigas que ainda carregam as chaves servem só de leitura congelada.
+const PARAMS_REMOVIDOS_CP = ['protecaoMensal', 'taxaDescontoProtecaoAntecipacao'];
+function semParamsRemovidos(chaveProduto: string, p: Parametros): Parametros {
+  if (chaveProduto !== 'compra_parcelada') return p;
+  const r: Parametros = {};
+  for (const [k, v] of Object.entries(p)) if (!PARAMS_REMOVIDOS_CP.includes(k)) r[k] = v;
+  return r;
+}
+// …e o desconto por antecipação passa a ser editável no produto PV (nasce 0).
+function comParamsPV(chaveProduto: string, p: Parametros): Parametros {
+  if (chaveProduto !== 'protecao_veicular') return p;
+  return { taxaDescontoProtecaoAntecipacao: 0, ...p };
+}
+
 function DetalheProduto({ id }: { id: string }) {
   const qc = useQueryClient();
   const pode = usePodeRole();
@@ -154,20 +171,20 @@ function DetalheProduto({ id }: { id: string }) {
       {aba === 'produto' && (
         <TabelaParametros
           titulo={`Nível produto — ${d.versaoProduto ? `V${d.versaoProduto}` : 'sem versão'} (vale para todas as variantes)`}
-          parametros={d.parametrosProduto}
+          parametros={semParamsRemovidos(d.chave, d.parametrosProduto)}
           origem={() => 'produto'}
           podeEditar={podeEditar}
-          onNovaVersao={() => setEditando({ varianteId: null, titulo: 'Nova versão — nível produto', parametros: d.parametrosProduto })}
+          onNovaVersao={() => setEditando({ varianteId: null, titulo: 'Nova versão — nível produto', parametros: comParamsPV(d.chave, semParamsRemovidos(d.chave, d.parametrosProduto)) })}
         />
       )}
 
       {varianteAtiva && (
         <TabelaParametros
           titulo={`Variante ${varianteAtiva.nome} — ${varianteAtiva.versao ? `V${varianteAtiva.versao}` : 'sem versão'} (efetivo = produto + sobrescritas da variante)`}
-          parametros={varianteAtiva.parametrosEfetivos}
+          parametros={semParamsRemovidos(d.chave, varianteAtiva.parametrosEfetivos)}
           origem={(chave) => (chave in varianteAtiva.parametros ? 'variante' : 'produto')}
           podeEditar={podeEditar}
-          onNovaVersao={() => setEditando({ varianteId: varianteAtiva.id, titulo: `Nova versão — variante ${varianteAtiva.nome}`, parametros: varianteAtiva.parametros })}
+          onNovaVersao={() => setEditando({ varianteId: varianteAtiva.id, titulo: `Nova versão — variante ${varianteAtiva.nome}`, parametros: semParamsRemovidos(d.chave, varianteAtiva.parametros) })}
         />
       )}
 

@@ -66,6 +66,14 @@ export class QuitacaoService {
     let cat: ParametrosCatalogoCompraParcelada | null = null;
     if (contrato.catalogoVersaoRef) {
       cat = await this.catalogoFonte.compraParceladaPorRef(contrato.catalogoVersaoRef);
+      // Homologação 04/08: o desconto da proteção por antecipação pertence ao
+      // produto PROTEÇÃO VEICULAR, não à CP — se o produto PV definir a taxa,
+      // ela prevalece sobre a chave legada congelada na versão da CP.
+      if (cat) {
+        const pv = await this.catalogoFonte.protecaoVeicular();
+        const taxaPv = pv?.parametros.taxaDescontoProtecaoAntecipacao;
+        if (typeof taxaPv === 'number') cat.taxaDescontoProtecao = taxaPv;
+      }
     }
 
     let taxaCR: number;

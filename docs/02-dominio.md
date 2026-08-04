@@ -1082,10 +1082,9 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 >
 > **Decisões 2026-08-02 (Luís, respostas às perguntas da v0.1 dos requisitos):**
 > - **Numeração de versão exibida como V1, V2, V3…**, sequencial por produto e por variante.
-> - **Proteção dentro da Compra Parcelada acompanha a frequência do contrato**, com preço de
->   referência **semanal**: contrato semanal cobra o valor semanal; mensal cobra semanal × fator
->   semana→mês (4,3452). Quinzenal ×2 e diária ÷7 pendentes de confirmação. A base mensal da
->   planilha deixa de ser a referência quando a Proteção Veicular for homologada.
+> - ~~Proteção com preço de referência semanal; mensal = semanal × 4,3452~~ **REVERTIDA em
+>   2026-08-04** — ver bloco "Decisões da homologação" abaixo.
+> - **Proteção dentro da Compra Parcelada acompanha a frequência do contrato.**
 > - **Fatores de conversão de prazo: seguir o Catálogo (4,3452 semanal / 2,1726 quinzenal)** como
 >   padrão único a partir da F2; a análise de cadastro atualiza seu parâmetro versionado na mesma
 >   virada, sem recálculo retroativo.
@@ -1099,6 +1098,30 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 >   ativo; a obrigação vive na conta (mesmo padrão conta-cêntrico do acordo).
 > O model `Produto` existente (itens avulsos de contrato — proteção, rastreador, taxa) continua
 > separado: ele é item contratável, não produto comercial do catálogo. Convergência avaliada na F3.
+>
+> **Decisões da homologação 2026-08-04 (Luís + Vicente, em produção):**
+> 1. **Fator da proteção corrigido — 4/2 são fatores de VALOR; 4,3452/2,1726 são de PRAZO.**
+>    A planilha calcula a contribuição MENSAL primeiro e deriva: semanal = mensal ÷ 4;
+>    quinzenal = mensal ÷ 2. Portanto proteção mensal = semanal × 4 (NÃO × 4,3452 — a
+>    decisão de 02/08 usava fator de tempo onde cabia fator de valor e foi revertida).
+> 2. **A proteção embutida na Compra Parcelada é sempre CALCULADA a partir do produto
+>    Proteção Veicular** (variante por categoria do ativo — carro→Leves, moto→Duas Rodas,
+>    outro→Utilitários — oferta **Essencial** como padrão comercial). Os parâmetros
+>    `protecaoMensal` e `taxaDescontoProtecaoAntecipacao` DEIXAM de pertencer à versão da
+>    Compra Parcelada (valor chumbado era herança da planilha, reconhecida pelo Vicente
+>    como falha de construção); na CP fica apenas o boolean `protecaoObrigatoria`.
+>    Versões antigas que ainda carregam as chaves servem só de fallback/leitura congelada.
+>    Placeholder marcado (Regra 12): a base de cálculo usa o **valor à vista do ativo como
+>    proxy da FIPE** até existir campo FIPE no cadastro. O valor da proteção da contratação
+>    é **congelado na referência do contrato** (junto de variante/versões) na formalização.
+> 3. **Fonte única de simulação**: simulação SEM ativo (valor manual) usa a variante padrão
+>    `carro` do Catálogo — nunca mais o motor legado quando o Catálogo está ativo (o bug da
+>    tela apartada consumindo fonte pré-catálogo morre aqui).
+> 4. **Upsell da proteção**: Essencial embutido por padrão; etapa de upgrade (Proteção/
+>    Completa) na venda — a desenhar. Fora deste pacote.
+> 5. **Atendimento é um ORQUESTRADOR por fases** (vocabulário oficial): cada bloco aciona um
+>    motor (simulador, templates, alçadas, cobrança) e salva seu registro; o pagamento da
+>    entrada é o que ativa o contrato (confirma a Regra 2 — nada de "clicar em ativar").
 
 ---
 

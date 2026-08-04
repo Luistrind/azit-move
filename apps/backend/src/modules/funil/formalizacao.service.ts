@@ -360,15 +360,29 @@ export class FormalizacaoService {
 
     // F4: congela a referência da versão do Catálogo usada na contratação —
     // a quitação por componente lê ESTE snapshot, nunca a versão vigente.
+    // Homologação 04/08: congela também protS (proteção semanal exata calculada
+    // do produto PV na contratação) — o valor da proteção não flutua depois.
     const varianteContratada = proposta.ativo.varianteCatalogo ?? 'carro';
     const catContratacao = await this.catalogoFonte.compraParcelada(varianteContratada);
+    let protS: number | null = null;
+    if (catContratacao?.protecaoObrigatoria) {
+      const baseAvista = proposta.simulacao?.valorAvista ? cent(proposta.simulacao.valorAvista) : 0;
+      protS =
+        (await this.catalogoFonte.protecaoEssencialSemanalExata(varianteContratada, baseAvista)) ??
+        catContratacao.protecaoSemanalExata;
+    }
     await this.prisma.db.contratoCredito.update({
       where: { id: novo.id },
       data: {
         snapshotJson: snapshot as unknown as Prisma.InputJsonValue,
         snapshotLockedAt: new Date(),
         catalogoVersaoRef: catContratacao
-          ? JSON.stringify({ variante: varianteContratada, vp: catContratacao.versaoProduto, vv: catContratacao.versaoVariante })
+          ? JSON.stringify({
+              variante: varianteContratada,
+              vp: catContratacao.versaoProduto,
+              vv: catContratacao.versaoVariante,
+              ...(protS !== null ? { protS } : {}),
+            })
           : null,
       },
     });
