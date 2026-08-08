@@ -5,8 +5,11 @@ import {
   originacaoService,
   OfertaSimulada,
   SimulacaoResultado,
+  PropostaDetalhe,
+  OpcaoProtecao,
 } from '../services/originacao.service';
 import { titularService, Titular } from '../services/titular.service';
+import { buscarCep } from '../lib/cep';
 import { mascararCpf, mascararTelefone, mascararDinheiro, dinheiroParaCentavos, somenteDigitos } from '../lib/mascaras';
 import { mensagemErro } from '../lib/permissoes';
 
@@ -61,9 +64,13 @@ const seletorInativo = { background: 'var(--surface)', border: '1.5px solid var(
 type TipoCliente = 'novo' | 'existente';
 type ProdutoInteresse = 'compra_parcelada' | 'reembolso_parcelado' | 'protecao_veicular';
 
+// Passos da jornada (doc 02 §20): 1 triagem+lead · 2 ativo · 3 ofertas ·
+// 4 cadastro completo · 5 upsell da proteção · 6 documentos · 7 enviado.
+type Passo = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 'reprovada';
+
 export function AtendimentoPage() {
   const navigate = useNavigate();
-  const [passo, setPasso] = useState<1 | 2 | 3>(1);
+  const [passo, setPasso] = useState<Passo>(1);
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
 
@@ -91,6 +98,16 @@ export function AtendimentoPage() {
   const [entradaTexto, setEntradaTexto] = useState('');
   const [prazoMeses, setPrazoMeses] = useState('36');
   const [frequencia, setFrequencia] = useState<'semanal' | 'quinzenal' | 'mensal'>('semanal');
+
+  // Passos 4–7 — proposta criada (camada 1 já rodou de forma transparente)
+  const [proposta, setProposta] = useState<PropostaDetalhe | null>(null);
+  const [cad, setCad] = useState({ nome: '', whatsapp: '', email: '', rg: '', estadoCivil: '', profissao: '', cep: '', endereco: '', bairro: '', cidade: '', estado: '' });
+  const [segundo, setSegundo] = useState({ aberto: false, nome: '', cpf: '', telefone: '' });
+  const [opcoesProtecao, setOpcoesProtecao] = useState<OpcaoProtecao[] | null>(null);
+  const [docBusy, setDocBusy] = useState(false);
+  const [descComplementar, setDescComplementar] = useState('');
+  const [rendaTexto, setRendaTexto] = useState('');
+  const [parecerTexto, setParecerTexto] = useState('');
 
   const ativos = useQuery({
     queryKey: ['atendimento-ativos'],
@@ -206,7 +223,10 @@ export function AtendimentoPage() {
     setApresentando(true);
   }
 
-  async function converterEmProposta() {
+  // Passo 6 da jornada: "enviar a proposta" cria a proposta e a CAMADA 1 do
+  // birô roda de forma transparente. Reprovada → tela neutra; aprovada → segue
+  // para o cadastro completo.
+  async function enviarProposta() {
     if (!simulacao) return;
     setErro(null);
     setOcupado(true);
@@ -215,7 +235,134 @@ export function AtendimentoPage() {
         ? { nome: titular.nome, cpfCnpj: titular.cpfCnpj, whatsapp: titular.whatsapp }
         : { nome: nome.trim(), cpfCnpj: somenteDigitos(cpf), whatsapp: somenteDigitos(telefone) };
       const p = await originacaoService.criarProposta({ simulacaoId: simulacao.id, comprador });
-      navigate(`/propostas/${p.id}`);
+      setProposta(p);
+      if (p.status === 'reprovada') {
+        setPasso('reprovada');
+        return;
+      }
+      setCad({
+        nome: p.titular.nome ?? '',
+        whatsapp: mascararTelefone(p.titular.whatsapp ?? ''),
+        email: '',
+        rg: '',
+        estadoCivil: '',
+        profissao: '',
+        cep: '',
+        endereco: '',
+        bairro: '',
+        cidade: '',
+        estado: '',
+      });
+      setPasso(4);
+    } catch (e) {
+      setErro(mensagemErro(e));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  // Passo 4→5: salva o cadastro completo (CPF fica bloqueado — foi o consultado
+  // no birô) e o segundo comprador opcional.
+  async function salvarCadastroCompleto() {
+    if (!proposta) return;
+    setErro(null);
+    setOcupado(true);
+    try {
+      await titularService.atualizar(proposta.titular.id, {
+        nome: cad.nome.trim() || undefined,
+        whatsapp: somenteDigitos(cad.whatsapp) || undefined,
+        email: cad.email.trim() || undefined,
+        rg: cad.rg.trim() || undefined,
+        estadoCivil: cad.estadoCivil.trim() || undefined,
+        profissao: cad.profissao.trim() || undefined,
+        cep: somenteDigitos(cad.cep) || undefined,
+        endereco: cad.endereco.trim() || undefined,
+        bairro: cad.bairro.trim() || undefined,
+        cidade: cad.cidade.trim() || undefined,
+        estado: cad.estado.trim() || undefined,
+      });
+      if (segundo.aberto && segundo.nome.trim().length >= 3 && somenteDigitos(segundo.cpf).length === 11) {
+        const p2 = await originacaoService.adicionarVinculo(proposta.id, 'comprador_secundario', {
+          nome: segundo.nome.trim(),
+          cpfCnpj: somenteDigitos(segundo.cpf),
+          whatsapp: somenteDigitos(segundo.telefone),
+        });
+        setProposta(p2);
+      }
+      // Upsell (passo 5): carrega as opções; sem opções, pula direto p/ documentos.
+      const op = await originacaoService.protecaoOpcoes(proposta.id);
+      if (op.disponivel) {
+        setOpcoesProtecao(op.opcoes);
+        setPasso(5);
+      } else {
+        setOpcoesProtecao(null);
+        setPasso(6);
+      }
+    } catch (e) {
+      setErro(mensagemErro(e));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function preencherCep(valor: string) {
+    setCad((c) => ({ ...c, cep: valor }));
+    if (somenteDigitos(valor).length === 8) {
+      const end = await buscarCep(valor);
+      if (end) setCad((c) => ({ ...c, endereco: end.endereco || c.endereco, bairro: end.bairro || c.bairro, cidade: end.cidade || c.cidade, estado: end.estado || c.estado }));
+    }
+  }
+
+  async function escolherPlano(plano: string) {
+    if (!proposta) return;
+    setErro(null);
+    setOcupado(true);
+    try {
+      const p = await originacaoService.escolherProtecao(proposta.id, plano);
+      setProposta(p);
+      const op = await originacaoService.protecaoOpcoes(proposta.id);
+      setOpcoesProtecao(op.opcoes);
+    } catch (e) {
+      setErro(mensagemErro(e));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function anexar(tipo: string, file: File, descricao?: string) {
+    if (!proposta) return;
+    setErro(null);
+    setDocBusy(true);
+    try {
+      const conteudo = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result));
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+      const nomeArq = descricao?.trim() ? `${descricao.trim()} — ${file.name}` : file.name;
+      const p = await originacaoService.anexarDocumento(proposta.id, proposta.titular.id, tipo, { nome: nomeArq, conteudo });
+      setProposta(p);
+      setDescComplementar('');
+    } catch (e) {
+      setErro(mensagemErro(e));
+    } finally {
+      setDocBusy(false);
+    }
+  }
+
+  async function enviarParaAnalise() {
+    if (!proposta) return;
+    setErro(null);
+    setOcupado(true);
+    try {
+      const renda = dinheiroParaCentavos(rendaTexto);
+      const p = await originacaoService.enviarParaAnalise(proposta.id, {
+        rendaDeclarada: renda > 0 ? renda : undefined,
+        parecerOperador: parecerTexto.trim() || undefined,
+      });
+      setProposta(p);
+      setPasso(7);
     } catch (e) {
       setErro(mensagemErro(e));
     } finally {
@@ -242,23 +389,30 @@ export function AtendimentoPage() {
         <div>
           <h1 className="font-display text-[20px] font-bold">Atendimento</h1>
           <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
-            {passo === 1 ? 'Quem é o cliente e o que ele procura' : passo === 2 ? 'Qual o ativo' : 'Oferta ao cliente'}
+            {passo === 1 ? 'Quem é o cliente e o que ele procura'
+              : passo === 2 ? 'Qual o ativo'
+              : passo === 3 ? 'Oferta ao cliente'
+              : passo === 4 ? 'Cadastro completo'
+              : passo === 5 ? 'Proteção veicular'
+              : passo === 6 ? 'Documentos e renda'
+              : passo === 7 ? 'Proposta enviada'
+              : 'Resultado da proposta'}
           </div>
         </div>
         <div className="flex items-center gap-[6px]">
-          {[1, 2, 3].map((n) => (
+          {[1, 2, 3, 4, 5, 6, 7].map((n) => (
             <span
               key={n}
-              className="h-[10px] w-[10px] rounded-full"
-              style={{ background: n <= passo ? 'var(--accent)' : 'var(--border)' }}
+              className="h-[8px] w-[8px] rounded-full"
+              style={{ background: typeof passo === 'number' && n <= passo ? 'var(--accent)' : 'var(--border)' }}
             />
           ))}
         </div>
       </div>
 
-      {passo > 1 && (
+      {typeof passo === 'number' && passo > 1 && passo <= 3 && (
         <button
-          onClick={() => setPasso((p) => (p === 3 ? 2 : 1) as 1 | 2)}
+          onClick={() => setPasso((p) => ((p as number) === 3 ? 2 : 1) as Passo)}
           className="self-start text-[14px] font-semibold"
           style={{ color: 'var(--text-muted)', minHeight: 44 }}
         >
@@ -279,7 +433,7 @@ export function AtendimentoPage() {
             <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Tipo de cliente</span>
             <div className="grid grid-cols-2 gap-[8px]">
               <button
-                onClick={() => { setTipoCliente('novo'); setTitular(null); }}
+                onClick={() => { setTipoCliente('novo'); setTitular(null); setProduto('compra_parcelada'); }}
                 className="h-[48px] rounded-[10px] text-[14px] font-semibold"
                 style={tipoCliente === 'novo' ? seletorAtivo : seletorInativo}
               >
@@ -298,17 +452,24 @@ export function AtendimentoPage() {
           <div>
             <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Produto de interesse</span>
             <div className="flex flex-col gap-[8px]">
-              {PRODUTOS.map((p) => (
-                <button
-                  key={p.v}
-                  onClick={() => setProduto(p.v)}
-                  className="rounded-[10px] p-[12px] text-left"
-                  style={produto === p.v ? { ...seletorInativo, border: '2px solid var(--accent)' } : seletorInativo}
-                >
-                  <div className="text-[14.5px] font-bold">{p.l}</div>
-                  <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>{p.d}</div>
-                </button>
-              ))}
+              {PRODUTOS.map((p) => {
+                // Doc 02 §20 passo 2: cliente NOVO só segue com Compra Parcelada.
+                const bloqueado = tipoCliente === 'novo' && p.v !== 'compra_parcelada';
+                return (
+                  <button
+                    key={p.v}
+                    onClick={() => !bloqueado && setProduto(p.v)}
+                    disabled={bloqueado}
+                    className="rounded-[10px] p-[12px] text-left disabled:opacity-45"
+                    style={produto === p.v && !bloqueado ? { ...seletorInativo, border: '2px solid var(--accent)' } : seletorInativo}
+                  >
+                    <div className="text-[14.5px] font-bold">{p.l}</div>
+                    <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
+                      {bloqueado ? 'Disponível para quem já é cliente' : p.d}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -575,14 +736,248 @@ export function AtendimentoPage() {
             Apresentar ao cliente
           </button>
           <button
-            onClick={converterEmProposta}
+            onClick={enviarProposta}
             disabled={!selecionada || ocupado}
             className="h-[54px] rounded-[12px] text-[16px] font-bold disabled:opacity-40"
             style={{ background: 'var(--navy)', color: '#fff' }}
           >
-            {selecionada ? 'Converter em proposta' : 'Selecione uma oferta para converter'}
+            {ocupado ? 'Enviando…' : selecionada ? 'Enviar proposta' : 'Selecione uma oferta para enviar a proposta'}
+          </button>
+          <div className="text-center text-[12px]" style={{ color: 'var(--text-muted)' }}>
+            O envio faz a verificação cadastral automática. Proposta não é garantia de aprovação.
+          </div>
+        </div>
+      )}
+
+      {/* Resultado neutro da camada 1 (motivos são internos — análise/diretoria) */}
+      {passo === 'reprovada' && (
+        <div className="flex flex-col gap-[14px]">
+          <div className="rounded-[14px] p-[18px] text-[15px]" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)' }}>
+            <div className="mb-[6px] text-[17px] font-bold">Proposta não aprovada neste momento</div>
+            <div style={{ color: 'var(--text-muted)' }}>
+              A verificação cadastral não permitiu seguir com esta proposta agora. Agradeça o
+              interesse do cliente — ele pode tentar novamente no futuro.
+            </div>
+          </div>
+          <button onClick={() => window.location.reload()} className="h-[52px] rounded-[12px] text-[15px] font-bold" style={{ background: 'var(--navy)', color: '#fff' }}>
+            Iniciar novo atendimento
           </button>
         </div>
+      )}
+
+      {/* Passo 4 — cadastro completo (CPF bloqueado: foi o consultado no birô) */}
+      {passo === 4 && proposta && (
+        <div className="flex flex-col gap-[12px]">
+          <div>
+            <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Nome completo (confirme)</span>
+            <input value={cad.nome} onChange={(e) => setCad({ ...cad, nome: e.target.value })} className={inputCls} style={inputStyle} />
+          </div>
+          <div>
+            <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>CPF (bloqueado — usado na verificação)</span>
+            <input value={mascararCpf(proposta.titular.cpfCnpj)} disabled className={inputCls} style={{ ...inputStyle, opacity: 0.6 }} />
+          </div>
+          <div className="grid grid-cols-2 gap-[10px]">
+            <div>
+              <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>WhatsApp</span>
+              <input value={cad.whatsapp} onChange={(e) => setCad({ ...cad, whatsapp: mascararTelefone(e.target.value) })} inputMode="tel" className={inputCls} style={inputStyle} />
+            </div>
+            <div>
+              <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>RG</span>
+              <input value={cad.rg} onChange={(e) => setCad({ ...cad, rg: e.target.value })} className={inputCls} style={inputStyle} />
+            </div>
+          </div>
+          <div>
+            <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>E-mail</span>
+            <input value={cad.email} onChange={(e) => setCad({ ...cad, email: e.target.value })} inputMode="email" className={inputCls} style={inputStyle} />
+          </div>
+          <div className="grid grid-cols-2 gap-[10px]">
+            <div>
+              <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Estado civil</span>
+              <input value={cad.estadoCivil} onChange={(e) => setCad({ ...cad, estadoCivil: e.target.value })} className={inputCls} style={inputStyle} />
+            </div>
+            <div>
+              <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Profissão</span>
+              <input value={cad.profissao} onChange={(e) => setCad({ ...cad, profissao: e.target.value })} className={inputCls} style={inputStyle} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-[10px]">
+            <div>
+              <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>CEP (preenche o endereço)</span>
+              <input value={cad.cep} onChange={(e) => void preencherCep(e.target.value)} inputMode="numeric" placeholder="00000-000" className={inputCls} style={inputStyle} />
+            </div>
+            <div>
+              <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Cidade / UF</span>
+              <input value={cad.cidade ? `${cad.cidade}${cad.estado ? ` / ${cad.estado}` : ''}` : ''} disabled className={inputCls} style={{ ...inputStyle, opacity: 0.7 }} />
+            </div>
+          </div>
+          <div>
+            <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Endereço (rua, número, complemento)</span>
+            <input value={cad.endereco} onChange={(e) => setCad({ ...cad, endereco: e.target.value })} className={inputCls} style={inputStyle} />
+          </div>
+
+          {/* Segundo comprador — opcional */}
+          {segundo.aberto ? (
+            <div className="flex flex-col gap-[10px] rounded-[14px] p-[14px]" style={{ background: 'var(--surface)', border: '1.5px dashed var(--border)' }}>
+              <div className="flex items-center justify-between">
+                <span className="text-[14px] font-bold">Segundo comprador</span>
+                <button className="text-[13px] font-semibold" style={{ color: 'var(--text-muted)' }} onClick={() => setSegundo({ aberto: false, nome: '', cpf: '', telefone: '' })}>Remover</button>
+              </div>
+              <input value={segundo.nome} onChange={(e) => setSegundo({ ...segundo, nome: e.target.value })} placeholder="Nome completo" className={inputCls} style={{ background: 'var(--surface-input)', border: '1.5px solid var(--border)' }} />
+              <div className="grid grid-cols-2 gap-[10px]">
+                <input value={segundo.cpf} onChange={(e) => setSegundo({ ...segundo, cpf: mascararCpf(e.target.value) })} placeholder="CPF" inputMode="numeric" className={inputCls} style={{ background: 'var(--surface-input)', border: '1.5px solid var(--border)' }} />
+                <input value={segundo.telefone} onChange={(e) => setSegundo({ ...segundo, telefone: mascararTelefone(e.target.value) })} placeholder="Telefone" inputMode="tel" className={inputCls} style={{ background: 'var(--surface-input)', border: '1.5px solid var(--border)' }} />
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setSegundo({ ...segundo, aberto: true })} className="h-[46px] rounded-[12px] text-[14px] font-semibold" style={{ background: 'var(--surface)', border: '1.5px dashed var(--border)', color: 'var(--text-muted)' }}>
+              + Incluir segundo comprador (opcional)
+            </button>
+          )}
+
+          <button
+            onClick={salvarCadastroCompleto}
+            disabled={ocupado || cad.nome.trim().length < 3}
+            className="h-[54px] rounded-[12px] text-[16px] font-bold disabled:opacity-40"
+            style={{ background: 'var(--navy)', color: '#fff' }}
+          >
+            {ocupado ? 'Salvando…' : 'Continuar'}
+          </button>
+        </div>
+      )}
+
+      {/* Passo 5 — upsell da proteção: Essencial já embutida; upgrade pelo ADICIONAL */}
+      {passo === 5 && proposta && opcoesProtecao && (
+        <div className="flex flex-col gap-[12px]">
+          <div className="text-[13.5px]" style={{ color: 'var(--text-muted)' }}>
+            A oferta já inclui a <b>Proteção Veicular Essencial</b>. Mostre ao cliente o que
+            ele ganha subindo de plano — pela diferença na parcela.
+          </div>
+          {opcoesProtecao.map((o) => (
+            <button
+              key={o.plano}
+              onClick={() => escolherPlano(o.plano)}
+              disabled={ocupado}
+              className="rounded-[14px] p-[16px] text-left disabled:opacity-60"
+              style={{ background: 'var(--surface)', border: o.atual ? '2px solid var(--accent)' : '1.5px solid var(--border)' }}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[15px] font-bold">Proteção Veicular {o.nome}</span>
+                {o.atual && (
+                  <span className="rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: 'var(--accent)', color: 'var(--navy)' }}>Escolhida</span>
+                )}
+              </div>
+              {o.cobertura && <div className="mt-[2px] text-[13px]" style={{ color: 'var(--text-muted)' }}>{o.cobertura}</div>}
+              <div className="mt-[6px] text-[14.5px] font-semibold" style={{ color: 'var(--navy)' }}>
+                {o.adicionalPorPeriodo === 0
+                  ? 'Já incluída na parcela'
+                  : `+ ${reais(o.adicionalPorPeriodo)} ${porPeriodo((simulacao?.ofertas.find((x) => x.selecionada)?.frequencia) ?? 'semanal')} → parcela ${reais(o.parcelaResultante)}`}
+              </div>
+            </button>
+          ))}
+          <button onClick={() => setPasso(6)} className="h-[54px] rounded-[12px] text-[16px] font-bold" style={{ background: 'var(--navy)', color: '#fff' }}>
+            Continuar
+          </button>
+        </div>
+      )}
+
+      {/* Passo 6 — documentos (CNH obrigatória) + renda declarada */}
+      {passo === 6 && proposta && (
+        <div className="flex flex-col gap-[12px]">
+          <div className="rounded-[14px] p-[14px]" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)' }}>
+            <div className="mb-[4px] text-[14.5px] font-bold">CNH válida (obrigatória)</div>
+            {proposta.documentos.some((d) => d.tipo === 'cnh') ? (
+              <div className="text-[13.5px]" style={{ color: '#1c7a3d' }}>
+                ✓ Anexada: {proposta.documentos.filter((d) => d.tipo === 'cnh').map((d) => d.arquivoRef).join(', ')}
+              </div>
+            ) : (
+              <label className="block h-[48px] cursor-pointer rounded-[10px] text-center text-[14px] font-bold leading-[48px]" style={{ background: 'var(--navy)', color: '#fff', opacity: docBusy ? 0.6 : 1 }}>
+                {docBusy ? 'Anexando…' : 'Anexar foto da CNH'}
+                <input type="file" accept="image/*,.pdf" className="hidden" disabled={docBusy}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void anexar('cnh', f); e.target.value = ''; }} />
+              </label>
+            )}
+          </div>
+
+          <div className="rounded-[14px] p-[14px]" style={{ background: 'var(--surface)', border: '1.5px dashed var(--border)' }}>
+            <div className="mb-[4px] text-[14.5px] font-bold">Documentos complementares (opcional)</div>
+            <div className="mb-[8px] text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
+              Qualquer coisa que demonstre capacidade de pagamento: contracheque, extrato,
+              contrato com locadora…
+            </div>
+            {proposta.documentos.filter((d) => d.tipo !== 'cnh').map((d) => (
+              <div key={d.id} className="mb-[4px] text-[13px]" style={{ color: 'var(--text-muted)' }}>✓ {d.arquivoRef}</div>
+            ))}
+            <input
+              value={descComplementar}
+              onChange={(e) => setDescComplementar(e.target.value)}
+              placeholder="Descrição breve (ex.: contrato da locadora)"
+              className={`${inputCls} mb-[8px]`}
+              style={{ background: 'var(--surface-input)', border: '1.5px solid var(--border)' }}
+            />
+            <label className="block h-[46px] cursor-pointer rounded-[10px] text-center text-[14px] font-semibold leading-[46px]" style={{ background: 'var(--surface-input)', border: '1.5px solid var(--accent)', color: 'var(--navy)', opacity: docBusy ? 0.6 : 1 }}>
+              {docBusy ? 'Anexando…' : '+ Anexar documento'}
+              <input type="file" accept="image/*,.pdf" className="hidden" disabled={docBusy}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void anexar('outro', f, descComplementar); e.target.value = ''; }} />
+            </label>
+          </div>
+
+          <div>
+            <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Renda declarada pelo cliente (R$ por MÊS)</span>
+            <input
+              value={rendaTexto}
+              onChange={(e) => setRendaTexto(mascararDinheiro(e.target.value))}
+              inputMode="numeric"
+              placeholder="0,00"
+              className={inputCls}
+              style={inputStyle}
+            />
+            <div className="mt-[4px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
+              Se o cliente falar por semana, converta para o mês.
+            </div>
+          </div>
+
+          <button onClick={() => setPasso(7)} disabled={!proposta.documentos.some((d) => d.tipo === 'cnh')} className="h-[54px] rounded-[12px] text-[16px] font-bold disabled:opacity-40" style={{ background: 'var(--navy)', color: '#fff' }}>
+            Continuar
+          </button>
+        </div>
+      )}
+
+      {/* Passo 7 — parecer opcional + envio / confirmação */}
+      {passo === 7 && proposta && (
+        proposta.status === 'em_analise' ? (
+          <div className="flex flex-col gap-[14px]">
+            <div className="rounded-[14px] p-[18px]" style={{ background: 'var(--surface)', border: '2px solid var(--accent)' }}>
+              <div className="mb-[4px] text-[17px] font-bold">Proposta enviada para análise ✓</div>
+              <div className="text-[13.5px]" style={{ color: 'var(--text-muted)' }}>
+                A análise de cadastro vai devolver a decisão. Você será avisado — acompanhe também
+                pela tela de propostas.
+              </div>
+            </div>
+            <Link to={`/propostas/${proposta.id}`} className="h-[52px] rounded-[12px] text-center text-[15px] font-bold leading-[52px]" style={{ background: 'var(--navy)', color: '#fff' }}>
+              Acompanhar a proposta
+            </Link>
+            <button onClick={() => window.location.reload()} className="h-[48px] rounded-[12px] text-[14px] font-semibold" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)' }}>
+              Iniciar novo atendimento
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-[12px]">
+            <div>
+              <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Parecer do operador (opcional)</span>
+              <textarea
+                value={parecerTexto}
+                onChange={(e) => setParecerTexto(e.target.value)}
+                rows={4}
+                placeholder="Algo que a análise deva saber sobre o cliente ou a negociação…"
+                className="w-full rounded-[12px] px-[14px] py-[10px] text-[15px]"
+                style={inputStyle}
+              />
+            </div>
+            <button onClick={enviarParaAnalise} disabled={ocupado} className="h-[54px] rounded-[12px] text-[16px] font-bold disabled:opacity-40" style={{ background: 'var(--navy)', color: '#fff' }}>
+              {ocupado ? 'Enviando…' : 'Enviar para análise'}
+            </button>
+          </div>
+        )
       )}
 
       {/* Modo apresentação — tela cheia, só o que o cliente deve ver */}

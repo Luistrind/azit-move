@@ -1179,5 +1179,45 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 
 ---
 
+## 20. Jornada do Atendimento — 13 passos do operador + Camada 1 do birô (2026-08-08)
+
+> **Decisões 2026-08-04/08 (Luís + Vicente, reunião de validação do fluxo).** O processo abaixo é
+> a VISÃO DO OPERADOR — não suprime as etapas de analista/diretoria, que existem fora dela.
+>
+> **Os 13 passos:** (1) tipo de cliente — novo × ativo; (2) produto — **cliente novo só vê
+> Compra Parcelada**; RP e PV só para cliente ativo; (3) dados de lead (nome, CPF, telefone);
+> (4) escolher o ativo OU preencher o valor; (5) simular, apresentar e escolher a oferta;
+> (6) **Camada 1 do birô** — dispara ao "enviar a proposta" (nomenclatura oficial: proposta,
+> padrão de mercado — não é promessa); (7) cadastro completo — nome editável, **CPF BLOQUEADO**
+> (foi o consultado no birô), RG (item do layout do contrato), estado civil, profissão, endereço
+> a partir do CEP, **segundo comprador opcional**; (8) **upsell da proteção** — tela própria: a
+> oferta já vem com "Proteção Veicular Essencial" embutida e ESCRITA; upgrade para Proteção e
+> Completa mostrado pelo ADICIONAL na parcela + diferenças QUALITATIVAS de cobertura;
+> (9) **documentos** — tela própria: **CNH é o ÚNICO obrigatório** (comprovante de endereço e
+> relatório BRIC caem — não mudam a análise); documentos complementares opcionais com descrição
+> livre; **renda declarada MENSAL** preenchida pelo operador na entrevista; (10) enviar a
+> proposta + **parecer opcional** do operador; (11) aguardar a decisão da análise (análise
+> manual continua); (12) decisão positiva → apresentar resumo ao cliente + confirmação + **duas
+> datas**: previsão de ativação/pagamento da entrada e vencimento da primeira parcela (data de
+> assinatura NÃO existe — assina-se de imediato); limites de dias por PARÂMETRO do produto;
+> preferência de vencimento na segunda-feira; (13) gerar o contrato → daí em diante AUTOMÁTICO:
+> assinatura → cobrança da entrada (vence na data prevista de ativação) → pagamento ativa →
+> **notificações ao operador** a cada marco (assinado / cobrança gerada / paga).
+>
+> **Política da Camada 1 (BigDataCorp, dataset basic_data):**
+> - Momento: DEPOIS da escolha da oferta (economiza franquia de 500/mês; parcela já existe).
+> - **Eliminatórios objetivos e automáticos**: situação do CPF na Receita ≠ regular; idade fora
+>   da faixa; indicação de óbito. TRANSPARENTES ao operador (ele não vê o critério; a proposta
+>   nasce REPROVADA com motivo interno visível só à análise/diretoria; mensagem neutra em tela).
+> - **Não reprovam**: contatos (qualidade ruim — só conferem), ocupação/renda presumida
+>   (geram ALERTA), processos judiciais (ALERTA — vão para a análise manual).
+> - Tudo **parametrizável** (nada de tabela fixa em código). Birô indisponível NÃO trava a
+>   venda: proposta segue com alerta "camada 1 indisponível" para a análise.
+> - Dados cadastrais retornados pré-preenchem o cadastro completo.
+> - Credenciais: par TokenId+AccessToken no ambiente (nunca no banco); sem credenciais, o
+>   provedor SIMULADO responde (placeholder Regra 12) e marca o resultado como simulado.
+
+---
+
 *Documento vivo — atualizar a cada decisão validada.*
 *Versão 2.0 — 2026-06-27 — expansão de escopo: originação absorvida do PopHub, distinção Acordo/Novação, telas do operador, refinamentos da reunião de 26/06 com Vicente.*

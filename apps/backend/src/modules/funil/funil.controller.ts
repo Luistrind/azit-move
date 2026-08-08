@@ -28,6 +28,10 @@ import {
   AnexarDocumentoDto,
   registrarParecerSchema,
   RegistrarParecerDto,
+  escolherProtecaoSchema,
+  EscolherProtecaoDto,
+  enviarAnaliseSchema,
+  EnviarAnaliseDto,
   assinarSchema,
   AssinarDto,
   adicionarProdutoSchema,
@@ -190,15 +194,42 @@ export class FunilController {
     return this.proposta.solicitarAprovacaoForaParametro(id, user.id);
   }
 
+  // --- Jornada do atendimento (doc 02 §20) ---
+  // Passo 8 — upsell da proteção: opções com adicional por período + cobertura.
+  @Get('propostas/:id/protecao-opcoes')
+  protecaoOpcoes(@Param('id') id: string) {
+    return this.proposta.protecaoOpcoes(id);
+  }
+
+  @Post('propostas/:id/protecao')
+  @HttpCode(200)
+  escolherProtecao(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(escolherProtecaoSchema)) dto: EscolherProtecaoDto,
+  ) {
+    return this.proposta.escolherProtecao(id, dto.plano);
+  }
+
+  // Passo 10 — envio para análise (renda declarada + parecer opcional).
+  @Post('propostas/:id/enviar-analise')
+  @HttpCode(200)
+  enviarParaAnalise(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(enviarAnaliseSchema)) dto: EnviarAnaliseDto,
+  ) {
+    return this.proposta.enviarParaAnalise(id, dto);
+  }
+
   // --- 7.10 Formalização ---
   @Post('propostas/:id/formalizar')
   @HttpCode(201)
   formalizar(
     @Param('id') id: string,
-    @Body() body?: { dataPrimeiraParcela?: string },
+    @Body() body?: { dataPrimeiraParcela?: string; dataPrevistaAtivacao?: string },
   ) {
     return this.formalizacao.formalizar(id, {
       dataPrimeiraParcela: body?.dataPrimeiraParcela ? new Date(body.dataPrimeiraParcela) : undefined,
+      dataPrevistaAtivacao: body?.dataPrevistaAtivacao ? new Date(body.dataPrevistaAtivacao) : undefined,
     });
   }
 

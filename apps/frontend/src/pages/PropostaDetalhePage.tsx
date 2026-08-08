@@ -71,6 +71,13 @@ export function PropostaDetalhePage() {
     d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7));
     return d.toISOString().slice(0, 10);
   });
+  // Doc 02 §20 passo 12: previsão de ativação (pagamento da entrada) — a
+  // cobrança da entrada vence NESTA data. Default: amanhã.
+  const [dataAtivacao, setDataAtivacao] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  });
   const catalogo = useQuery({ queryKey: ['produtos'], queryFn: () => produtoService.listar() });
 
   const q = useQuery({ queryKey: ['proposta', id], queryFn: () => originacaoService.detalheProposta(id), enabled: !!id });
@@ -491,12 +498,14 @@ export function PropostaDetalhePage() {
               formaliza. Nº de parcelas vem do fator de contrato (4,345). */}
           {podeFormalizar && (
             <div className="flex flex-wrap items-end gap-[10px]">
+              <label className="flex flex-col gap-[4px]"><Lbl>Previsão de ativação (pagamento da entrada)</Lbl>
+                <input type="date" value={dataAtivacao} onChange={(e) => setDataAtivacao(e.target.value)} className={`${inputCls} w-[160px]`} style={inputStyle} /></label>
               <label className="flex flex-col gap-[4px]"><Lbl>1ª parcela (vencimento)</Lbl>
                 <input type="date" value={dataPrimeira} onChange={(e) => setDataPrimeira(e.target.value)} className={`${inputCls} w-[160px]`} style={inputStyle} /></label>
               <span className="pb-[8px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
-                {p.numeroParcelas} parcelas de {formatCurrency(p.valorParcela)}
+                {p.numeroParcelas} parcelas de {formatCurrency(p.valorParcela)} · a assinatura é imediata; a cobrança da entrada vence na previsão de ativação
               </span>
-              <button disabled={ocupado} onClick={() => run(async () => { const r = await originacaoService.formalizar(id, dataPrimeira || undefined); setDocumento(r.documento); })}
+              <button disabled={ocupado} onClick={() => run(async () => { const r = await originacaoService.formalizar(id, dataPrimeira || undefined, dataAtivacao || undefined); setDocumento(r.documento); })}
                 className="h-[34px] rounded-[8px] px-[14px] text-[12px] font-semibold" style={btn('var(--accent)')}>Formalizar (gerar contrato)</button>
             </div>
           )}

@@ -601,6 +601,13 @@ model Proposta {
   status           StatusProposta     @default(PENDENTE)
   foraParametro    Boolean            @default(false) // exige aprovacao de alcada antes de formalizar
   contratoGeradoId String?            @unique
+  // Jornada do atendimento (doc 02 sec.20, 08/08):
+  planoProtecao      String  @default("essencial") // essencial | protecao | completa (upsell passo 8)
+  adicionalProtecao  Decimal @default(0) @db.Decimal(12, 2) // adicional por PERIODO sobre a parcela base
+  rendaDeclarada     Decimal? @db.Decimal(12, 2) // renda MENSAL declarada na entrevista (passo 9)
+  parecerOperador    String? // texto opcional do operador no envio (passo 10)
+  camada1Status      String? // aprovado | reprovado | indisponivel — transparente ao operador
+  camada1Resultado   Json? // motivos/alertas/dados do birô — visivel so a analise/diretoria
 
   simulacao      Simulacao?          @relation(fields: [simulacaoId], references: [id])
   titular        Titular             @relation(fields: [titularId], references: [id])
@@ -777,6 +784,20 @@ model ContratoInvestimento {
 // Modelos — cobrança e financeiro
 // ============================================================
 
+// Notificacao ao operador (doc 02 sec.20 passo 13): marcos do pos-contrato
+// (assinado / cobranca gerada / entrada paga) aparecem no sino do topo.
+model Notificacao {
+  id        String    @id @default(cuid())
+  titulo    String
+  corpo     String?
+  rota      String? // rota do frontend para abrir ao clicar
+  lidaEm    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([lidaEm])
+  @@map("notificacoes")
+}
+
 model ContratoCredito {
   // Referência CONGELADA da versão do Catálogo na contratação (snapshot — F4).
   // null = contrato legado/pré-catálogo: quitação segue as regras antigas.
@@ -789,6 +810,9 @@ model ContratoCredito {
   snapshotLockedAt     DateTime?
   dataAssinatura       DateTime
   dataPrimeiraParcela  DateTime
+  // Doc 02 sec.20 passo 12: previsao de ativacao/pagamento da entrada — a
+  // cobranca da entrada vence NESTA data (assinatura e imediata, sem data).
+  dataPrevistaAtivacao DateTime?
   valorTotal           Decimal               @db.Decimal(12, 2)
   valorEntrada         Decimal               @default(0) @db.Decimal(12, 2)
   entradaParcelada     Boolean               @default(false) // entrada dividida em intermediárias (Doc 2 §4-A.3)

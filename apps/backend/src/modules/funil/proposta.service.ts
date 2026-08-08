@@ -9,6 +9,7 @@ import {
   StatusProposta,
   ModalidadeContrato,
   PapelTitular,
+  Periodicidade,
 } from '@prisma/client';
 import { promises as fs } from 'fs';
 import { join } from 'path';
@@ -17,6 +18,8 @@ import { PrismaService } from '../../database/prisma.service';
 import { TitularService } from '../titular/titular.service';
 import { ContaService } from '../conta/conta.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
+import { Camada1Service } from '../bureau/camada1.service';
+import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 import {
   CriarPropostaDto,
   AdicionarVinculoDto,
@@ -29,6 +32,7 @@ import {
 } from '@prisma/client';
 
 const cent = (d: Prisma.Decimal): number => reaisParaCentavos(d.toString());
+const reais = (c: number): string => centavosParaReaisString(c);
 // Diretório de uploads (documentos da proposta) — dev/local.
 const UPLOADS_DIR = join(process.cwd(), 'uploads', 'documentos');
 
@@ -47,14 +51,11 @@ const TRANSICOES: Record<string, StatusProposta[]> = {
   CANCELADA: [],
 };
 
-// Documentos obrigatórios por papel (Doc 2 §4-A.5). Principal e secundário exigem
-// o conjunto completo; garantidor não é exigido aqui (entra por ressalva da análise).
-export const DOCS_OBRIGATORIOS: TipoDocumentoProposta[] = [
-  'CNH',
-  'COMPROVANTE_ENDERECO',
-  'COMPROVANTE_RENDA',
-  'RELATORIO_BRICK',
-];
+// Documentos obrigatórios por papel — decisão da homologação 04/08 (doc 02 §20
+// passo 9): SÓ a CNH é obrigatória. Comprovante de endereço e relatório BRIC
+// caíram (não mudam a análise; birô via API). Demais documentos são
+// COMPLEMENTARES opcionais (extrato, contracheque, contrato de locadora…).
+export const DOCS_OBRIGATORIOS: TipoDocumentoProposta[] = ['CNH'];
 const PAPEIS_QUE_EXIGEM_DOCS: PapelTitular[] = ['COMPRADOR_PRINCIPAL', 'COMPRADOR_SECUNDARIO'];
 
 export interface PendenciaDoc {
@@ -73,6 +74,8 @@ export class PropostaService {
     private readonly titular: TitularService,
     private readonly conta: ContaService,
     private readonly aprovacao: AprovacaoService,
+    private readonly camada1: Camada1Service,
+    private readonly catalogoFonte: CatalogoFonteService,
   ) {}
 
   async criar(dto: CriarPropostaDto) {
@@ -152,7 +155,155 @@ export class PropostaService {
         depois: { propostaId: proposta.id, ofertaId: oferta.id },
       },
     });
+
+    // Camada 1 do birô (doc 02 §20 passo 6): roda ao ENVIAR a proposta, de
+    // forma transparente ao operador. Reprovado → proposta nasce REPROVADA com
+    // motivo INTERNO (análise/diretoria); em tela vai só a mensagem neutra.
+    // Birô indisponível não trava: segue com alerta para a análise.
+    const titularCamada1 = await this.prisma.db.titular.findFirst({
+      where: { id: titularId },
+      select: { cpfCnpj: true },
+    });
+    if (titularCamada1) {
+      const r = await this.camada1.avaliar(titularCamada1.cpfCnpj);
+      await this.prisma.db.proposta.update({
+        where: { id: proposta.id },
+        data: {
+          camada1Status: r.status,
+          camada1Resultado: JSON.parse(JSON.stringify(r)) as Prisma.InputJsonValue,
+          ...(r.status === 'reprovado' ? { status: 'REPROVADA' } : {}),
+        },
+      });
+      await this.prisma.db.logAuditoria.create({
+        data: {
+          acao: 'camada1_avaliada',
+          entidade: 'proposta',
+          entidadeId: proposta.id,
+          depois: JSON.parse(JSON.stringify({ status: r.status, motivos: r.motivos, alertas: r.alertas })) as Prisma.InputJsonValue,
+        },
+      });
+    }
     return this.detalhe(proposta.id);
+  }
+
+  // --- Jornada do atendimento (doc 02 §20) ---
+
+  // Passo 8 — opções de proteção para o upsell: adicional POR PERÍODO sobre a
+  // parcela base (o Essencial já está embutido) + diferenças qualitativas.
+  async protecaoOpcoes(propostaId: string) {
+    const p = await this.buscarJornada(propostaId);
+    const base = await this.baseProtecao(p);
+    if (!base) {
+      return { disponivel: false, planoAtual: p.planoProtecao, opcoes: [] };
+    }
+    const { varianteCP, valorAvista, fator } = base;
+    const essencial = await this.catalogoFonte.protecaoPlano(varianteCP, valorAvista, 'essencial');
+    const planos: ('essencial' | 'protecao' | 'completa')[] = ['essencial', 'protecao', 'completa'];
+    const parcelaBase = cent(p.valorParcela) - cent(p.adicionalProtecao);
+    const opcoes = [];
+    for (const plano of planos) {
+      const info = await this.catalogoFonte.protecaoPlano(varianteCP, valorAvista, plano);
+      if (!info || !essencial) continue;
+      const adicional = Math.max(0, Math.round((info.semanalExata - essencial.semanalExata) * fator));
+      opcoes.push({
+        plano,
+        nome: plano === 'essencial' ? 'Essencial' : plano === 'protecao' ? 'Proteção' : 'Completa',
+        cobertura: info.cobertura,
+        adicionalPorPeriodo: adicional, // centavos, na frequência do contrato
+        parcelaResultante: parcelaBase + adicional,
+        atual: p.planoProtecao === plano,
+      });
+    }
+    return { disponivel: opcoes.length > 0, planoAtual: p.planoProtecao, frequencia: (p.frequencia ?? 'SEMANAL').toLowerCase(), opcoes };
+  }
+
+  // Passo 8 — escolha do plano: a parcela da proposta passa a ser base + adicional.
+  async escolherProtecao(propostaId: string, plano: 'essencial' | 'protecao' | 'completa') {
+    const p = await this.buscarJornada(propostaId);
+    this.garantirEditavelJornada(p.status);
+    const base = await this.baseProtecao(p);
+    let adicional = 0;
+    if (base && plano !== 'essencial') {
+      const essencial = await this.catalogoFonte.protecaoPlano(base.varianteCP, base.valorAvista, 'essencial');
+      const escolhido = await this.catalogoFonte.protecaoPlano(base.varianteCP, base.valorAvista, plano);
+      if (essencial && escolhido) {
+        adicional = Math.max(0, Math.round((escolhido.semanalExata - essencial.semanalExata) * base.fator));
+      }
+    }
+    const parcelaBase = cent(p.valorParcela) - cent(p.adicionalProtecao);
+    await this.prisma.db.proposta.update({
+      where: { id: propostaId },
+      data: {
+        planoProtecao: plano,
+        adicionalProtecao: reais(adicional),
+        valorParcela: reais(parcelaBase + adicional),
+      },
+    });
+    await this.prisma.db.logAuditoria.create({
+      data: { acao: 'protecao_escolhida', entidade: 'proposta', entidadeId: propostaId, depois: { plano, adicional } },
+    });
+    return this.detalhe(propostaId);
+  }
+
+  // Passo 10 — envio para análise com renda declarada e parecer opcional do
+  // operador. Valida o documento obrigatório (CNH) antes de enviar.
+  async enviarParaAnalise(propostaId: string, dto: { rendaDeclarada?: number; parecerOperador?: string }) {
+    const p = await this.prisma.db.proposta.findFirst({
+      where: { id: propostaId },
+      include: { vinculos: { include: { titular: { select: { id: true, nome: true, cpfCnpj: true } } } }, documentos: true },
+    });
+    if (!p) throw this.naoEncontrada();
+    if (p.status !== 'PENDENTE') {
+      throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: 'A proposta não está pendente de envio' });
+    }
+    const pendencias = this.calcPendencias(p.vinculos, p.documentos);
+    if (pendencias.length > 0) {
+      throw new UnprocessableEntityException({
+        erro: 'documentos_pendentes',
+        mensagem: `Anexe a CNH de: ${pendencias.map((x) => x.nome).join(', ')}`,
+      });
+    }
+    await this.prisma.db.proposta.update({
+      where: { id: propostaId },
+      data: {
+        status: 'EM_ANALISE',
+        rendaDeclarada: dto.rendaDeclarada !== undefined ? reais(dto.rendaDeclarada) : undefined,
+        parecerOperador: dto.parecerOperador?.trim() || undefined,
+      },
+    });
+    await this.prisma.db.logAuditoria.create({
+      data: { acao: 'proposta_enviada_analise', entidade: 'proposta', entidadeId: propostaId, depois: { rendaDeclarada: dto.rendaDeclarada ?? null, parecer: !!dto.parecerOperador } },
+    });
+    return this.detalhe(propostaId);
+  }
+
+  private garantirEditavelJornada(status: string) {
+    if (!['PENDENTE'].includes(status)) {
+      throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: 'A proposta não está mais em edição' });
+    }
+  }
+
+  private async buscarJornada(id: string) {
+    const p = await this.prisma.db.proposta.findFirst({
+      where: { id },
+      include: {
+        ativo: { select: { varianteCatalogo: true } },
+        simulacao: { select: { valorAvista: true } },
+      },
+    });
+    if (!p) throw this.naoEncontrada();
+    return p;
+  }
+
+  // Base do cálculo da proteção (mesma regra da simulação): valor à vista como
+  // proxy da FIPE + fator de VALOR da frequência (semanal 1, quinzenal 2, mensal 4).
+  private async baseProtecao(p: { ativo: { varianteCatalogo: string }; simulacao: { valorAvista: Prisma.Decimal | null } | null; frequencia: Periodicidade | null }) {
+    const valorAvista = p.simulacao?.valorAvista ? cent(p.simulacao.valorAvista) : 0;
+    if (valorAvista <= 0) return null;
+    const cat = await this.catalogoFonte.compraParcelada(p.ativo.varianteCatalogo ?? 'carro');
+    if (!cat || !cat.protecaoObrigatoria) return null;
+    const fator = p.frequencia === 'MENSAL' ? 4 : p.frequencia === 'QUINZENAL' ? 2 : 1;
+    return { varianteCP: p.ativo.varianteCatalogo ?? 'carro', valorAvista, fator };
   }
 
   // 7.6 — promoção/reconciliação por CPF; garante Conta; vincula lead e simulação.
@@ -451,6 +602,13 @@ export class PropostaService {
       contratoGeradoId: p.contratoGeradoId,
       foraParametro: p.foraParametro,
       aprovacaoForaParametro: aprovacaoFp ? aprovacaoFp.status.toLowerCase() : null,
+      // Jornada (doc 02 §20): camada 1 é NEUTRA para o operador — só o status;
+      // motivos/alertas ficam no Json interno (análise/diretoria).
+      camada1: p.camada1Status,
+      planoProtecao: p.planoProtecao,
+      adicionalProtecao: cent(p.adicionalProtecao),
+      rendaDeclarada: p.rendaDeclarada ? cent(p.rendaDeclarada) : null,
+      parecerOperador: p.parecerOperador,
       // Documentos obrigatórios (Doc 2 §4-A.5) — para a UI exibir pendência e travar avanço.
       documentosObrigatorios: DOCS_OBRIGATORIOS.map((t) => t.toLowerCase()),
       pendenciasDocumentos: pendencias,

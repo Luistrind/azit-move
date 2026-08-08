@@ -73,6 +73,21 @@ export interface PropostaDetalhe {
   pendenciasDocumentos: { titularId: string; papel: string; nome: string; faltando: string[] }[];
   documentosCompletos: boolean;
   itens: { id: string; produtoId: string | null; nome: string; natureza: string; apartado: boolean; credor: string; valor: number; periodicidade: string | null }[];
+  // Jornada do atendimento (doc 02 §20)
+  camada1?: string | null; // aprovado | reprovado | indisponivel — neutro p/ operador
+  planoProtecao?: string;
+  adicionalProtecao?: number;
+  rendaDeclarada?: number | null;
+  parecerOperador?: string | null;
+}
+
+export interface OpcaoProtecao {
+  plano: string;
+  nome: string;
+  cobertura: string | null;
+  adicionalPorPeriodo: number; // centavos, na frequência do contrato
+  parcelaResultante: number;
+  atual: boolean;
 }
 
 export interface Cadastro {
@@ -198,8 +213,24 @@ export const originacaoService = {
     const { data } = await api.post(`/api/v1/propostas/${id}/solicitar-aprovacao-fora-parametro`);
     return data;
   },
-  async formalizar(id: string, dataPrimeiraParcela?: string): Promise<{ contratoId: string; numero: string; status: string; documento: string }> {
-    const { data } = await api.post(`/api/v1/propostas/${id}/formalizar`, dataPrimeiraParcela ? { dataPrimeiraParcela } : {});
+  async formalizar(id: string, dataPrimeiraParcela?: string, dataPrevistaAtivacao?: string): Promise<{ contratoId: string; numero: string; status: string; documento: string }> {
+    const { data } = await api.post(`/api/v1/propostas/${id}/formalizar`, {
+      ...(dataPrimeiraParcela ? { dataPrimeiraParcela } : {}),
+      ...(dataPrevistaAtivacao ? { dataPrevistaAtivacao } : {}),
+    });
+    return data;
+  },
+  // Jornada do atendimento (doc 02 §20): upsell da proteção e envio à análise.
+  async protecaoOpcoes(propostaId: string): Promise<{ disponivel: boolean; planoAtual: string; frequencia?: string; opcoes: OpcaoProtecao[] }> {
+    const { data } = await api.get(`/api/v1/propostas/${propostaId}/protecao-opcoes`);
+    return data;
+  },
+  async escolherProtecao(propostaId: string, plano: string): Promise<PropostaDetalhe> {
+    const { data } = await api.post(`/api/v1/propostas/${propostaId}/protecao`, { plano });
+    return data;
+  },
+  async enviarParaAnalise(propostaId: string, body: { rendaDeclarada?: number; parecerOperador?: string }): Promise<PropostaDetalhe> {
+    const { data } = await api.post(`/api/v1/propostas/${propostaId}/enviar-analise`, body);
     return data;
   },
   async statusContrato(contratoId: string): Promise<{

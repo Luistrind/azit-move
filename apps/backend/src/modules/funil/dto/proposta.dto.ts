@@ -71,3 +71,15 @@ export const registrarParecerSchema = z.object({
   exigeGarantidor: z.boolean().default(false),
 });
 export type RegistrarParecerDto = z.infer<typeof registrarParecerSchema>;
+
+// Jornada do atendimento (doc 02 §20): upsell da proteção e envio para análise.
+export const escolherProtecaoSchema = z.object({
+  plano: z.enum(['essencial', 'protecao', 'completa']),
+});
+export type EscolherProtecaoDto = z.infer<typeof escolherProtecaoSchema>;
+
+export const enviarAnaliseSchema = z.object({
+  rendaDeclarada: z.coerce.number().int().min(0).optional(), // centavos, MENSAL
+  parecerOperador: z.string().trim().max(2000).optional(),
+});
+export type EnviarAnaliseDto = z.infer<typeof enviarAnaliseSchema>;

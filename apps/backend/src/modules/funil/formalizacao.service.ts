@@ -19,6 +19,7 @@ import { ContratoService } from '../contrato/contrato.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { PropostaService } from './proposta.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
+import { NotificacaoService } from '../notificacao/notificacao.service';
 
 const cent = (d: Prisma.Decimal): number => reaisParaCentavos(d.toString());
 const DIA_MS = 24 * 60 * 60 * 1000;
@@ -88,10 +89,11 @@ export class FormalizacaoService {
     private readonly asaas: AsaasService,
     private readonly proposta: PropostaService,
     private readonly catalogoFonte: CatalogoFonteService,
+    private readonly notificacao: NotificacaoService,
   ) {}
 
   // 7.10 — congela snapshot, gera documento, cria o contrato.
-  async formalizar(propostaId: string, parametros?: { dataPrimeiraParcela?: Date }) {
+  async formalizar(propostaId: string, parametros?: { dataPrimeiraParcela?: Date; dataPrevistaAtivacao?: Date }) {
     // Gate da Análise de Cadastro (Requisitos v0.2 RF-22): se a proposta tem análise,
     // só formaliza com status LIBERADO_PARA_FORMALIZACAO. Propostas sem análise seguem
     // o fluxo legado (parecer) — transição suave, sem propostas reais no banco.
@@ -189,6 +191,42 @@ export class FormalizacaoService {
       parametros?.dataPrimeiraParcela && parametros.dataPrimeiraParcela > dataAssinatura
         ? parametros.dataPrimeiraParcela
         : new Date(dataAssinatura.getTime() + passoDias * DIA_MS);
+
+    // Doc 02 §20 passo 12: DUAS datas do operador — previsão de ativação
+    // (pagamento da entrada; vira o vencimento da cobrança) e 1º vencimento.
+    // ⚠️ Limites PROVISÓRIOS (Regra 12) até as chaves entrarem nos parâmetros
+    // do produto no Catálogo: ativação até 7 dias da assinatura; 1º vencimento
+    // até 45 dias. Assinatura é imediata — não existe data de assinatura.
+    const LIMITE_ATIVACAO_DIAS = 7;
+    const LIMITE_PRIMEIRO_VENCIMENTO_DIAS = 45;
+    const dataPrevistaAtivacao = parametros?.dataPrevistaAtivacao ?? null;
+    if (dataPrevistaAtivacao) {
+      const dias = Math.ceil((dataPrevistaAtivacao.getTime() - dataAssinatura.getTime()) / DIA_MS);
+      if (dias < 0) {
+        throw new UnprocessableEntityException({ erro: 'data_invalida', mensagem: 'A previsão de ativação não pode ser anterior à assinatura' });
+      }
+      if (dias > LIMITE_ATIVACAO_DIAS) {
+        throw new UnprocessableEntityException({
+          erro: 'data_fora_do_limite',
+          mensagem: `A previsão de ativação deve ficar até ${LIMITE_ATIVACAO_DIAS} dias após a assinatura`,
+        });
+      }
+    }
+    {
+      const diasPrimeira = Math.ceil((dataPrimeira.getTime() - dataAssinatura.getTime()) / DIA_MS);
+      if (diasPrimeira > LIMITE_PRIMEIRO_VENCIMENTO_DIAS) {
+        throw new UnprocessableEntityException({
+          erro: 'data_fora_do_limite',
+          mensagem: `O primeiro vencimento deve ficar até ${LIMITE_PRIMEIRO_VENCIMENTO_DIAS} dias após a assinatura`,
+        });
+      }
+      if (dataPrevistaAtivacao && dataPrimeira <= dataPrevistaAtivacao) {
+        throw new UnprocessableEntityException({
+          erro: 'data_invalida',
+          mensagem: 'O primeiro vencimento precisa ser depois da previsão de ativação (pagamento da entrada)',
+        });
+      }
+    }
 
     // Carrinho: produtos apartados (seguro) viram contratos próprios; os demais
     // entram como itens recorrentes na cesta do contrato do veículo (§4.8).
@@ -352,6 +390,9 @@ export class FormalizacaoService {
     });
     const snapshot = {
       contrato: { numero: novo.numero, valorTotal, valorEntrada, numeroParcelas: proposta.numeroParcelas, valorParcela },
+      // Doc 02 §20 passo 8: plano de proteção escolhido no upsell (Essencial é
+      // o embutido; o adicional já está DENTRO da parcela acima).
+      protecao: { plano: proposta.planoProtecao, adicionalPorPeriodo: cent(proposta.adicionalProtecao) },
       cliente: { nome: proposta.titular.nome, cpfCnpj: proposta.titular.cpfCnpj, whatsapp: proposta.titular.whatsapp },
       ativo: { descricao: proposta.ativo.descricao, chassi: proposta.ativo.chassi, placa: proposta.ativo.placa },
       papeis: proposta.vinculos.map((v) => ({ papel: v.papel.toLowerCase(), nome: v.titular.nome, cpfCnpj: v.titular.cpfCnpj })),
@@ -376,6 +417,7 @@ export class FormalizacaoService {
       data: {
         snapshotJson: snapshot as unknown as Prisma.InputJsonValue,
         snapshotLockedAt: new Date(),
+        dataPrevistaAtivacao,
         catalogoVersaoRef: catContratacao
           ? JSON.stringify({
               variante: varianteContratada,
@@ -470,6 +512,18 @@ export class FormalizacaoService {
       where: { id: contratoId },
       data: parte === 'titular' ? { assinaturaTitularEm: new Date() } : { assinaturaAzitEm: new Date() },
     });
+    // Notificação do marco (doc 02 §20 passo 13): todos assinaram.
+    const dep = await this.prisma.db.contratoCredito.findFirst({
+      where: { id: contratoId },
+      select: { numero: true, assinaturaTitularEm: true, assinaturaAzitEm: true },
+    });
+    if (dep?.assinaturaTitularEm && dep.assinaturaAzitEm) {
+      await this.notificacao.emitir(
+        `Contrato ${dep.numero} assinado por todos`,
+        'Titular e Azit assinaram — o próximo passo é a cobrança da entrada.',
+        `/contratos/${contratoId}`,
+      );
+    }
     return this.statusContrato(contratoId);
   }
 
@@ -516,10 +570,16 @@ export class FormalizacaoService {
     // nas faturas seguintes como intermediárias (Doc 2 §4-A.3).
     const valorEntrada = cent(contrato.valorEntrada);
     const valorAVista = contrato.entradaParcelada ? Math.round(valorEntrada * 0.6) : valorEntrada;
+    // Doc 02 §20 passo 12: a entrada vence na data PREVISTA DE ATIVAÇÃO
+    // combinada com o cliente; sem data combinada, cai no padrão de 3 dias.
+    const vencimentoEntrada =
+      contrato.dataPrevistaAtivacao && contrato.dataPrevistaAtivacao.getTime() > Date.now() - DIA_MS
+        ? contrato.dataPrevistaAtivacao
+        : new Date(Date.now() + 3 * DIA_MS);
     const cobranca = await this.asaas.criarCobranca({
       externalReference: `ativacao:${contrato.id}`,
       valor: valorAVista,
-      vencimento: new Date(Date.now() + 3 * DIA_MS),
+      vencimento: vencimentoEntrada,
       descricao: `Entrada do contrato ${contrato.numero}${contrato.entradaParcelada ? ' (à vista 60%)' : ''}`,
       customerId,
       multaPct: Number(contrato.taxaMultaAtraso.toString()),
@@ -529,6 +589,11 @@ export class FormalizacaoService {
       where: { id: contrato.id },
       data: { status: 'AGUARDANDO_PAGAMENTO_INICIAL' },
     });
+    await this.notificacao.emitir(
+      `Cobrança da entrada gerada — contrato ${contrato.numero}`,
+      `R$ ${centavosParaReaisString(valorAVista)} com vencimento em ${vencimentoEntrada.toLocaleDateString('pt-BR')}. O pagamento ativa o contrato automaticamente.`,
+      `/contratos/${contrato.id}`,
+    );
     return {
       contratoId: contrato.id,
       numero: contrato.numero,
@@ -571,6 +636,11 @@ export class FormalizacaoService {
     for (const c of pacote) {
       await this.contrato.ativarComCronograma(c.id);
     }
+    await this.notificacao.emitir(
+      `Entrada paga — contrato ${contrato.numero} ativado`,
+      `Cronograma gerado e ${pacote.length > 1 ? `${pacote.length} contratos do pacote ativados` : 'contrato ativado'} automaticamente (dia zero).`,
+      `/contratos/${contrato.id}`,
+    );
     this.logger.log(`Pacote ativado (${pacote.length} contrato(s)): entrada paga → cronogramas gerados.`);
     return { contratoId: contrato.id, numero: contrato.numero, status: 'ativo', cronogramaGerado: true, contratosAtivados: pacote.length };
   }

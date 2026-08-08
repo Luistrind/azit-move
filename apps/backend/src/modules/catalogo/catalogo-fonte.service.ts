@@ -265,6 +265,18 @@ export class CatalogoFonteService {
   // existir campo FIPE no cadastro). Retorna a contribuição SEMANAL exata (mensal
   // ÷ 4, fator de valor) em centavos, ou null se o produto PV não existir.
   async protecaoEssencialSemanalExata(varianteCP: string, baseCentavos: number): Promise<number | null> {
+    const p = await this.protecaoPlano(varianteCP, baseCentavos, 'essencial');
+    return p?.semanalExata ?? null;
+  }
+
+  // Contribuição de um PLANO da PV (essencial | protecao | completa) para a
+  // variante do ativo — base do upsell (doc 02 §20 passo 8). Retorna a semanal
+  // EXATA (mensal ÷ 4, fator de valor) + a cobertura qualitativa do plano.
+  async protecaoPlano(
+    varianteCP: string,
+    baseCentavos: number,
+    plano: 'essencial' | 'protecao' | 'completa',
+  ): Promise<{ semanalExata: number; mensal: number; cobertura: string | null } | null> {
     if (baseCentavos <= 0) return null;
     const pv = await this.protecaoVeicular();
     if (!pv) return null;
@@ -275,11 +287,17 @@ export class CatalogoFonteService {
       pv.variantes.find((v) => v.chave.startsWith(chavePv.slice(0, 4))) ??
       pv.variantes[0];
     if (!variante) return null;
-    const baseFipe = Math.round(baseCentavos * num(pv.parametros.ofertaEssencialTaxaFipe));
+    const prefixo = plano === 'essencial' ? 'ofertaEssencial' : plano === 'protecao' ? 'ofertaProtecao' : 'ofertaCompleta';
+    const baseFipe = Math.round(baseCentavos * num(pv.parametros[`${prefixo}TaxaFipe`]));
     const mensal =
       Math.max(num(variante.parametros.contribuicaoMinimaMensal), baseFipe) +
       num(pv.parametros.taxaAdministracaoMensal) +
-      num(pv.parametros.ofertaEssencialAssistencia);
-    return mensal / FATORES_CATALOGO.precificacaoSemanal;
+      num(pv.parametros[`${prefixo}Assistencia`]);
+    const cobertura = pv.parametros[`${prefixo}Cobertura`];
+    return {
+      semanalExata: mensal / FATORES_CATALOGO.precificacaoSemanal,
+      mensal,
+      cobertura: typeof cobertura === 'string' ? cobertura : null,
+    };
   }
 }
