@@ -26,7 +26,10 @@ const participanteSchema = z.object({
 
 const consultaSchema = z.object({
   titularId: z.string().min(1),
-  tipo: z.enum(['camada1', 'score_quod', 'restritivos']),
+  // Camada 1 NÃO entra aqui (decisão 08/08): ela é AUTOMÁTICA — chega no envio
+  // da proposta ou pelo botão "Repetir Camada 1 no birô". Manual é só a
+  // transcrição dos portais Quod (score) e Boa Vista (restritivos).
+  tipo: z.enum(['score_quod', 'restritivos']),
   fornecedor: z.string().min(2),
   protocolo: z.string().optional(),
   situacao: z.enum(['concluida', 'falha']),

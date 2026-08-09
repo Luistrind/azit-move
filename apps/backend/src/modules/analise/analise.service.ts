@@ -463,6 +463,21 @@ export class AnaliseService implements OnModuleInit {
     if (dto.situacao === 'falha' && !dto.motivoFalha) {
       throw new UnprocessableEntityException({ erro: 'motivo_obrigatorio', mensagem: 'Falha de consulta exige motivo (RF-10)' });
     }
+    // Consulta concluída SEM os dados que a política consome não entra na trilha
+    // (correção 08/08: registro vazio satisfazia o motor em silêncio).
+    if (dto.situacao === 'concluida' && dto.tipo === 'score_quod' && typeof dto.resultado?.score !== 'number') {
+      throw new UnprocessableEntityException({ erro: 'score_obrigatorio', mensagem: 'Informe o score retornado pela Quod — é ele que entra no critério COC-02' });
+    }
+    if (
+      dto.situacao === 'concluida' &&
+      dto.tipo === 'restritivos' &&
+      (typeof dto.resultado?.restritivosFinanceiros !== 'number' || typeof dto.resultado?.restritivosNaoFinanceiros !== 'number')
+    ) {
+      throw new UnprocessableEntityException({
+        erro: 'restritivos_obrigatorios',
+        mensagem: 'Informe os valores de restritivos financeiros e não financeiros (use 0 quando nada constar) — eles entram nos critérios COC-03/04',
+      });
+    }
     const tipo = dto.tipo === 'camada1' ? 'CAMADA1' : dto.tipo === 'score_quod' ? 'SCORE_QUOD' : 'RESTRITIVOS';
     const tentativas =
       (await this.prisma.db.consultaExterna.count({ where: { analiseId, titularId: dto.titularId, tipo } })) + 1;
@@ -753,10 +768,18 @@ export class AnaliseService implements OnModuleInit {
 
   private avaliar(a: Awaited<ReturnType<AnaliseService['carregar']>>): ResultadoAnalise {
     const v = a.parametroVersao;
+    // Consulta CONCLUÍDA sem os dados que a política consome NÃO conta como
+    // registrada (correção 08/08: registro vazio satisfazia o motor em silêncio).
+    const temDados = (tipo: 'CAMADA1' | 'SCORE_QUOD' | 'RESTRITIVOS', resultado: unknown): boolean => {
+      const r = (resultado ?? {}) as Record<string, unknown>;
+      if (tipo === 'SCORE_QUOD') return typeof r.score === 'number';
+      if (tipo === 'RESTRITIVOS') return typeof r.restritivosFinanceiros === 'number' && typeof r.restritivosNaoFinanceiros === 'number';
+      return true; // CAMADA1: o registro automático sempre carrega o retorno
+    };
     const resumoConsulta = (titularId: string, tipo: 'CAMADA1' | 'SCORE_QUOD' | 'RESTRITIVOS') => {
       const doTipo = a.consultas.filter((c) => c.titularId === titularId && c.tipo === tipo);
       const concluidaValida = doTipo.find(
-        (c) => c.situacao === 'CONCLUIDA' && this.consultaValida(c.dataConsulta, v.validadeConsultaDias),
+        (c) => c.situacao === 'CONCLUIDA' && this.consultaValida(c.dataConsulta, v.validadeConsultaDias) && temDados(tipo, c.resultado),
       );
       return {
         resumo: { registrada: !!concluidaValida, falhou: !concluidaValida && doTipo.some((c) => c.situacao === 'FALHA') },
