@@ -1204,10 +1204,17 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 > assinatura → cobrança da entrada (vence na data prevista de ativação) → pagamento ativa →
 > **notificações ao operador** a cada marco (assinado / cobrança gerada / paga).
 >
-> **Política da Camada 1 (BigDataCorp — decisão 08/08: a PLATAFORMA é uma só, muda o
-> DATASET por camada; datasets da própria BigDataCorp entram na franquia/tabela, e só as
-> chamadas de PARCEIROS via Marketplace — ex.: score — são pagas à parte e seguem manuais
-> até a contratação):** datasets da Camada 1 = `basic_data` (identidade/situação/óbito) +
+> **Política das camadas (BigDataCorp — decisão 08/08: a PLATAFORMA é uma só, muda o
+> DATASET por camada; o MARKETPLACE faz parte dela — foi o motivo da escolha — acessível
+> com o MESMO token, on-demand, pago por chamada e FORA da franquia de 500/mês):**
+> - **Camada 2 pelo sistema**: Score Quod = `partner_quod_credit_score_person` e
+>   Restritivos Quod = `partner_quod_credit_risk_details_person` (~R$ 2,41/consulta cada) —
+>   botões PAGOS no dossiê, com confirmação de custo; resultado cai nos critérios
+>   COC-02/03/04. Transcrição manual do portal vira PLANO B (birô fora do ar).
+> - **Checks do participante = só o que coletamos**: identidade (conferida contra o nome
+>   oficial da Camada 1), CNH (arquivo na proposta), renda parcial e processos.
+>   "Atividade comprovada" (COM-08) e "RG alternativo" saem — não coletamos esses docs;
+>   atividade é julgamento do analista via entrevista/complementares. datasets da Camada 1 = `basic_data` (identidade/situação/óbito) +
 > `financial_data` (renda presumida em FAIXAS de SM + patrimônio — informação, nunca
 > eliminatória) + `processes` (processos judiciais — ALERTA, nunca eliminatório).
 > - Momento: DEPOIS da escolha da oferta (economiza franquia de 500/mês; parcela já existe).

@@ -144,6 +144,20 @@ export class AnaliseController {
     return this.analise.repetirCamada1(id, user.id);
   }
 
+  // Camada 2 pelo sistema: score/restritivos Quod via Marketplace da BigDataCorp
+  // (pago por chamada, fora da franquia — decisão 08/08).
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('analises/:id/consultar-biro')
+  @HttpCode(201)
+  consultarBiro(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(z.object({ tipo: z.enum(['score_quod', 'restritivos']), titularId: z.string().min(1).optional() })))
+    dto: { tipo: 'score_quod' | 'restritivos'; titularId?: string },
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.analise.consultarBiroCamada2(id, dto, user.id);
+  }
+
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('analises/:id/transicao')
   @HttpCode(200)

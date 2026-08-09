@@ -14,6 +14,7 @@ import {
 import { PrismaService } from '../../database/prisma.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { Camada1Service } from '../bureau/camada1.service';
+import { BigDataCorpService } from '../bureau/bigdatacorp.service';
 
 // ============================================================
 // Análise de Cadastro — Fase 1 (doc 02 §14; Requisitos v0.2).
@@ -48,6 +49,7 @@ export class AnaliseService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly aprovacao: AprovacaoService,
     private readonly camada1: Camada1Service,
+    private readonly bigDataCorp: BigDataCorpService,
   ) {}
 
   // COCAD via motor de aprovação: aprovado → APROVADO_COCAD; reprovado → volta a
@@ -266,6 +268,78 @@ export class AnaliseService implements OnModuleInit {
       },
       usuarioId,
     );
+  }
+
+  // Camada 2 PELO SISTEMA (decisão 08/08: a BigDataCorp É o marketplace — score
+  // e restritivos Quod são datasets on-demand da MESMA API, pagos por chamada e
+  // fora da franquia). Registra na trilha oficial nos MESMOS campos que o motor
+  // consome; a transcrição manual vira plano B.
+  async consultarBiroCamada2(
+    analiseId: string,
+    dto: { tipo: 'score_quod' | 'restritivos'; titularId?: string },
+    usuarioId?: string,
+  ) {
+    const a = await this.carregar(analiseId);
+    this.garantirNaoFinal(a.status);
+    const alvo = dto.titularId
+      ? a.participantes.find((p) => p.titularId === dto.titularId)
+      : a.participantes.find((p) => p.papel === 'COMPRADOR_PRINCIPAL');
+    if (!alvo) throw new UnprocessableEntityException({ erro: 'participante_invalido', mensagem: 'Participante não encontrado na análise' });
+    const titular = await this.prisma.db.titular.findFirst({ where: { id: alvo.titularId }, select: { cpfCnpj: true } });
+    const cpf = (titular?.cpfCnpj ?? '').replace(/\D/g, '');
+
+    if (dto.tipo === 'score_quod') {
+      let r;
+      try {
+        r = await this.bigDataCorp.scoreQuod(cpf);
+      } catch (e) {
+        return this.registrarConsulta(analiseId, {
+          titularId: alvo.titularId, tipo: 'score_quod', fornecedor: 'Quod (via BigDataCorp Marketplace)',
+          situacao: 'falha', motivoFalha: `Marketplace indisponível: ${(e as Error).message}`,
+        }, usuarioId);
+      }
+      return this.registrarConsulta(analiseId, {
+        titularId: alvo.titularId,
+        tipo: 'score_quod',
+        fornecedor: r.simulado ? 'Quod via BigDataCorp (simulado)' : 'Quod (via BigDataCorp Marketplace)',
+        protocolo: r.protocolo ?? undefined,
+        situacao: typeof r.score === 'number' ? 'concluida' : 'falha',
+        motivoFalha: typeof r.score === 'number' ? undefined : 'Birô não retornou o score — ver payload na trilha',
+        resultado: typeof r.score === 'number'
+          ? { score: r.score, simulado: r.simulado, resumo: r.capacidadePagamento !== null ? `Capacidade de pagamento ${r.capacidadePagamento}/100` : undefined }
+          : undefined,
+      }, usuarioId);
+    }
+
+    let r;
+    try {
+      r = await this.bigDataCorp.restritivosQuod(cpf);
+    } catch (e) {
+      return this.registrarConsulta(analiseId, {
+        titularId: alvo.titularId, tipo: 'restritivos', fornecedor: 'Quod (via BigDataCorp Marketplace)',
+        situacao: 'falha', motivoFalha: `Marketplace indisponível: ${(e as Error).message}`,
+      }, usuarioId);
+    }
+    const ok = r.endividamentoTotal !== null || r.apontamentosAtivos !== null;
+    return this.registrarConsulta(analiseId, {
+      titularId: alvo.titularId,
+      tipo: 'restritivos',
+      fornecedor: r.simulado ? 'Quod via BigDataCorp (simulado)' : 'Quod (via BigDataCorp Marketplace)',
+      protocolo: r.protocolo ?? undefined,
+      situacao: ok ? 'concluida' : 'falha',
+      motivoFalha: ok ? undefined : 'Birô não retornou os restritivos — ver payload na trilha',
+      resultado: ok
+        ? {
+            // Mapeamento p/ critérios da política (⚠️ calibrar com 1º retorno real):
+            // financeiros = endividamento negativado; não financeiros = protestos.
+            restritivosFinanceiros: r.endividamentoTotal ?? 0,
+            restritivosNaoFinanceiros: r.protestosValor ?? 0,
+            protestoChequeExecucao: (r.protestosQuantidade ?? 0) > 0,
+            simulado: r.simulado,
+            resumo: `${r.apontamentosAtivos ?? 0} apontamento(s) ativo(s) · ${r.protestosQuantidade ?? 0} protesto(s)`,
+          }
+        : undefined,
+    }, usuarioId);
   }
 
   // Listagem para a fila de análises (menu Análise de Cadastro).
@@ -821,7 +895,10 @@ export class AnaliseService implements OnModuleInit {
         // Decisão 08/08: autorização de consulta é VERBAL (sem instrumento no
         // sistema) — o critério COM-05 do motor fica permanentemente satisfeito.
         autorizacaoRegistrada: true,
-        atividadeComprovada: p.atividadeComprovada,
+        // Decisão 08/08: comprovante de atividade NÃO é coletado (porta = CNH +
+        // complementares) — COM-08 satisfeito por definição; a atividade é
+        // avaliada pela entrevista/complementares no julgamento do analista.
+        atividadeComprovada: true,
         rendaApurada: p.rendaApurada !== null ? cent(p.rendaApurada) : null,
         rendaParcialmenteComprovada: p.rendaParcialmenteComprovada,
         scoreQuod: rScore?.score ?? null,

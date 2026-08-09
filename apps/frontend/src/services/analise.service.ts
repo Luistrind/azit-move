@@ -74,6 +74,11 @@ export const analiseService = {
     const { data } = await api.post<DossieAnalise>(`/api/v1/analises/${id}/camada1`, {});
     return data;
   },
+  // Camada 2 via Marketplace da BigDataCorp (pago por chamada, fora da franquia).
+  async consultarBiro(id: string, tipo: 'score_quod' | 'restritivos', titularId?: string): Promise<DossieAnalise> {
+    const { data } = await api.post<DossieAnalise>(`/api/v1/analises/${id}/consultar-biro`, { tipo, titularId });
+    return data;
+  },
   async registrarConsulta(id: string, body: Record<string, unknown>): Promise<DossieAnalise> {
     const { data } = await api.post(`/api/v1/analises/${id}/consultas`, body);
     return data;

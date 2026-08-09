@@ -33,6 +33,28 @@ export interface DadosBasicosPessoa {
 
 const URL_PESSOAS = 'https://plataforma.bigdatacorp.com.br/pessoas';
 const DATASETS_CAMADA1 = 'basic_data,financial_data,processes';
+// Camada 2 — MARKETPLACE da própria plataforma (mesma API/token; pago por
+// chamada, FORA da franquia de 500/mês — motivo da escolha da BigDataCorp):
+const DATASET_SCORE_QUOD = 'partner_quod_credit_score_person'; // ~R$ 2,41/consulta
+const DATASET_RESTRITIVOS_QUOD = 'partner_quod_credit_risk_details_person'; // ~R$ 2,41/consulta
+
+export interface ScoreQuodRetorno {
+  simulado: boolean;
+  score: number | null; // 300–1000
+  capacidadePagamento: number | null; // 0–100
+  protocolo: string | null;
+  bruto?: unknown;
+}
+
+export interface RestritivosQuodRetorno {
+  simulado: boolean;
+  apontamentosAtivos: number | null;
+  endividamentoTotal: number | null; // centavos
+  protestosQuantidade: number | null;
+  protestosValor: number | null; // centavos
+  protocolo: string | null;
+  bruto?: unknown;
+}
 
 @Injectable()
 export class BigDataCorpService {
@@ -125,6 +147,77 @@ export class BigDataCorpService {
       protocolo: corpo.QueryId ?? null,
       bruto: { basic, financial: fin, processes: proc },
     };
+  }
+
+  // Camada 2 — Score Quod via Marketplace (pago por chamada, fora da franquia).
+  async scoreQuod(cpf: string): Promise<ScoreQuodRetorno> {
+    if (!this.configurado) {
+      this.logger.warn('BigDataCorp SEM credenciais — score Quod SIMULADO');
+      return { simulado: true, score: 650, capacidadePagamento: 70, protocolo: `sim_score_${cpf.slice(-4)}` };
+    }
+    const corpo = await this.consultar(cpf, DATASET_SCORE_QUOD);
+    const r0 = (corpo.Result?.[0] ?? {}) as Record<string, unknown>;
+    // Nome do bloco varia por parceiro — varremos o Result por chaves conhecidas.
+    const bloco = this.acharBloco(r0, ['Score', 'QuodScore', 'CreditScore']) ?? {};
+    const num = (v: unknown) => (typeof v === 'number' ? v : null);
+    return {
+      simulado: false,
+      score: num(bloco.Score) ?? num(r0.Score),
+      capacidadePagamento: num(bloco.PaymentCapacityScore) ?? num(bloco.PaymentCommitmentScore),
+      protocolo: corpo.QueryId ?? null,
+      bruto: r0,
+    };
+  }
+
+  // Camada 2 — Restritivos Quod via Marketplace (pago por chamada).
+  async restritivosQuod(cpf: string): Promise<RestritivosQuodRetorno> {
+    if (!this.configurado) {
+      this.logger.warn('BigDataCorp SEM credenciais — restritivos Quod SIMULADOS');
+      return {
+        simulado: true, apontamentosAtivos: 0, endividamentoTotal: 0,
+        protestosQuantidade: 0, protestosValor: 0, protocolo: `sim_restr_${cpf.slice(-4)}`,
+      };
+    }
+    const corpo = await this.consultar(cpf, DATASET_RESTRITIVOS_QUOD);
+    const r0 = (corpo.Result?.[0] ?? {}) as Record<string, unknown>;
+    const bloco = this.acharBloco(r0, ['CreditRiskDetails', 'QuodCreditRisk', 'NegativeData']) ?? r0;
+    const num = (v: unknown) => (typeof v === 'number' ? v : null);
+    // ⚠️ Mapeamento defensivo (nomes conforme doc; calibrar com o 1º retorno
+    // real — o payload bruto fica na trilha para isso).
+    const reais = (v: unknown) => (typeof v === 'number' ? Math.round(v * 100) : null);
+    return {
+      simulado: false,
+      apontamentosAtivos: num(bloco.ActiveNegativeAppointments) ?? num(bloco.TotalActiveAppointments),
+      endividamentoTotal: reais(bloco.TotalIndebtedness) ?? reais(bloco.TotalDebtAmount),
+      protestosQuantidade: num(bloco.TotalProtests) ?? num(bloco.ProtestsCount),
+      protestosValor: reais(bloco.TotalProtestsValue) ?? reais(bloco.ProtestsValue),
+      protocolo: corpo.QueryId ?? null,
+      bruto: r0,
+    };
+  }
+
+  private async consultar(cpf: string, datasets: string) {
+    const resp = await fetch(URL_PESSOAS, {
+      method: 'POST',
+      headers: {
+        AccessToken: process.env.BIGDATACORP_ACCESS_TOKEN as string,
+        TokenId: process.env.BIGDATACORP_TOKEN_ID as string,
+        accept: 'application/json',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ q: `doc{${cpf}}`, Datasets: datasets }),
+    });
+    if (!resp.ok) throw new Error(`BigDataCorp respondeu HTTP ${resp.status}`);
+    return (await resp.json()) as { QueryId?: string; Result?: Record<string, unknown>[] };
+  }
+
+  // Localiza o bloco do parceiro no Result (a chave varia por dataset/parceiro).
+  private acharBloco(r0: Record<string, unknown>, candidatas: string[]): Record<string, unknown> | null {
+    for (const c of candidatas) {
+      const v = r0[c];
+      if (v && typeof v === 'object') return v as Record<string, unknown>;
+    }
+    return null;
   }
 
   private idadeDe(iso: string): number | null {

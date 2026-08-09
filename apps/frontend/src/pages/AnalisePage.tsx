@@ -205,16 +205,38 @@ export function AnalisePage() {
           <div className="mb-[8px] flex flex-wrap items-center justify-between gap-[8px]">
             <span className="font-display text-[13px] font-bold">Consultas registradas</span>
             {!final && (
-              <button
-                className={btnS}
-                disabled={ocupado}
-                onClick={() => {
-                  if (!window.confirm('Repetir a consulta da Camada 1 no birô agora? Com credenciais reais isso consome 1 consulta da franquia.')) return;
-                  void acao(() => analiseService.repetirCamada1(d.id), 'Consulta da Camada 1 repetida no birô.');
-                }}
-              >
-                Repetir Camada 1 no birô
-              </button>
+              <span className="flex flex-wrap gap-[6px]">
+                <button
+                  className={btnS}
+                  disabled={ocupado}
+                  onClick={() => {
+                    if (!window.confirm('Repetir a consulta da Camada 1 no birô agora? Consome consultas da franquia (3 datasets).')) return;
+                    void acao(() => analiseService.repetirCamada1(d.id), 'Consulta da Camada 1 repetida no birô.');
+                  }}
+                >
+                  Repetir Camada 1 no birô
+                </button>
+                <button
+                  className={btnS}
+                  disabled={ocupado}
+                  onClick={() => {
+                    if (!window.confirm('Consultar o SCORE Quod via Marketplace da BigDataCorp?\n\nEsta chamada é PAGA (~R$ 2,41) e fica FORA da franquia gratuita.')) return;
+                    void acao(() => analiseService.consultarBiro(d.id, 'score_quod'), 'Score Quod consultado no birô.');
+                  }}
+                >
+                  Consultar Score Quod (pago)
+                </button>
+                <button
+                  className={btnS}
+                  disabled={ocupado}
+                  onClick={() => {
+                    if (!window.confirm('Consultar os RESTRITIVOS Quod via Marketplace da BigDataCorp?\n\nEsta chamada é PAGA (~R$ 2,41) e fica FORA da franquia gratuita.')) return;
+                    void acao(() => analiseService.consultarBiro(d.id, 'restritivos'), 'Restritivos Quod consultados no birô.');
+                  }}
+                >
+                  Consultar Restritivos Quod (pago)
+                </button>
+              </span>
             )}
           </div>
           {d.consultas.map((c) => {
@@ -418,11 +440,13 @@ function Participante({ d, p, ocupado, acao, final }: { d: DossieAnalise; p: Par
               rendaApurada: ra ? reaisParaCentavos(ra) : null,
               ...(just ? { justificativaRendaApurada: just } : {}),
             }), 'Rendas salvas.')}>Salvar rendas</button>
+          {/* Decisão 08/08: só checks do que COLETAMOS — CNH (arquivo na proposta),
+              identidade (conferida contra o nome oficial da Camada 1), renda
+              parcial e processos (julgamento do alerta do birô). "Atividade
+              comprovada" e "RG alternativo" saíram: não coletamos esses docs. */}
           {[
-            ['identidadeValidada', 'Identidade validada', p.identidadeValidada],
-            ['cnhValida', 'CNH válida', p.cnhValida],
-            ['documentoAlternativo', 'RG (doc. alternativo)', p.documentoAlternativo],
-            ['atividadeComprovada', 'Atividade comprovada', p.atividadeComprovada],
+            ['identidadeValidada', 'Identidade validada (confira o nome oficial na consulta Camada 1)', p.identidadeValidada],
+            ['cnhValida', 'CNH válida (arquivo em Documentos da proposta)', p.cnhValida],
             ['rendaParcialmenteComprovada', 'Renda parcial', p.rendaParcialmenteComprovada],
             ['processosRelevantes', 'Processos relevantes', p.processosRelevantes],
           ].map(([campo, rotulo, marcado]) => (
@@ -453,14 +477,13 @@ function ConsultaForm({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean
 
   return (
     <div className={card}>
-      <div className="mb-[4px] font-display text-[13px] font-bold">Transcrever consulta de birô parceiro</div>
+      <div className="mb-[4px] font-display text-[13px] font-bold">Transcrever consulta manualmente (plano B)</div>
       <div className="mb-[10px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
-        A <b>Camada 1</b> é automática pela plataforma BigDataCorp (dados cadastrais, renda presumida e
-        processos judiciais — chega com o envio da proposta ou pelo botão "Repetir Camada 1 no birô").
-        Já <b>score</b> e <b>restritivos</b> são consultas de birôs PARCEIROS via Marketplace, pagas por
-        chamada e ainda não contratadas — até lá, consulte o portal do parceiro e transcreva o retorno
-        aqui. Os valores alimentam os <b>Critérios da política</b> logo abaixo: score mínimo {`(COC-02)`},
-        restritivos {`(COC-03/04)`}.
+        O caminho normal é pelo SISTEMA, no quadro "Consultas registradas": a <b>Camada 1</b> chega
+        sozinha (envio da proposta ou "Repetir no birô") e <b>score/restritivos Quod</b> saem pelos
+        botões pagos do Marketplace da BigDataCorp. Use este formulário apenas como plano B — birô fora
+        do ar ou consulta feita direto no portal. Os valores alimentam os <b>Critérios da política</b>:
+        score mínimo {`(COC-02)`}, restritivos {`(COC-03/04)`}.
       </div>
       <div className="grid grid-cols-2 gap-[8px] sm:grid-cols-4">
         <label className="flex flex-col gap-[2px] text-[11px] font-semibold">Participante
