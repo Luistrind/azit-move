@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '@azit/utils';
 import { analiseService, DossieAnalise, ParticipanteAnalise } from '../services/analise.service';
+import { originacaoService } from '../services/originacao.service';
 import { reaisParaCentavos } from '../lib/valor';
 import { rotuloStatus } from '../lib/rotulos';
 import { Modal } from '../components/Modal';
@@ -20,6 +21,18 @@ const card = 'rounded-[12px] border border-[var(--border)] bg-[var(--surface)] p
 
 const SIT_COR: Record<string, string> = { alcada: '#1c7a3d', complemento: '#b07000', cocad: '#b03030' };
 const SIT_ROTULO: Record<string, string> = { alcada: 'Conforme', complemento: 'Pede complemento', cocad: 'Vai ao Comitê' };
+const ROTULO_DOC: Record<string, string> = {
+  cnh: 'CNH',
+  rg: 'RG',
+  extrato_bancario: 'Extrato bancário',
+  extrato_aplicativo: 'Extrato do aplicativo',
+  mei_cnpj: 'MEI / CNPJ',
+  comprovante_atividade: 'Comprovante de atividade',
+  comprovante_endereco: 'Comprovante de endereço',
+  comprovante_renda: 'Comprovante de renda',
+  relatorio_brick: 'Relatório BRIC',
+  anexo_analise: 'Documento complementar',
+};
 const PAPEL: Record<string, string> = { COMPRADOR_PRINCIPAL: 'Comprador principal', COMPRADOR_SECUNDARIO: '2º comprador', GARANTIDOR: 'Garantidor' };
 
 // Etapas macro do stepper e a qual etapa cada status pertence.
@@ -41,14 +54,12 @@ function moeda(c: number | null | undefined) {
 
 // O coração do modo guiado: o que fazer AGORA, dado o estado do dossiê.
 function proximoPasso(d: DossieAnalise): string {
-  const semAutorizacao = d.participantes.filter((p) => !p.autorizacaoRegistrada);
+  // Decisão 08/08: autorização de consulta é VERBAL — sem instrumento no sistema.
   switch (d.status) {
     case 'CADASTRO_EM_PREENCHIMENTO':
       return 'Anexe os documentos obrigatórios na proposta e confirme o envio no botão abaixo.';
     case 'DOCUMENTOS_ENVIADOS':
-      return semAutorizacao.length > 0
-        ? `Registre a autorização de consulta de: ${semAutorizacao.map((p) => p.nome.split(' ')[0]).join(', ')}. Sem ela, nenhuma consulta pode ser registrada.`
-        : 'Registre a consulta inicial (Camada 1) de cada comprador.';
+      return 'Registre a consulta inicial (Camada 1) de cada comprador — a do comprador principal chega sozinha quando a proposta vem do atendimento.';
     case 'CONSULTA_INICIAL_REALIZADA':
     case 'EM_TRIAGEM_INICIAL':
     case 'EM_ANALISE_COMPLEMENTAR':
@@ -162,18 +173,59 @@ export function AnalisePage() {
         <Participante key={p.titularId} d={d} p={p} ocupado={ocupado} acao={acao} final={final} />
       ))}
 
+      {/* Documentos anexados na proposta (decisão 08/08 Q4): CNH + complementares,
+          que podem ou não ser comprovante de renda — o analista decide. */}
+      <div className={card}>
+        <div className="mb-[8px] font-display text-[13px] font-bold">Documentos da proposta</div>
+        {d.documentosProposta.length === 0 ? (
+          <div className="text-[12px] opacity-70">Nenhum documento anexado na proposta.</div>
+        ) : (
+          d.documentosProposta.map((doc) => (
+            <div key={doc.id} className="flex items-center justify-between border-t border-[var(--border)] py-[6px] text-[12px]">
+              <span>
+                <b>{ROTULO_DOC[doc.tipo] ?? doc.tipo.replace(/_/g, ' ')}</b> · {doc.nome}
+                <span className="opacity-60"> · {new Date(doc.anexadoEm).toLocaleDateString('pt-BR')}</span>
+              </span>
+              <button
+                className="font-semibold"
+                style={{ color: 'var(--navy)' }}
+                onClick={() => void originacaoService.baixarDocumento(doc.id, doc.nome)}
+              >
+                Baixar
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
       {/* Consultas (Fase 1: registro manual) */}
       {!final && <ConsultaForm d={d} ocupado={ocupado} acao={acao} />}
       {d.consultas.length > 0 && (
         <div className={card}>
           <div className="mb-[8px] font-display text-[13px] font-bold">Consultas registradas</div>
-          {d.consultas.map((c) => (
-            <div key={c.id} className="border-t border-[var(--border)] py-[6px] text-[12px]">
-              <b>{c.tipo === 'CAMADA1' ? 'Camada 1' : c.tipo === 'SCORE_QUOD' ? 'Score' : 'Restritivos'}</b> · {c.fornecedor} {c.protocolo && `· ${c.protocolo}`} · {new Date(c.dataConsulta).toLocaleDateString('pt-BR')} ·
-              {c.situacao === 'FALHA' ? <span style={{ color: '#b03030' }}> falhou ({c.motivoFalha}) · tentativa {c.tentativas}</span> : c.valida ? ' válida' : <span style={{ color: '#b07000' }}> vencida (mais de 30 dias)</span>}
-              {c.resultado && ` · ${resumoResultado(c.resultado)}`}
-            </div>
-          ))}
+          {d.consultas.map((c) => {
+            const r = (c.resultado ?? {}) as Record<string, unknown>;
+            const motivos = Array.isArray(r.motivos) ? (r.motivos as string[]) : [];
+            const alertas = Array.isArray(r.alertas) ? (r.alertas as string[]) : [];
+            return (
+              <div key={c.id} className="border-t border-[var(--border)] py-[6px] text-[12px]">
+                <b>{c.tipo === 'CAMADA1' ? 'Camada 1' : c.tipo === 'SCORE_QUOD' ? 'Score' : 'Restritivos'}</b> · {c.fornecedor} {c.protocolo && `· ${c.protocolo}`} · {new Date(c.dataConsulta).toLocaleDateString('pt-BR')} ·
+                {c.situacao === 'FALHA' ? <span style={{ color: '#b03030' }}> falhou ({c.motivoFalha}) · tentativa {c.tentativas}</span> : c.valida ? ' válida' : <span style={{ color: '#b07000' }}> vencida (mais de 30 dias)</span>}
+                {c.resultado && ` · ${resumoResultado(c.resultado)}`}
+                {/* Camada 1 (decisão 08/08 Q3): motivos internos e alertas SEMPRE visíveis ao analista */}
+                {motivos.length > 0 && (
+                  <div className="mt-[3px] rounded-[8px] px-[8px] py-[4px]" style={{ background: '#fdecec', color: '#a12622' }}>
+                    <b>Eliminatórios (internos — não mostrados ao operador/cliente):</b> {motivos.join(' · ')}
+                  </div>
+                )}
+                {alertas.length > 0 && (
+                  <div className="mt-[3px] rounded-[8px] px-[8px] py-[4px]" style={{ background: '#fff3d6', color: '#8a5a00' }}>
+                    <b>Alertas:</b> {alertas.join(' · ')}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -242,6 +294,12 @@ export function AnalisePage() {
 
 function resumoResultado(r: Record<string, unknown>): string {
   const partes: string[] = [];
+  // Camada 1 automática (dados do birô — decisão 08/08 Q2/Q4)
+  if (r.situacaoCpf) partes.push(`CPF ${String(r.situacaoCpf).toLowerCase()}`);
+  if (typeof r.idade === 'number') partes.push(`${r.idade} anos`);
+  if (r.indicacaoObito === true) partes.push('INDICAÇÃO DE ÓBITO');
+  if (r.nomeOficial) partes.push(`nome oficial: ${r.nomeOficial}`);
+  if (r.simulado === true) partes.push('consulta SIMULADA');
   if (r.score !== undefined) partes.push(`score ${r.score}`);
   if (r.restritivosFinanceiros !== undefined) partes.push(`restritivos financeiros ${formatCurrency(r.restritivosFinanceiros as number)}`);
   if (r.restritivosNaoFinanceiros !== undefined) partes.push(`não financeiros ${formatCurrency(r.restritivosNaoFinanceiros as number)}`);
@@ -294,11 +352,7 @@ function Participante({ d, p, ocupado, acao, final }: { d: DossieAnalise; p: Par
         </div>
         {!final && (
           <div className="flex flex-wrap gap-[6px]">
-            {!p.autorizacaoRegistrada && (
-              <button className={btnP} disabled={ocupado} onClick={() => acao(() => analiseService.registrarAutorizacao(d.id, p.titularId), 'Autorização registrada (WhatsApp).')}>
-                Registrar autorização (WhatsApp)
-              </button>
-            )}
+            {/* Decisão 08/08: autorização de consulta é verbal — botão removido. */}
             {!condutor && p.papel !== 'GARANTIDOR' && (
               <button className={btnS} disabled={ocupado || !p.cnhValida} title={p.cnhValida ? '' : 'Exige CNH válida'} onClick={() => acao(() => analiseService.definirCondutor(d.id, p.titularId), 'Condutor principal definido.')}>
                 Definir condutor

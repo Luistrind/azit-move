@@ -114,6 +114,97 @@ export class AnaliseService implements OnModuleInit {
     return this.dossie(analise.id);
   }
 
+  // PONTE da Jornada do Atendimento (doc 02 §20 + decisões 08/08): o "Enviar
+  // proposta" cria a análise automaticamente, marca documentos enviados (a CNH
+  // foi anexada na esteira — confirmação humana do operador), injeta a consulta
+  // da Camada 1 na trilha OFICIAL (ConsultaExterna) e copia as rendas declarada
+  // e presumida para o participante — nada fica em campo paralelo.
+  async abrirDaJornada(propostaId: string, usuarioId?: string) {
+    await this.iniciar(propostaId, usuarioId);
+    const proposta = await this.prisma.db.proposta.findFirst({
+      where: { id: propostaId },
+      select: {
+        titularId: true,
+        rendaDeclarada: true,
+        camada1Status: true,
+        camada1Resultado: true,
+        analiseCadastro: { select: { id: true, status: true } },
+      },
+    });
+    if (!proposta?.analiseCadastro) return;
+    const analiseId = proposta.analiseCadastro.id;
+
+    // Rendas à disposição do analista (decisão Q4): declarada (entrevista) +
+    // presumida (birô, pode ser nula). A APURADA continua decisão do analista.
+    const c1 = proposta.camada1Resultado as null | {
+      status?: string;
+      motivos?: string[];
+      alertas?: string[];
+      dados?: {
+        simulado?: boolean;
+        nomeOficial?: string | null;
+        situacaoCpf?: string | null;
+        dataNascimento?: string | null;
+        idade?: number | null;
+        indicacaoObito?: boolean;
+        protocolo?: string | null;
+        rendaPresumida?: number | null;
+      } | null;
+    };
+    await this.prisma.db.participanteAnalise.updateMany({
+      where: { analiseId, titularId: proposta.titularId },
+      data: {
+        rendaDeclarada: proposta.rendaDeclarada ?? undefined,
+        rendaPresumida:
+          typeof c1?.dados?.rendaPresumida === 'number' ? reais(c1.dados.rendaPresumida) : undefined,
+      },
+    });
+
+    // Documentos foram anexados e conferidos pelo operador no envio (CNH
+    // obrigatória) — isso É a confirmação humana da etapa.
+    const atual = await this.prisma.db.analiseCadastro.findFirst({ where: { id: analiseId }, select: { status: true } });
+    if (atual?.status === 'CADASTRO_EM_PREENCHIMENTO') {
+      await this.mudarStatus(analiseId, 'DOCUMENTOS_ENVIADOS', usuarioId, 'CNH anexada e proposta enviada no atendimento (doc 02 §20)');
+    }
+
+    // Consulta da Camada 1 entra na trilha oficial (decisão Q2) — inclusive a
+    // indisponibilidade (FALHA com motivo), para o COC-11 subir ao COCAD.
+    if (c1 && proposta.camada1Status) {
+      const jaRegistrada = await this.prisma.db.consultaExterna.count({
+        where: { analiseId, titularId: proposta.titularId, tipo: 'CAMADA1' },
+      });
+      if (jaRegistrada === 0) {
+        await this.registrarConsulta(
+          analiseId,
+          {
+            titularId: proposta.titularId,
+            tipo: 'camada1',
+            fornecedor: c1.dados?.simulado ? 'BigDataCorp (simulado)' : 'BigDataCorp',
+            protocolo: c1.dados?.protocolo ?? undefined,
+            situacao: proposta.camada1Status === 'indisponivel' ? 'falha' : 'concluida',
+            motivoFalha:
+              proposta.camada1Status === 'indisponivel'
+                ? 'Birô indisponível no envio da proposta — repetir a consulta'
+                : undefined,
+            resultado: {
+              status: proposta.camada1Status,
+              motivos: c1.motivos ?? [],
+              alertas: c1.alertas ?? [],
+              simulado: c1.dados?.simulado ?? false,
+              situacaoCpf: c1.dados?.situacaoCpf ?? null,
+              idade: c1.dados?.idade ?? null,
+              indicacaoObito: c1.dados?.indicacaoObito ?? false,
+              nomeOficial: c1.dados?.nomeOficial ?? null,
+              dataNascimento: c1.dados?.dataNascimento ?? null,
+              resumo: `Camada 1 ${proposta.camada1Status} no envio da proposta`,
+            },
+          },
+          usuarioId,
+        );
+      }
+    }
+  }
+
   // Listagem para a fila de análises (menu Análise de Cadastro).
   async listar() {
     const analises = await this.prisma.db.analiseCadastro.findMany({
@@ -161,6 +252,15 @@ export class AnaliseService implements OnModuleInit {
         autorizacaoRegistrada: a.autorizacoes.some((x) => x.titularId === p.titularId),
       })),
       autorizacoes: a.autorizacoes,
+      // Documentos anexados na proposta (decisão 08/08 Q4): CNH obrigatória +
+      // complementares (podem ou não ser comprovante de renda).
+      documentosProposta: a.proposta.documentos.map((doc) => ({
+        id: doc.id,
+        titularId: doc.titularId,
+        tipo: doc.tipo.toLowerCase(),
+        nome: doc.arquivoRef,
+        anexadoEm: doc.dataAnexo.toISOString(),
+      })),
       consultas: a.consultas.map((c) => ({
         id: c.id, titularId: c.titularId, tipo: c.tipo, fornecedor: c.fornecedor, protocolo: c.protocolo,
         dataConsulta: c.dataConsulta, situacao: c.situacao, motivoFalha: c.motivoFalha, tentativas: c.tentativas,
@@ -290,18 +390,25 @@ export class AnaliseService implements OnModuleInit {
         restritivosNaoFinanceiros?: number; // centavos
         protestoChequeExecucao?: boolean;
         resumo?: string;
+        // Camada 1 automática (doc 02 §20 + decisão 08/08 Q2): o retorno do birô
+        // entra INTEIRO na trilha da análise.
+        status?: string; // aprovado | reprovado | indisponivel
+        motivos?: string[]; // eliminatórios internos (análise/diretoria)
+        alertas?: string[]; // renda presumida/processos/simulada/indisponível
+        simulado?: boolean;
+        situacaoCpf?: string | null;
+        idade?: number | null;
+        indicacaoObito?: boolean;
+        nomeOficial?: string | null;
+        dataNascimento?: string | null;
       };
     },
     usuarioId?: string,
   ) {
     const a = await this.carregar(analiseId);
     this.garantirNaoFinal(a.status);
-    if (!a.autorizacoes.some((x) => x.titularId === dto.titularId)) {
-      throw new UnprocessableEntityException({
-        erro: 'sem_autorizacao',
-        mensagem: 'Registre a autorização de consulta do participante antes (RF-05)',
-      });
-    }
+    // Decisão 2026-08-08 (Luís): a autorização de consulta é VERBAL — não existe
+    // instrumento de autorização no sistema; o gate RF-05 foi retirado.
     if (dto.situacao === 'falha' && !dto.motivoFalha) {
       throw new UnprocessableEntityException({ erro: 'motivo_obrigatorio', mensagem: 'Falha de consulta exige motivo (RF-10)' });
     }
@@ -573,7 +680,9 @@ export class AnaliseService implements OnModuleInit {
       where: { id: analiseId },
       include: {
         parametroVersao: true,
-        proposta: true,
+        // Documentos da proposta no dossiê (decisão 08/08 Q4): complementares
+        // podem ou não ser comprovante de renda — o analista precisa vê-los.
+        proposta: { include: { documentos: { orderBy: { dataAnexo: 'desc' } } } },
         participantes: { include: { titular: { select: { nome: true } } } },
         autorizacoes: true,
         consultas: { orderBy: { dataConsulta: 'desc' } },
@@ -619,7 +728,9 @@ export class AnaliseService implements OnModuleInit {
         identidadeValidada: p.identidadeValidada,
         cnhValida: p.cnhValida,
         documentoAlternativo: p.documentoAlternativo,
-        autorizacaoRegistrada: a.autorizacoes.some((x) => x.titularId === p.titularId),
+        // Decisão 08/08: autorização de consulta é VERBAL (sem instrumento no
+        // sistema) — o critério COM-05 do motor fica permanentemente satisfeito.
+        autorizacaoRegistrada: true,
         atividadeComprovada: p.atividadeComprovada,
         rendaApurada: p.rendaApurada !== null ? cent(p.rendaApurada) : null,
         rendaParcialmenteComprovada: p.rendaParcialmenteComprovada,

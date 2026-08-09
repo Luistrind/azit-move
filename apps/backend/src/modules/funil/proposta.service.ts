@@ -19,6 +19,7 @@ import { TitularService } from '../titular/titular.service';
 import { ContaService } from '../conta/conta.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { Camada1Service } from '../bureau/camada1.service';
+import { AnaliseService } from '../analise/analise.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 import {
   CriarPropostaDto,
@@ -75,6 +76,7 @@ export class PropostaService {
     private readonly conta: ContaService,
     private readonly aprovacao: AprovacaoService,
     private readonly camada1: Camada1Service,
+    private readonly analise: AnaliseService,
     private readonly catalogoFonte: CatalogoFonteService,
   ) {}
 
@@ -274,6 +276,10 @@ export class PropostaService {
     await this.prisma.db.logAuditoria.create({
       data: { acao: 'proposta_enviada_analise', entidade: 'proposta', entidadeId: propostaId, depois: { rendaDeclarada: dto.rendaDeclarada ?? null, parecer: !!dto.parecerOperador } },
     });
+    // PONTE com a análise (decisões 08/08 Q2/Q5): o envio CRIA a análise de
+    // cadastro, injeta a consulta da Camada 1 na trilha oficial e copia as
+    // rendas — a política roda sempre, nunca em campo paralelo.
+    await this.analise.abrirDaJornada(propostaId);
     return this.detalhe(propostaId);
   }
 

@@ -19,6 +19,8 @@ export interface DossieAnalise {
   parcelaMensalEquivalente: number; comprometimento: number | null;
   participantes: ParticipanteAnalise[];
   consultas: { id: string; titularId: string; tipo: string; fornecedor: string; protocolo: string | null; dataConsulta: string; situacao: string; motivoFalha: string | null; tentativas: number; resultado: Record<string, unknown> | null; valida: boolean }[];
+  // Documentos anexados na proposta (decisão 08/08 Q4) — CNH + complementares.
+  documentosProposta: { id: string; titularId: string; tipo: string; nome: string; anexadoEm: string }[];
   pendencias: { id: string; titularId: string | null; codigo: string; descricao: string; prazo: string | null; situacao: string }[];
   ressalvas: { id: string; tipo: string; condicao: string; prazo: string | null; situacao: string }[];
   alertasFraude: { id: string; nivel: string; descricao: string; resolvidoEm: string | null }[];

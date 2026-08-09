@@ -1216,6 +1216,22 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 > - Dados cadastrais retornados pré-preenchem o cadastro completo.
 > - Credenciais: par TokenId+AccessToken no ambiente (nunca no banco); sem credenciais, o
 >   provedor SIMULADO responde (placeholder Regra 12) e marca o resultado como simulado.
+>
+> **Decisões 2026-08-08 (Luís — integração Jornada × Análise; ADEQUAÇÃO DA POLÍTICA):**
+> 1. **Autorização de consulta é VERBAL** — NÃO existe instrumento de autorização no sistema.
+>    Revoga o gate RF-05 da análise e o critério COM-05 do motor (satisfeito por definição);
+>    o texto/versão de autorização dos parâmetros fica sem uso.
+> 2. **Toda consulta entra na trilha oficial da análise** (ConsultaExterna) — inclusive a
+>    Camada 1 automática do atendimento: o "Enviar proposta" CRIA a análise de cadastro,
+>    registra a consulta CAMADA1 (fornecedor, protocolo, resultado completo, validade de 30
+>    dias) e avança os estados até CONSULTA_INICIAL_REALIZADA. Indisponibilidade entra como
+>    FALHA (COC-11 sobe ao COCAD). Nada fica em campo paralelo; o Json da proposta é só cache.
+> 3. **Motivos eliminatórios e alertas da Camada 1 são SEMPRE visíveis ao analista** no
+>    dossiê (internos — nunca ao operador/cliente).
+> 4. **Rendas à disposição do analista**: renda DECLARADA (entrevista do operador) e renda
+>    PRESUMIDA (birô, pode vir nula) são copiadas para o participante; a renda APURADA segue
+>    sendo decisão do analista (comprometimento). Documentos da proposta (CNH + complementares,
+>    que podem ou não ser comprovante de renda) aparecem no dossiê para download.
 
 ---
 
