@@ -1,10 +1,20 @@
 import { useState } from 'react';
-import { Modal } from './Modal';
 
 // Visualizador do retorno COMPLETO de uma consulta de birô (decisão 09/08):
-// o "olho" na linha da consulta abre o retorno formatado como Atributo →
-// Resultado (tabelas aninhadas, no espírito do painel da BigDataCorp) — nada
-// de JSON cru na cara do operador, mas tudo acessível.
+// o "olho" abre uma JANELA GRANDE (≈ tela cheia — feedback 09/08: sem scroll
+// lateral; valores quebram linha) com o retorno formatado como Atributo →
+// Resultado, em tabelas aninhadas. Movimentações de processo ficam SEMPRE
+// ocultas (só a contagem) — são longas e pouco úteis na análise.
+
+const CHAVES_OCULTAS = [
+  'movements', 'movimentacoes', 'movimentações', 'movimentos', 'andamentos',
+  'updates', 'lawsuitupdates', 'petitions', 'peticoes', 'decisions', 'decisoes',
+];
+
+function ocultar(chave: string): boolean {
+  const k = chave.toLowerCase().replace(/[^a-zà-ü]/g, '');
+  return CHAVES_OCULTAS.some((c) => k === c.replace(/[^a-zà-ü]/g, ''));
+}
 
 // "TaxIdStatus" → "Tax Id Status"; "faixa_renda" → "Faixa renda".
 function rotulo(chave: string): string {
@@ -29,17 +39,23 @@ function ehObjeto(v: unknown): v is Record<string, unknown> {
 
 function Tabela({ dados, nivel }: { dados: Record<string, unknown>; nivel: number }) {
   const entradas = Object.entries(dados);
-  if (entradas.length === 0) return <div className="text-[12px] opacity-60">— vazio —</div>;
+  if (entradas.length === 0) return <div className="px-[8px] py-[4px] text-[12px] opacity-60">— vazio —</div>;
   return (
-    <table className="w-full border-collapse text-[12px]">
+    <table className="w-full table-fixed border-collapse text-[12px]">
       <tbody>
         {entradas.map(([k, v]) => (
           <tr key={k} style={{ borderTop: '1px solid var(--border-light)' }}>
-            <td className="w-[38%] px-[8px] py-[5px] align-top font-semibold" style={{ color: 'var(--text-label)' }}>
+            <td className="w-[30%] break-words px-[8px] py-[5px] align-top font-semibold" style={{ color: 'var(--text-label)' }}>
               {rotulo(k)}
             </td>
-            <td className="px-[8px] py-[5px]">
-              <Valor v={v} nivel={nivel} />
+            <td className="break-words px-[8px] py-[5px]">
+              {ocultar(k) ? (
+                <span className="opacity-60">
+                  {Array.isArray(v) ? `${v.length} movimentação(ões) — ocultadas` : 'ocultado'}
+                </span>
+              ) : (
+                <Valor v={v} nivel={nivel} />
+              )}
             </td>
           </tr>
         ))}
@@ -52,14 +68,14 @@ function Valor({ v, nivel }: { v: unknown; nivel: number }) {
   if (Array.isArray(v)) {
     if (v.length === 0) return <span className="opacity-60">— nenhum —</span>;
     if (v.every((x) => !ehObjeto(x) && !Array.isArray(x))) {
-      return <span>{v.map(valorSimples).join(' · ')}</span>;
+      return <span className="break-words">{v.map(valorSimples).join(' · ')}</span>;
     }
     return (
       <div className="flex flex-col gap-[6px]">
         {v.map((item, i) => (
           <div key={i} className="rounded-[8px]" style={{ background: nivel % 2 ? 'var(--surface)' : 'var(--surface-input)', border: '1px solid var(--border-light)' }}>
             <div className="px-[8px] pt-[4px] text-[10.5px] font-bold opacity-60">#{i + 1}</div>
-            {ehObjeto(item) ? <Tabela dados={item} nivel={nivel + 1} /> : <div className="px-[8px] pb-[5px]">{valorSimples(item)}</div>}
+            {ehObjeto(item) ? <Tabela dados={item} nivel={nivel + 1} /> : <div className="break-words px-[8px] pb-[5px]">{valorSimples(item)}</div>}
           </div>
         ))}
       </div>
@@ -72,7 +88,7 @@ function Valor({ v, nivel }: { v: unknown; nivel: number }) {
       </div>
     );
   }
-  return <span>{valorSimples(v)}</span>;
+  return <span className="break-words">{valorSimples(v)}</span>;
 }
 
 export function BotaoVerRetorno({ titulo, resultado }: { titulo: string; resultado: Record<string, unknown> | null }) {
@@ -89,11 +105,27 @@ export function BotaoVerRetorno({ titulo, resultado }: { titulo: string; resulta
         👁 Ver retorno
       </button>
       {aberto && (
-        <Modal open onClose={() => setAberto(false)} title={titulo}>
-          <div className="max-h-[65vh] overflow-y-auto pr-[4px]">
-            <Tabela dados={resultado} nivel={0} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-[16px]" style={{ background: 'rgba(0,16,41,.55)' }} onClick={() => setAberto(false)}>
+          <div
+            className="flex h-[92vh] w-[min(1100px,95vw)] flex-col overflow-hidden rounded-[14px]"
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-[10px] px-[18px] py-[12px]" style={{ borderBottom: '1px solid var(--border)' }}>
+              <div className="font-display text-[14px] font-bold">{titulo}</div>
+              <button
+                onClick={() => setAberto(false)}
+                className="h-[32px] rounded-[8px] px-[12px] text-[13px] font-semibold"
+                style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
+              >
+                Fechar ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto overflow-x-hidden px-[14px] py-[10px]">
+              <Tabela dados={resultado} nivel={0} />
+            </div>
           </div>
-        </Modal>
+        </div>
       )}
     </>
   );
