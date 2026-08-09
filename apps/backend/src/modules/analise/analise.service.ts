@@ -298,16 +298,23 @@ export class AnaliseService implements OnModuleInit {
           situacao: 'falha', motivoFalha: `Marketplace indisponível: ${(e as Error).message}`,
         }, usuarioId);
       }
+      const okScore = typeof r.score === 'number';
       return this.registrarConsulta(analiseId, {
         titularId: alvo.titularId,
         tipo: 'score_quod',
         fornecedor: r.simulado ? 'Quod via BigDataCorp (simulado)' : 'Quod (via BigDataCorp Marketplace)',
         protocolo: r.protocolo ?? undefined,
-        situacao: typeof r.score === 'number' ? 'concluida' : 'falha',
-        motivoFalha: typeof r.score === 'number' ? undefined : 'Birô não retornou o score — ver payload na trilha',
-        resultado: typeof r.score === 'number'
-          ? { score: r.score, simulado: r.simulado, resumo: r.capacidadePagamento !== null ? `Capacidade de pagamento ${r.capacidadePagamento}/100` : undefined }
-          : undefined,
+        situacao: okScore ? 'concluida' : 'falha',
+        motivoFalha: okScore ? undefined : (r.statusApi ?? 'Birô não retornou o score — payload gravado nesta consulta'),
+        // Payload bruto e mensagens da API entram SEMPRE (consulta paga nunca
+        // fica às cegas — correção 09/08 após as duas falhas sem diagnóstico).
+        resultado: {
+          ...(okScore ? { score: r.score as number } : {}),
+          simulado: r.simulado,
+          resumo: okScore && r.capacidadePagamento !== null ? `Capacidade de pagamento ${r.capacidadePagamento}/100` : undefined,
+          statusApi: r.statusApi,
+          bruto: r.bruto,
+        },
       }, usuarioId);
     }
 
@@ -327,18 +334,22 @@ export class AnaliseService implements OnModuleInit {
       fornecedor: r.simulado ? 'Quod via BigDataCorp (simulado)' : 'Quod (via BigDataCorp Marketplace)',
       protocolo: r.protocolo ?? undefined,
       situacao: ok ? 'concluida' : 'falha',
-      motivoFalha: ok ? undefined : 'Birô não retornou os restritivos — ver payload na trilha',
-      resultado: ok
-        ? {
-            // Mapeamento p/ critérios da política (⚠️ calibrar com 1º retorno real):
-            // financeiros = endividamento negativado; não financeiros = protestos.
-            restritivosFinanceiros: r.endividamentoTotal ?? 0,
-            restritivosNaoFinanceiros: r.protestosValor ?? 0,
-            protestoChequeExecucao: (r.protestosQuantidade ?? 0) > 0,
-            simulado: r.simulado,
-            resumo: `${r.apontamentosAtivos ?? 0} apontamento(s) ativo(s) · ${r.protestosQuantidade ?? 0} protesto(s)`,
-          }
-        : undefined,
+      motivoFalha: ok ? undefined : (r.statusApi ?? 'Birô não retornou os restritivos — payload gravado nesta consulta'),
+      resultado: {
+        ...(ok
+          ? {
+              // Mapeamento p/ critérios da política (calibrar com retorno real):
+              // financeiros = endividamento negativado; não financeiros = protestos.
+              restritivosFinanceiros: r.endividamentoTotal ?? 0,
+              restritivosNaoFinanceiros: r.protestosValor ?? 0,
+              protestoChequeExecucao: (r.protestosQuantidade ?? 0) > 0,
+              resumo: `${r.apontamentosAtivos ?? 0} apontamento(s) ativo(s) · ${r.protestosQuantidade ?? 0} protesto(s)`,
+            }
+          : {}),
+        simulado: r.simulado,
+        statusApi: r.statusApi,
+        bruto: r.bruto,
+      },
     }, usuarioId);
   }
 
@@ -542,6 +553,10 @@ export class AnaliseService implements OnModuleInit {
         faixaPatrimonio?: string | null;
         processosTotal?: number | null;
         processosComoReu?: number | null;
+        // Diagnóstico/calibração: payload bruto do birô + mensagens da API —
+        // gravados SEMPRE (inclusive em falha), para nunca pagar consulta às cegas.
+        statusApi?: string | null;
+        bruto?: unknown;
       };
     },
     usuarioId?: string,

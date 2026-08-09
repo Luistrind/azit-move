@@ -43,6 +43,7 @@ export interface ScoreQuodRetorno {
   score: number | null; // 300–1000
   capacidadePagamento: number | null; // 0–100
   protocolo: string | null;
+  statusApi: string | null; // mensagens de erro/aviso da própria API
   bruto?: unknown;
 }
 
@@ -53,6 +54,7 @@ export interface RestritivosQuodRetorno {
   protestosQuantidade: number | null;
   protestosValor: number | null; // centavos
   protocolo: string | null;
+  statusApi: string | null; // mensagens de erro/aviso da própria API
   bruto?: unknown;
 }
 
@@ -153,19 +155,23 @@ export class BigDataCorpService {
   async scoreQuod(cpf: string): Promise<ScoreQuodRetorno> {
     if (!this.configurado) {
       this.logger.warn('BigDataCorp SEM credenciais — score Quod SIMULADO');
-      return { simulado: true, score: 650, capacidadePagamento: 70, protocolo: `sim_score_${cpf.slice(-4)}` };
+      return { simulado: true, score: 650, capacidadePagamento: 70, protocolo: `sim_score_${cpf.slice(-4)}`, statusApi: null };
     }
     const corpo = await this.consultar(cpf, DATASET_SCORE_QUOD);
     const r0 = (corpo.Result?.[0] ?? {}) as Record<string, unknown>;
-    // Nome do bloco varia por parceiro — varremos o Result por chaves conhecidas.
-    const bloco = this.acharBloco(r0, ['Score', 'QuodScore', 'CreditScore']) ?? {};
-    const num = (v: unknown) => (typeof v === 'number' ? v : null);
+    // O bloco do parceiro pode vir com nomes diferentes — varre por candidatas e,
+    // no último caso, procura QUALQUER objeto com campo Score em 1 nível.
+    const bloco =
+      this.acharBloco(r0, ['Score', 'QuodScore', 'CreditScore', 'QuodCreditScore', 'PartnerQuodCreditScore']) ??
+      this.acharBlocoComCampo(r0, 'Score') ?? {};
+    const num = (v: unknown) => (typeof v === 'number' ? v : typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : null);
     return {
       simulado: false,
       score: num(bloco.Score) ?? num(r0.Score),
       capacidadePagamento: num(bloco.PaymentCapacityScore) ?? num(bloco.PaymentCommitmentScore),
       protocolo: corpo.QueryId ?? null,
-      bruto: r0,
+      statusApi: this.resumirStatus(corpo.Status),
+      bruto: { result: r0, status: corpo.Status ?? null },
     };
   }
 
@@ -175,24 +181,28 @@ export class BigDataCorpService {
       this.logger.warn('BigDataCorp SEM credenciais — restritivos Quod SIMULADOS');
       return {
         simulado: true, apontamentosAtivos: 0, endividamentoTotal: 0,
-        protestosQuantidade: 0, protestosValor: 0, protocolo: `sim_restr_${cpf.slice(-4)}`,
+        protestosQuantidade: 0, protestosValor: 0, protocolo: `sim_restr_${cpf.slice(-4)}`, statusApi: null,
       };
     }
     const corpo = await this.consultar(cpf, DATASET_RESTRITIVOS_QUOD);
     const r0 = (corpo.Result?.[0] ?? {}) as Record<string, unknown>;
-    const bloco = this.acharBloco(r0, ['CreditRiskDetails', 'QuodCreditRisk', 'NegativeData']) ?? r0;
-    const num = (v: unknown) => (typeof v === 'number' ? v : null);
-    // ⚠️ Mapeamento defensivo (nomes conforme doc; calibrar com o 1º retorno
-    // real — o payload bruto fica na trilha para isso).
-    const reais = (v: unknown) => (typeof v === 'number' ? Math.round(v * 100) : null);
+    const bloco =
+      this.acharBloco(r0, ['CreditRiskDetails', 'QuodCreditRisk', 'QuodCreditRiskDetails', 'NegativeData', 'PartnerQuodCreditRiskDetails']) ??
+      this.acharBlocoComCampo(r0, 'TotalIndebtedness') ?? r0;
+    const num = (v: unknown) => (typeof v === 'number' ? v : typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : null);
+    const reais = (v: unknown) => {
+      const n = typeof v === 'number' ? v : typeof v === 'string' && /^[\d.,]+$/.test(v) ? Number(v.replace(',', '.')) : null;
+      return n !== null && Number.isFinite(n) ? Math.round(n * 100) : null;
+    };
     return {
       simulado: false,
-      apontamentosAtivos: num(bloco.ActiveNegativeAppointments) ?? num(bloco.TotalActiveAppointments),
-      endividamentoTotal: reais(bloco.TotalIndebtedness) ?? reais(bloco.TotalDebtAmount),
-      protestosQuantidade: num(bloco.TotalProtests) ?? num(bloco.ProtestsCount),
+      apontamentosAtivos: num(bloco.ActiveNegativeAppointments) ?? num(bloco.TotalActiveAppointments) ?? num(bloco.TotalAppointments),
+      endividamentoTotal: reais(bloco.TotalIndebtedness) ?? reais(bloco.TotalDebtAmount) ?? reais(bloco.TotalDebt),
+      protestosQuantidade: num(bloco.TotalProtests) ?? num(bloco.ProtestsCount) ?? num(bloco.Protests),
       protestosValor: reais(bloco.TotalProtestsValue) ?? reais(bloco.ProtestsValue),
       protocolo: corpo.QueryId ?? null,
-      bruto: r0,
+      statusApi: this.resumirStatus(corpo.Status),
+      bruto: { result: r0, status: corpo.Status ?? null },
     };
   }
 
@@ -208,14 +218,41 @@ export class BigDataCorpService {
       body: JSON.stringify({ q: `doc{${cpf}}`, Datasets: datasets }),
     });
     if (!resp.ok) throw new Error(`BigDataCorp respondeu HTTP ${resp.status}`);
-    return (await resp.json()) as { QueryId?: string; Result?: Record<string, unknown>[] };
+    return (await resp.json()) as {
+      QueryId?: string;
+      Result?: Record<string, unknown>[];
+      Status?: Record<string, { Code?: number; Message?: string }[]>;
+    };
+  }
+
+  // Resume as mensagens do bloco Status da API (ex.: dataset não habilitado,
+  // documento inválido, saldo on-demand) — é o diagnóstico real da falha.
+  private resumirStatus(status?: Record<string, { Code?: number; Message?: string }[]>): string | null {
+    if (!status) return null;
+    const msgs: string[] = [];
+    for (const [origem, itens] of Object.entries(status)) {
+      for (const it of itens ?? []) {
+        if (it?.Message) msgs.push(`${origem}: ${it.Message}${it.Code !== undefined ? ` (${it.Code})` : ''}`);
+      }
+    }
+    return msgs.length ? msgs.join(' · ') : null;
   }
 
   // Localiza o bloco do parceiro no Result (a chave varia por dataset/parceiro).
   private acharBloco(r0: Record<string, unknown>, candidatas: string[]): Record<string, unknown> | null {
     for (const c of candidatas) {
       const v = r0[c];
-      if (v && typeof v === 'object') return v as Record<string, unknown>;
+      if (v && typeof v === 'object' && !Array.isArray(v)) return v as Record<string, unknown>;
+    }
+    return null;
+  }
+
+  // Último recurso: qualquer objeto de 1º nível que contenha o campo esperado.
+  private acharBlocoComCampo(r0: Record<string, unknown>, campo: string): Record<string, unknown> | null {
+    for (const v of Object.values(r0)) {
+      if (v && typeof v === 'object' && !Array.isArray(v) && campo in (v as Record<string, unknown>)) {
+        return v as Record<string, unknown>;
+      }
     }
     return null;
   }
