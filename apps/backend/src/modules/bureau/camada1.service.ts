@@ -27,6 +27,12 @@ export interface ResultadoCamada1 {
     dataNascimento: string | null;
     idade: number | null;
     indicacaoObito: boolean;
+    // Datasets financial_data + processes (decisão 08/08: a plataforma é uma
+    // só, muda o dataset) — informações para o analista, nunca eliminatórias:
+    faixaRendaPresumida: string | null;
+    faixaPatrimonio: string | null;
+    processosTotal: number | null;
+    processosComoReu: number | null;
     protocolo: string | null;
   } | null;
 }
@@ -77,6 +83,14 @@ export class Camada1Service {
       } else {
         alertas.push('Data de nascimento indisponível no birô');
       }
+      // Processos e renda presumida NÃO reprovam (decisão 04/08): viram alerta/
+      // informação para a análise manual.
+      if ((d.processosTotal ?? 0) > 0) {
+        alertas.push(
+          `${d.processosTotal} processo(s) judicial(is)${d.processosComoReu ? ` — ${d.processosComoReu} como réu` : ''} — avaliar na análise`,
+        );
+      }
+      if (!d.faixaRendaPresumida) alertas.push('Renda presumida indisponível no birô');
       if (d.simulado) alertas.push('Consulta SIMULADA (sem credenciais do birô no ambiente)');
     }
 
@@ -91,6 +105,10 @@ export class Camada1Service {
         dataNascimento: d.dataNascimento,
         idade: d.idade,
         indicacaoObito: d.indicacaoObito,
+        faixaRendaPresumida: d.faixaRendaPresumida,
+        faixaPatrimonio: d.faixaPatrimonio,
+        processosTotal: d.processosTotal,
+        processosComoReu: d.processosComoReu,
         protocolo: d.protocolo,
       },
     };

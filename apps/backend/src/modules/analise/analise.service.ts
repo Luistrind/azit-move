@@ -151,6 +151,10 @@ export class AnaliseService implements OnModuleInit {
         indicacaoObito?: boolean;
         protocolo?: string | null;
         rendaPresumida?: number | null;
+        faixaRendaPresumida?: string | null;
+        faixaPatrimonio?: string | null;
+        processosTotal?: number | null;
+        processosComoReu?: number | null;
       } | null;
     };
     await this.prisma.db.participanteAnalise.updateMany({
@@ -196,6 +200,10 @@ export class AnaliseService implements OnModuleInit {
               situacaoCpf: c1.dados?.situacaoCpf ?? null,
               idade: c1.dados?.idade ?? null,
               indicacaoObito: c1.dados?.indicacaoObito ?? false,
+              faixaRendaPresumida: c1.dados?.faixaRendaPresumida ?? null,
+              faixaPatrimonio: c1.dados?.faixaPatrimonio ?? null,
+              processosTotal: c1.dados?.processosTotal ?? null,
+              processosComoReu: c1.dados?.processosComoReu ?? null,
               nomeOficial: c1.dados?.nomeOficial ?? null,
               dataNascimento: c1.dados?.dataNascimento ?? null,
               resumo: `Camada 1 ${proposta.camada1Status} no envio da proposta`,
@@ -247,6 +255,10 @@ export class AnaliseService implements OnModuleInit {
           situacaoCpf: r.dados?.situacaoCpf ?? null,
           idade: r.dados?.idade ?? null,
           indicacaoObito: r.dados?.indicacaoObito ?? false,
+          faixaRendaPresumida: r.dados?.faixaRendaPresumida ?? null,
+          faixaPatrimonio: r.dados?.faixaPatrimonio ?? null,
+          processosTotal: r.dados?.processosTotal ?? null,
+          processosComoReu: r.dados?.processosComoReu ?? null,
           nomeOficial: r.dados?.nomeOficial ?? null,
           dataNascimento: r.dados?.dataNascimento ?? null,
           resumo: 'Camada 1 repetida pelo analista',
@@ -452,6 +464,10 @@ export class AnaliseService implements OnModuleInit {
         indicacaoObito?: boolean;
         nomeOficial?: string | null;
         dataNascimento?: string | null;
+        faixaRendaPresumida?: string | null;
+        faixaPatrimonio?: string | null;
+        processosTotal?: number | null;
+        processosComoReu?: number | null;
       };
     },
     usuarioId?: string,

@@ -323,6 +323,15 @@ function resumoResultado(r: Record<string, unknown>): string {
   if (typeof r.idade === 'number') partes.push(`${r.idade} anos`);
   if (r.indicacaoObito === true) partes.push('INDICAÇÃO DE ÓBITO');
   if (r.nomeOficial) partes.push(`nome oficial: ${r.nomeOficial}`);
+  if (r.faixaRendaPresumida) partes.push(`renda presumida: ${r.faixaRendaPresumida}`);
+  if (r.faixaPatrimonio) partes.push(`patrimônio: ${r.faixaPatrimonio}`);
+  if (typeof r.processosTotal === 'number') {
+    partes.push(
+      r.processosTotal === 0
+        ? 'sem processos judiciais'
+        : `${r.processosTotal} processo(s)${typeof r.processosComoReu === 'number' && r.processosComoReu > 0 ? ` (${r.processosComoReu} como réu)` : ''}`,
+    );
+  }
   if (r.simulado === true) partes.push('consulta SIMULADA');
   if (r.score !== undefined) partes.push(`score ${r.score}`);
   if (r.restritivosFinanceiros !== undefined) partes.push(`restritivos financeiros ${formatCurrency(r.restritivosFinanceiros as number)}`);
@@ -444,12 +453,14 @@ function ConsultaForm({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean
 
   return (
     <div className={card}>
-      <div className="mb-[4px] font-display text-[13px] font-bold">Transcrever consulta do portal do birô</div>
+      <div className="mb-[4px] font-display text-[13px] font-bold">Transcrever consulta de birô parceiro</div>
       <div className="mb-[10px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
-        Quod (score) e Boa Vista (restritivos) ainda não têm integração — consulte o portal do birô e
-        transcreva o retorno aqui. Os valores alimentam os <b>Critérios da política</b> logo abaixo:
-        score mínimo {`(COC-02)`}, restritivos {`(COC-03/04)`}. A <b>Camada 1</b> (dados cadastrais
-        BigDataCorp) é automática: chega com o envio da proposta ou pelo botão "Repetir Camada 1 no birô".
+        A <b>Camada 1</b> é automática pela plataforma BigDataCorp (dados cadastrais, renda presumida e
+        processos judiciais — chega com o envio da proposta ou pelo botão "Repetir Camada 1 no birô").
+        Já <b>score</b> e <b>restritivos</b> são consultas de birôs PARCEIROS via Marketplace, pagas por
+        chamada e ainda não contratadas — até lá, consulte o portal do parceiro e transcreva o retorno
+        aqui. Os valores alimentam os <b>Critérios da política</b> logo abaixo: score mínimo {`(COC-02)`},
+        restritivos {`(COC-03/04)`}.
       </div>
       <div className="grid grid-cols-2 gap-[8px] sm:grid-cols-4">
         <label className="flex flex-col gap-[2px] text-[11px] font-semibold">Participante
