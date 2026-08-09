@@ -12,6 +12,7 @@ import { reaisParaCentavos } from '../lib/valor';
 import { mensagemErro, usePodeRole, ROLE_OPERACAO } from '../lib/permissoes';
 import { StatusBadge } from '../components/StatusBadge';
 import { Modal } from '../components/Modal';
+import { BotaoVerRetorno } from '../components/RetornoBiro';
 import { RenegociacaoWizard } from '../components/RenegociacaoWizard';
 import { toast } from '../components/Toast';
 import { CONTRATO_STATUS_COLORS } from '../config/statusColors';
@@ -172,6 +173,8 @@ export function TitularDetalhePage() {
   }
 
   const det = useQuery({ queryKey: ['titular-detalhe', id], queryFn: () => titularService.detalhe(id), enabled: !!id });
+  // Consultas de birô da pessoa (decisão 09/08) — visíveis no cadastro.
+  const consultasBiro = useQuery({ queryKey: ['titular-consultas-biro', id], queryFn: () => titularService.consultasBiro(id), enabled: !!id });
   const contaId = det.data?.conta?.id;
   const faturas = useQuery({
     queryKey: ['titular-faturas', contaId, pagina],
@@ -269,6 +272,29 @@ export function TitularDetalhePage() {
                 <div key={d.id} className="flex items-center justify-between rounded-[8px] px-[10px] py-[7px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
                   <span>{DOC_LABEL[d.tipo] ?? d.tipo} <span style={{ color: 'var(--text-muted)' }}>· {fmtData(d.dataAnexo)}</span></span>
                   <button onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--navy)' }}>Baixar</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Consultas de birô do cliente (decisão 09/08): tudo o que já foi
+              consultado sobre a pessoa fica no cadastro, com o retorno completo. */}
+          <div className="mt-[14px] mb-[8px] text-[12px] font-semibold" style={{ color: 'var(--text-label)' }}>Consultas de birô</div>
+          {(consultasBiro.data ?? []).length === 0 ? (
+            <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhuma consulta de birô registrada para esta pessoa.</div>
+          ) : (
+            <div className="flex flex-col gap-[6px]">
+              {(consultasBiro.data ?? []).map((c) => (
+                <div key={c.id} className="rounded-[8px] px-[10px] py-[7px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
+                  <b>{c.tipo === 'CAMADA1' ? 'Camada 1 (dados cadastrais)' : c.tipo === 'SCORE_QUOD' ? 'Score Quod' : 'Restritivos Quod'}</b>
+                  {' · '}{c.fornecedor} · {fmtData(String(c.dataConsulta))}
+                  {c.situacao === 'FALHA'
+                    ? <span style={{ color: '#c0392b' }}> · falhou{c.motivoFalha ? ` (${c.motivoFalha})` : ''}</span>
+                    : null}
+                  <BotaoVerRetorno
+                    titulo={`Retorno do birô — ${c.tipo === 'CAMADA1' ? 'Camada 1' : c.tipo === 'SCORE_QUOD' ? 'Score Quod' : 'Restritivos Quod'} · ${fmtData(String(c.dataConsulta))}`}
+                    resultado={c.resultado}
+                  />
                 </div>
               ))}
             </div>

@@ -144,6 +144,13 @@ export class AnaliseController {
     return this.analise.repetirCamada1(id, user.id);
   }
 
+  // Consultas de birô da PESSOA (decisão 09/08): histórico completo na ficha
+  // do titular — leitura para qualquer autenticado.
+  @Get('titulares/:id/consultas-biro')
+  consultasDoTitular(@Param('id') id: string) {
+    return this.analise.consultasDoTitular(id);
+  }
+
   // Camada 2 pelo sistema: score/restritivos Quod via Marketplace da BigDataCorp
   // (pago por chamada, fora da franquia — decisão 08/08).
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)

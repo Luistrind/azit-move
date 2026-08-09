@@ -70,6 +70,15 @@ export const titularService = {
     const { data } = await api.get('/api/v1/titulares', { params: { limit: 100, ...params } });
     return data;
   },
+  // Consultas de birô da pessoa (decisão 09/08) — histórico completo na ficha.
+  async consultasBiro(id: string): Promise<{
+    id: string; tipo: string; fornecedor: string; protocolo: string | null; dataConsulta: string;
+    situacao: string; motivoFalha: string | null; tentativas: number;
+    resultado: Record<string, unknown> | null; analiseId: string; propostaId: string;
+  }[]> {
+    const { data } = await api.get(`/api/v1/titulares/${id}/consultas-biro`);
+    return data;
+  },
   async ficha(id: string): Promise<FichaTitular> {
     const { data } = await api.get(`/api/v1/titulares/${id}/ficha`);
     return data;

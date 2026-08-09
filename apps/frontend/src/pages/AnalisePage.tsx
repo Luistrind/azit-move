@@ -7,6 +7,7 @@ import { originacaoService } from '../services/originacao.service';
 import { reaisParaCentavos } from '../lib/valor';
 import { rotuloStatus } from '../lib/rotulos';
 import { Modal } from '../components/Modal';
+import { BotaoVerRetorno } from '../components/RetornoBiro';
 import { toast } from '../components/Toast';
 import { mensagemErro } from '../lib/permissoes';
 
@@ -258,18 +259,14 @@ export function AnalisePage() {
                     sem valores — não conta para a política, registre de novo
                   </span>
                 )}
+                <BotaoVerRetorno
+                  titulo={`Retorno do birô — ${c.tipo === 'CAMADA1' ? 'Camada 1' : c.tipo === 'SCORE_QUOD' ? 'Score Quod' : 'Restritivos Quod'} · ${new Date(c.dataConsulta).toLocaleDateString('pt-BR')}`}
+                  resultado={c.resultado}
+                />
                 {typeof r.statusApi === 'string' && r.statusApi && (
                   <div className="mt-[3px] rounded-[8px] px-[8px] py-[4px] text-[11.5px]" style={{ background: '#eef2f7', color: '#3d4a5c' }}>
                     <b>Mensagem da API do birô:</b> {r.statusApi}
                   </div>
-                )}
-                {r.bruto !== undefined && r.bruto !== null && (
-                  <details className="mt-[3px] text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                    <summary className="cursor-pointer font-semibold">Payload completo do birô (diagnóstico)</summary>
-                    <pre className="mt-[4px] max-h-[240px] overflow-auto rounded-[8px] p-[8px] text-[10.5px]" style={{ background: 'var(--surface-input)' }}>
-                      {JSON.stringify(r.bruto, null, 2)}
-                    </pre>
-                  </details>
                 )}
                 {/* Camada 1 (decisão 08/08 Q3): motivos internos e alertas SEMPRE visíveis ao analista */}
                 {motivos.length > 0 && (

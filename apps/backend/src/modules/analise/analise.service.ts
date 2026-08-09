@@ -209,6 +209,7 @@ export class AnaliseService implements OnModuleInit {
               nomeOficial: c1.dados?.nomeOficial ?? null,
               dataNascimento: c1.dados?.dataNascimento ?? null,
               resumo: `Camada 1 ${proposta.camada1Status} no envio da proposta`,
+              bruto: (c1 as { bruto?: unknown }).bruto ?? null,
             },
           },
           usuarioId,
@@ -264,6 +265,7 @@ export class AnaliseService implements OnModuleInit {
           nomeOficial: r.dados?.nomeOficial ?? null,
           dataNascimento: r.dados?.dataNascimento ?? null,
           resumo: 'Camada 1 repetida pelo analista',
+          bruto: r.bruto ?? null,
         },
       },
       usuarioId,
@@ -351,6 +353,30 @@ export class AnaliseService implements OnModuleInit {
         bruto: r.bruto,
       },
     }, usuarioId);
+  }
+
+  // Consultas de birô vinculadas ao CADASTRO do cliente (decisão 09/08): tudo
+  // o que já consultamos sobre a pessoa, em qualquer análise — visível na ficha.
+  async consultasDoTitular(titularId: string) {
+    const consultas = await this.prisma.db.consultaExterna.findMany({
+      where: { titularId },
+      orderBy: { dataConsulta: 'desc' },
+      take: 100,
+      include: { analise: { select: { id: true, propostaId: true } } },
+    });
+    return consultas.map((c) => ({
+      id: c.id,
+      tipo: c.tipo,
+      fornecedor: c.fornecedor,
+      protocolo: c.protocolo,
+      dataConsulta: c.dataConsulta,
+      situacao: c.situacao,
+      motivoFalha: c.motivoFalha,
+      tentativas: c.tentativas,
+      resultado: c.resultado,
+      analiseId: c.analiseId,
+      propostaId: c.analise.propostaId,
+    }));
   }
 
   // Listagem para a fila de análises (menu Análise de Cadastro).

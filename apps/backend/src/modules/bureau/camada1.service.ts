@@ -35,6 +35,9 @@ export interface ResultadoCamada1 {
     processosComoReu: number | null;
     protocolo: string | null;
   } | null;
+  // Retorno COMPLETO do birô (decisão 09/08: TODA consulta guarda tudo — serve
+  // à análise e fica vinculada ao cadastro do cliente).
+  bruto?: unknown;
 }
 
 @Injectable()
@@ -111,6 +114,7 @@ export class Camada1Service {
         processosComoReu: d.processosComoReu,
         protocolo: d.protocolo,
       },
+      bruto: d.bruto ?? null,
     };
   }
 }
