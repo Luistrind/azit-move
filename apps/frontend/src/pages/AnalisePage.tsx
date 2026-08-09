@@ -202,7 +202,21 @@ export function AnalisePage() {
       {!final && <ConsultaForm d={d} ocupado={ocupado} acao={acao} />}
       {d.consultas.length > 0 && (
         <div className={card}>
-          <div className="mb-[8px] font-display text-[13px] font-bold">Consultas registradas</div>
+          <div className="mb-[8px] flex flex-wrap items-center justify-between gap-[8px]">
+            <span className="font-display text-[13px] font-bold">Consultas registradas</span>
+            {!final && (
+              <button
+                className={btnS}
+                disabled={ocupado}
+                onClick={() => {
+                  if (!window.confirm('Repetir a consulta da Camada 1 no birô agora? Com credenciais reais isso consome 1 consulta da franquia.')) return;
+                  void acao(() => analiseService.repetirCamada1(d.id), 'Consulta da Camada 1 repetida no birô.');
+                }}
+              >
+                Repetir Camada 1 no birô
+              </button>
+            )}
+          </div>
           {d.consultas.map((c) => {
             const r = (c.resultado ?? {}) as Record<string, unknown>;
             const motivos = Array.isArray(r.motivos) ? (r.motivos as string[]) : [];

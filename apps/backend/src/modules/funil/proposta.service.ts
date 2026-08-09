@@ -252,7 +252,11 @@ export class PropostaService {
   async enviarParaAnalise(propostaId: string, dto: { rendaDeclarada?: number; parecerOperador?: string }) {
     const p = await this.prisma.db.proposta.findFirst({
       where: { id: propostaId },
-      include: { vinculos: { include: { titular: { select: { id: true, nome: true, cpfCnpj: true } } } }, documentos: true },
+      include: {
+        titular: { select: { cpfCnpj: true } },
+        vinculos: { include: { titular: { select: { id: true, nome: true, cpfCnpj: true } } } },
+        documentos: true,
+      },
     });
     if (!p) throw this.naoEncontrada();
     if (p.status !== 'PENDENTE') {
@@ -264,6 +268,27 @@ export class PropostaService {
         erro: 'documentos_pendentes',
         mensagem: `Anexe a CNH de: ${pendencias.map((x) => x.nome).join(', ')}`,
       });
+    }
+    // Camada 1 desatualizada? Reexecuta no envio quando o cache é SIMULADO,
+    // indisponível ou ausente e agora há credenciais reais no ambiente — o caso
+    // clássico: proposta criada antes de configurar o birô. Consome franquia.
+    const cache = p.camada1Resultado as null | { dados?: { simulado?: boolean } | null };
+    const precisaReconsultar =
+      !p.camada1Status || p.camada1Status === 'indisponivel' || cache?.dados?.simulado === true;
+    if (precisaReconsultar && this.camada1.temCredenciaisReais) {
+      const r = await this.camada1.avaliar(p.titular.cpfCnpj);
+      await this.prisma.db.proposta.update({
+        where: { id: propostaId },
+        data: {
+          camada1Status: r.status,
+          camada1Resultado: JSON.parse(JSON.stringify(r)) as Prisma.InputJsonValue,
+          ...(r.status === 'reprovado' ? { status: 'REPROVADA' as const } : {}),
+        },
+      });
+      await this.prisma.db.logAuditoria.create({
+        data: { acao: 'camada1_reavaliada_no_envio', entidade: 'proposta', entidadeId: propostaId, depois: { status: r.status, motivos: r.motivos.length, alertas: r.alertas.length } },
+      });
+      if (r.status === 'reprovado') return this.detalhe(propostaId); // tela neutra no operador
     }
     await this.prisma.db.proposta.update({
       where: { id: propostaId },

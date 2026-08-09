@@ -133,6 +133,14 @@ export class AnaliseController {
     return this.analise.registrarConsulta(id, dto, user.id);
   }
 
+  // Repetir a consulta da Camada 1 no birô (consome franquia com credenciais reais).
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('analises/:id/camada1')
+  @HttpCode(201)
+  repetirCamada1(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.analise.repetirCamada1(id, user.id);
+  }
+
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('analises/:id/transicao')
   @HttpCode(200)

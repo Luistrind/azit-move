@@ -69,6 +69,11 @@ export const analiseService = {
     const { data } = await api.post(`/api/v1/analises/${id}/autorizacoes/${titularId}`, {});
     return data;
   },
+  // Repete a Camada 1 no birô (consome franquia quando as credenciais são reais).
+  async repetirCamada1(id: string): Promise<DossieAnalise> {
+    const { data } = await api.post<DossieAnalise>(`/api/v1/analises/${id}/camada1`, {});
+    return data;
+  },
   async registrarConsulta(id: string, body: Record<string, unknown>): Promise<DossieAnalise> {
     const { data } = await api.post(`/api/v1/analises/${id}/consultas`, body);
     return data;

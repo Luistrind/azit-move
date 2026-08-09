@@ -13,6 +13,7 @@ import {
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
+import { Camada1Service } from '../bureau/camada1.service';
 
 // ============================================================
 // Análise de Cadastro — Fase 1 (doc 02 §14; Requisitos v0.2).
@@ -46,6 +47,7 @@ export class AnaliseService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aprovacao: AprovacaoService,
+    private readonly camada1: Camada1Service,
   ) {}
 
   // COCAD via motor de aprovação: aprovado → APROVADO_COCAD; reprovado → volta a
@@ -203,6 +205,55 @@ export class AnaliseService implements OnModuleInit {
         );
       }
     }
+  }
+
+  // Repetir a consulta da Camada 1 NO BIRÔ, sob demanda do analista (caso do
+  // alerta "indisponível/simulada — repetir na análise", ou proposta criada
+  // antes das credenciais). Consome franquia quando as credenciais são reais.
+  async repetirCamada1(analiseId: string, usuarioId?: string) {
+    const a = await this.carregar(analiseId);
+    this.garantirNaoFinal(a.status);
+    const principal = a.participantes.find((p) => p.papel === 'COMPRADOR_PRINCIPAL');
+    if (!principal) {
+      throw new UnprocessableEntityException({ erro: 'sem_principal', mensagem: 'Análise sem comprador principal' });
+    }
+    const titular = await this.prisma.db.titular.findFirst({
+      where: { id: principal.titularId },
+      select: { cpfCnpj: true },
+    });
+    const r = await this.camada1.avaliar(titular?.cpfCnpj ?? '');
+    // Atualiza o cache da proposta (a trilha oficial é a ConsultaExterna abaixo).
+    await this.prisma.db.proposta.update({
+      where: { id: a.propostaId },
+      data: {
+        camada1Status: r.status,
+        camada1Resultado: JSON.parse(JSON.stringify(r)) as Prisma.InputJsonValue,
+      },
+    });
+    return this.registrarConsulta(
+      analiseId,
+      {
+        titularId: principal.titularId,
+        tipo: 'camada1',
+        fornecedor: r.dados?.simulado ? 'BigDataCorp (simulado)' : 'BigDataCorp',
+        protocolo: r.dados?.protocolo ?? undefined,
+        situacao: r.status === 'indisponivel' ? 'falha' : 'concluida',
+        motivoFalha: r.status === 'indisponivel' ? 'Birô indisponível — tentar novamente' : undefined,
+        resultado: {
+          status: r.status,
+          motivos: r.motivos,
+          alertas: r.alertas,
+          simulado: r.dados?.simulado ?? false,
+          situacaoCpf: r.dados?.situacaoCpf ?? null,
+          idade: r.dados?.idade ?? null,
+          indicacaoObito: r.dados?.indicacaoObito ?? false,
+          nomeOficial: r.dados?.nomeOficial ?? null,
+          dataNascimento: r.dados?.dataNascimento ?? null,
+          resumo: 'Camada 1 repetida pelo analista',
+        },
+      },
+      usuarioId,
+    );
   }
 
   // Listagem para a fila de análises (menu Análise de Cadastro).

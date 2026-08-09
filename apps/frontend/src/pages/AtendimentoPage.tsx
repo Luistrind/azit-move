@@ -362,7 +362,9 @@ export function AtendimentoPage() {
         parecerOperador: parecerTexto.trim() || undefined,
       });
       setProposta(p);
-      setPasso(7);
+      // A Camada 1 pode ser reavaliada no envio (credenciais reais chegaram
+      // depois da criação) — reprovou, cai na tela neutra.
+      setPasso(p.status === 'reprovada' ? 'reprovada' : 7);
     } catch (e) {
       setErro(mensagemErro(e));
     } finally {

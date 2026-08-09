@@ -37,6 +37,11 @@ export class Camada1Service {
 
   constructor(private readonly bigDataCorp: BigDataCorpService) {}
 
+  // true quando o ambiente tem o par TokenId+AccessToken (consulta REAL).
+  get temCredenciaisReais(): boolean {
+    return this.bigDataCorp.configurado;
+  }
+
   async avaliar(cpf: string): Promise<ResultadoCamada1> {
     let d;
     try {
