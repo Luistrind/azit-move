@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
 import { aprovacaoService, Aprovacao, DecisaoInput } from '../services/aprovacao.service';
 import { mensagemErro } from '../lib/permissoes';
@@ -227,6 +227,22 @@ function CardAprovacao({
           <div><span style={{ color: 'var(--text-muted)' }}>Saldo devedor</span><div className="font-bold tabular-nums">{formatCurrency(a.contexto.saldoDevedor)}</div></div>
           <div><span style={{ color: 'var(--text-muted)' }}>Em atraso</span><div className="font-bold tabular-nums" style={{ color: a.contexto.valorEmAtraso > 0 ? '#c0392b' : undefined }}>{formatCurrency(a.contexto.valorEmAtraso)}</div></div>
           <div><span style={{ color: 'var(--text-muted)' }}>Faturas vencidas</span><div className="font-bold" style={{ color: a.contexto.faturasVencidas > 0 ? '#c0392b' : undefined }}>{a.contexto.faturasVencidas}</div></div>
+        </div>
+      )}
+
+      {/* Contexto de análise de cadastro (COCAD): a decisão é sobre a PROPOSTA
+          nova — parcela, rendas e o caminho para o dossiê completo. */}
+      {a.contextoAnalise && (
+        <div className="mt-[12px] rounded-[10px] p-[10px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
+          <div className="grid grid-cols-2 gap-[8px] sm:grid-cols-4">
+            <div><span style={{ color: 'var(--text-muted)' }}>Ativo da proposta</span><div className="font-bold">{a.contextoAnalise.ativo}</div></div>
+            <div><span style={{ color: 'var(--text-muted)' }}>Parcela{a.contextoAnalise.frequencia ? ` (${a.contextoAnalise.frequencia})` : ''}</span><div className="font-bold tabular-nums">{formatCurrency(a.contextoAnalise.valorParcela)}</div></div>
+            <div><span style={{ color: 'var(--text-muted)' }}>Renda declarada</span><div className="font-bold tabular-nums">{a.contextoAnalise.rendaDeclarada !== null ? formatCurrency(a.contextoAnalise.rendaDeclarada) : '—'}</div></div>
+            <div><span style={{ color: 'var(--text-muted)' }}>Renda apurada</span><div className="font-bold tabular-nums">{a.contextoAnalise.rendaApurada !== null ? formatCurrency(a.contextoAnalise.rendaApurada) : '—'}</div></div>
+          </div>
+          <Link to={`/analises/${a.contextoAnalise.analiseId}`} className="mt-[8px] inline-block text-[12px] font-semibold" style={{ color: 'var(--navy)' }}>
+            Abrir o dossiê completo da análise →
+          </Link>
         </div>
       )}
 

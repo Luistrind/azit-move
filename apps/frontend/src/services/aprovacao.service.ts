@@ -31,6 +31,17 @@ export interface Aprovacao {
   decisoes: DecisaoTrilha[];
   titular: { id: string; nome: string } | null;
   contexto: ContextoTitular | null;
+  // Contexto de ANÁLISE DE CADASTRO (COCAD) — proposta nova não tem conta.
+  contextoAnalise: {
+    analiseId: string;
+    propostaId: string;
+    ativo: string;
+    valorParcela: number;
+    frequencia: string | null;
+    rendaDeclarada: number | null;
+    rendaPresumida: number | null;
+    rendaApurada: number | null;
+  } | null;
   // Situação do usuário logado frente a esta solicitação (calculada no backend).
   minha: { podeAprovar: boolean; ehSolicitante: boolean; jaDecidiu: boolean };
 }

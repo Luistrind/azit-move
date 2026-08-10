@@ -222,12 +222,13 @@ export class AprovacaoService {
     });
 
     const titularIds = Array.from(new Set(rows.map((r) => r.titularId).filter(Boolean))) as string[];
-    const [titulares, contextos] = await Promise.all([
+    const [titulares, contextos, contextosAnalise] = await Promise.all([
       this.prisma.db.titular.findMany({
         where: { id: { in: titularIds } },
         select: { id: true, nome: true },
       }),
       this.contextos(titularIds),
+      this.contextosAnalise(rows.filter((r) => r.tipoOperacao === 'analise_cadastro').map((r) => r.referenciaId)),
     ]);
     const nomePorTitular = new Map(titulares.map((t) => [t.id, t.nome]));
 
@@ -260,7 +261,17 @@ export class AprovacaoService {
         titular: r.titularId
           ? { id: r.titularId, nome: nomePorTitular.get(r.titularId) ?? '—' }
           : null,
-        contexto: r.titularId ? (contextos.get(r.titularId) ?? null) : null,
+        // Feedback 09/08: aprovação de ANÁLISE DE CADASTRO é sobre a proposta —
+        // KPIs de conta (contratos/saldo/atraso) não fazem sentido para cliente
+        // novo; o contexto certo é o da análise.
+        contexto:
+          r.tipoOperacao === 'analise_cadastro'
+            ? null
+            : r.titularId
+              ? (contextos.get(r.titularId) ?? null)
+              : null,
+        contextoAnalise:
+          r.tipoOperacao === 'analise_cadastro' ? (contextosAnalise.get(r.referenciaId) ?? null) : null,
         minha: {
           podeAprovar,
           ehSolicitante: r.solicitanteId === usuarioId,
@@ -269,6 +280,57 @@ export class AprovacaoService {
         };
       }),
     );
+  }
+
+  // Contexto da ANÁLISE DE CADASTRO para a decisão do COCAD (feedback 09/08):
+  // proposta nova não tem contratos/faturas — o que importa é a análise em si.
+  private async contextosAnalise(analiseIds: string[]) {
+    const mapa = new Map<
+      string,
+      {
+        analiseId: string;
+        propostaId: string;
+        ativo: string;
+        valorParcela: number;
+        frequencia: string | null;
+        rendaDeclarada: number | null;
+        rendaPresumida: number | null;
+        rendaApurada: number | null;
+      }
+    >();
+    if (analiseIds.length === 0) return mapa;
+    const analises = await this.prisma.db.analiseCadastro.findMany({
+      where: { id: { in: analiseIds } },
+      select: {
+        id: true,
+        propostaId: true,
+        proposta: {
+          select: {
+            valorParcela: true,
+            frequencia: true,
+            ativo: { select: { descricao: true } },
+          },
+        },
+        participantes: {
+          where: { papel: 'COMPRADOR_PRINCIPAL' },
+          select: { rendaDeclarada: true, rendaPresumida: true, rendaApurada: true },
+        },
+      },
+    });
+    for (const a of analises) {
+      const p = a.participantes[0];
+      mapa.set(a.id, {
+        analiseId: a.id,
+        propostaId: a.propostaId,
+        ativo: a.proposta.ativo.descricao,
+        valorParcela: this.cent(a.proposta.valorParcela),
+        frequencia: a.proposta.frequencia ? a.proposta.frequencia.toLowerCase() : null,
+        rendaDeclarada: p?.rendaDeclarada ? this.cent(p.rendaDeclarada) : null,
+        rendaPresumida: p?.rendaPresumida && this.cent(p.rendaPresumida) > 0 ? this.cent(p.rendaPresumida) : null,
+        rendaApurada: p?.rendaApurada ? this.cent(p.rendaApurada) : null,
+      });
+    }
+    return mapa;
   }
 
   // Contexto financeiro do titular para a decisão (Doc 2 §7.9-A: aprovar às cegas não é aprovar).
