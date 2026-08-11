@@ -32,9 +32,11 @@ export interface DadosBasicosPessoa {
 }
 
 const URL_PESSOAS = 'https://plataforma.bigdatacorp.com.br/pessoas';
+// DESCOBERTA 11/08 (resolveu o -109): datasets de MARKETPLACE têm ENDPOINT
+// PRÓPRIO — /marketplace, não /pessoas. Mesmo token, mesma autenticação.
+const URL_MARKETPLACE = 'https://plataforma.bigdatacorp.com.br/marketplace';
 const DATASETS_CAMADA1 = 'basic_data,financial_data,processes';
-// Camada 2 — MARKETPLACE da própria plataforma (mesma API/token; pago por
-// chamada, FORA da franquia de 500/mês — motivo da escolha da BigDataCorp):
+// Camada 2 — Marketplace (pago por chamada, FORA da franquia de 500/mês):
 const DATASET_SCORE_QUOD = 'partner_quod_credit_score_person'; // ~R$ 2,41/consulta
 const DATASET_RESTRITIVOS_QUOD = 'partner_quod_credit_risk_details_person'; // ~R$ 2,41/consulta
 
@@ -157,12 +159,11 @@ export class BigDataCorpService {
       this.logger.warn('BigDataCorp SEM credenciais — score Quod SIMULADO');
       return { simulado: true, score: 650, capacidadePagamento: 70, protocolo: `sim_score_${cpf.slice(-4)}`, statusApi: null };
     }
-    const corpo = await this.consultar(cpf, DATASET_SCORE_QUOD);
+    const corpo = await this.consultar(cpf, DATASET_SCORE_QUOD, URL_MARKETPLACE);
     const r0 = (corpo.Result?.[0] ?? {}) as Record<string, unknown>;
-    // O bloco do parceiro pode vir com nomes diferentes — varre por candidatas e,
-    // no último caso, procura QUALQUER objeto com campo Score em 1 nível.
+    // Bloco confirmado com retorno REAL (11/08): QUODCreditScorePerson.
     const bloco =
-      this.acharBloco(r0, ['Score', 'QuodScore', 'CreditScore', 'QuodCreditScore', 'PartnerQuodCreditScore']) ??
+      this.acharBloco(r0, ['QUODCreditScorePerson', 'QuodCreditScore', 'CreditScore']) ??
       this.acharBlocoComCampo(r0, 'Score') ?? {};
     const num = (v: unknown) => (typeof v === 'number' ? v : typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : null);
     return {
@@ -184,11 +185,14 @@ export class BigDataCorpService {
         protestosQuantidade: 0, protestosValor: 0, protocolo: `sim_restr_${cpf.slice(-4)}`, statusApi: null,
       };
     }
-    const corpo = await this.consultar(cpf, DATASET_RESTRITIVOS_QUOD);
+    const corpo = await this.consultar(cpf, DATASET_RESTRITIVOS_QUOD, URL_MARKETPLACE);
     const r0 = (corpo.Result?.[0] ?? {}) as Record<string, unknown>;
+    // Bloco/campos confirmados com retorno REAL (11/08): QUODCreditRiskPerson
+    // { TotalActiveNegativeAppointments, TotalIndebtednessValue (reais),
+    //   TotalRegisteredProtests, NegativeAppointmentsDetails[], ... }.
     const bloco =
-      this.acharBloco(r0, ['CreditRiskDetails', 'QuodCreditRisk', 'QuodCreditRiskDetails', 'NegativeData', 'PartnerQuodCreditRiskDetails']) ??
-      this.acharBlocoComCampo(r0, 'TotalIndebtedness') ?? r0;
+      this.acharBloco(r0, ['QUODCreditRiskPerson', 'QuodCreditRisk', 'CreditRiskDetails']) ??
+      this.acharBlocoComCampo(r0, 'TotalIndebtednessValue') ?? r0;
     const num = (v: unknown) => (typeof v === 'number' ? v : typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : null);
     const reais = (v: unknown) => {
       const n = typeof v === 'number' ? v : typeof v === 'string' && /^[\d.,]+$/.test(v) ? Number(v.replace(',', '.')) : null;
@@ -196,9 +200,9 @@ export class BigDataCorpService {
     };
     return {
       simulado: false,
-      apontamentosAtivos: num(bloco.ActiveNegativeAppointments) ?? num(bloco.TotalActiveAppointments) ?? num(bloco.TotalAppointments),
-      endividamentoTotal: reais(bloco.TotalIndebtedness) ?? reais(bloco.TotalDebtAmount) ?? reais(bloco.TotalDebt),
-      protestosQuantidade: num(bloco.TotalProtests) ?? num(bloco.ProtestsCount) ?? num(bloco.Protests),
+      apontamentosAtivos: num(bloco.TotalActiveNegativeAppointments) ?? num(bloco.ActiveNegativeAppointments),
+      endividamentoTotal: reais(bloco.TotalIndebtednessValue) ?? reais(bloco.TotalIndebtedness),
+      protestosQuantidade: num(bloco.TotalRegisteredProtests) ?? num(bloco.TotalProtests),
       protestosValor: reais(bloco.TotalProtestsValue) ?? reais(bloco.ProtestsValue),
       protocolo: corpo.QueryId ?? null,
       statusApi: this.resumirStatus(corpo.Status),
@@ -206,8 +210,8 @@ export class BigDataCorpService {
     };
   }
 
-  private async consultar(cpf: string, datasets: string) {
-    const resp = await fetch(URL_PESSOAS, {
+  private async consultar(cpf: string, datasets: string, url: string = URL_PESSOAS) {
+    const resp = await fetch(url, {
       method: 'POST',
       headers: {
         AccessToken: process.env.BIGDATACORP_ACCESS_TOKEN as string,
