@@ -160,7 +160,9 @@ export function PropostaDetalhePage() {
         <div className="flex flex-col gap-[16px]">
           {/* Produtos do contrato (carrinho) */}
           <div className="rounded-card p-[18px]" style={card}>
-            <div className="mb-[10px] font-display text-[13px] font-bold">Produtos do contrato</div>
+            {/* Doc 02 §17 (2026-08-16): aqui entram ITENS de contrato (proteção,
+                rastreador, taxas) — produto comercial é papel do Catálogo. */}
+            <div className="mb-[10px] font-display text-[13px] font-bold">Itens do contrato</div>
             <div className="flex flex-col gap-[6px]">
               {/* âncora — sempre o financiamento do veículo */}
               <div className="flex items-center gap-[10px] text-[12.5px]">
@@ -180,7 +182,7 @@ export function PropostaDetalhePage() {
             {podeOperar && p.status !== 'convertida' && (
               <div className="mt-[12px] flex flex-wrap items-end gap-[10px]">
                 <select value={produtoSel} onChange={(e) => setProdutoSel(e.target.value)} className={`${inputCls} w-[260px]`} style={inputStyle}>
-                  <option value="">Adicionar produto…</option>
+                  <option value="">Adicionar item ao contrato…</option>
                   {catalogo.data?.filter((pr) => !pr.ancora && pr.ativo).map((pr) => (
                     <option key={pr.id} value={pr.id}>{pr.nome}{pr.valorPadrao ? ` · ${formatCurrency(pr.valorPadrao)}` : ''}{pr.apartado ? ' (apartado)' : ''}</option>
                   ))}
@@ -191,7 +193,7 @@ export function PropostaDetalhePage() {
               </div>
             )}
             <div className="mt-[8px] text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              Produtos <b>apartados</b> (ex: seguro) viram contrato próprio na formalização; os demais entram no contrato do veículo.
+              Itens <b>apartados</b> (ex: seguro) viram contrato próprio na formalização; os demais entram no contrato do veículo. Produtos comerciais (venda, Reembolso Parcelado, proteção) são geridos no <b>Catálogo</b>.
             </div>
           </div>
 

@@ -1136,6 +1136,17 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 > O model `Produto` existente (itens avulsos de contrato — proteção, rastreador, taxa) continua
 > separado: ele é item contratável, não produto comercial do catálogo. Convergência avaliada na F3.
 >
+> **Decisão 2026-08-16 (Luís, homologação): toda oferta de produto ao operador vem do CATÁLOGO.**
+> O modal "+ Contratar crédito" listava o model `Produto` legado (itens de contrato) como se
+> fossem produtos comerciais — anti-requisito. Correções: (a) `ProdutoCatalogo` ganha o flag
+> **`contratacaoAvulsa`** — produto comercial contratável avulso por cliente já ativo (hoje:
+> Reembolso Parcelado; futuro: parcelamento de despesas do Vicente); o modal lista SÓ produtos
+> ATIVOS com esse flag (a precificação já vinha do Catálogo via `catalogoFonte` — agora a lista
+> também); (b) o mundo legado fica restrito ao carrinho de ITENS do contrato na proposta, com
+> rótulos que dizem isso ("item de contrato", nunca "produto"); (c) a convergência final
+> (aposentar o model legado, itens virarem produtos Complementares do Catálogo) fica para a
+> fase do parcelamento de despesas, modelada com o Vicente.
+>
 > **Decisões da homologação 2026-08-04 (Luís + Vicente, em produção):**
 > 1. **Fator da proteção corrigido — 4/2 são fatores de VALOR; 4,3452/2,1726 são de PRAZO.**
 >    A planilha calcula a contribuição MENSAL primeiro e deriva: semanal = mensal ÷ 4;

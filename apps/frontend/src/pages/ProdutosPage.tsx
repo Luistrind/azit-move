@@ -61,9 +61,12 @@ export function ProdutosPage() {
   return (
     <div className="flex flex-col gap-[16px]">
       <div className="flex items-center justify-between">
-        <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Catálogo de produtos/serviços. Seguro é <b>apartado</b> (contrato próprio).</div>
+        <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
+          <b>Itens avulsos de contrato</b> (proteção, rastreador, taxas) — entram no carrinho da proposta; seguro é <b>apartado</b> (contrato próprio).
+          Produto comercial (venda, Reembolso Parcelado, proteção veicular) é gerido no <b>Catálogo de produtos</b>.
+        </div>
         {podeEditar && (
-          <button onClick={novo} className="h-[34px] rounded-[8px] px-[16px] text-[12.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff' }}>+ Novo produto</button>
+          <button onClick={novo} className="h-[34px] rounded-[8px] px-[16px] text-[12.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff' }}>+ Novo item</button>
         )}
       </div>
 

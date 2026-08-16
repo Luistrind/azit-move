@@ -12,9 +12,20 @@ export interface ProdutoCatalogoResumo {
   finalidade: string | null;
   classificacao: string | null;
   status: string;
+  contratacaoAvulsa: boolean;
   variantes: { id: string; chave: string; nome: string; status: string }[];
   totalVersoes: number;
   versaoVigenteProduto: number | null;
+}
+
+// Produto contratável avulso por cliente ativo (doc 02 §17) — fonte do
+// modal "+ Contratar crédito".
+export interface ProdutoAvulso {
+  id: string;
+  chave: string;
+  nome: string;
+  finalidade: string | null;
+  descricao: string | null;
 }
 
 export interface VarianteDetalhe {
@@ -62,8 +73,12 @@ export const catalogoService = {
     const { data } = await api.post<{ id: string; numero: number }>(`/api/v1/catalogo/${id}/versoes`, body);
     return data;
   },
-  async atualizarCadastral(id: string, body: { nome?: string; finalidade?: string; descricao?: string }) {
+  async atualizarCadastral(id: string, body: { nome?: string; finalidade?: string; descricao?: string; contratacaoAvulsa?: boolean }) {
     const { data } = await api.patch(`/api/v1/catalogo/${id}`, body);
+    return data;
+  },
+  async avulsos(): Promise<ProdutoAvulso[]> {
+    const { data } = await api.get<ProdutoAvulso[]>('/api/v1/catalogo/avulsos');
     return data;
   },
 };

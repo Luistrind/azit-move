@@ -18,6 +18,8 @@ const cadastralSchema = z.object({
   finalidade: z.string().optional(),
   classificacao: z.string().optional(),
   descricao: z.string().optional(),
+  // Doc 02 §17 (2026-08-16): contratável avulso por cliente ativo (+ Contratar crédito).
+  contratacaoAvulsa: z.boolean().optional(),
 });
 
 const criarProdutoSchema = cadastralSchema.extend({
@@ -78,10 +80,24 @@ export class CatalogoController {
       finalidade: p.finalidade,
       classificacao: p.classificacao,
       status: p.status,
+      contratacaoAvulsa: p.contratacaoAvulsa,
       variantes: p.variantes.map((v) => ({ id: v.id, chave: v.chave, nome: v.nome, status: v.status })),
       totalVersoes: p.versoes.length,
       versaoVigenteProduto: this.numeroVigente(p.versoes.filter((x) => !x.varianteId)),
     }));
+  }
+
+  // Produtos comerciais contratáveis AVULSOS por cliente ativo (doc 02 §17,
+  // 2026-08-16) — fonte ÚNICA do modal "+ Contratar crédito". Sem @Roles:
+  // qualquer usuário autenticado da operação lê.
+  @Get('avulsos')
+  async avulsos() {
+    const produtos = await this.prisma.db.produtoCatalogo.findMany({
+      where: { deletedAt: null, status: 'ATIVO', contratacaoAvulsa: true },
+      orderBy: { nome: 'asc' },
+      select: { id: true, chave: true, nome: true, finalidade: true, descricao: true },
+    });
+    return produtos;
   }
 
   @Get(':id')

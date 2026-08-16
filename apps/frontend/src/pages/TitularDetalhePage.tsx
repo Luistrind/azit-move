@@ -6,7 +6,7 @@ import { titularService } from '../services/titular.service';
 import { faturaService } from '../services/fatura.service';
 import { originacaoService } from '../services/originacao.service';
 import { creditoService } from '../services/credito.service';
-import { produtoService } from '../services/produto.service';
+import { catalogoService } from '../services/catalogo.service';
 import { reguaService } from '../services/regua.service';
 import { reaisParaCentavos } from '../lib/valor';
 import { mensagemErro, usePodeRole, ROLE_OPERACAO } from '../lib/permissoes';
@@ -86,15 +86,14 @@ export function TitularDetalhePage() {
   const [cEntrada, setCEntrada] = useState('');
   const [cPeriodicidade, setCPeriodicidade] = useState<'semanal' | 'quinzenal' | 'mensal'>('mensal');
 
+  // Fonte ÚNICA: produtos do CATÁLOGO com contratação avulsa (doc 02 §17,
+  // 2026-08-16) — o model Produto legado (itens de contrato) saiu deste modal.
   const produtos = useQuery({
-    queryKey: ['produtos'],
-    queryFn: () => produtoService.listar(),
+    queryKey: ['catalogo-avulsos'],
+    queryFn: () => catalogoService.avulsos(),
     enabled: creditoOpen,
   });
-  // Produtos de crédito de valor variável (não âncora, parcelados, ativos).
-  const produtosCredito = (produtos.data ?? []).filter(
-    (p) => p.ativo && !p.ancora && p.natureza === 'parcelado',
-  );
+  const produtosCredito = produtos.data ?? [];
   const produtoSel = produtosCredito.find((p) => p.id === cProdutoId);
 
   const cValorCent = reaisParaCentavos(cValor);
@@ -458,11 +457,7 @@ export function TitularDetalhePage() {
               <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Produto</span>
               <select
                 value={cProdutoId}
-                onChange={(e) => {
-                  setCProdutoId(e.target.value);
-                  const p = produtosCredito.find((x) => x.id === e.target.value);
-                  if (p?.valorPadrao) setCValor((p.valorPadrao / 100).toFixed(2).replace('.', ','));
-                }}
+                onChange={(e) => setCProdutoId(e.target.value)}
                 className="h-[34px] rounded-[8px] px-[10px] text-[13px]"
                 style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
               >
@@ -471,6 +466,9 @@ export function TitularDetalhePage() {
                   <option key={p.id} value={p.id}>{p.nome}</option>
                 ))}
               </select>
+              {produtoSel?.finalidade && (
+                <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{produtoSel.finalidade}</span>
+              )}
             </label>
             <label className="flex flex-col gap-[4px] text-[12px]">
               <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Finalidade (opcional)</span>

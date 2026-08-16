@@ -1713,6 +1713,9 @@ model ProdutoCatalogo {
   classificacao String? // Principal | Complementar (texto do catalogo)
   status        CicloProduto @default(RASCUNHO)
   descricao     String?
+  // Doc 02 sec.17 (2026-08-16): produto comercial contratavel AVULSO por cliente
+  // ja ativo (ex.: Reembolso Parcelado) — alimenta o modal "+ Contratar credito".
+  contratacaoAvulsa Boolean @default(false)
 
   variantes VarianteProduto[]
   versoes   VersaoProduto[]

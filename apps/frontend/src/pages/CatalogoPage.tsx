@@ -63,6 +63,12 @@ export function CatalogoPage() {
                 <div className="flex items-center gap-[8px]">
                   <span className="font-display text-[15px] font-bold">{p.nome}</span>
                   <ChipCiclo status={p.status} />
+                  {p.contratacaoAvulsa && (
+                    <span className="rounded-full px-[8px] py-[2px] text-[10.5px] font-bold" style={{ background: '#eef4ff', color: '#2a5aa8' }}
+                      title='Aparece em "+ Contratar crédito" para cliente ativo (doc 02 §17)'>
+                      Contratação avulsa
+                    </span>
+                  )}
                 </div>
                 <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
                   {p.classificacao ? `${p.classificacao} · ` : ''}{p.finalidade ?? ''}
@@ -70,9 +76,20 @@ export function CatalogoPage() {
                   {` · ${p.totalVersoes} ${p.totalVersoes === 1 ? 'versão' : 'versões'}`}
                 </div>
               </div>
-              <button className={btnP} onClick={() => setAbertoId(abertoId === p.id ? null : p.id)}>
-                {abertoId === p.id ? 'Fechar' : 'Abrir produto'}
-              </button>
+              <div className="flex items-center gap-[8px]">
+                <label className="flex items-center gap-[5px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}
+                  title="Produto contratável avulso por cliente já ativo — alimenta o modal + Contratar crédito">
+                  <input
+                    type="checkbox"
+                    checked={p.contratacaoAvulsa}
+                    onChange={(e) => { void catalogoService.atualizarCadastral(p.id, { contratacaoAvulsa: e.target.checked }).then(() => produtos.refetch()); }}
+                  />
+                  Contratação avulsa
+                </label>
+                <button className={btnP} onClick={() => setAbertoId(abertoId === p.id ? null : p.id)}>
+                  {abertoId === p.id ? 'Fechar' : 'Abrir produto'}
+                </button>
+              </div>
             </div>
             {abertoId === p.id && <DetalheProduto id={p.id} />}
           </div>
