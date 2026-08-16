@@ -145,7 +145,7 @@ export class TitularService {
         conta: {
           include: {
             contratosCredito: {
-              select: { id: true, numero: true, status: true, valorTotal: true, valorEntrada: true, entradaParcelada: true, cronogramaGeradoEm: true, saldoDevedor: true, dataAssinatura: true },
+              select: { id: true, numero: true, status: true, valorTotal: true, valorEntrada: true, entradaParcelada: true, entradaPagaEm: true, cronogramaGeradoEm: true, saldoDevedor: true, dataAssinatura: true },
               orderBy: { createdAt: 'desc' },
             },
             contratosInvestimento: {
@@ -189,10 +189,12 @@ export class TitularService {
     const valorEmContratoAtivo = contratos
       .filter((c) => (ATIVOS as readonly string[]).includes(c.status))
       .reduce((s, c) => s + cent(c.valorTotal), 0);
-    // Entrada paga na ativação (não passa por fatura): à vista, ou 60% se parcelada
-    // (os 40% restantes viram intermediárias já contadas no valorPago das faturas).
+    // Entrada paga: desde 16/08 (doc 02 §4-A.3) ela MATERIALIZA como fatura PAGA
+    // e já entra na soma acima — somar por fora aqui dobrava o KPI (caso real:
+    // R$ 7.980 para entrada de R$ 3.990). A heurística fica SÓ para contratos
+    // antigos ativados antes da materialização (sem entradaPagaEm).
     const entradaPaga = contratos
-      .filter((c) => c.cronogramaGeradoEm)
+      .filter((c) => c.cronogramaGeradoEm && !c.entradaPagaEm)
       .reduce((s, c) => {
         const ent = cent(c.valorEntrada);
         return s + (c.entradaParcelada ? Math.round(ent * 0.6) : ent);
