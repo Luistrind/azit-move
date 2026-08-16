@@ -810,6 +810,29 @@ model DocumentoAssinatura {
   @@map("documentos_assinatura")
 }
 
+// Parametros da assinatura digital (doc 02 sec.21 F1.1) — linha unica:
+// quem assina pela Azit (Joao Pedro), as duas testemunhas padrao (impressas
+// no contrato E signatarias na ZapSign) e a chave do envio automatico por
+// WhatsApp. Editavel em Configuracao > Assinatura digital.
+model ParametroAssinatura {
+  id                      String  @id @default(cuid())
+  azitNome                String  @default("")
+  azitCpf                 String  @default("")
+  azitWhatsapp            String  @default("")
+  testemunha1Nome         String  @default("")
+  testemunha1Cpf          String  @default("")
+  testemunha1Whatsapp     String  @default("")
+  testemunha2Nome         String  @default("")
+  testemunha2Cpf          String  @default("")
+  testemunha2Whatsapp     String  @default("")
+  envioAutomaticoWhatsapp Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("parametros_assinatura")
+}
+
 // Notificacao ao operador (doc 02 sec.20 passo 13): marcos do pos-contrato
 // (assinado / cobranca gerada / entrada paga) aparecem no sino do topo.
 model Notificacao {

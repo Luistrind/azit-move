@@ -595,6 +595,8 @@ const PAPEL_ASSINATURA: Record<string, string> = {
   titular: 'Comprador',
   solidario: 'Comprador solidário',
   garantidor: 'Garantidor',
+  testemunha1: 'Testemunha',
+  testemunha2: 'Testemunha',
   azit: 'Azit (vendedora)',
 };
 

@@ -1294,6 +1294,25 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 >    operador. Notificações no sino: assinou / todos assinaram / recusou.
 > 5. Objeto novo: `DocumentoAssinatura` (espelho do doc na ZapSign — token, status, signatários,
 >    PDF assinado) vinculado ao contrato.
+>
+> **F1.1 — Decisões 2026-08-15 (Luís, homologação do contrato gerado):**
+> 1. **O contrato se adapta à frequência** (semanal/quinzenal/mensal) em plural e regra de
+>    vencimento — o erro do contrato assinado nº 2026080004 ("parcelas semanais... meses
+>    subsequentes", que era mensal com texto rígido) é anti-requisito; o gerador nativo já
+>    resolve por mapa de frequência.
+> 2. **Duas testemunhas padrão** (art. 784 III CPC): configuráveis, saem IMPRESSAS na seção de
+>    testemunhas do contrato e entram como SIGNATÁRIAS na ZapSign (qualificação "testemunha",
+>    depois dos compradores). Seed: Luís Carlos dos Santos Trindade e Arthur Almeida Luz Félix
+>    (conforme contrato assinado nº 2026080004).
+> 3. **Quem assina pela Azit é uma PESSOA nomeada** (João Pedro) — não mais o signatário
+>    institucional genérico; nome/CPF/WhatsApp ficam nos parâmetros de assinatura.
+> 4. **Envio automático por WhatsApp da ZapSign** (`send_automatic_whatsapp`) para TODOS os
+>    signatários com telefone — compradores, testemunhas e Azit. Requer créditos de WhatsApp
+>    no plano ZapSign; signatário sem telefone cai no link manual (copiar/WhatsApp do
+>    operador), que permanece como fallback nos cartões da tela.
+> 5. **Parâmetros de assinatura têm tela própria** (Configuração → Assinatura digital): objeto
+>    `ParametroAssinatura` de linha única (assinante Azit, 2 testemunhas, chave do envio
+>    automático), editável por ADMIN/DIRETOR, auditado.
 
 ---
 

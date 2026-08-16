@@ -27,6 +27,7 @@ const DIA_MS = 24 * 60 * 60 * 1000;
 // Contrato PADRÃO de compra e venda de veículo (modelo oficial — layout fixo,
 // dados por placeholder). Ver templates/contrato-veiculo.template.ts.
 import { CONTRATO_VEICULO_TEMPLATE } from './templates/contrato-veiculo.template';
+import { AssinaturaService } from '../assinatura/assinatura.service';
 
 // Qualificação da parte no padrão do contrato oficial (campos ausentes são omitidos).
 function qualificarParte(t: {
@@ -90,6 +91,7 @@ export class FormalizacaoService {
     private readonly proposta: PropostaService,
     private readonly catalogoFonte: CatalogoFonteService,
     private readonly notificacao: NotificacaoService,
+    private readonly assinatura: AssinaturaService,
   ) {}
 
   // 7.10 — congela snapshot, gera documento, cria o contrato.
@@ -352,6 +354,11 @@ export class FormalizacaoService {
     const assinaturasAdicionais = [...secundarios, ...garantidores]
       .map((v) => `\n\n___________________________________________\n${v.titular.nome}\nCPF: ${v.titular.cpfCnpj} (${v.papel === 'GARANTIDOR' ? 'Garantidor' : 'Comprador solidário'})`)
       .join('');
+    // Testemunhas padrão (doc 02 §21 F1.1): as mesmas pessoas configuradas
+    // saem impressas aqui e entram como signatárias na ZapSign.
+    const paramsAssinatura = await this.assinatura.obterParametros();
+    const linhaTestemunha = (nome: string, cpf: string) =>
+      nome ? `${nome}\nCPF: ${cpf || '—'}` : 'Nome:\nCPF:';
 
     const documento = renderTemplate(CONTRATO_VEICULO_TEMPLATE, {
       numero: novo.numero,
@@ -387,6 +394,8 @@ export class FormalizacaoService {
       dataAssinaturaLinha: `VITORIA/ES, ${dataPorExtenso(dataAssinatura)}.`,
       compradorAssinatura: `${proposta.titular.nome}\nCPF: ${proposta.titular.cpfCnpj}`,
       assinaturasAdicionais,
+      testemunha1Linha: linhaTestemunha(paramsAssinatura.testemunha1Nome, paramsAssinatura.testemunha1Cpf),
+      testemunha2Linha: linhaTestemunha(paramsAssinatura.testemunha2Nome, paramsAssinatura.testemunha2Cpf),
     });
     const snapshot = {
       contrato: { numero: novo.numero, valorTotal, valorEntrada, numeroParcelas: proposta.numeroParcelas, valorParcela },

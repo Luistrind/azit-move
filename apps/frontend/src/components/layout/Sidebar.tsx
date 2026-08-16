@@ -95,6 +95,7 @@ const GRUPOS_NAV: GrupoNav[] = [
     titulo: 'Configuração',
     itens: [
       { to: '/configuracoes/alcadas', label: 'Alçadas' },
+      { to: '/configuracoes/assinatura', label: 'Assinatura digital' },
       { to: '/configuracoes/simulador', label: 'Simulador' },
       { to: '/configuracoes/usuarios', label: 'Usuários e permissões' },
     ],

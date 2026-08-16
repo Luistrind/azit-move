@@ -29,6 +29,34 @@ interface SignatarioEstado {
   assinouEm?: string;
 }
 
+// Seed dos parâmetros (F1.1): testemunhas do contrato assinado nº 2026080004;
+// dados do assinante Azit (João Pedro) completados pelo Luís na tela.
+const PARAMETROS_SEED = {
+  azitNome: 'João Pedro',
+  azitCpf: '',
+  azitWhatsapp: '',
+  testemunha1Nome: 'Luís Carlos dos Santos Trindade',
+  testemunha1Cpf: '152.508.967-66',
+  testemunha1Whatsapp: '27992962772',
+  testemunha2Nome: 'Arthur Almeida Luz Félix',
+  testemunha2Cpf: '863.278.825-60',
+  testemunha2Whatsapp: '',
+  envioAutomaticoWhatsapp: true,
+};
+
+export interface ParametrosAssinaturaDto {
+  azitNome: string;
+  azitCpf: string;
+  azitWhatsapp: string;
+  testemunha1Nome: string;
+  testemunha1Cpf: string;
+  testemunha1Whatsapp: string;
+  testemunha2Nome: string;
+  testemunha2Cpf: string;
+  testemunha2Whatsapp: string;
+  envioAutomaticoWhatsapp: boolean;
+}
+
 @Injectable()
 export class AssinaturaService {
   private readonly logger = new Logger(AssinaturaService.name);
@@ -38,6 +66,44 @@ export class AssinaturaService {
     private readonly zapSign: ZapSignService,
     private readonly notificacao: NotificacaoService,
   ) {}
+
+  // Linha única, criada sob demanda com o seed — consumida pelo envio à
+  // ZapSign e pela formalização (testemunhas impressas no contrato).
+  async obterParametros() {
+    const existente = await this.prisma.db.parametroAssinatura.findFirst();
+    if (existente) return existente;
+    return this.prisma.db.parametroAssinatura.create({ data: PARAMETROS_SEED });
+  }
+
+  async atualizarParametros(dto: Partial<ParametrosAssinaturaDto>, usuarioId?: string) {
+    const atual = await this.obterParametros();
+    const atualizado = await this.prisma.db.parametroAssinatura.update({
+      where: { id: atual.id },
+      data: {
+        azitNome: dto.azitNome?.trim() ?? atual.azitNome,
+        azitCpf: dto.azitCpf?.trim() ?? atual.azitCpf,
+        azitWhatsapp: (dto.azitWhatsapp ?? atual.azitWhatsapp).replace(/\D/g, ''),
+        testemunha1Nome: dto.testemunha1Nome?.trim() ?? atual.testemunha1Nome,
+        testemunha1Cpf: dto.testemunha1Cpf?.trim() ?? atual.testemunha1Cpf,
+        testemunha1Whatsapp: (dto.testemunha1Whatsapp ?? atual.testemunha1Whatsapp).replace(/\D/g, ''),
+        testemunha2Nome: dto.testemunha2Nome?.trim() ?? atual.testemunha2Nome,
+        testemunha2Cpf: dto.testemunha2Cpf?.trim() ?? atual.testemunha2Cpf,
+        testemunha2Whatsapp: (dto.testemunha2Whatsapp ?? atual.testemunha2Whatsapp).replace(/\D/g, ''),
+        envioAutomaticoWhatsapp: dto.envioAutomaticoWhatsapp ?? atual.envioAutomaticoWhatsapp,
+      },
+    });
+    await this.prisma.db.logAuditoria.create({
+      data: {
+        usuarioId,
+        acao: 'parametros_assinatura_alterados',
+        entidade: 'parametro_assinatura',
+        entidadeId: atualizado.id,
+        antes: atual as unknown as Prisma.InputJsonValue,
+        depois: atualizado as unknown as Prisma.InputJsonValue,
+      },
+    });
+    return atualizado;
+  }
 
   // Passo do operador: envia o contrato formalizado para assinatura digital.
   // Criação SÓ no clique (G2 do desenho: documento criado consome o plano).
@@ -65,21 +131,39 @@ export class AssinaturaService {
       throw new UnprocessableEntityException({ erro: 'sem_documento', mensagem: 'Contrato sem documento gerado no snapshot' });
     }
 
-    // Signatários: titular + solidários/garantidores dos vínculos + Azit por último.
+    // Signatários (doc 02 §21 F1.1): compradores (ordem 1) → testemunhas padrão
+    // (ordem 2) → João Pedro pela Azit (ordem 3). O disparo do link é da ZapSign,
+    // por WhatsApp, quando o telefone existe e a chave está ligada.
+    const params = await this.obterParametros();
+    const zap = params.envioAutomaticoWhatsapp;
     const titular = contrato.conta.titular;
     const signatarios: SignatarioEntrada[] = [
-      { papel: 'titular', nome: titular.nome, cpf: titular.cpfCnpj, telefone: titular.whatsapp, email: titular.email ?? undefined, ordem: 1 },
+      { papel: 'titular', nome: titular.nome, cpf: titular.cpfCnpj, telefone: titular.whatsapp, email: titular.email ?? undefined, ordem: 1, envioWhatsapp: zap },
     ];
     for (const v of contrato.vinculosPapel) {
       if (v.papel === 'COMPRADOR_SECUNDARIO') {
-        signatarios.push({ papel: 'solidario', nome: v.titular.nome, cpf: v.titular.cpfCnpj, telefone: v.titular.whatsapp, ordem: 1 });
+        signatarios.push({ papel: 'solidario', nome: v.titular.nome, cpf: v.titular.cpfCnpj, telefone: v.titular.whatsapp, ordem: 1, envioWhatsapp: zap });
       } else if (v.papel === 'GARANTIDOR') {
-        signatarios.push({ papel: 'garantidor', nome: v.titular.nome, cpf: v.titular.cpfCnpj, telefone: v.titular.whatsapp, ordem: 1 });
+        signatarios.push({ papel: 'garantidor', nome: v.titular.nome, cpf: v.titular.cpfCnpj, telefone: v.titular.whatsapp, ordem: 1, envioWhatsapp: zap });
       }
     }
-    // Placeholder F1 (decisão 2 do desenho em aberto): a Azit assina pelo
-    // próprio link, sem add-on de lote — signatário institucional.
-    signatarios.push({ papel: 'azit', nome: 'Azit Comércio de Veículos LTDA', ordem: 2 });
+    // Testemunhas padrão (art. 784 III CPC) — as mesmas impressas no contrato.
+    if (params.testemunha1Nome) {
+      signatarios.push({ papel: 'testemunha1', nome: params.testemunha1Nome, cpf: params.testemunha1Cpf || undefined, telefone: params.testemunha1Whatsapp || undefined, ordem: 2, envioWhatsapp: zap });
+    }
+    if (params.testemunha2Nome) {
+      signatarios.push({ papel: 'testemunha2', nome: params.testemunha2Nome, cpf: params.testemunha2Cpf || undefined, telefone: params.testemunha2Whatsapp || undefined, ordem: 2, envioWhatsapp: zap });
+    }
+    // Quem assina pela Azit é uma pessoa nomeada (F1.1) — sem WhatsApp
+    // cadastrado, cai no link manual do operador.
+    signatarios.push({
+      papel: 'azit',
+      nome: params.azitNome || 'Azit Comércio de Veículos LTDA',
+      cpf: params.azitCpf || undefined,
+      telefone: params.azitWhatsapp || undefined,
+      ordem: 3,
+      envioWhatsapp: zap,
+    });
 
     const doc = await this.zapSign.criarDocumento({
       nome: `Contrato ${contrato.numero} — venda com reserva de domínio`,
@@ -214,10 +298,12 @@ export class AssinaturaService {
       if (alvo && !alvo.assinouEm) alvo.assinouEm = agora;
     }
 
-    const clientes = signatarios.filter((s) => s.papel !== 'azit');
+    // Gate jurídico do contrato: COMPRADORES (titular/solidário/garantidor)
+    // fecham assinaturaTitularEm; testemunhas contam só para o status geral.
+    const clientes = signatarios.filter((s) => ['titular', 'solidario', 'garantidor'].includes(s.papel));
     const azit = signatarios.find((s) => s.papel === 'azit');
     const clientesOk = clientes.length > 0 && clientes.every((s) => !!s.assinouEm);
-    const todosOk = clientesOk && !!azit?.assinouEm;
+    const todosOk = signatarios.length > 0 && signatarios.every((s) => !!s.assinouEm);
 
     // Integração com o fluxo EXISTENTE: as datas jurídicas entram nos mesmos
     // campos que o gate da ativação já valida.

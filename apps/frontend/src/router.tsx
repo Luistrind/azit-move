@@ -23,6 +23,7 @@ import { ProtecaoPage } from './pages/ProtecaoPage';
 import { ContasPagarPage } from './pages/ContasPagarPage';
 import { FornecedoresPage } from './pages/FornecedoresPage';
 import { FinanceiroConfigPage } from './pages/FinanceiroConfigPage';
+import { AssinaturaConfigPage } from './pages/AssinaturaConfigPage';
 import { TitularPage } from './pages/TitularPage';
 import { TitularDetalhePage } from './pages/TitularDetalhePage';
 import { AprovacoesPage } from './pages/AprovacoesPage';
@@ -144,6 +145,10 @@ export const router = createBrowserRouter([
       {
         path: 'configuracoes/alcadas',
         element: <AlcadasPage />,
+      },
+      {
+        path: 'configuracoes/assinatura',
+        element: <AssinaturaConfigPage />,
       },
       {
         path: 'centros-custo',

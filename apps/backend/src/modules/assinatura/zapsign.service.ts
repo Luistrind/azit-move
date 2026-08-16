@@ -7,12 +7,15 @@ import { Injectable, Logger } from '@nestjs/common';
 // URL padrão = SANDBOX (sem validade jurídica); produção via ZAPSIGN_API_URL.
 
 export interface SignatarioEntrada {
-  papel: 'titular' | 'solidario' | 'garantidor' | 'azit';
+  papel: 'titular' | 'solidario' | 'garantidor' | 'testemunha1' | 'testemunha2' | 'azit';
   nome: string;
   cpf?: string;
   telefone?: string; // DDD+numero (sem código do país)
   email?: string;
   ordem: number; // 1 = assina primeiro
+  // F1.1 (doc 02 §21): a ZapSign dispara o link por WhatsApp (consome créditos
+  // de WhatsApp do plano). Sem telefone, cai no link manual do operador.
+  envioWhatsapp?: boolean;
 }
 
 export interface SignatarioCriado {
@@ -65,10 +68,10 @@ export class ZapSignService {
         external_id: params.externalId,
         lang: 'pt-br',
         folder_path: '/contratos/',
-        // Ordem: cliente(s) assinam antes da Azit (doc 02 §21).
+        // Ordem: compradores → testemunhas → Azit (doc 02 §21 F1.1).
         signature_order_active: true,
-        // Placeholder F1: link compartilhado PELO OPERADOR — sem envio
-        // automático pago da ZapSign.
+        // E-mails da ZapSign desligados — o canal oficial é o WhatsApp (F1.1);
+        // o link manual do operador permanece como fallback.
         disable_signer_emails: true,
         signers: ordenados.map((s) => ({
           name: s.nome,
@@ -77,10 +80,17 @@ export class ZapSignService {
           // Placeholder F1: autenticação grátis — assinatura na tela + CPF.
           auth_mode: 'assinaturaTela',
           ...(s.cpf ? { require_cpf: true, cpf: s.cpf } : {}),
-          qualification: s.papel === 'azit' ? 'vendedora' : s.papel === 'garantidor' ? 'garantidor' : s.papel === 'solidario' ? 'comprador solidário' : 'comprador',
+          qualification:
+            s.papel === 'azit' ? 'vendedora'
+            : s.papel.startsWith('testemunha') ? 'testemunha'
+            : s.papel === 'garantidor' ? 'garantidor'
+            : s.papel === 'solidario' ? 'comprador solidário'
+            : 'comprador',
           external_id: s.papel,
           order_group: s.ordem,
           send_automatic_email: false,
+          // F1.1: disparo automático do link por WhatsApp pela ZapSign.
+          send_automatic_whatsapp: !!(s.envioWhatsapp && s.telefone),
           lock_name: true,
         })),
       }),

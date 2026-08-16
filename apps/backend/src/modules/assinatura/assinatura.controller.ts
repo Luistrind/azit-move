@@ -18,7 +18,7 @@ import { RoleUsuario } from '@prisma/client';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { QUEUE_NAMES } from '../queues/queues.module';
-import { AssinaturaService } from './assinatura.service';
+import { AssinaturaService, ParametrosAssinaturaDto } from './assinatura.service';
 
 // Assinatura digital ZapSign F1 (doc 02 §21).
 @Controller()
@@ -27,6 +27,22 @@ export class AssinaturaController {
     private readonly service: AssinaturaService,
     @InjectQueue(QUEUE_NAMES.ASSINATURA_EVENTO) private readonly fila: Queue,
   ) {}
+
+  // Parâmetros (F1.1): assinante Azit, testemunhas padrão e envio WhatsApp.
+  // Leitura para papéis de operação (a tela de envio mostra o contexto);
+  // escrita restrita a ADMIN/DIRETOR — evento sensível auditado.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR, RoleUsuario.OPERADOR)
+  @Get('assinatura/parametros')
+  parametros() {
+    return this.service.obterParametros();
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  @Post('assinatura/parametros')
+  @HttpCode(200)
+  salvarParametros(@Body() body: Partial<ParametrosAssinaturaDto>, @CurrentUser() user: UsuarioAutenticado) {
+    return this.service.atualizarParametros(body ?? {}, user.id);
+  }
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.DIRETOR)
   @Post('contratos/:id/assinatura-digital')
