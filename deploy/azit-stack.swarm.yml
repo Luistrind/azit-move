@@ -47,6 +47,11 @@ services:
       # Vazio = provedor SIMULADO (marca 'simulado' na consulta).
       BIGDATACORP_TOKEN_ID: ${BIGDATACORP_TOKEN_ID:-}
       BIGDATACORP_ACCESS_TOKEN: ${BIGDATACORP_ACCESS_TOKEN:-}
+      # ZapSign (assinatura digital F1) — vazio = provedor simulado + mock.
+      # URL padrao e o SANDBOX; producao juridica = https://api.zapsign.com.br/api/v1
+      ZAPSIGN_API_TOKEN: ${ZAPSIGN_API_TOKEN:-}
+      ZAPSIGN_API_URL: ${ZAPSIGN_API_URL:-}
+      ZAPSIGN_WEBHOOK_SECRET: ${ZAPSIGN_WEBHOOK_SECRET:-}
     networks: [azit_internal, PopCarrosNet]
     deploy:
       replicas: 1

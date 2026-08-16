@@ -13,6 +13,7 @@ export const QUEUE_NAMES = {
   REGUA_STEP: 'regua-step',
   EFETIVAR_ACORDO: 'efetivar-acordo',
   ATIVAR_CONTRATO: 'ativar-contrato',
+  ASSINATURA_EVENTO: 'assinatura-evento', // webhooks ZapSign (doc 02 sec.21)
 } as const;
 
 // Parse de REDIS_URL em opções de conexão (host/port/senha/db). Evita instanciar o
@@ -50,6 +51,7 @@ function redisConnectionFromUrl(url: string) {
       { name: QUEUE_NAMES.REGUA_STEP },
       { name: QUEUE_NAMES.EFETIVAR_ACORDO },
       { name: QUEUE_NAMES.ATIVAR_CONTRATO },
+      { name: QUEUE_NAMES.ASSINATURA_EVENTO },
     ),
   ],
   exports: [BullModule],

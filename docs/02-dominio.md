@@ -1244,6 +1244,36 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 >    PRESUMIDA (birô, pode vir nula) são copiadas para o participante; a renda APURADA segue
 >    sendo decisão do analista (comprometimento). Documentos da proposta (CNH + complementares,
 >    que podem ou não ser comprovante de renda) aparecem no dossiê para download.
+>    **Decisão 2026-08-12 (Luís): a função de rendas é EXCLUSIVAMENTE insumo da análise
+>    MANUAL do analista** — declarada/presumida não entram em regra automática; nenhuma
+>    recalibração de COM-06/COC-08 será feita. Fecha a pendência da régua de renda.
+
+---
+
+## 21. Assinatura Digital — ZapSign F1 (autorizada 2026-08-12)
+
+> **Decisão 2026-08-12 (Luís): "vamos seguir" — desenvolvimento da F1 autorizado.** O desenho
+> completo está em `docs/desenho-fluxo-assinatura-zapsign-2026-08.md`; esta seção registra o
+> que a F1 entrega e os placeholders (Regra 12) adotados enquanto as 5 decisões abertas do
+> desenho não são fechadas:
+> 1. **Escopo F1**: contrato do veículo (âncora) — o documento congelado no snapshot vai à
+>    ZapSign via `markdown_text`; signatários = titular(es) e Azit, com ordem (cliente primeiro).
+>    Pacote/envelope com apartados e assinatura em lote da Azit ficam para a F2.
+> 2. **Chave de virada = credencial no ambiente**: sem `ZAPSIGN_API_TOKEN`, o provedor SIMULADO
+>    responde (dev roda ponta a ponta) e a assinatura mock por botão CONTINUA disponível;
+>    com token, o fluxo real assume (URL sandbox por padrão — produção via `ZAPSIGN_API_URL`).
+> 3. **Placeholders marcados**: autenticação do signatário = assinatura na tela + CPF (grátis;
+>    upgrade para selfie é configuração futura); link de assinatura COMPARTILHADO PELO OPERADOR
+>    (copiar/WhatsApp — sem envio automático pago); a AZIT assina pelo próprio sign_url dela
+>    (sem add-on de lote); PDF assinado baixado NA HORA do webhook (link expira em 60 min) e
+>    guardado no storage de uploads existente (mesmo padrão dos documentos da proposta —
+>    substituível por S3, decisão 5 do desenho).
+> 4. **Webhook nunca síncrono** (Regra 4): rota responde 202 e enfileira; processamento
+>    idempotente marca assinaturaTitularEm/assinaturaAzitEm no CONTRATO — o gate existente da
+>    ativação (assinaturas → entrada → dia zero) fica INTACTO. Recusa devolve o contexto ao
+>    operador. Notificações no sino: assinou / todos assinaram / recusou.
+> 5. Objeto novo: `DocumentoAssinatura` (espelho do doc na ZapSign — token, status, signatários,
+>    PDF assinado) vinculado ao contrato.
 
 ---
 

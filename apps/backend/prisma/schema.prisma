@@ -784,6 +784,32 @@ model ContratoInvestimento {
 // Modelos — cobrança e financeiro
 // ============================================================
 
+// Assinatura digital ZapSign F1 (doc 02 sec.21): espelho do documento enviado
+// a plataforma de assinatura. Signatarios como Json (F1: titular(es) + Azit).
+model DocumentoAssinatura {
+  id                String    @id @default(cuid())
+  contratoCreditoId String    @unique // F1: um documento por contrato (ancora)
+  provedor          String    @default("zapsign")
+  docToken          String? // token do documento na ZapSign (null no simulado)
+  status            String    @default("enviado") // enviado | parcialmente_assinado | assinado | recusado | cancelado
+  // [{ papel: 'titular'|'azit'|'solidario'|'garantidor', nome, signerToken,
+  //    signUrl, visualizouEm?, assinouEm? }]
+  signatarios       Json
+  motivoRecusa      String?
+  pdfAssinadoRef    String? // arquivo salvo no storage de uploads (60min do link!)
+  simulado          Boolean   @default(false)
+  enviadoEm         DateTime  @default(now())
+  concluidoEm       DateTime?
+
+  contrato ContratoCredito @relation(fields: [contratoCreditoId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([docToken])
+  @@map("documentos_assinatura")
+}
+
 // Notificacao ao operador (doc 02 sec.20 passo 13): marcos do pos-contrato
 // (assinado / cobranca gerada / entrada paga) aparecem no sino do topo.
 model Notificacao {
@@ -847,6 +873,7 @@ model ContratoCredito {
   vinculosPapel     VinculoPapel[]
   propostaOrigem    Proposta?        @relation("PropostaContrato")
   propostaPacote    Proposta?        @relation("PacoteProposta", fields: [propostaPacoteId], references: [id])
+  documentoAssinatura DocumentoAssinatura? // ZapSign F1 (doc 02 sec.21)
   novacaoComoOrigem Novacao?         @relation("NovacaoOrigem")
   novacaoComoNovo   Novacao?         @relation("NovacaoNovo")
 

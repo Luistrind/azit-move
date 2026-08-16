@@ -30,6 +30,7 @@ import { CatalogoModule } from './modules/catalogo/catalogo.module';
 import { ContasPagarModule } from './modules/contas-pagar/contas-pagar.module';
 import { ProdutoModule } from './modules/produto/produto.module';
 import { InvestimentoModule } from './modules/investimento/investimento.module';
+import { AssinaturaModule } from './modules/assinatura/assinatura.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -67,6 +68,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     ContasPagarModule,
     ProdutoModule,
     InvestimentoModule,
+    AssinaturaModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

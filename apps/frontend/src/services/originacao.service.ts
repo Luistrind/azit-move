@@ -124,6 +124,20 @@ export interface SimulacaoResumo {
   propostaStatus: string | null;
 }
 
+// Assinatura digital ZapSign F1 (doc 02 §21).
+export interface AssinaturaDigitalStatus {
+  existe: boolean;
+  disponivel: boolean;
+  id?: string;
+  status?: string; // enviado | parcialmente_assinado | assinado | recusado | cancelado
+  simulado?: boolean;
+  motivoRecusa?: string | null;
+  pdfDisponivel?: boolean;
+  enviadoEm?: string;
+  concluidoEm?: string | null;
+  signatarios?: { papel: string; nome: string; signUrl: string; visualizouEm: string | null; assinouEm: string | null }[];
+}
+
 export const originacaoService = {
   async ativosDisponiveis(): Promise<AtivoDisponivel[]> {
     const { data } = await api.get('/api/v1/ativos', { params: { status: 'disponivel', limit: 100 } });
@@ -246,6 +260,26 @@ export const originacaoService = {
     contratos: { id: string; numero: string; descricao: string; status: string; entrada: number; entradaAVista: number; entradaParcelada: boolean; ancora: boolean; assinadoTitular: boolean; assinadoAzit: boolean; ambasAssinaturas: boolean; cronogramaGerado: boolean }[];
   }> {
     const { data } = await api.get(`/api/v1/propostas/${propostaId}/status-pacote`);
+    return data;
+  },
+  // Assinatura digital ZapSign F1 (doc 02 §21).
+  async enviarAssinaturaDigital(contratoId: string): Promise<AssinaturaDigitalStatus> {
+    const { data } = await api.post(`/api/v1/contratos/${contratoId}/assinatura-digital`, {});
+    return data;
+  },
+  async statusAssinaturaDigital(contratoId: string): Promise<AssinaturaDigitalStatus> {
+    const { data } = await api.get(`/api/v1/contratos/${contratoId}/assinatura-digital`);
+    return data;
+  },
+  async baixarPdfAssinado(contratoId: string): Promise<void> {
+    const resp = await api.get(`/api/v1/contratos/${contratoId}/assinatura-digital/pdf`, { responseType: 'blob' });
+    const url = URL.createObjectURL(resp.data as Blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'contrato-assinado.pdf'; a.click();
+    URL.revokeObjectURL(url);
+  },
+  async simularAssinaturaDigital(contratoId: string): Promise<AssinaturaDigitalStatus> {
+    const { data } = await api.post(`/api/v1/dev/simular-assinatura-digital/${contratoId}`, {});
     return data;
   },
   async assinar(contratoId: string, parte: 'titular' | 'azit'): Promise<unknown> {
