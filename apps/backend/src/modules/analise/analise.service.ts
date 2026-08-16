@@ -710,6 +710,9 @@ export class AnaliseService implements OnModuleInit {
   ) {
     const a = await this.carregar(analiseId);
     this.garantirNaoFinal(a.status);
+    // Decisão 2026-08-15 §14.2: parecer NÃO regride análise em decisão/decidida —
+    // reemitir em APROVADO_COCAD puxava a análise de volta a PARECER_EMITIDO.
+    this.garantirNaoDecidida(a.status, 'Reemitir parecer');
     const avaliacao = this.avaliar(a);
     // Campos numéricos vêm do sistema (RF-18): snapshot congelado no parecer.
     await this.auditar(usuarioId, 'analise_parecer_emitido', analiseId, undefined, {
@@ -729,31 +732,56 @@ export class AnaliseService implements OnModuleInit {
     return this.dossie(analiseId);
   }
 
-  async aprovarAlcadaAnalista(analiseId: string, usuarioId: string) {
+  async aprovarAlcadaAnalista(analiseId: string, usuarioId: string, justificativa?: string) {
     const a = await this.carregar(analiseId);
     if (a.status !== 'PARECER_EMITIDO') {
-      throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: 'Aprovação direta exige parecer emitido' });
+      throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: this.mensagemEtapa(a.status, 'Aprovar na alçada') });
     }
     const avaliacao = this.avaliar(a);
-    if (!avaliacao.aprovacaoDiretaPermitida) {
+    // Decisão 2026-08-15 §14.1: complemento (COM-xx) é completude de dados e SEMPRE
+    // bloqueia; critérios COC são recomendação — o analista pode aprovar na própria
+    // alçada com justificativa obrigatória (códigos registrados na trilha/auditoria).
+    if (avaliacao.exigeComplemento || avaliacao.criterios.some((c) => c.situacao === 'complemento')) {
       throw new UnprocessableEntityException({
-        erro: 'fora_da_alcada',
-        mensagem: 'Critérios fora da alçada do analista — submeta ao COCAD',
-        criterios: avaliacao.criterios,
+        erro: 'complemento_pendente',
+        mensagem: 'Há itens de complemento pendentes (dados incompletos) — resolva-os antes de aprovar',
+        criterios: avaliacao.criterios.filter((c) => c.situacao === 'complemento'),
+      } as object);
+    }
+    const contraRecomendacao = avaliacao.codigosCocad.length > 0;
+    if (contraRecomendacao && (justificativa ?? '').trim().length < 10) {
+      throw new UnprocessableEntityException({
+        erro: 'justificativa_obrigatoria',
+        mensagem: `Critérios que recomendam o COCAD (${avaliacao.codigosCocad.join(', ')}) — aprovar na alçada exige justificativa`,
+        criterios: avaliacao.criterios.filter((c) => c.situacao === 'cocad'),
       } as object);
     }
     await this.prisma.db.analiseCadastro.update({
       where: { id: analiseId },
       data: { aprovadaEm: new Date(), aprovadaPor: usuarioId },
     });
-    await this.mudarStatus(analiseId, 'APROVADO_ALCADA_ANALISTA', usuarioId, 'Todos os critérios dentro da política');
+    await this.mudarStatus(
+      analiseId,
+      'APROVADO_ALCADA_ANALISTA',
+      usuarioId,
+      contraRecomendacao
+        ? `Aprovada na alçada CONTRA recomendação (${avaliacao.codigosCocad.join(', ')}): ${(justificativa as string).trim()}`
+        : 'Todos os critérios dentro da política',
+    );
+    if (contraRecomendacao) {
+      await this.auditar(usuarioId, 'analise_aprovada_contra_recomendacao', analiseId, undefined, {
+        codigosCocad: avaliacao.codigosCocad,
+        justificativa: (justificativa as string).trim(),
+        comprometimento: avaliacao.comprometimento,
+      });
+    }
     return this.dossie(analiseId);
   }
 
   async submeterCocad(analiseId: string, usuarioId: string, recomendacao: string) {
     const a = await this.carregar(analiseId);
     if (a.status !== 'PARECER_EMITIDO') {
-      throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: 'Submissão ao COCAD exige parecer emitido' });
+      throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: this.mensagemEtapa(a.status, 'Submeter ao COCAD') });
     }
     const avaliacao = this.avaliar(a);
     const { id } = await this.aprovacao.criar({
@@ -982,17 +1010,19 @@ export class AnaliseService implements OnModuleInit {
       Date.now() - (a.aprovadaEm as Date).getTime() <= a.parametroVersao.validadeAprovacaoDiasUteis * DIA_MS * 1.4; // dias úteis aproximados
     const compradores = a.participantes.filter((p) => p.papel !== 'GARANTIDOR');
     const condutor = compradores.find((p) => p.titularId === a.condutorPrincipalTitularId);
-    const consultasOkOuDecididas =
-      !r.criterios.some((c) => c.chave.startsWith('consulta_')) || a.status === 'APROVADO_COCAD';
+    // Ausência de consulta exige decisão consciente: do COCAD ou do analista com
+    // justificativa (Decisão 2026-08-15 §14.1) — ambas ficam na trilha.
+    const consultasOkOuDecididas = !r.criterios.some((c) => c.chave.startsWith('consulta_')) || aprovada;
+    // Decisão 2026-08-15 §14.3: autorização de consulta é VERBAL (08/08) — o item
+    // saiu do pacote (era insatisfazível e travava TODA liberação).
     return [
       { item: 'Decisão válida (aprovação não vencida)', ok: aprovacaoValida },
-      { item: 'CNH válida do condutor principal', ok: !!condutor?.cnhValida },
+      { item: 'Condutor principal definido com CNH válida', ok: !!condutor?.cnhValida },
       { item: 'Consultas válidas ou ausência decidida pelo COCAD', ok: consultasOkOuDecididas },
       { item: 'Renda apurada de todos os compradores', ok: compradores.every((p) => p.rendaApurada !== null) },
       { item: 'Sem pendências abertas', ok: !a.pendencias.some((p) => p.situacao === 'ABERTA') },
       { item: 'Ressalvas cumpridas e validadas', ok: !a.ressalvas.some((x) => x.situacao !== 'VALIDADA' && x.situacao !== 'EXPIRADA') || a.ressalvas.every((x) => x.situacao === 'VALIDADA') },
       { item: 'Sem bloqueio de formalização (fraude/CNH)', ok: !r.bloqueiaFormalizacao },
-      { item: 'Autorização de consulta de todos os participantes', ok: a.participantes.every((p) => a.autorizacoes.some((x) => x.titularId === p.titularId)) },
     ];
   }
 
@@ -1018,6 +1048,41 @@ export class AnaliseService implements OnModuleInit {
     if (FINAIS.includes(status)) {
       throw new UnprocessableEntityException({ erro: 'analise_finalizada', mensagem: `Análise em estado final (${status})` });
     }
+  }
+
+  // Estados em que a decisão já saiu das mãos do analista (Decisão 2026-08-15 §14.2).
+  private garantirNaoDecidida(status: StatusAnalise, acao: string) {
+    const decididos: StatusAnalise[] = [
+      'AGUARDANDO_COCAD', 'PENDENTE_COMPLEMENTO_COCAD', 'APROVADO_COM_RESSALVAS',
+      'RESSALVA_EM_TRATAMENTO', 'APROVADO_ALCADA_ANALISTA', 'APROVADO_COCAD',
+    ];
+    if (decididos.includes(status)) {
+      throw new UnprocessableEntityException({
+        erro: 'analise_ja_decidida',
+        mensagem: `${acao} não é possível: ${this.rotuloEtapa(status)}`,
+      });
+    }
+  }
+
+  // Mensagem de erro que diz onde a análise ESTÁ, não só o que a ação exige —
+  // "exige parecer emitido" numa análise já aprovada pelo COCAD desorienta o operador.
+  private mensagemEtapa(status: StatusAnalise, acao: string): string {
+    return `${acao} só é possível com parecer emitido — ${this.rotuloEtapa(status)}`;
+  }
+
+  private rotuloEtapa(status: StatusAnalise): string {
+    const mapa: Partial<Record<StatusAnalise, string>> = {
+      AGUARDANDO_COCAD: 'a análise já está no COCAD (decisão na Central de Aprovações)',
+      PENDENTE_COMPLEMENTO_COCAD: 'o COCAD solicitou complemento — cumpra a pendência',
+      APROVADO_COM_RESSALVAS: 'o COCAD já aprovou com ressalvas — trate as ressalvas',
+      RESSALVA_EM_TRATAMENTO: 'o COCAD já aprovou com ressalvas — valide as ressalvas',
+      APROVADO_ALCADA_ANALISTA: 'a análise já está aprovada — confira o pacote mínimo e libere',
+      APROVADO_COCAD: 'a análise já está aprovada pelo COCAD — confira o pacote mínimo e libere',
+      LIBERADO_PARA_FORMALIZACAO: 'a análise já foi liberada para formalização',
+      NAO_APROVADO: 'a análise foi não aprovada',
+      PROPOSTA_ENCERRADA: 'a análise foi encerrada',
+    };
+    return mapa[status] ?? `a análise está em ${status}`;
   }
 
   private async mudarStatus(analiseId: string, para: StatusAnalise, usuarioId?: string, motivo?: string) {

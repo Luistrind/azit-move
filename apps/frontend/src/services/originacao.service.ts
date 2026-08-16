@@ -64,6 +64,8 @@ export interface PropostaDetalhe {
   numeroParcelas: number;
   prazoSemanas: number;
   contratoGeradoId: string | null;
+  // Trilha única (doc 02 §14, 2026-08-15): com análise aberta, o parecer legado sai da tela.
+  analiseCadastro?: { id: string; status: string } | null;
   foraParametro?: boolean;
   aprovacaoForaParametro?: string | null;
   papeis: { id: string; papel: string; titular: { id: string; nome: string; cpfCnpj: string } }[];

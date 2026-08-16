@@ -465,8 +465,20 @@ export class PropostaService {
 
   // 7.8 — registra o parecer; decide o status da proposta (decisão de crédito).
   async registrarParecer(propostaId: string, dto: RegistrarParecerDto, analistaId: string) {
-    const proposta = await this.prisma.db.proposta.findFirst({ where: { id: propostaId }, select: { status: true } });
+    const proposta = await this.prisma.db.proposta.findFirst({
+      where: { id: propostaId },
+      select: { status: true, analiseCadastro: { select: { id: true } } },
+    });
     if (!proposta) throw this.naoEncontrada();
+    // Trilha de decisão ÚNICA (doc 02 §14, decisão 2026-08-15): com Análise de
+    // Cadastro aberta, o parecer legado da proposta sai de cena — aprovar aqui
+    // criava uma proposta "Aprovada" com a análise ainda em andamento.
+    if (proposta.analiseCadastro) {
+      throw new UnprocessableEntityException({
+        erro: 'analise_cadastro_ativa',
+        mensagem: 'Esta proposta tem Análise de Cadastro — parecer, decisão e liberação acontecem no workspace da análise',
+      });
+    }
     if (!['PENDENTE', 'EM_ANALISE'].includes(proposta.status)) {
       throw new UnprocessableEntityException({
         erro: 'estado_invalido',
@@ -610,6 +622,7 @@ export class PropostaService {
         documentos: true,
         parecer: true,
         itens: { orderBy: { createdAt: 'asc' } },
+        analiseCadastro: { select: { id: true, status: true } },
       },
     });
     if (!p) throw this.naoEncontrada();
@@ -631,6 +644,8 @@ export class PropostaService {
       numeroParcelas: p.numeroParcelas,
       prazoSemanas: p.prazoSemanas,
       contratoGeradoId: p.contratoGeradoId,
+      // Trilha única (doc 02 §14, 2026-08-15): com análise aberta, o parecer legado sai da tela.
+      analiseCadastro: p.analiseCadastro ? { id: p.analiseCadastro.id, status: p.analiseCadastro.status } : null,
       foraParametro: p.foraParametro,
       aprovacaoForaParametro: aprovacaoFp ? aprovacaoFp.status.toLowerCase() : null,
       // Jornada (doc 02 §20): camada 1 é NEUTRA para o operador — só o status;

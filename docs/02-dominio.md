@@ -1036,6 +1036,26 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 
 **Fase 1**: consultas (BigDataCorp Camada 1, Score Quod, Boa Vista) registradas manualmente pelo analista — placeholder funcional. **Fase 2**: adaptadores automáticos. **Fora do escopo** (evolução futura): Azit Score, automação da renda média ajustada, interpretação da conversa de WhatsApp.
 
+> **Decisão 2026-08-15 (Luís, homologação do fluxo ponta a ponta — caso real):**
+> 1. **Critérios COC são RECOMENDAÇÃO de encaminhamento, não roteamento compulsório.** A decisão
+>    de levar ao COCAD é do **analista**: com critérios COC presentes ele escolhe entre *submeter
+>    ao COCAD* ou *aprovar na própria alçada com justificativa obrigatória* (auditada, com os
+>    códigos COC ignorados registrados na trilha). ⚠️ Diverge do roteamento compulsório da
+>    Política v1.0 §13.4 — sinalizado para revisão do texto da política com o time. Critérios de
+>    **complemento** (COM-xx: identidade, renda apurada, condutor principal, pendências) continuam
+>    bloqueando aprovação — são completude de dados, não julgamento. Bloqueios de formalização
+>    (fraude, CNH) continuam absolutos no pacote mínimo.
+> 2. **Parecer não regride análise decidida.** Reemissão de parecer é bloqueada quando a análise
+>    está no COCAD ou já foi decidida (aguardando COCAD, aprovada com ressalvas, ressalva em
+>    tratamento, aprovada) — o defeito de o parecer "puxar de volta" uma análise aprovada pelo
+>    COCAD é anti-requisito.
+> 3. **Autorização de consulta sai do pacote mínimo.** Consequência da decisão 2026-08-08
+>    (autorização VERBAL, sem instrumento no sistema): o item era insatisfazível e travava toda
+>    liberação.
+> 4. **Trilha de decisão única.** Quando a proposta tem Análise de Cadastro, o parecer legado da
+>    proposta (Bloco 7) fica bloqueado — parecer, decisão e liberação acontecem exclusivamente no
+>    workspace da análise, que ao liberar marca a proposta como aprovada.
+
 ---
 
 ## 15. Pessoas, Classificações e Camada de Capital (reunião 18/07)

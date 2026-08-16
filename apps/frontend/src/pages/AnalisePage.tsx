@@ -69,10 +69,13 @@ function proximoPasso(d: DossieAnalise): string {
       return 'Registre a consulta de restritivos para fechar as verificações.';
     case 'RESTRICOES_CONSULTADAS':
       return 'Verificações completas — confira os critérios da política e emita o parecer.';
-    case 'PARECER_EMITIDO':
-      return d.aprovacaoDiretaPermitida
-        ? 'Todos os critérios conformes — você pode aprovar na alçada do analista.'
-        : 'Há critérios fora da alçada do analista — submeta ao Comitê de Cadastro.';
+    case 'PARECER_EMITIDO': {
+      // Decisão 2026-08-15: critérios COC RECOMENDAM o Comitê — quem decide é o analista.
+      if (d.aprovacaoDiretaPermitida) return 'Todos os critérios conformes — você pode aprovar na alçada do analista.';
+      if (d.criterios.some((c) => c.situacao === 'complemento'))
+        return 'Há itens de complemento pendentes (dados incompletos) — resolva-os antes de decidir.';
+      return 'Há critérios que recomendam o Comitê — decida: submeter ao COCAD ou aprovar na sua alçada com justificativa.';
+    }
     case 'AGUARDANDO_COCAD':
       return 'Aguardando o Comitê de Cadastro — a decisão acontece na Central de Aprovações.';
     case 'PENDENTE_DE_COMPLEMENTO':
@@ -580,14 +583,19 @@ type AcaoFn = (fn: () => Promise<DossieAnalise>, ok?: string) => Promise<void>;
 
 function Decisao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean; acao: AcaoFn }) {
   const [parecer, setParecer] = useState('');
-  const [modal, setModal] = useState<null | 'encerrar' | 'nao_aprovar' | 'ressalvas' | 'complemento'>(null);
+  const [modal, setModal] = useState<null | 'encerrar' | 'nao_aprovar' | 'ressalvas' | 'complemento' | 'aprovar_justificando'>(null);
   const emParecer = d.status === 'PARECER_EMITIDO';
+  // Decisão 2026-08-15 §14.2: depois que a decisão saiu das mãos do analista,
+  // o campo de parecer some — reemitir regredia análise já aprovada pelo COCAD.
+  const decidida = ['AGUARDANDO_COCAD', 'PENDENTE_COMPLEMENTO_COCAD', 'APROVADO_COM_RESSALVAS', 'RESSALVA_EM_TRATAMENTO', 'APROVADO_ALCADA_ANALISTA', 'APROVADO_COCAD'].includes(d.status);
+  const temComplemento = d.criterios.some((c) => c.situacao === 'complemento');
+  const codigosCocad = d.criterios.filter((c) => c.situacao === 'cocad' && c.codigo).map((c) => c.codigo as string);
 
   return (
     <div className={card}>
       <div className="mb-[8px] font-display text-[13px] font-bold">Decisão</div>
 
-      {!emParecer && !['AGUARDANDO_COCAD', 'RESSALVA_EM_TRATAMENTO'].includes(d.status) && (
+      {!emParecer && !decidida && (
         <div className="flex flex-col gap-[8px]">
           <textarea className={inputCls} rows={3} placeholder="Parecer do analista (os números vêm do sistema — descreva a conclusão)" value={parecer} onChange={(e) => setParecer(e.target.value)} />
           <div className="flex flex-wrap gap-[8px]">
@@ -603,11 +611,25 @@ function Decisao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean; aca
       )}
 
       {emParecer && (
-        <div className="flex flex-wrap gap-[8px]">
-          <button className={btnP} disabled={ocupado || !d.aprovacaoDiretaPermitida} title={d.aprovacaoDiretaPermitida ? '' : 'Critérios fora da alçada'} onClick={() => acao(() => analiseService.aprovar(d.id), 'Aprovada na alçada do analista.')}>Aprovar (alçada do analista)</button>
-          <button className={btnS} disabled={ocupado} onClick={() => acao(() => analiseService.submeterCocad(d.id, 'Ver parecer'), 'Submetida ao Comitê — decisão na Central de Aprovações.')}>Submeter ao Comitê de Cadastro</button>
-          <button className={btnS} disabled={ocupado} onClick={() => setModal('nao_aprovar')}>Não aprovar</button>
-          <button className={btnS} disabled={ocupado} onClick={() => setModal('encerrar')}>Encerrar (operacional)</button>
+        <div className="flex flex-col gap-[8px]">
+          {codigosCocad.length > 0 && !temComplemento && (
+            <div className="rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: '#fff3d6', color: '#8a5a00' }}>
+              Critérios {codigosCocad.join(', ')} <b>recomendam</b> o Comitê — a decisão de encaminhar é sua: submeta ao COCAD ou aprove na sua alçada com justificativa (fica na trilha e na auditoria).
+            </div>
+          )}
+          <div className="flex flex-wrap gap-[8px]">
+            <button
+              className={btnP}
+              disabled={ocupado || temComplemento}
+              title={temComplemento ? 'Itens de complemento pendentes (dados incompletos)' : codigosCocad.length ? 'Aprovar contra a recomendação exige justificativa' : ''}
+              onClick={() => (codigosCocad.length ? setModal('aprovar_justificando') : void acao(() => analiseService.aprovar(d.id), 'Aprovada na alçada do analista.'))}
+            >
+              Aprovar (alçada do analista)
+            </button>
+            <button className={btnS} disabled={ocupado} onClick={() => acao(() => analiseService.submeterCocad(d.id, 'Ver parecer'), 'Submetida ao Comitê — decisão na Central de Aprovações.')}>Submeter ao Comitê de Cadastro</button>
+            <button className={btnS} disabled={ocupado} onClick={() => setModal('nao_aprovar')}>Não aprovar</button>
+            <button className={btnS} disabled={ocupado} onClick={() => setModal('encerrar')}>Encerrar (operacional)</button>
+          </div>
         </div>
       )}
 
@@ -623,11 +645,34 @@ function Decisao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean; aca
         <button className={btnP} disabled={ocupado} onClick={() => acao(() => analiseService.liberar(d.id), 'Liberada para formalização.')}>Liberar para formalização</button>
       )}
 
+      <ModalAprovarJustificando aberto={modal === 'aprovar_justificando'} codigos={codigosCocad} fechar={() => setModal(null)} ocupado={ocupado} confirmar={(justificativa) => { setModal(null); void acao(() => analiseService.aprovar(d.id, justificativa), 'Aprovada na alçada do analista (contra recomendação — registrado na trilha).'); }} />
       <ModalEncerrar aberto={modal === 'encerrar'} fechar={() => setModal(null)} ocupado={ocupado} confirmar={(motivo) => { setModal(null); void acao(() => analiseService.encerrar(d.id, motivo), 'Análise encerrada.'); }} />
       <ModalNaoAprovar aberto={modal === 'nao_aprovar'} fechar={() => setModal(null)} ocupado={ocupado} confirmar={(codigo, justificativa) => { setModal(null); void acao(() => analiseService.naoAprovar(d.id, codigo, justificativa), 'Não aprovada (decisão humana registrada).'); }} />
       <ModalRessalvas aberto={modal === 'ressalvas'} fechar={() => setModal(null)} ocupado={ocupado} confirmar={(tipo, condicao) => { setModal(null); void acao(() => analiseService.aprovarComRessalvas(d.id, [{ tipo, condicao }]), 'Aprovada com ressalvas.'); }} />
       <ModalComplemento aberto={modal === 'complemento'} fechar={() => setModal(null)} ocupado={ocupado} confirmar={(descricao) => { setModal(null); void acao(() => analiseService.criarPendencia(d.id, { codigo: 'COM-10', descricao }), 'Complemento solicitado.'); }} />
     </div>
+  );
+}
+
+// Decisão 2026-08-15: aprovar com critérios COC presentes é decisão do analista,
+// com justificativa obrigatória — o modal deixa claro o que está sendo assumido.
+function ModalAprovarJustificando({ aberto, codigos, fechar, ocupado, confirmar }: { aberto: boolean; codigos: string[]; fechar: () => void; ocupado: boolean; confirmar: (justificativa: string) => void }) {
+  const [justificativa, setJustificativa] = useState('');
+  return (
+    <Modal open={aberto} onClose={fechar} title="Aprovar na alçada — contra a recomendação">
+      <div className="flex flex-col gap-[10px]">
+        <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
+          Os critérios <b>{codigos.join(', ')}</b> recomendam o Comitê de Cadastro. Você pode aprovar
+          na sua alçada mesmo assim — a justificativa fica registrada na trilha da análise e na auditoria.
+        </div>
+        <label className="text-[12px] font-semibold">Justificativa (obrigatória)</label>
+        <textarea className={inputCls} rows={3} value={justificativa} onChange={(e) => setJustificativa(e.target.value)} placeholder="ex.: renda apurada consistente com extratos; comprometimento mitigado por entrada reforçada" />
+        <div className="flex justify-end gap-[8px]">
+          <button className={btnS} onClick={fechar}>Cancelar</button>
+          <button className={btnP} disabled={ocupado || justificativa.trim().length < 10} onClick={() => confirmar(justificativa.trim())}>Aprovar com justificativa</button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

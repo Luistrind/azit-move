@@ -99,8 +99,10 @@ export const analiseService = {
     const { data } = await api.post(`/api/v1/analises/${id}/parecer`, body);
     return data;
   },
-  async aprovar(id: string): Promise<DossieAnalise> {
-    const { data } = await api.post(`/api/v1/analises/${id}/aprovar`);
+  // Justificativa obrigatória quando há critérios COC (decisão 2026-08-15:
+  // a recomendação de comitê é do sistema, a decisão é do analista).
+  async aprovar(id: string, justificativa?: string): Promise<DossieAnalise> {
+    const { data } = await api.post(`/api/v1/analises/${id}/aprovar`, justificativa ? { justificativa } : {});
     return data;
   },
   async submeterCocad(id: string, recomendacao: string): Promise<DossieAnalise> {

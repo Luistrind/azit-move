@@ -208,8 +208,12 @@ export class AnaliseController {
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('analises/:id/aprovar')
   @HttpCode(200)
-  aprovarAlcada(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
-    return this.analise.aprovarAlcadaAnalista(id, user.id);
+  aprovarAlcada(
+    @Param('id') id: string,
+    @Body() body: { justificativa?: string },
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.analise.aprovarAlcadaAnalista(id, user.id, body?.justificativa);
   }
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)

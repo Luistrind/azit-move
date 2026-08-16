@@ -340,7 +340,9 @@ export function PropostaDetalhePage() {
 
       {step === 2 && (() => {
         const anexos = p.documentos.filter((d) => d.tipo === 'anexo_analise');
-        const podeEditar = !p.parecer && podeParecer && ['pendente', 'em_analise'].includes(p.status);
+        // Trilha única (doc 02 §14, 2026-08-15): com Análise de Cadastro aberta, o
+        // parecer legado da proposta fica só leitura — a decisão acontece na análise.
+        const podeEditar = !p.analiseCadastro && !p.parecer && podeParecer && ['pendente', 'em_analise'].includes(p.status);
         const cardSel = PARECER_CARDS.find((c) => c.v === resultado);
         const prontoParaRegistrar =
           !!resultado &&
@@ -393,6 +395,11 @@ export function PropostaDetalhePage() {
                 {p.parecer.motivoReprovacao && <div><Lbl>Motivo da reprovação</Lbl><div>{p.parecer.motivoReprovacao}</div></div>}
                 {p.parecer.motivosRessalva.length > 0 && <div><Lbl>Motivos da ressalva</Lbl><div>{p.parecer.motivosRessalva.join(' · ')}</div></div>}
                 {p.parecer.observacao && <div><Lbl>Observação analítica</Lbl><div style={{ whiteSpace: 'pre-wrap' }}>{p.parecer.observacao}</div></div>}
+              </div>
+            ) : p.analiseCadastro ? (
+              <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                Esta proposta tem <b>Análise de Cadastro</b> — parecer, decisão do COCAD e liberação acontecem lá
+                (banner "Abrir análise" acima). Ao liberar, a proposta é marcada como aprovada automaticamente.
               </div>
             ) : !podeEditar ? (
               <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Sem parecer (sem permissão ou estado inválido).</div>
