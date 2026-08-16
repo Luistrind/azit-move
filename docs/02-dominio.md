@@ -198,6 +198,12 @@ Uma opção concreta apresentada na simulação. **Três origens**:
 > entrada às parcelas pagas. Gates da mesma decisão: **gerar a cobrança da entrada exige origem
 > de capital no ativo** (a falha silenciosa no dia zero vira erro claro ANTES do dinheiro) e
 > **falha de job de ativação vira log + notificação no sino** (nunca mais morrer muda no Redis).
+>
+> **Contrato SEM entrada é caso válido** (decisão 2026-08-16, Luís): incomum para cliente novo,
+> mas real em **upgrade de veículo** de cliente existente e no **Reembolso Parcelado**. Com
+> `valorEntrada = 0`, o passo "gerar cobrança da entrada" **ativa direto**: sem cobrança no
+> Asaas, dia zero imediato (cronograma nasce no clique) — as assinaturas continuam obrigatórias
+> e o gate de origem de capital também. Nada de cobrança de valor zero (o Asaas recusa).
 
 ### 4-A.4 Proposta
 

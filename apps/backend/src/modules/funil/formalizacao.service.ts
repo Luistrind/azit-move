@@ -583,6 +583,23 @@ export class FormalizacaoService {
       });
     }
 
+    // Contrato SEM entrada (doc 02 §4-A.3, 2026-08-16): upgrade de veículo e
+    // Reembolso Parcelado podem nascer sem entrada — nada a cobrar (o Asaas
+    // recusa cobrança de valor zero); dia zero imediato, assinaturas já validadas.
+    if (cent(contrato.valorEntrada) === 0) {
+      const r = await this.ativarPacotePorPagamento(contrato.id);
+      return {
+        contratoId: contrato.id,
+        numero: contrato.numero,
+        status: 'ativo',
+        entrada: 0,
+        entradaAVista: 0,
+        entradaParcelada: false,
+        cobranca: null,
+        contratosAtivados: r.contratosAtivados,
+      };
+    }
+
     // Garante o cliente no Asaas antes da 1ª cobrança (pré-requisito do gateway real).
     const customerId = await this.garantirCliente(contrato.conta.titular);
 
@@ -662,8 +679,9 @@ export class FormalizacaoService {
       await this.contrato.ativarComCronograma(c.id);
     }
     await this.materializarEntradaPaga(contrato, paymentDate);
+    const semEntrada = cent(contrato.valorEntrada) === 0;
     await this.notificacao.emitir(
-      `Entrada paga — contrato ${contrato.numero} ativado`,
+      semEntrada ? `Contrato ${contrato.numero} ativado (sem entrada)` : `Entrada paga — contrato ${contrato.numero} ativado`,
       `Cronograma gerado e ${pacote.length > 1 ? `${pacote.length} contratos do pacote ativados` : 'contrato ativado'} automaticamente (dia zero).`,
       `/contratos/${contrato.id}`,
     );

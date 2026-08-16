@@ -551,7 +551,10 @@ export function PropostaDetalhePage() {
                     pacote.data.contratos.find((c) => c.ancora)?.status === 'aguardando_assinatura' ? (
                       <button disabled={ocupado} onClick={() => run(() => originacaoService.ativar(pacote.data!.ancoraId!))}
                         className="mt-[12px] h-[34px] rounded-[8px] px-[14px] text-[12px] font-semibold" style={btn('var(--accent)')}>
-                        Gerar cobrança da entrada ({formatCurrency(pacote.data.entradaAVista)}{pacote.data.entradaParcelada ? ' — 60% à vista' : ''})
+                        {pacote.data.entradaAVista > 0
+                          ? `Gerar cobrança da entrada (${formatCurrency(pacote.data.entradaAVista)}${pacote.data.entradaParcelada ? ' — 60% à vista' : ''})`
+                          // Doc 02 §4-A.3 (2026-08-16): sem entrada (upgrade/RP), o clique ativa direto.
+                          : 'Ativar contrato (sem entrada — dia zero imediato)'}
                       </button>
                     ) : (
                       <div className="mt-[12px] rounded-[8px] p-[10px] text-[12px] font-semibold" style={{ background: '#fef6e9', color: '#8a5a0a' }}>
