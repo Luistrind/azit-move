@@ -1,5 +1,8 @@
 // Contrato PADRÃO de compra e venda de veículo com reserva de domínio — layout
-// extraído do modelo real em uso (ex.: contrato nº 2026040006, plataforma SuperSign).
+// extraído do modelo real em uso (ex.: contrato nº 2026040006, plataforma SuperSign;
+// conferido contra o assinado nº 2026080004 de 12/08/2026 — marca "(Azit Move)" e
+// e-mail @azitmove.com.br seguem o assinado; numeração pula 1.2 e 16 COMO NO MODELO
+// JURÍDICO ORIGINAL — não renumerar sem validação do jurídico).
 // LAYOUT é fixo (cláusulas jurídicas); DADOS entram por placeholder {{...}}:
 //   numero, dataAssinaturaLinha, compradoresBloco, garantidorBloco,
 //   veiculo* (marca/anos/cor/placa/chassi/renavam/origem/combustivel/km),
@@ -14,7 +17,7 @@ Nº {{numero}}
 
 Partes:
 
-VENDEDOR: (POP CARROS) AZIT COMERCIO DE VEICULOS LTDA, pessoa jurídica de direito privado, inscrita no CNPJ/MF sob o nº 57.265.780/0001-19, com sede na Rua José Machado, n° 103, bairro Tabuazeiro - Vitória/ES, contato whatsapp (27)99288-5193, e-mail contato@popcarros.com.br, doravante denominada simplesmente "VENDEDOR";
+VENDEDOR: (Azit Move) AZIT COMERCIO DE VEICULOS LTDA, pessoa jurídica de direito privado, inscrita no CNPJ/MF sob o nº 57.265.780/0001-19, com sede na Rua José Machado, n° 103, bairro Tabuazeiro - Vitória/ES, contato whatsapp (27)99288-5193, e-mail contato@azitmove.com.br, doravante denominada simplesmente "VENDEDOR";
 
 COMPRADOR:
 {{compradoresBloco}}
