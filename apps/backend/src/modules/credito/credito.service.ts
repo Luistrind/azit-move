@@ -86,18 +86,27 @@ export class CreditoService implements OnModuleInit {
       include: {
         contratosCredito: {
           where: { status: { in: ['ATIVO', 'INADIMPLENTE'] } },
-          select: { valorParcelaInicial: true },
+          select: { valorParcelaInicial: true, periodicidade: true },
         },
       },
     });
-    const parcelas = (contaComContratos?.contratosCredito ?? []).map((c) => this.cent(c.valorParcelaInicial));
-    if (parcelas.length === 0) {
+    // Limite de 30% em periodicidade EQUIVALENTE (doc 02 §17, 2026-08-16): a
+    // parcela do principal (ex.: semanal) converte para MENSAL pelo fator de
+    // prazo, aplica o limite e converte para a periodicidade do RP — comparar
+    // parcela mensal do RP com 30% da parcela SEMANAL crua bloqueava indevido.
+    const paraFreq = (p: string): 'mensal' | 'quinzenal' | 'semanal' =>
+      p === 'MENSAL' ? 'mensal' : p === 'QUINZENAL' ? 'quinzenal' : 'semanal';
+    const mensaisEquivalentes = (contaComContratos?.contratosCredito ?? []).map((c) =>
+      Math.round(this.cent(c.valorParcelaInicial) * this.catalogoFonte.fatorPrazo(paraFreq(c.periodicidade))),
+    );
+    if (mensaisEquivalentes.length === 0) {
       throw new UnprocessableEntityException({
         erro: 'sem_contrato_ativo',
         mensagem: 'O Reembolso Parcelado exige um contrato ativo — o titular não tem contrato vigente',
       });
     }
-    const limiteParcela = Math.round(Math.max(...parcelas) * rp.limiteParcelaAcessoria);
+    const limiteMensal = Math.max(...mensaisEquivalentes) * rp.limiteParcelaAcessoria;
+    const limiteParcela = Math.round(limiteMensal / this.catalogoFonte.fatorPrazo(freq));
     return { limiteParcela };
   }
 
@@ -217,7 +226,7 @@ export class CreditoService implements OnModuleInit {
     if (p.limiteParcela !== null && p.valorParcela > p.limiteParcela) {
       throw new UnprocessableEntityException({
         erro: 'limite_parcela_acessoria',
-        mensagem: `A parcela (R$ ${centavosParaReaisString(p.valorParcela)}) ultrapassa 30% da parcela do contrato principal (limite R$ ${centavosParaReaisString(p.limiteParcela)}) — aumente o prazo ou reduza o valor`,
+        mensagem: `A parcela (R$ ${centavosParaReaisString(p.valorParcela)}) ultrapassa 30% da parcela do contrato principal em periodicidade equivalente (limite R$ ${centavosParaReaisString(p.limiteParcela)} por parcela) — aumente o prazo, reduza o valor ou mude a periodicidade`,
       });
     }
     const ehReembolso = p.produto === 'reembolso_parcelado';

@@ -1133,6 +1133,12 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 > - **Reembolso Parcelado (decisão 2026-08-03): instrumento próprio com natureza de termo,
 >   vinculado à CONTA do titular** — não ao contrato do veículo. Elegibilidade exige contrato
 >   ativo; a obrigação vive na conta (mesmo padrão conta-cêntrico do acordo).
+> - **Limite de 30% em periodicidade EQUIVALENTE (decisão 2026-08-16, caso real):** a regra
+>   RF-RP04 comparava a parcela do RP (ex.: mensal) com 30% da parcela CRUA do contrato
+>   principal (ex.: semanal) — bloqueio indevido por comparar períodos diferentes. Correção:
+>   a parcela do principal converte para MENSAL equivalente pelo fator de PRAZO do catálogo
+>   (semanal ×4,3452; quinzenal ×2,1726 — mesmo padrão do comprometimento na análise), aplica
+>   os 30% e o limite converte para a periodicidade escolhida do RP.
 > O model `Produto` existente (itens avulsos de contrato — proteção, rastreador, taxa) continua
 > separado: ele é item contratável, não produto comercial do catálogo. Convergência avaliada na F3.
 >

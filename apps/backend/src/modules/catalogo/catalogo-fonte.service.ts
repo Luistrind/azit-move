@@ -241,6 +241,12 @@ export class CatalogoFonteService {
     return Math.round(prazoMaximoMeses * icpf);
   }
 
+  // Fator de PRAZO (nº de períodos por mês) — converte fluxo por período em
+  // mensal equivalente (mesmo padrão do comprometimento na análise de cadastro).
+  fatorPrazo(frequencia: 'mensal' | 'quinzenal' | 'semanal'): number {
+    return frequencia === 'mensal' ? 1 : frequencia === 'quinzenal' ? FATORES_CATALOGO.contratoQuinzenal : FATORES_CATALOGO.contratoSemanal;
+  }
+
   // Proteção por período conforme a frequência do contrato (homologação 04/08):
   // 4/2 são fatores de VALOR (mensal = semanal × 4; quinzenal = semanal × 2) —
   // 4,3452/2,1726 são fatores de PRAZO e não se aplicam aqui. A planilha calcula
