@@ -204,6 +204,7 @@ enum StatusFatura {
 enum TipoItemFatura {
   PRINCIPAL
   INTERMEDIARIA // parcela-balão da entrada parcelada
+  ENTRADA // entrada à vista do contrato, materializada no dia zero (doc 02 sec.4-A.3, 2026-08-16)
   SERVICO
   ENCARGO
 }
@@ -865,6 +866,11 @@ model ContratoCredito {
   valorTotal           Decimal               @db.Decimal(12, 2)
   valorEntrada         Decimal               @default(0) @db.Decimal(12, 2)
   entradaParcelada     Boolean               @default(false) // entrada dividida em intermediárias (Doc 2 §4-A.3)
+  // Materializacao da entrada (doc 02 sec.4-A.3, 2026-08-16): a cobranca no Asaas
+  // e o pagamento viram registro INTERNO — Regra 1 (Asaas executa, Azit controla).
+  entradaCobrancaAsaasId String? // id da cobranca da entrada no Asaas
+  entradaPagaEm          DateTime? // dia zero: quando a entrada foi paga
+  valorEntradaPago       Decimal?  @db.Decimal(12, 2) // 60% quando parcelada
   modalidade           ModalidadeContrato    @default(ASSINATURA) // ASSINATURA (veículo) | COMPRA_PARCELADA (crédito de manutenção — Doc 2 §4.7-A)
   assinaturaTitularEm  DateTime? // assinatura mock do titular (Doc 3 §8-A.6)
   assinaturaAzitEm     DateTime? // assinatura mock da Azit

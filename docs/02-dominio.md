@@ -188,6 +188,17 @@ Uma opção concreta apresentada na simulação. **Três origens**:
 
 > **Intermediárias (entrada parcelada):** quando a entrada é parcelada, no **mínimo 60%** vai numa única parcela à vista (a primeira), e o **restante (até 40%)** é diluído em parcelas-balão que concorrem com as parcelas do contrato (entram nas faturas seguintes como ItemFatura — ver 4.12).
 
+> **Decisão 2026-08-16 (Luís, teste ponta a ponta em produção) — a entrada paga MATERIALIZA
+> internamente.** Antes, a cobrança da entrada existia só no Asaas: o pagamento disparava o dia
+> zero e sumia (valor pago R$ 0, extrato vazio) — viola a Regra 1 (Asaas executa, Azit controla).
+> Agora, no dia zero: (a) o contrato grava `entradaPagaEm` + `valorEntradaPago` (60% quando
+> parcelada — o restante já são as intermediárias); (b) nasce uma **Fatura PAGA** na conta com
+> item de tipo **ENTRADA** e o `asaasChargeId` da cobrança (registro financeiro conta-cêntrico);
+> (c) o extrato do contrato ganha o evento "Entrada paga"; (d) o `valorPago` do resumo soma a
+> entrada às parcelas pagas. Gates da mesma decisão: **gerar a cobrança da entrada exige origem
+> de capital no ativo** (a falha silenciosa no dia zero vira erro claro ANTES do dinheiro) e
+> **falha de job de ativação vira log + notificação no sino** (nunca mais morrer muda no Redis).
+
 ### 4-A.4 Proposta
 
 A oferta escolhida formalizada como pedido de crédito. É o que **persiste** e tem **máquina de estados própria** (distinta da do ContratoCredito). A proposta aprovada **gera** o ContratoCredito.

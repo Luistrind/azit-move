@@ -572,6 +572,17 @@ export class FormalizacaoService {
         mensagem: 'Contrato não está aguardando assinatura/pagamento inicial',
       });
     }
+    // Gate do dia zero (doc 02 §4-A.3, 2026-08-16): sem origem de capital no ativo,
+    // o cronograma não nasce — melhor barrar AQUI, antes de existir dinheiro pago,
+    // do que falhar mudo na fila (caso real do contrato 2026080001).
+    const temOrigem = await this.prisma.db.origemCapital.count({ where: { ativoId: contrato.ativoId } });
+    if (!temOrigem) {
+      throw new UnprocessableEntityException({
+        erro: 'origem_capital_ausente',
+        mensagem: 'O ativo deste contrato não tem Origem de Capital — cadastre no Estoque de Ativos antes de gerar a cobrança da entrada (necessária para gerar os recebíveis no dia zero)',
+      });
+    }
+
     // Garante o cliente no Asaas antes da 1ª cobrança (pré-requisito do gateway real).
     const customerId = await this.garantirCliente(contrato.conta.titular);
 
@@ -596,7 +607,9 @@ export class FormalizacaoService {
     });
     await this.prisma.db.contratoCredito.update({
       where: { id: contrato.id },
-      data: { status: 'AGUARDANDO_PAGAMENTO_INICIAL' },
+      // Guarda o id da cobrança: a materialização da entrada no dia zero amarra a
+      // fatura interna a esta cobrança do Asaas (doc 02 §4-A.3, 2026-08-16).
+      data: { status: 'AGUARDANDO_PAGAMENTO_INICIAL', entradaCobrancaAsaasId: cobranca.id },
     });
     await this.notificacao.emitir(
       `Cobrança da entrada gerada — contrato ${contrato.numero}`,
@@ -630,10 +643,13 @@ export class FormalizacaoService {
   // "Dia zero": o pagamento da entrada gera o cronograma e ativa o contrato âncora
   // e TODOS os contratos do pacote (apartados — ex: seguro). Chamado tanto pelo
   // webhook PAYMENT_RECEIVED (ref ativacao:) quanto pelo simulador dev.
-  async ativarPacotePorPagamento(contratoId: string) {
+  async ativarPacotePorPagamento(contratoId: string, paymentDate?: string) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id: contratoId },
-      select: { id: true, numero: true, propostaPacoteId: true },
+      select: {
+        id: true, numero: true, propostaPacoteId: true, contaId: true,
+        valorEntrada: true, entradaParcelada: true, entradaPagaEm: true, entradaCobrancaAsaasId: true,
+      },
     });
     if (!contrato) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Contrato não encontrado' });
     const pacote = contrato.propostaPacoteId
@@ -645,6 +661,7 @@ export class FormalizacaoService {
     for (const c of pacote) {
       await this.contrato.ativarComCronograma(c.id);
     }
+    await this.materializarEntradaPaga(contrato, paymentDate);
     await this.notificacao.emitir(
       `Entrada paga — contrato ${contrato.numero} ativado`,
       `Cronograma gerado e ${pacote.length > 1 ? `${pacote.length} contratos do pacote ativados` : 'contrato ativado'} automaticamente (dia zero).`,
@@ -652,6 +669,57 @@ export class FormalizacaoService {
     );
     this.logger.log(`Pacote ativado (${pacote.length} contrato(s)): entrada paga → cronogramas gerados.`);
     return { contratoId: contrato.id, numero: contrato.numero, status: 'ativo', cronogramaGerado: true, contratosAtivados: pacote.length };
+  }
+
+  // Materialização da entrada paga (doc 02 §4-A.3, 2026-08-16): o dinheiro que
+  // entrou no Asaas vira registro INTERNO — Regra 1. Idempotente (roda no dia
+  // zero e em reprocessamentos): sem entrada ou já materializada, não faz nada.
+  private async materializarEntradaPaga(
+    contrato: {
+      id: string; numero: string; contaId: string;
+      valorEntrada: Prisma.Decimal; entradaParcelada: boolean;
+      entradaPagaEm: Date | null; entradaCobrancaAsaasId: string | null;
+    },
+    paymentDate?: string,
+  ) {
+    const valorEntrada = cent(contrato.valorEntrada);
+    if (valorEntrada <= 0 || contrato.entradaPagaEm) return;
+    // Entrada parcelada: só os 60% à vista entram aqui — os 40% já são
+    // intermediárias nas faturas do cronograma (§4-A.3).
+    const valorAVista = contrato.entradaParcelada ? Math.round(valorEntrada * 0.6) : valorEntrada;
+    const dataPagamento = paymentDate ? new Date(`${paymentDate}T12:00:00-03:00`) : new Date();
+
+    await this.prisma.db.$transaction(async (tx) => {
+      const seq = await tx.fatura.count({ where: { contaId: contrato.contaId } });
+      const fatura = await tx.fatura.create({
+        data: {
+          contaId: contrato.contaId,
+          numero: seq + 1,
+          periodoReferencia: dataPagamento,
+          dataFechamento: dataPagamento,
+          dataVencimento: dataPagamento,
+          dataPagamento,
+          valorTotal: centavosParaReaisString(valorAVista),
+          valorPago: centavosParaReaisString(valorAVista),
+          status: 'PAGA',
+          asaasChargeId: contrato.entradaCobrancaAsaasId,
+        },
+        select: { id: true },
+      });
+      await tx.itemFatura.create({
+        data: {
+          faturaId: fatura.id,
+          tipo: 'ENTRADA',
+          descricao: `Entrada do contrato ${contrato.numero}${contrato.entradaParcelada ? ' (à vista 60%)' : ''}`,
+          valor: centavosParaReaisString(valorAVista),
+          credor: 'AZIT',
+        },
+      });
+      await tx.contratoCredito.update({
+        where: { id: contrato.id },
+        data: { entradaPagaEm: dataPagamento, valorEntradaPago: centavosParaReaisString(valorAVista) },
+      });
+    });
   }
 
   // Dev: simula o pagamento da entrada (faz o papel do webhook PAYMENT_RECEIVED).

@@ -572,7 +572,9 @@ export class ContratoService {
       resumo: {
         parcelasPagas,
         totalParcelas: contrato.numeroParcelas,
-        valorPago: this.cent(pagoAgg._sum.valorPago),
+        // Entrada materializada (doc 02 §4-A.3): o valor pago do contrato inclui a
+        // entrada — antes só somava parcelas e a entrada "sumia" (R$ 0,00 pago).
+        valorPago: this.cent(pagoAgg._sum.valorPago) + this.cent(contrato.valorEntradaPago),
         saldoDevedorAtual: this.cent(saldoAtual._sum.valorNominal),
         proximaParcela: proxima
           ? {

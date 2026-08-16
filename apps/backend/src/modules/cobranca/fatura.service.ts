@@ -312,7 +312,7 @@ export class FaturaService {
   async extrato(contratoId: string) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id: contratoId },
-      select: { id: true, numero: true, dataAssinatura: true },
+      select: { id: true, numero: true, dataAssinatura: true, entradaPagaEm: true, valorEntradaPago: true, entradaParcelada: true },
     });
     if (!contrato) return [];
 
@@ -336,6 +336,19 @@ export class FaturaService {
       encargo: cent(p.valorEncargo),
       atraso: p.status === 'PAGA_EM_ATRASO',
     }));
+
+    // Entrada materializada (doc 02 §4-A.3, 2026-08-16): o dia zero aparece no
+    // extrato como pagamento — antes a entrada não existia em lugar nenhum.
+    if (contrato.entradaPagaEm && contrato.valorEntradaPago) {
+      eventos.push({
+        tipo: 'pagamento',
+        label: `Entrada paga${contrato.entradaParcelada ? ' (à vista 60%)' : ''} — dia zero do contrato`,
+        data: contrato.entradaPagaEm.toISOString(),
+        valor: cent(contrato.valorEntradaPago),
+        encargo: 0,
+        atraso: false,
+      });
+    }
 
     eventos.push({
       tipo: 'pagamento',
