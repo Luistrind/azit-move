@@ -59,8 +59,7 @@ export const adicionarProdutoSchema = z.object({
 export type AdicionarProdutoDto = z.infer<typeof adicionarProdutoSchema>;
 
 // Assinatura mock do contrato — por parte (titular ou Azit).
-export const assinarSchema = z.object({ parte: z.enum(['titular', 'azit']) });
-export type AssinarDto = z.infer<typeof assinarSchema>;
+// assinarSchema removido em 18/08 (doc 02 §21) — assinatura é exclusivamente ZapSign.
 
 // 7.8 — parecer da análise de crédito. Ressalvas: todos os motivos exigem garantidor.
 export const registrarParecerSchema = z.object({

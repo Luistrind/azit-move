@@ -48,8 +48,8 @@ export function CatalogoPage() {
         <h1 className="font-display text-[20px] font-bold">Catálogo de produtos</h1>
         <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
           Produto → Variante → Versão. Mudança de parâmetro cria versão nova (contratos ficam presos à
-          versão contratada); só produto Ativo aparece para simulação e venda. Hoje o catálogo está em
-          rascunho: o simulador passa a consumi-lo na fase 2, após validação.
+          versão contratada); só produto <b>Ativo</b> aparece para simulação e venda — o Catálogo é a
+          fonte única de precificação do simulador, da proteção embutida e do crédito avulso.
         </p>
       </div>
 

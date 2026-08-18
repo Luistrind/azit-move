@@ -7,7 +7,10 @@ import { z } from 'zod';
 export const criarOrigemCapitalSchema = z.object({
   tipo: z.enum(['capital_proprio', 'emprestimo', 'investidor_ativo', 'fundo']),
   contratoInvestimentoId: z.string().min(1).optional(),
-  valorAportado: z.coerce.number().int().min(0),
+  // Doc 02 (2026-08-18): a Origem de Capital é o VÍNCULO ativo→fonte de capital.
+  // valorAportado/taxaRetorno são LEGADO (aporte e retorno vivem na camada de
+  // capital: estrutura jurídica + mútuo) — aceitos por compat, default 0.
+  valorAportado: z.coerce.number().int().min(0).default(0),
   taxaRetorno: z.coerce.number().min(0).max(1).optional(),
   dataAporte: z.coerce.date(),
 });

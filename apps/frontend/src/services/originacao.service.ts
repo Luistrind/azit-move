@@ -284,10 +284,7 @@ export const originacaoService = {
     const { data } = await api.post(`/api/v1/dev/simular-assinatura-digital/${contratoId}`, {});
     return data;
   },
-  async assinar(contratoId: string, parte: 'titular' | 'azit'): Promise<unknown> {
-    const { data } = await api.post(`/api/v1/contratos/${contratoId}/assinar`, { parte });
-    return data;
-  },
+  // Mock de assinatura removido em 18/08 (doc 02 §21) — assinatura é só ZapSign.
   async ativar(contratoId: string): Promise<{ status: string; entrada: number; entradaAVista: number; cobranca: { id: string } }> {
     const { data } = await api.post(`/api/v1/contratos/${contratoId}/ativar`, {});
     return data;

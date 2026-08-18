@@ -8,7 +8,7 @@ import { simuladorService } from '../services/simulador.service';
 import { StatusBadge } from '../components/StatusBadge';
 import { ATIVO_STATUS_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
-import { reaisParaCentavos, numeroBR, inteiroBR } from '../lib/valor';
+import { reaisParaCentavos, inteiroBR } from '../lib/valor';
 import { toast } from '../components/Toast';
 
 const DOC_TIPOS: { v: string; l: string }[] = [
@@ -38,7 +38,7 @@ const EMPTY: FormState = {
   estruturaJuridicaId: '',
   marca: '', modelo: '', anoFabricacao: '', anoModelo: '', cor: '', placa: '', chassi: '', renavam: '', varianteCatalogo: 'carro',
   combustivel: 'flex', origem: '', quilometragemEntrada: '', valorAquisicao: '', valorVenda: '', pacoteOfertaId: '', ofertaFixaId: '',
-  capTipo: 'capital_proprio', capValor: '', capTaxa: '',
+  capTipo: 'capital_proprio',
 };
 
 const reais = (v: string) => reaisParaCentavos(v);
@@ -122,8 +122,6 @@ export function AtivoPage() {
         pacoteOfertaId: a.pacoteOfertaId ?? '',
         ofertaFixaId: a.ofertaFixaId ?? '',
         capTipo: oc?.tipo ?? 'capital_proprio',
-        capValor: oc ? (oc.valorAportado / 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '',
-        capTaxa: oc?.taxaRetorno != null ? (oc.taxaRetorno * 100).toLocaleString('pt-BR', { maximumFractionDigits: 4 }) : '',
       });
       setTemOC(!!oc);
       setStatus(a.status);
@@ -152,24 +150,20 @@ export function AtivoPage() {
     };
     setOcupado(true);
     try {
-      const oc = form.capValor
-        ? {
-            tipo: form.capTipo,
-            valorAportado: reais(form.capValor),
-            taxaRetorno: form.capTaxa ? numeroBR(form.capTaxa) / 100 : undefined,
-            dataAporte: new Date().toISOString().slice(0, 10),
-          }
-        : null;
+      // Origem de capital SEMPRE nasce com o ativo (doc 02, 2026-08-18): é o
+      // vínculo que permite gerar recebíveis — sem ela o dia zero falha. Valor
+      // aportado/taxa são legado (0): aporte/retorno vivem na estrutura jurídica.
+      const oc = {
+        tipo: form.capTipo,
+        valorAportado: 0,
+        dataAporte: new Date().toISOString().slice(0, 10),
+      };
       if (editId) {
         await ativoService.atualizar(editId, { ...body, status });
-        if (oc) {
-          // Cria a origem de capital se ainda não existe; senão atualiza valores.
-          if (temOC) await ativoService.atualizarOrigemCapital(editId, { valorAportado: oc.valorAportado, taxaRetorno: oc.taxaRetorno });
-          else await ativoService.definirOrigemCapital(editId, oc);
-        }
+        if (!temOC) await ativoService.definirOrigemCapital(editId, oc);
       } else {
         const ativo = await ativoService.criar(body);
-        if (oc) await ativoService.definirOrigemCapital(ativo.id, oc);
+        await ativoService.definirOrigemCapital(ativo.id, oc);
       }
       setAberto(false);
       await queryClient.invalidateQueries({ queryKey: ['ativos'] });
@@ -253,9 +247,12 @@ export function AtivoPage() {
             )}
           </div>
 
+          {/* Doc 02 (2026-08-18): a Origem de Capital é o VÍNCULO do ativo com a
+              fonte do capital — aporte e retorno vivem na camada de capital
+              (estrutura jurídica + mútuo). Campos valor/taxa saíram (defasados). */}
           <div className="mt-[14px] border-t pt-[14px]" style={{ borderColor: 'var(--border)' }}>
             <div className="mb-[8px] text-[12px] font-semibold" style={{ color: 'var(--text-body)' }}>
-              Origem de capital {temOC ? '' : '(necessária para gerar os recebíveis na originação)'}
+              Origem de capital {temOC ? '' : '(criada com o ativo — necessária para gerar os recebíveis)'}
             </div>
             <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2 lg:grid-cols-4">
               <label className="flex flex-col gap-[4px]"><Lbl>Tipo</Lbl>
@@ -263,10 +260,10 @@ export function AtivoPage() {
                   {Object.entries(CAPITAIS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </label>
-              <label className="flex flex-col gap-[4px]"><Lbl>Valor aportado (R$)</Lbl><input value={form.capValor} onChange={set('capValor')} className={inputCls} style={inStyle} /></label>
-              <label className="flex flex-col gap-[4px]"><Lbl>Taxa retorno (% a.s.)</Lbl><input value={form.capTaxa} onChange={set('capTaxa')} className={inputCls} style={inStyle} /></label>
             </div>
-            {temOC && <div className="mt-[6px] text-[11px]" style={{ color: 'var(--text-muted)' }}>O tipo não muda após criado; ajuste valor/taxa se necessário.</div>}
+            <div className="mt-[6px] text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              Aporte e retorno do capital são geridos na estrutura jurídica (Capital e investimento), não aqui.
+            </div>
           </div>
 
           {/* Central de documentos do veículo (Doc 2 §4.4-A) — só ao editar */}

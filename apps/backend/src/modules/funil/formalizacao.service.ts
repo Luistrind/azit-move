@@ -75,7 +75,7 @@ CONDIÇÕES:
 - Primeira cobrança em {{dataPrimeiraParcela}}.
 
 Este instrumento não transfere domínio de veículo e não se confunde com o contrato
-de financiamento. Documento gerado automaticamente (assinatura digital MOCK — provisória).`;
+de financiamento. Documento gerado automaticamente para assinatura digital.`;
 
 // 7.10 Formalização + 7.11 Ativação. A proposta aprovada vira ContratoCredito em
 // AGUARDANDO_ASSINATURA, com snapshot congelado e documento gerado por template.
@@ -510,31 +510,8 @@ export class FormalizacaoService {
     };
   }
 
-  // Assinatura mock (Doc 3 §8-A.6) — titular e Azit assinam separadamente.
-  async assinar(contratoId: string, parte: 'titular' | 'azit') {
-    const c = await this.prisma.db.contratoCredito.findFirst({ where: { id: contratoId }, select: { status: true } });
-    if (!c) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Contrato não encontrado' });
-    if (c.status !== 'AGUARDANDO_ASSINATURA') {
-      throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: 'Contrato não está em assinatura' });
-    }
-    await this.prisma.db.contratoCredito.update({
-      where: { id: contratoId },
-      data: parte === 'titular' ? { assinaturaTitularEm: new Date() } : { assinaturaAzitEm: new Date() },
-    });
-    // Notificação do marco (doc 02 §20 passo 13): todos assinaram.
-    const dep = await this.prisma.db.contratoCredito.findFirst({
-      where: { id: contratoId },
-      select: { numero: true, assinaturaTitularEm: true, assinaturaAzitEm: true },
-    });
-    if (dep?.assinaturaTitularEm && dep.assinaturaAzitEm) {
-      await this.notificacao.emitir(
-        `Contrato ${dep.numero} assinado por todos`,
-        'Titular e Azit assinaram — o próximo passo é a cobrança da entrada.',
-        `/contratos/${contratoId}`,
-      );
-    }
-    return this.statusContrato(contratoId);
-  }
+  // Assinatura mock removida em 18/08 (doc 02 §21): a assinatura é exclusivamente
+  // digital via ZapSign; a do contrato ÂNCORA vale para o pacote até a F2.
 
   // 7.11 — Ativação: cria a cobrança da entrada (Asaas) e marca aguardando pagamento.
   // Exige as duas assinaturas (titular + Azit).

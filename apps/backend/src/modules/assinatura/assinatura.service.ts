@@ -260,7 +260,7 @@ export class AssinaturaService {
         : payload.external_id
           ? { contratoCreditoId: payload.external_id }
           : { id: '__nunca__' },
-      include: { contrato: { select: { id: true, numero: true } } },
+      include: { contrato: { select: { id: true, numero: true, propostaPacoteId: true } } },
     });
     if (!d) {
       this.logger.warn(`Webhook ZapSign para documento desconhecido (token=${payload.token ?? '—'}) — ignorado`);
@@ -306,14 +306,19 @@ export class AssinaturaService {
     const todosOk = signatarios.length > 0 && signatarios.every((s) => !!s.assinouEm);
 
     // Integração com o fluxo EXISTENTE: as datas jurídicas entram nos mesmos
-    // campos que o gate da ativação já valida.
-    await this.prisma.db.contratoCredito.update({
-      where: { id: d.contratoCreditoId },
-      data: {
-        ...(clientesOk ? { assinaturaTitularEm: new Date(clientes[0].assinouEm as string) } : {}),
-        ...(azit?.assinouEm ? { assinaturaAzitEm: new Date(azit.assinouEm) } : {}),
-      },
-    });
+    // campos que o gate da ativação já valida. Placeholder F1.2 (mock removido
+    // 18/08): a assinatura do contrato ÂNCORA vale para TODO o pacote (apartados
+    // como o seguro) até o envelope da F2 assinar cada instrumento na ZapSign.
+    const alvoPacote = d.contrato.propostaPacoteId
+      ? { propostaPacoteId: d.contrato.propostaPacoteId }
+      : { id: d.contratoCreditoId };
+    const carimbos = {
+      ...(clientesOk ? { assinaturaTitularEm: new Date(clientes[0].assinouEm as string) } : {}),
+      ...(azit?.assinouEm ? { assinaturaAzitEm: new Date(azit.assinouEm) } : {}),
+    };
+    if (Object.keys(carimbos).length > 0) {
+      await this.prisma.db.contratoCredito.updateMany({ where: alvoPacote, data: carimbos });
+    }
 
     let pdfAssinadoRef = d.pdfAssinadoRef;
     if (todosOk && !pdfAssinadoRef && d.docToken && !d.simulado) {

@@ -523,27 +523,24 @@ export function PropostaDetalhePage() {
           {/* b) Pacote de contratos formalizado → assinar CADA contrato → cobrança → ativação */}
           {p.contratoGeradoId && pacote.data && (
             <div className="flex flex-col gap-[14px]">
-              {/* Assinatura DIGITAL ZapSign F1 (doc 02 §21) — contrato âncora.
-                  Sem credenciais o provedor é simulado; o mock abaixo continua. */}
+              {/* Assinatura DIGITAL ZapSign (doc 02 §21) — a assinatura do contrato
+                  ÂNCORA vale para o pacote até o envelope da F2 (mock removido 18/08). */}
               {!pacote.data.cronogramaGerado && (
                 <BlocoAssinaturaDigital contratoId={p.contratoGeradoId} ocupado={ocupado} run={run} />
               )}
-              {/* Lista de contratos do pacote — assina cada um (titular + Azit) */}
               {!pacote.data.cronogramaGerado && (
                 <div className="rounded-[8px] p-[12px]" style={{ background: 'var(--surface-input)' }}>
-                  <div className="mb-[8px] text-[12px] font-semibold">Assinatura do pacote de contratos (mock)</div>
+                  <div className="mb-[8px] text-[12px] font-semibold">Contratos do pacote</div>
                   <div className="flex flex-col gap-[10px]">
                     {pacote.data.contratos.map((c) => (
                       <div key={c.id} className="flex flex-wrap items-center gap-[10px] border-b pb-[8px]" style={{ borderColor: 'var(--border-light)' }}>
                         <span className="min-w-[220px] text-[12px] font-semibold">{c.descricao}{c.ancora ? '' : ' · contrato apartado'} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({c.numero})</span></span>
-                        <button disabled={ocupado || c.assinadoTitular || c.status !== 'aguardando_assinatura'} onClick={() => run(() => originacaoService.assinar(c.id, 'titular'))}
-                          className="h-[30px] rounded-[8px] px-[10px] text-[11.5px] font-semibold" style={c.assinadoTitular ? { background: '#eafaf1', color: '#1f9d5b' } : btn('var(--navy)')}>
-                          {c.assinadoTitular ? '✓ Titular' : 'Titular assina'}
-                        </button>
-                        <button disabled={ocupado || c.assinadoAzit || c.status !== 'aguardando_assinatura'} onClick={() => run(() => originacaoService.assinar(c.id, 'azit'))}
-                          className="h-[30px] rounded-[8px] px-[10px] text-[11.5px] font-semibold" style={c.assinadoAzit ? { background: '#eafaf1', color: '#1f9d5b' } : btn('var(--navy)')}>
-                          {c.assinadoAzit ? '✓ Azit' : 'Azit assina'}
-                        </button>
+                        <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={c.assinadoTitular ? { background: '#eafaf1', color: '#1f9d5b' } : { background: '#eef2f7', color: '#5b6b7f' }}>
+                          {c.assinadoTitular ? '✓ Cliente assinou' : 'Cliente pendente'}
+                        </span>
+                        <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={c.assinadoAzit ? { background: '#eafaf1', color: '#1f9d5b' } : { background: '#eef2f7', color: '#5b6b7f' }}>
+                          {c.assinadoAzit ? '✓ Azit assinou' : 'Azit pendente'}
+                        </span>
                       </div>
                     ))}
                   </div>

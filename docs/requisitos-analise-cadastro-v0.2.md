@@ -232,3 +232,18 @@ Cada RF referencia as seções de origem e, quando ajustado, a seção do Feedba
 ## Pendência remanescente
 
 - **Composição do COCAD** (quem pode ser segundo membro) — provisório: papéis Aprovador/Diretor, configurável na matriz de alçadas (RF-17).
+
+---
+
+## Adendo 2026-08-15/18 — Alçada do analista sobre critérios COC (decisão do Luís, homologação em produção)
+
+Diverge do roteamento compulsório da Política v1.0 §13.4 e **prevalece até a revisão do texto da política com o time**:
+
+1. **Critérios COC são RECOMENDAÇÃO de encaminhamento, não roteamento compulsório.** Com critérios COC presentes (comprometimento >40%, score abaixo do mínimo, restritivos etc.), o analista escolhe entre **submeter ao COCAD** ou **aprovar na própria alçada com justificativa obrigatória** (mín. 10 caracteres). A justificativa e os códigos COC ignorados ficam na trilha de estados e na auditoria (`analise_aprovada_contra_recomendacao`).
+2. **Critérios de COMPLEMENTO (COM-xx) continuam bloqueando aprovação** — são completude de dados (identidade, renda apurada, condutor principal, pendências), não julgamento.
+3. **Bloqueios de formalização** (fraude, CNH) **continuam absolutos** no pacote mínimo, independentemente de quem aprovou.
+4. **Parecer não regride análise decidida**: reemissão de parecer é bloqueada quando a análise está no COCAD ou já foi decidida (aguardando COCAD, aprovada com ressalvas, ressalva em tratamento, aprovada) — anti-requisito derivado de caso real (análise aprovada pelo COCAD "voltava no tempo").
+5. **Autorização de consulta** (verbal, decisão 2026-08-08) **saiu do pacote mínimo** — o item era insatisfazível e travava toda liberação.
+6. **Rendas declarada/presumida/apurada são EXCLUSIVAMENTE insumo da análise manual** (decisão 2026-08-12) — nenhuma entra em regra automática além do comprometimento (renda apurada).
+
+Referências de implementação: doc 02 §14 (decisões 2026-08-12/15) e commits `a57ea79`/`c8ece39`+.

@@ -32,8 +32,6 @@ import {
   EscolherProtecaoDto,
   enviarAnaliseSchema,
   EnviarAnaliseDto,
-  assinarSchema,
-  AssinarDto,
   adicionarProdutoSchema,
   AdicionarProdutoDto,
 } from './dto/proposta.dto';
@@ -245,14 +243,9 @@ export class FunilController {
     return this.formalizacao.statusPacote(id);
   }
 
-  @Post('contratos/:id/assinar')
-  @HttpCode(200)
-  assinar(
-    @Param('id') id: string,
-    @Body(new ZodValidationPipe(assinarSchema)) dto: AssinarDto,
-  ) {
-    return this.formalizacao.assinar(id, dto.parte);
-  }
+  // Rota do mock de assinatura removida em 18/08 (doc 02 §21): a assinatura é
+  // exclusivamente digital via ZapSign — a do contrato âncora vale para o pacote
+  // até o envelope da F2.
 
   // --- 7.11 Ativação (cobrança da entrada; exige assinaturas) ---
   @Post('contratos/:id/ativar')

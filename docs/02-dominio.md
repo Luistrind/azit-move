@@ -1082,6 +1082,12 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 - **Classificações do Titular**: INVESTIDOR, FORNECEDOR e PARCEIRO são classificações manuais múltiplas sobre o cadastro único; CLIENTE continua derivado (contrato). As "abas" de cadastro são visões filtradas do mesmo dado.
 - **Camada de capital (estrutura básica, jurídico em definição — placeholder Regra 12)**: investidor PF nunca é dono direto do ativo. Entra a **Estrutura Jurídica** (SPE/fundo; pode ser uma por rodada de captação). Relações N↔N: um investidor em N estruturas, uma estrutura com N investidores (instrumento padrão: mútuo, com valor e data do aporte). A estrutura é a dona do capital dos ativos: a Origem de Capital do ativo aponta para a estrutura.
 - Cadeia navegável exigida pelo MVP: **veículo → estrutura jurídica → investidores** (+ cliente/contrato pelo lado da carteira). Relatórios por ativo amarram nesse cadastro.
+- **Decisão 2026-08-18 (Luís): a Origem de Capital é o VÍNCULO, não o aporte.** Os campos
+  `valorAportado`/`taxaRetorno` da OrigemCapital são herança do desenho pré-camada de capital e
+  estavam defasados (varredura confirmou: NENHUM cálculo os consome — aporte e retorno vivem na
+  estrutura jurídica + mútuo do investidor). Saem da tela do ativo e dos fluxos (gravados como 0
+  por compatibilidade; colunas permanecem como legado). A origem passa a ser criada SEMPRE junto
+  com o ativo (tipo + vínculo) — elimina o caso "ativo sem origem" que abortava o dia zero.
 - Fornecedor: por ora só classificação + ficha; mecânica de contas a pagar entra com o ERP enxuto (prazo 07/08).
 
 ---
@@ -1347,6 +1353,13 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 > 5. **Parâmetros de assinatura têm tela própria** (Configuração → Assinatura digital): objeto
 >    `ParametroAssinatura` de linha única (assinante Azit, 2 testemunhas, chave do envio
 >    automático), editável por ADMIN/DIRETOR, auditado.
+>
+> **Decisão 2026-08-18 (Luís): mock de assinatura REMOVIDO.** Com a F1.1 validada em produção
+> (contrato assinado de ponta a ponta via WhatsApp), a assinatura passa a ser exclusivamente
+> digital: os botões "Titular assina"/"Azit assina" e a rota `POST contratos/:id/assinar` saem;
+> a tela mostra os contratos do pacote só com o status. Placeholder F1.2 (Regra 12): a
+> assinatura do contrato ÂNCORA na ZapSign carimba TODO o pacote (apartados como o seguro) —
+> substituído pelo envelope da F2, quando cada instrumento assina individualmente.
 
 ---
 
