@@ -7,6 +7,11 @@ export const criarRenegociacaoSchema = z.object({
   numeroParcelasNovas: z.coerce.number().int().min(1),
   valorParcelaNova: z.coerce.number().int().min(1),
   periodicidade: z.enum(['semanal', 'quinzenal', 'mensal']).optional(), // plano do acordo (default semanal)
+  // Seleção por FATURA (doc Acordo de Pagamento V1.0 RAP006): excluir uma
+  // fatura pré-selecionada exige justificativa textual auditável.
+  faturasExcluidas: z
+    .array(z.object({ faturaId: z.string().min(1), justificativa: z.string().trim().min(10, 'Justificativa da exclusão precisa de pelo menos 10 caracteres') }))
+    .optional(),
 });
 export type CriarRenegociacaoBody = z.infer<typeof criarRenegociacaoSchema>;
 

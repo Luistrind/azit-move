@@ -32,18 +32,34 @@ export function RenegociacaoWizard({
   const [periodicidade, setPeriodicidade] = useState<'semanal' | 'quinzenal' | 'mensal'>('semanal');
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState<{ contratosAfetados: number } | null>(null);
+  // Seleção por FATURA (doc Acordo de Pagamento V1.0 RAP005/006): todas entram
+  // pré-selecionadas; desmarcar exige justificativa auditável.
+  const [exclusoes, setExclusoes] = useState<Record<string, string>>({});
 
   const eleg = useQuery({
     queryKey: ['renegociacao-elegivel', contaId],
     queryFn: () => operacoesService.elegivelConta(contaId),
   });
 
-  const total = eleg.data?.valorTotal ?? 0;
+  const faturas = eleg.data?.faturas ?? [];
+  const selecionadas = faturas.filter((f) => !(f.faturaId in exclusoes));
+  const total = selecionadas.reduce((s, f) => s + f.valorAtualizado, 0);
+  const encargosSelecionados = selecionadas.reduce((s, f) => s + f.encargosMora, 0);
+  const justificativasOk = Object.values(exclusoes).every((j) => j.trim().length >= 10);
   const entradaCent = reaisParaCentavos(entrada);
   const nParcelas = Math.max(1, parseInt(parcelas || '0', 10) || 0);
   const saldoNovo = Math.max(0, total - entradaCent);
   const valorParcela = nParcelas > 0 ? Math.round(saldoNovo / nParcelas) : 0;
-  const propostaValida = total > 0 && entradaCent < total && nParcelas > 0 && valorParcela > 0;
+  const propostaValida = total > 0 && entradaCent < total && nParcelas > 0 && valorParcela > 0 && justificativasOk;
+
+  function alternarFatura(faturaId: string) {
+    setExclusoes((atual) => {
+      const novo = { ...atual };
+      if (faturaId in novo) delete novo[faturaId];
+      else novo[faturaId] = '';
+      return novo;
+    });
+  }
 
   async function enviar() {
     setEnviando(true);
@@ -53,6 +69,7 @@ export function RenegociacaoWizard({
         numeroParcelasNovas: nParcelas,
         valorParcelaNova: valorParcela,
         periodicidade,
+        faturasExcluidas: Object.entries(exclusoes).map(([faturaId, justificativa]) => ({ faturaId, justificativa: justificativa.trim() })),
       });
       setResultado({ contratosAfetados: r.contratosAfetados });
       setStep(3);
@@ -98,24 +115,54 @@ export function RenegociacaoWizard({
               ) : (
                 <>
                   <p className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
-                    O pagamento é por fatura, então o atraso é da <b>conta</b>: a renegociação cobre as
-                    parcelas vencidas de <b>todos os contratos</b> numa única negociação.
+                    A unidade da negociação é a <b>fatura vencida</b> — todas entram pré-selecionadas
+                    (com os itens completos de todos os contratos). Desmarcar uma fatura exige
+                    justificativa, que fica registrada na proposta. Valores já <b>atualizados com
+                    multa e juros de mora</b> na data de hoje.
                   </p>
-                  {eleg.data.contratos.map((c) => (
-                    <div key={c.contratoId} className="rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)' }}>
-                      <div className="flex items-center justify-between text-[12.5px] font-bold">
-                        <span>{c.numero} · {c.descricao}</span>
-                        <span className="tabular-nums">{formatCurrency(c.valor)}</span>
+                  {faturas.map((f) => {
+                    const excluida = f.faturaId in exclusoes;
+                    return (
+                      <div key={f.faturaId} className="rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)', opacity: excluida ? 0.75 : 1 }}>
+                        <div className="flex items-center justify-between gap-[8px] text-[12.5px] font-bold">
+                          <label className="flex cursor-pointer items-center gap-[8px]">
+                            <input type="checkbox" checked={!excluida} onChange={() => alternarFatura(f.faturaId)} />
+                            <span>Fatura {f.numero ?? '—'}{f.dataVencimento ? ` · venc. ${new Date(f.dataVencimento).toLocaleDateString('pt-BR')}` : ''}</span>
+                          </label>
+                          <span className="tabular-nums" style={excluida ? { textDecoration: 'line-through' } : undefined}>{formatCurrency(f.valorAtualizado)}</span>
+                        </div>
+                        <div className="mt-[4px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+                          {f.itens.map((it) => `${it.display} (${it.contratoNumero})`).join(', ')}
+                          {f.encargosMora > 0 && ` · encargos de mora ${formatCurrency(f.encargosMora)}`}
+                        </div>
+                        {excluida && (
+                          <div className="mt-[8px]">
+                            <input
+                              value={exclusoes[f.faturaId]}
+                              onChange={(e) => setExclusoes({ ...exclusoes, [f.faturaId]: e.target.value })}
+                              placeholder="Justificativa da exclusão (obrigatória, mín. 10 caracteres) — fica auditada na proposta"
+                              className="h-[32px] w-full rounded-[8px] px-[10px] text-[12px]"
+                              style={{ background: 'var(--surface)', border: '1px solid #e0a800' }}
+                            />
+                          </div>
+                        )}
                       </div>
-                      <div className="mt-[4px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
-                        {c.parcelas.length} parcela(s) em atraso: {c.parcelas.map((p) => p.display).join(', ')}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   <div className="flex items-center justify-between rounded-[10px] px-[12px] py-[10px] text-[13px] font-bold" style={{ background: '#fdeceb', color: '#c0392b' }}>
-                    <span>Total em atraso ({eleg.data.faturasVencidas} fatura(s) vencida(s))</span>
+                    <span>Total selecionado ({selecionadas.length} de {faturas.length} fatura(s))</span>
                     <span className="tabular-nums">{formatCurrency(total)}</span>
                   </div>
+                  {encargosSelecionados > 0 && (
+                    <div className="text-right text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+                      inclui {formatCurrency(encargosSelecionados)} de multa e juros de mora (regra geral do contrato)
+                    </div>
+                  )}
+                  {!justificativasOk && (
+                    <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: '#fff7e6', color: '#8a5a00' }}>
+                      Preencha a justificativa das faturas excluídas para avançar.
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -161,8 +208,8 @@ export function RenegociacaoWizard({
               <div className="rounded-[10px] p-[14px]" style={{ background: 'var(--surface-input)' }}>
                 <div className="mb-[8px] font-bold">Resumo do acordo</div>
                 <div className="flex flex-col gap-[4px] text-[12.5px]">
-                  <div className="flex justify-between"><span>Contratos cobertos</span><b>{eleg.data?.contratos.length ?? 0}</b></div>
-                  <div className="flex justify-between"><span>Total renegociado</span><b className="tabular-nums">{formatCurrency(total)}</b></div>
+                  <div className="flex justify-between"><span>Faturas selecionadas</span><b>{selecionadas.length} de {faturas.length}{Object.keys(exclusoes).length > 0 ? ` (${Object.keys(exclusoes).length} excluída(s) com justificativa)` : ''}</b></div>
+                  <div className="flex justify-between"><span>Total renegociado (com mora)</span><b className="tabular-nums">{formatCurrency(total)}</b></div>
                   <div className="flex justify-between"><span>Entrada (aceite do cliente)</span><b className="tabular-nums">{formatCurrency(entradaCent)}</b></div>
                   <div className="flex justify-between"><span>Plano novo</span><b className="tabular-nums">{nParcelas}× {formatCurrency(valorParcela)} ({periodicidade})</b></div>
                 </div>
@@ -193,7 +240,7 @@ export function RenegociacaoWizard({
             <button onClick={() => setStep(step - 1)} className="h-[36px] rounded-[9px] px-[16px] text-[13px] font-semibold" style={{ background: 'var(--surface-input)' }}>← Voltar</button>
           ) : <span />}
           {step === 0 && (
-            <button disabled={!eleg.data || total <= 0} onClick={() => setStep(1)} className="h-[36px] rounded-[9px] px-[16px] text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--navy)', color: '#fff' }}>Estruturar proposta →</button>
+            <button disabled={!eleg.data || total <= 0 || !justificativasOk} onClick={() => setStep(1)} className="h-[36px] rounded-[9px] px-[16px] text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--navy)', color: '#fff' }}>Estruturar proposta →</button>
           )}
           {step === 1 && (
             <button disabled={!propostaValida} onClick={() => setStep(2)} className="h-[36px] rounded-[9px] px-[16px] text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--navy)', color: '#fff' }}>Revisar →</button>

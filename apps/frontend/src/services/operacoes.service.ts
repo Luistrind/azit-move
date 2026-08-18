@@ -32,6 +32,17 @@ export interface ParcelaElegivel {
 }
 
 // Elegíveis da CONTA (renegociação conta-cêntrica — Doc 2 §7.7).
+// Desde 17/08 (doc Acordo de Pagamento V1.0): valores ATUALIZADOS com mora
+// (RAP007) + visão por FATURA (unidade de negociação, RAP003-005).
+export interface FaturaElegivel {
+  faturaId: string;
+  numero: number | null;
+  dataVencimento: string | null;
+  valorNominal: number;
+  encargosMora: number;
+  valorAtualizado: number;
+  itens: { display: string; contratoNumero: string; valorAtualizado: number }[];
+}
 export interface ElegivelConta {
   contaId: string;
   titularId: string;
@@ -40,9 +51,14 @@ export interface ElegivelConta {
     numero: string;
     descricao: string;
     valor: number;
+    valorNominal: number;
+    encargosMora: number;
     parcelas: ParcelaElegivel[];
   }[];
+  faturas: FaturaElegivel[];
   valorTotal: number;
+  valorNominalTotal: number;
+  encargosMoraTotal: number;
   faturasVencidas: number;
 }
 
@@ -73,6 +89,7 @@ export const operacoesService = {
       numeroParcelasNovas: number;
       valorParcelaNova: number;
       periodicidade?: 'semanal' | 'quinzenal' | 'mensal';
+      faturasExcluidas?: { faturaId: string; justificativa: string }[];
     },
   ): Promise<{ id: string; status: string; valorTotalRenegociado: number; contratosAfetados: number }> {
     const { data } = await api.post(`/api/v1/contas/${contaId}/renegociacao`, body);

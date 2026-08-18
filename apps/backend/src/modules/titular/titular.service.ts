@@ -182,7 +182,9 @@ export class TitularService {
       conta ? this.prisma.db.fatura.aggregate({ where: { contaId: conta.id }, _sum: { valorPago: true } }) : null,
       idsAtivos.length ? this.prisma.db.parcela.aggregate({ where: { contratoId: { in: idsAtivos }, status: null, acordoId: null }, _sum: { valorNominal: true } }) : null,
       ids.length ? this.prisma.db.parcela.aggregate({ where: { contratoId: { in: ids }, status: null, acordoId: null, dataVencimento: { lt: hoje } }, _sum: { valorNominal: true } }) : null,
-      ids.length ? this.prisma.db.acordo.count({ where: { contratoId: { in: ids } } }) : 0,
+      // Acordo é CONTA-cêntrico (contratoId só no legado) — contar por contrato
+      // mostrava 0 com acordo ativo (caso real 17/08).
+      conta ? this.prisma.db.acordo.count({ where: { OR: [{ contaId: conta.id }, { contratoId: { in: ids } }] } }) : 0,
       ids.length ? this.prisma.db.novacao.count({ where: { contratoOrigemId: { in: ids } } }) : 0,
     ]);
     const cent = (d: Prisma.Decimal | null | undefined) => (d ? reaisParaCentavos(d.toString()) : 0);

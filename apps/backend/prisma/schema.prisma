@@ -1089,6 +1089,9 @@ model Acordo {
   asaasChargeIdEntrada  String?
   status                StatusAcordo  @default(RASCUNHO)
   observacao            String?
+  // Fotografia da proposta (doc Acordo de Pagamento V1.0 RAP034): faturas
+  // selecionadas, exclusões com justificativa e saldos na data-base.
+  snapshotJson          Json?
 
   conta            Conta            @relation(fields: [contaId], references: [id])
   contrato         ContratoCredito? @relation(fields: [contratoId], references: [id])
