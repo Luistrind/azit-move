@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 export interface ReguaItem {
   id: string;
   numero: string;
+  contaId: string; // renegociação é da CONTA (doc 02 §7.7) — abre o caso do card
   bloqueado: boolean;
   emRecuperacao: boolean;
   diasAtraso: number;

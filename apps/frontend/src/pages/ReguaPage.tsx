@@ -1,15 +1,22 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency, ESTAGIOS_REGUA, ROTULO_ESTAGIO } from '@azit/utils';
 import { reguaService, type ReguaItem } from '../services/regua.service';
+import { operacoesService } from '../services/operacoes.service';
+import { Modal } from '../components/Modal';
+import { RenegociacaoWizard } from '../components/RenegociacaoWizard';
 import { REGUA_STAGE_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
 
-function Card({ item, onAcao, ocupado, podeOperar }: { item: ReguaItem; onAcao: (acao: 'bloquear' | 'desbloquear', id: string) => void; ocupado: boolean; podeOperar: boolean }) {
+function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem; onAcao: (acao: 'bloquear' | 'desbloquear', id: string) => void; onAbrir: () => void; ocupado: boolean; podeOperar: boolean }) {
   const podeBloquear = podeOperar && !item.bloqueado && item.diasAtraso >= 3;
   return (
     <div
-      className="rounded-[10px] p-[12px]"
+      onClick={onAbrir}
+      role="button"
+      title="Abrir o caso de cobrança"
+      className="cursor-pointer rounded-[10px] p-[12px] transition-shadow hover:shadow-[0_4px_14px_rgba(0,16,41,.12)]"
       style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
     >
       <div className="flex items-start justify-between gap-[8px]">
@@ -43,7 +50,7 @@ function Card({ item, onAcao, ocupado, podeOperar }: { item: ReguaItem; onAcao: 
       </div>
       {(podeBloquear || (item.bloqueado && podeOperar)) && (
         <button
-          onClick={() => onAcao(item.bloqueado ? 'desbloquear' : 'bloquear', item.id)}
+          onClick={(e) => { e.stopPropagation(); onAcao(item.bloqueado ? 'desbloquear' : 'bloquear', item.id); }}
           disabled={ocupado}
           className="mt-[10px] w-full rounded-[7px] py-[6px] text-[11.5px] font-semibold"
           style={{
@@ -59,9 +66,74 @@ function Card({ item, onAcao, ocupado, podeOperar }: { item: ReguaItem; onAcao: 
   );
 }
 
+// Caso de cobrança (fluxo do operador, 18/08): o card do kanban abre as faturas
+// vencidas do titular — valores CORRIGIDOS com mora (mesma fonte da renegociação,
+// RAP007) — e o botão "Renegociar atraso" aciona o MESMO wizard da ficha.
+function CasoModal({ item, onClose, onRenegociar }: { item: ReguaItem; onClose: () => void; onRenegociar: () => void }) {
+  const navigate = useNavigate();
+  const eleg = useQuery({
+    queryKey: ['renegociacao-elegivel', item.contaId],
+    queryFn: () => operacoesService.elegivelConta(item.contaId),
+  });
+  const faturas = eleg.data?.faturas ?? [];
+  return (
+    <Modal open onClose={onClose} title={`Caso de cobrança — ${item.titular.nome}`}>
+      <div className="flex flex-col gap-[10px]">
+        <div className="flex flex-wrap items-center gap-[8px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
+          <span className="rounded-full px-[10px] py-[2px] font-bold" style={{ background: '#fdeceb', color: '#c0392b' }}>{item.estagio} · {item.diasAtraso} dia(s) de atraso</span>
+          <span>{item.ativo.modelo ?? '—'} · {item.ativo.placa ?? 'sem placa'} · contrato {item.numero}</span>
+          {item.bloqueado && <span className="rounded-full px-[10px] py-[2px] font-bold" style={{ background: '#fdeceb', color: '#e0413c' }}>Veículo bloqueado</span>}
+        </div>
+
+        {eleg.isLoading ? (
+          <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Carregando faturas vencidas…</div>
+        ) : faturas.length === 0 ? (
+          <div className="rounded-[10px] p-[12px] text-[12.5px]" style={{ background: '#e8f7ef', color: '#1f9d5b' }}>
+            Sem faturas vencidas fora de acordo — o atraso pode já estar coberto por uma renegociação.
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-col gap-[6px]">
+              {faturas.map((f) => (
+                <div key={f.faturaId} className="rounded-[10px] px-[12px] py-[8px]" style={{ background: 'var(--surface-input)' }}>
+                  <div className="flex items-center justify-between text-[12.5px] font-bold">
+                    <span>Fatura {f.numero ?? '—'}{f.dataVencimento ? ` · venc. ${new Date(f.dataVencimento).toLocaleDateString('pt-BR')}` : ''}</span>
+                    <span className="tabular-nums">{formatCurrency(f.valorAtualizado)}</span>
+                  </div>
+                  <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+                    {f.itens.map((it) => `${it.display} (${it.contratoNumero})`).join(', ')}
+                    {f.encargosMora > 0 && ` · encargos de mora ${formatCurrency(f.encargosMora)}`}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between rounded-[10px] px-[12px] py-[8px] text-[13px] font-bold" style={{ background: '#fdeceb', color: '#c0392b' }}>
+              <span>Total corrigido ({faturas.length} fatura(s))</span>
+              <span className="tabular-nums">{formatCurrency(eleg.data?.valorTotal ?? 0)}</span>
+            </div>
+          </>
+        )}
+
+        <div className="flex flex-wrap justify-end gap-[8px] pt-[4px]">
+          <button onClick={() => navigate(`/titulares/${eleg.data?.titularId ?? ''}`)} disabled={!eleg.data}
+            className="h-[34px] rounded-[8px] px-[14px] text-[12.5px] font-semibold disabled:opacity-50" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+            Abrir ficha do titular
+          </button>
+          <button onClick={onRenegociar} disabled={faturas.length === 0}
+            className="h-[34px] rounded-[8px] px-[14px] text-[12.5px] font-semibold disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>
+            Renegociar atraso
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export function ReguaPage() {
   const queryClient = useQueryClient();
   const [ocupado, setOcupado] = useState(false);
+  const [caso, setCaso] = useState<ReguaItem | null>(null);
+  const [renegociando, setRenegociando] = useState<ReguaItem | null>(null);
   const pode = usePodeRole();
   const podeOperar = pode(ROLE_OPERACAO);
   const regua = useQuery({ queryKey: ['regua'], queryFn: () => reguaService.listar() });
@@ -128,7 +200,7 @@ export function ReguaPage() {
                   </div>
                 )}
                 {cards.map((item) => (
-                  <Card key={item.id} item={item} ocupado={ocupado} podeOperar={podeOperar} onAcao={(acao, id) =>
+                  <Card key={item.id} item={item} ocupado={ocupado} podeOperar={podeOperar} onAbrir={() => setCaso(item)} onAcao={(acao, id) =>
                     comRefetch(() => (acao === 'bloquear' ? reguaService.bloquear(id) : reguaService.desbloquear(id)))
                   } />
                 ))}
@@ -137,6 +209,24 @@ export function ReguaPage() {
           );
         })}
       </div>
+
+      {caso && (
+        <CasoModal
+          item={caso}
+          onClose={() => setCaso(null)}
+          onRenegociar={() => { setRenegociando(caso); setCaso(null); }}
+        />
+      )}
+      {renegociando && (
+        <RenegociacaoWizard
+          contaId={renegociando.contaId}
+          titular={renegociando.titular.nome}
+          onClose={() => {
+            setRenegociando(null);
+            void queryClient.invalidateQueries({ queryKey: ['regua'] });
+          }}
+        />
+      )}
     </div>
   );
 }

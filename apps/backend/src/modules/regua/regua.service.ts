@@ -67,6 +67,9 @@ export class ReguaService {
         return {
           id: c.id,
           numero: c.numero,
+          // Fluxo do operador de cobrança (18/08): o card da régua abre o caso e
+          // renegocia dali — a renegociação é da CONTA (doc 02 §7.7).
+          contaId: c.contaId,
           bloqueado: c.status === 'BLOQUEADO',
           emRecuperacao: c.status === 'EM_RECUPERACAO_VEICULO',
           diasAtraso,
