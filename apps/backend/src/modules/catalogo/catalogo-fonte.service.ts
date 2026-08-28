@@ -107,6 +107,10 @@ export class CatalogoFonteService {
     const protecaoMensal = num(p.protecaoMensal);
     const ofertasPadrao: OfertaPadraoCatalogo[] = [];
     for (const n of [1, 2, 3]) {
+      // Feedback 28/08: oferta padrão pode ser DESATIVADA na versão do produto
+      // (flag ofertaNDesativada) — some do atendimento/simulação sem apagar o
+      // histórico das versões anteriores.
+      if (bool(p[`oferta${n}Desativada`])) continue;
       const prazo = num(p[`oferta${n}PrazoMeses`]);
       const entrada = num(p[`oferta${n}Entrada`]);
       const freq = String(p[`oferta${n}Frequencia`] ?? '').toUpperCase();
@@ -221,6 +225,7 @@ export class CatalogoFonteService {
     const p = vigente.parametros as Parametros;
     const ofertasPadrao: { valor: number; parcelas: number; frequencia: string }[] = [];
     for (const n of [1, 2, 3]) {
+      if (bool(p[`oferta${n}Desativada`])) continue; // feedback 28/08
       const valor = num(p[`oferta${n}Valor`]);
       const parcelas = num(p[`oferta${n}Parcelas`]);
       if (valor > 0 && parcelas > 0) {

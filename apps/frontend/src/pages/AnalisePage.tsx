@@ -203,7 +203,9 @@ export function AnalisePage() {
       </div>
 
       {/* Consultas (Fase 1: registro manual) */}
-      {!final && <ConsultaForm d={d} ocupado={ocupado} acao={acao} />}
+      {/* Transcrição manual de consulta REMOVIDA da tela (feedback 28/08 — não é
+          usada; o fluxo oficial é o birô pelos botões do quadro de consultas).
+          O endpoint continua existindo como plano B de emergência via API. */}
       {d.consultas.length > 0 && (
         <div className={card}>
           <div className="mb-[8px] flex flex-wrap items-center justify-between gap-[8px]">
@@ -470,93 +472,6 @@ function Participante({ d, p, ocupado, acao, final }: { d: DossieAnalise; p: Par
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-// Transcrição dos birôs SEM API (decisão 08/08): o analista consulta o portal
-// da Quod (score) / Boa Vista (restritivos) e transcreve o retorno aqui — os
-// valores entram DIRETO nos critérios da política (COC-02 / COC-03/04).
-// A Camada 1 não aparece: ela é automática (envio da proposta / botão repetir).
-function ConsultaForm({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean; acao: (fn: () => Promise<DossieAnalise>, ok?: string) => Promise<void> }) {
-  const [f, setF] = useState({ titularId: d.participantes[0]?.titularId ?? '', tipo: 'score_quod', fornecedor: 'Quod', protocolo: '', situacao: 'concluida', motivoFalha: '', score: '', rf: '', rnf: '', protesto: false });
-
-  const preenchida =
-    f.situacao === 'falha'
-      ? f.motivoFalha.trim().length >= 3
-      : f.tipo === 'score_quod'
-        ? f.score.trim() !== ''
-        : f.rf.trim() !== '' && f.rnf.trim() !== '';
-
-  return (
-    <div className={card}>
-      <div className="mb-[4px] font-display text-[13px] font-bold">Transcrever consulta manualmente (plano B)</div>
-      <div className="mb-[10px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
-        O caminho normal é pelo SISTEMA, no quadro "Consultas registradas": a <b>Camada 1</b> chega
-        sozinha (envio da proposta ou "Repetir no birô") e <b>score/restritivos Quod</b> saem pelos
-        botões pagos do Marketplace da BigDataCorp. Use este formulário apenas como plano B — birô fora
-        do ar ou consulta feita direto no portal. Os valores alimentam os <b>Critérios da política</b>:
-        score mínimo {`(COC-02)`}, restritivos {`(COC-03/04)`}.
-      </div>
-      <div className="grid grid-cols-2 gap-[8px] sm:grid-cols-4">
-        <label className="flex flex-col gap-[2px] text-[11px] font-semibold">Participante
-          <select className={inputCls} value={f.titularId} onChange={(e) => setF({ ...f, titularId: e.target.value })}>
-            {d.participantes.map((p) => <option key={p.titularId} value={p.titularId}>{p.nome}</option>)}
-          </select>
-        </label>
-        <label className="flex flex-col gap-[2px] text-[11px] font-semibold">Consulta
-          <select className={inputCls} value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value, fornecedor: e.target.value === 'score_quod' ? 'Quod' : 'Boa Vista' })}>
-            <option value="score_quod">Score (portal Quod)</option><option value="restritivos">Restritivos (portal Boa Vista)</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-[2px] text-[11px] font-semibold">Protocolo no portal (opcional)
-          <input className={inputCls} placeholder="ex.: nº da consulta" value={f.protocolo} onChange={(e) => setF({ ...f, protocolo: e.target.value })} />
-        </label>
-        <label className="flex flex-col gap-[2px] text-[11px] font-semibold">Como terminou
-          <select className={inputCls} value={f.situacao} onChange={(e) => setF({ ...f, situacao: e.target.value })}>
-            <option value="concluida">Concluída — tenho o resultado</option><option value="falha">Falhou / birô indisponível</option>
-          </select>
-        </label>
-        {f.situacao === 'falha' && (
-          <label className="col-span-2 flex flex-col gap-[2px] text-[11px] font-semibold">Motivo da falha *
-            <input className={inputCls} placeholder="ex.: portal fora do ar" value={f.motivoFalha} onChange={(e) => setF({ ...f, motivoFalha: e.target.value })} />
-          </label>
-        )}
-        {f.situacao === 'concluida' && f.tipo === 'score_quod' && (
-          <label className="flex flex-col gap-[2px] text-[11px] font-semibold">Score retornado *
-            <input className={inputCls} placeholder="ex.: 630" inputMode="numeric" value={f.score} onChange={(e) => setF({ ...f, score: e.target.value })} />
-          </label>
-        )}
-        {f.situacao === 'concluida' && f.tipo === 'restritivos' && (
-          <>
-            <label className="flex flex-col gap-[2px] text-[11px] font-semibold">Restritivos financeiros (R$) *
-              <input className={inputCls} placeholder="0,00 se nada constar" value={f.rf} onChange={(e) => setF({ ...f, rf: e.target.value })} />
-            </label>
-            <label className="flex flex-col gap-[2px] text-[11px] font-semibold">Não financeiros (R$) *
-              <input className={inputCls} placeholder="0,00 se nada constar" value={f.rnf} onChange={(e) => setF({ ...f, rnf: e.target.value })} />
-            </label>
-            <label className="flex items-center gap-[4px] self-end pb-[8px] text-[12px]"><input type="checkbox" checked={f.protesto} onChange={(e) => setF({ ...f, protesto: e.target.checked })} /> Protesto/cheque/execução</label>
-          </>
-        )}
-      </div>
-      <button
-        className={`${btnP} mt-[8px]`}
-        disabled={ocupado || !preenchida}
-        title={preenchida ? '' : 'Preencha o resultado da consulta — sem ele o registro não entra na política'}
-        onClick={() => acao(() =>
-          analiseService.registrarConsulta(d.id, {
-            titularId: f.titularId, tipo: f.tipo, fornecedor: f.fornecedor, protocolo: f.protocolo || undefined,
-            situacao: f.situacao, motivoFalha: f.motivoFalha || undefined,
-            resultado: f.situacao === 'concluida' ? {
-              ...(f.score ? { score: Number(f.score) } : {}),
-              ...(f.rf !== '' ? { restritivosFinanceiros: reaisParaCentavos(f.rf) } : {}),
-              ...(f.rnf !== '' ? { restritivosNaoFinanceiros: reaisParaCentavos(f.rnf) } : {}),
-              protestoChequeExecucao: f.protesto,
-            } : undefined,
-          }), 'Consulta registrada — critérios da política atualizados.')}
-      >
-        {f.situacao === 'falha' ? 'Registrar falha da consulta' : 'Registrar resultado na análise'}
-      </button>
     </div>
   );
 }

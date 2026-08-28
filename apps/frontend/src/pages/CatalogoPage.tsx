@@ -112,6 +112,11 @@ function semParamsRemovidos(chaveProduto: string, p: Parametros): Parametros {
 }
 // …e o desconto por antecipação passa a ser editável no produto PV (nasce 0).
 function comParamsPV(chaveProduto: string, p: Parametros): Parametros {
+  if (chaveProduto === 'compra_parcelada' || chaveProduto === 'reembolso_parcelado') {
+    // Feedback 28/08: cada oferta padrão pode ser DESATIVADA (some do
+    // atendimento) — os flags nascem na versão nova para o gestor ligar.
+    return { oferta1Desativada: false, oferta2Desativada: false, oferta3Desativada: false, ...p };
+  }
   if (chaveProduto !== 'protecao_veicular') return p;
   return { taxaDescontoProtecaoAntecipacao: 0, ...p };
 }
