@@ -244,6 +244,9 @@ export class ContratoService {
       valorEntrada: number;
       descricaoItem?: string; // p/ distinguir itens na fatura agregada (pacote)
       credorItem?: 'AZIT' | 'INVESTIDOR' | 'TERCEIRO';
+      // Proteção embutida na parcela, POR PERÍODO (feedback 18/08: "a proteção é
+      // um item da fatura" — a composição discrimina principal × proteção).
+      protecaoPorPeriodo?: number; // centavos
     },
   ): Promise<void> {
     await tx.parcela.createMany({
@@ -320,16 +323,42 @@ export class ContratoService {
         });
       }
       faturasDoContrato.push({ id: fatura.id, valorNominal: cron.valorNominal, venc });
-      await tx.itemFatura.create({
-        data: {
-          faturaId: fatura.id,
-          parcelaId: pc.id,
-          tipo: 'PRINCIPAL',
-          descricao: `Parcela ${cron.display}${sufixo}`,
-          valor: reais(cron.valorNominal),
-          credor,
-        },
-      });
+      // Composição discriminada (18/08): quando a parcela embute proteção, a
+      // fatura mostra DOIS itens — principal e proteção — somando o mesmo valor.
+      const prot = p.protecaoPorPeriodo ?? 0;
+      if (prot > 0 && prot < cron.valorNominal) {
+        await tx.itemFatura.create({
+          data: {
+            faturaId: fatura.id,
+            parcelaId: pc.id,
+            tipo: 'PRINCIPAL',
+            descricao: `Parcela ${cron.display}${sufixo}`,
+            valor: reais(cron.valorNominal - prot),
+            credor,
+          },
+        });
+        await tx.itemFatura.create({
+          data: {
+            faturaId: fatura.id,
+            parcelaId: pc.id,
+            tipo: 'SERVICO',
+            descricao: `Proteção veicular (embutida) · ${cron.display}`,
+            valor: reais(prot),
+            credor: 'AZIT',
+          },
+        });
+      } else {
+        await tx.itemFatura.create({
+          data: {
+            faturaId: fatura.id,
+            parcelaId: pc.id,
+            tipo: 'PRINCIPAL',
+            descricao: `Parcela ${cron.display}${sufixo}`,
+            valor: reais(cron.valorNominal),
+            credor,
+          },
+        });
+      }
       await tx.parcela.update({ where: { id: pc.id }, data: { faturaId: fatura.id } });
     }
 
@@ -420,6 +449,20 @@ export class ContratoService {
       periodicidade,
     });
 
+    // Proteção embutida congelada na contratação (protS semanal exata no
+    // catalogoVersaoRef + adicional do upsell no snapshot): convertida ao
+    // período pelo fator de VALOR (homologação 04/08: mensal = semanal × 4;
+    // quinzenal × 2) para discriminar principal × proteção na fatura.
+    let protecaoPorPeriodo = 0;
+    try {
+      const ref = contrato.catalogoVersaoRef ? (JSON.parse(contrato.catalogoVersaoRef) as { protS?: number }) : null;
+      const fatorValor = periodicidade === 'mensal' ? 4 : periodicidade === 'quinzenal' ? 2 : 1;
+      const snap = contrato.snapshotJson as null | { protecao?: { adicionalPorPeriodo?: number } };
+      protecaoPorPeriodo = Math.round((ref?.protS ?? 0) * fatorValor) + (snap?.protecao?.adicionalPorPeriodo ?? 0);
+    } catch {
+      protecaoPorPeriodo = 0;
+    }
+
     await this.prisma.db.$transaction(async (tx) => {
       await this.aplicarCronograma(tx, {
         contratoId,
@@ -431,6 +474,7 @@ export class ContratoService {
         valorEntrada: this.cent(contrato.valorEntrada),
         descricaoItem: item.descricao,
         credorItem: item.credor,
+        protecaoPorPeriodo,
       });
       await tx.contratoCredito.update({
         where: { id: contratoId },

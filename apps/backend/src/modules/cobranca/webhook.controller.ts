@@ -61,6 +61,12 @@ export class WebhookController {
       });
       return { received: true };
     }
+    // Entrada do acordo venceu sem pagamento → proposta EXPIRA (doc 02 §7.7,
+    // 2026-08-18) — a cobrança já não aceita pagamento tardio.
+    if (dto.event === 'PAYMENT_OVERDUE' && ref.startsWith('acordo:')) {
+      await this.filaAcordo.add('entrada-vencida', { acordoId: ref.slice('acordo:'.length) });
+      return { received: true };
+    }
     if (recebido && ref.startsWith('ativacao:')) {
       await this.filaAtivacao.add('ativar', {
         contratoId: ref.slice('ativacao:'.length),

@@ -224,6 +224,66 @@ export function precificarReembolsoParcelado(p: ParametrosReembolso): ResultadoR
 }
 
 // ============================================================
+// ACORDO DE PAGAMENTO (doc Vicente V1.0 §11 + doc 02 §7.7, decisões 2026-08-18)
+//   SN = saldo das faturas vencidas atualizado com mora (formado ANTES, no service).
+//   TP = SN × taxaInicialPct, apropriada 100% Azit DENTRO da entrada.
+//   AE = max(0, E − TP) amortiza as faturas de origem; SP = SN − E + TP
+//   (se E < TP, a TP não coberta é financiada — lógica do comissionamento da
+//   venda quando a entrada é menor que a CI; placeholder até o breakdown).
+//   PMT = Price(SP, i_f, n) com i_f = (1+TR)^(dias/30) − 1.
+// ============================================================
+
+export interface ParametrosAcordoPagamento {
+  saldoNegociado: number; // centavos (S0 − desconto; desconto padrão 0)
+  valorEntrada: number; // centavos
+  numeroParcelas: number;
+  frequencia: FrequenciaReembolso;
+  encargoMensal: number; // fração (0.0499)
+  taxaInicialPct: number; // fração (0.0999)
+  entradaMinimaPct: number; // fração (0.30)
+}
+
+export interface ResultadoAcordoPagamento {
+  entradaMinima: number; // centavos (sobre o saldo negociado)
+  taxaInicial: number; // TP em centavos
+  tpNaEntrada: number; // parte da TP coberta pela entrada
+  tpFinanciada: number; // excedente da TP diluído nas parcelas (E < TP)
+  amortizacaoEntrada: number; // AE — o que da entrada REDUZ as faturas de origem
+  saldoAParcelar: number; // SP em centavos
+  taxaPeriodo: number; // i_f (fração)
+  valorParcela: number; // centavos (Price)
+  totalAPagar: number; // entrada + parcelas
+}
+
+export function precificarAcordoPagamento(p: ParametrosAcordoPagamento): ResultadoAcordoPagamento {
+  if (!Number.isInteger(p.numeroParcelas) || p.numeroParcelas < 1) {
+    throw new Error('numeroParcelas deve ser inteiro >= 1');
+  }
+  const entradaMinima = Math.round(p.saldoNegociado * p.entradaMinimaPct);
+  const taxaInicial = Math.round(p.saldoNegociado * p.taxaInicialPct);
+  const tpNaEntrada = Math.min(taxaInicial, p.valorEntrada);
+  const tpFinanciada = taxaInicial - tpNaEntrada;
+  const amortizacaoEntrada = Math.max(0, p.valorEntrada - taxaInicial);
+  const sp = p.saldoNegociado - amortizacaoEntrada + tpFinanciada;
+  const dias = DIAS_INTERVALO[p.frequencia];
+  const i = Math.pow(1 + p.encargoMensal, dias / 30) - 1;
+  const n = p.numeroParcelas;
+  const pmt = i === 0 ? sp / n : (sp * (i * Math.pow(1 + i, n))) / (Math.pow(1 + i, n) - 1);
+  const valorParcela = Math.round(pmt);
+  return {
+    entradaMinima,
+    taxaInicial,
+    tpNaEntrada,
+    tpFinanciada,
+    amortizacaoEntrada,
+    saldoAParcelar: sp,
+    taxaPeriodo: i,
+    valorParcela,
+    totalAPagar: p.valorEntrada + valorParcela * n,
+  };
+}
+
+// ============================================================
 // ANTECIPAÇÃO POR COMPONENTE (Catálogo F4 — Requisitos v0.3 §7)
 //   Cada parcela separa em BEM (capital+remuneração), COMISSÃO e PROTEÇÃO.
 //   VP de cada componente = valor ÷ (1 + taxa_diária)^dias, com

@@ -43,6 +43,24 @@ export interface FaturaElegivel {
   valorAtualizado: number;
   itens: { display: string; contratoNumero: string; valorAtualizado: number }[];
 }
+// Prévia do acordo (doc 02 §7.7, 2026-08-18). Valores em centavos; taxas em fração.
+export interface PreviaAcordo {
+  motor: 'catalogo' | 'placeholder';
+  periodicidade: 'semanal' | 'quinzenal' | 'mensal';
+  saldoNegociado: number;
+  entradaMinima: number;
+  taxaInicial: number;
+  tpFinanciada?: number;
+  amortizacaoEntrada?: number;
+  taxaPeriodo: number;
+  encargoMensal?: number;
+  saldoAParcelar: number;
+  valorParcela: number;
+  valorMinimoParcela?: number;
+  totalAPagar: number;
+  excecoes: string[];
+}
+
 export interface ElegivelConta {
   contaId: string;
   titularId: string;
@@ -82,17 +100,31 @@ export const operacoesService = {
     const { data } = await api.get<ElegivelConta>(`/api/v1/contas/${contaId}/renegociacao/elegivel`);
     return data;
   },
+  // Prévia do acordo — números do SERVIDOR (motor do Catálogo quando o produto
+  // Acordo de Pagamento está ATIVO; senão divisão simples provisória).
+  async simularRenegociacaoConta(
+    contaId: string,
+    body: { valorEntrada: number; numeroParcelasNovas: number; faturasExcluidas?: { faturaId: string; justificativa: string }[] },
+  ): Promise<PreviaAcordo> {
+    const { data } = await api.post(`/api/v1/contas/${contaId}/renegociacao/simular`, body);
+    return data;
+  },
   async criarRenegociacaoConta(
     contaId: string,
     body: {
       valorEntrada: number;
       numeroParcelasNovas: number;
-      valorParcelaNova: number;
+      valorParcelaNova?: number;
       periodicidade?: 'semanal' | 'quinzenal' | 'mensal';
+      dataPagamentoEntrada?: string;
       faturasExcluidas?: { faturaId: string; justificativa: string }[];
     },
-  ): Promise<{ id: string; status: string; valorTotalRenegociado: number; contratosAfetados: number }> {
+  ): Promise<{ id: string; status: string; valorTotalRenegociado: number; valorParcela: number; periodicidade: string; motor: string; excecoes: string[]; contratosAfetados: number }> {
     const { data } = await api.post(`/api/v1/contas/${contaId}/renegociacao`, body);
+    return data;
+  },
+  async termoAcordo(acordoId: string): Promise<{ id: string; titular: string; disponivel: boolean; texto: string }> {
+    const { data } = await api.get(`/api/v1/acordos/${acordoId}/termo`);
     return data;
   },
   async simularEntrada(acordoId: string): Promise<void> {

@@ -170,6 +170,43 @@ export class CatalogoFonteService {
     return params;
   }
 
+  // Parâmetros do Acordo de Pagamento (doc 02 §7.7, 2026-08-18), ou null se o
+  // produto não está ATIVO — a CHAVE DE VIRADA do motor financeiro do acordo:
+  // em RASCUNHO vale o placeholder (divisão simples); ATIVO liga TP/TR/Price.
+  async acordoPagamento(): Promise<null | {
+    versao: number;
+    diasMinimosAtraso: number;
+    maxAcordosAtivos: number;
+    entradaMinimaPct: number;
+    prazoMaximoPadraoMeses: number;
+    valorMinimoParcela: number;
+    taxaInicialPct: number;
+    encargoMensal: number;
+    prazoAtivacaoDias: number;
+  }> {
+    const produto = await this.prisma.db.produtoCatalogo.findFirst({
+      where: { chave: 'acordo_pagamento', deletedAt: null },
+      include: { versoes: true },
+    });
+    if (!produto || produto.status !== 'ATIVO') return null;
+    const vigente = produto.versoes
+      .filter((x) => !x.varianteId && !x.vigenteAte)
+      .sort((a, b) => b.numero - a.numero)[0];
+    if (!vigente) return null;
+    const p = vigente.parametros as Parametros;
+    return {
+      versao: vigente.numero,
+      diasMinimosAtraso: num(p.diasMinimosAtrasoElegibilidade, 15),
+      maxAcordosAtivos: num(p.maxAcordosAtivosSimultaneos, 2),
+      entradaMinimaPct: num(p.percentualEntradaMinima, 0.3),
+      prazoMaximoPadraoMeses: num(p.prazoMaximoPadraoMeses, 6),
+      valorMinimoParcela: num(p.valorMinimoParcela, 5000),
+      taxaInicialPct: num(p.taxaInicialProcessamento, 0.0999),
+      encargoMensal: num(p.encargoMensalProcessamento, 0.0499),
+      prazoAtivacaoDias: num(p.prazoAtivacaoDias, 5),
+    };
+  }
+
   // Parâmetros do Reembolso Parcelado (F3), ou null se o produto não está ATIVO.
   async reembolsoParcelado(): Promise<ParametrosCatalogoReembolso | null> {
     const produto = await this.prisma.db.produtoCatalogo.findFirst({

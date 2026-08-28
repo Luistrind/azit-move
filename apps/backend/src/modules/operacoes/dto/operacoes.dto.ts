@@ -5,8 +5,12 @@ import { z } from 'zod';
 export const criarRenegociacaoSchema = z.object({
   valorEntrada: z.coerce.number().int().min(0),
   numeroParcelasNovas: z.coerce.number().int().min(1),
-  valorParcelaNova: z.coerce.number().int().min(1),
-  periodicidade: z.enum(['semanal', 'quinzenal', 'mensal']).optional(), // plano do acordo (default semanal)
+  // Placeholder: com o motor do Catálogo ATIVO a parcela é CALCULADA no servidor
+  // (RAP031) e este campo é ignorado; sem motor, vale a divisão simples.
+  valorParcelaNova: z.coerce.number().int().min(0).optional().default(0),
+  periodicidade: z.enum(['semanal', 'quinzenal', 'mensal']).optional(), // ignorada com motor ativo (frequência herdada)
+  // Data-limite dura da entrada (decisão 2026-08-18) — 'YYYY-MM-DD'.
+  dataPagamentoEntrada: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   // Seleção por FATURA (doc Acordo de Pagamento V1.0 RAP006): excluir uma
   // fatura pré-selecionada exige justificativa textual auditável.
   faturasExcluidas: z

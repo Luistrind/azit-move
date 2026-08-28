@@ -6,10 +6,20 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { gerarCronograma, centavosParaReaisString } from '@azit/utils';
+import {
+  gerarCronograma,
+  centavosParaReaisString,
+  precificarAcordoPagamento,
+  renderTemplate,
+  valorPorExtenso,
+  numeroPorExtenso,
+  dataPorExtenso,
+} from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
+import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
+import { TERMO_ACORDO_TEMPLATE } from './templates/termo-acordo.template';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 const reais = (c: number) => centavosParaReaisString(c);
@@ -19,8 +29,9 @@ const cent = (d: Prisma.Decimal | null): number =>
 export interface CriarRenegociacaoDto {
   valorEntrada: number; // centavos
   numeroParcelasNovas: number;
-  valorParcelaNova: number; // centavos
-  periodicidade?: 'semanal' | 'quinzenal' | 'mensal';
+  valorParcelaNova?: number; // centavos — ignorado com motor do Catálogo ativo (RAP031)
+  periodicidade?: 'semanal' | 'quinzenal' | 'mensal'; // ignorada com motor ativo (herdada)
+  dataPagamentoEntrada?: string; // 'YYYY-MM-DD' — data-limite dura da entrada
   // Seleção por FATURA (doc Acordo de Pagamento V1.0 RAP006).
   faturasExcluidas?: { faturaId: string; justificativa: string }[];
 }
@@ -39,7 +50,103 @@ export class RenegociacaoService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly asaas: AsaasService,
     private readonly aprovacao: AprovacaoService,
+    private readonly catalogoFonte: CatalogoFonteService,
   ) {}
+
+  // Frequência HERDADA do contrato principal da conta (doc 02 §7.7, 2026-08-18):
+  // o acordo pega o ritmo das faturas — o operador não escolhe mais.
+  private async frequenciaHerdada(contaId: string): Promise<'semanal' | 'quinzenal' | 'mensal'> {
+    const principal = await this.prisma.db.contratoCredito.findFirst({
+      where: { contaId, status: { in: ['ATIVO', 'INADIMPLENTE', 'BLOQUEADO', 'SUSPENSO', 'EM_RECUPERACAO_VEICULO'] } },
+      orderBy: { createdAt: 'asc' },
+      select: { periodicidade: true },
+    });
+    return principal?.periodicidade === 'MENSAL' ? 'mensal' : principal?.periodicidade === 'QUINZENAL' ? 'quinzenal' : 'semanal';
+  }
+
+  // Seleção por fatura aplicada ao elegível (RAP005/006) — comum a simular/criar.
+  private aplicarSelecao(
+    eleg: Awaited<ReturnType<RenegociacaoService['elegiveisConta']>>,
+    exclusoes: { faturaId: string; justificativa: string }[],
+  ) {
+    const idsElegiveis = new Set(eleg.faturas.map((f) => f.faturaId));
+    for (const ex of exclusoes) {
+      if (!idsElegiveis.has(ex.faturaId)) {
+        throw new UnprocessableEntityException({
+          erro: 'fatura_invalida',
+          mensagem: 'Uma das faturas excluídas não está entre as faturas vencidas elegíveis desta conta',
+        });
+      }
+    }
+    const excluidas = new Set(exclusoes.map((e) => e.faturaId));
+    if (excluidas.size > 0 && excluidas.size >= eleg.faturas.length) {
+      throw new UnprocessableEntityException({
+        erro: 'selecao_vazia',
+        mensagem: 'Todas as faturas foram excluídas — não há o que renegociar',
+      });
+    }
+    const faturasSelecionadas = eleg.faturas.filter((f) => !excluidas.has(f.faturaId));
+    const valorTotal = faturasSelecionadas.reduce((s, f) => s + f.valorAtualizado, 0);
+    return { faturasSelecionadas, valorTotal };
+  }
+
+  // Prévia do acordo (RAP031: o servidor é a fonte de verdade dos números).
+  // Motor do Catálogo (produto acordo_pagamento ATIVO): TP + TR Price + entrada
+  // mínima + frequência herdada. Em RASCUNHO: placeholder (divisão simples).
+  async simularConta(
+    contaId: string,
+    dto: { valorEntrada: number; numeroParcelas: number; faturasExcluidas?: { faturaId: string; justificativa: string }[] },
+  ) {
+    const eleg = await this.elegiveisConta(contaId);
+    const { valorTotal } = this.aplicarSelecao(eleg, dto.faturasExcluidas ?? []);
+    const periodicidade = await this.frequenciaHerdada(contaId);
+    const params = await this.catalogoFonte.acordoPagamento();
+    if (!params) {
+      const saldo = Math.max(0, valorTotal - dto.valorEntrada);
+      const parcela = dto.numeroParcelas > 0 ? Math.round(saldo / dto.numeroParcelas) : 0;
+      return {
+        motor: 'placeholder' as const,
+        periodicidade,
+        saldoNegociado: valorTotal,
+        entradaMinima: 0,
+        taxaInicial: 0,
+        taxaPeriodo: 0,
+        saldoAParcelar: saldo,
+        valorParcela: parcela,
+        totalAPagar: dto.valorEntrada + parcela * dto.numeroParcelas,
+        excecoes: [] as string[],
+      };
+    }
+    const r = precificarAcordoPagamento({
+      saldoNegociado: valorTotal,
+      valorEntrada: dto.valorEntrada,
+      numeroParcelas: dto.numeroParcelas,
+      frequencia: periodicidade,
+      encargoMensal: params.encargoMensal,
+      taxaInicialPct: params.taxaInicialPct,
+      entradaMinimaPct: params.entradaMinimaPct,
+    });
+    const maxParcelasPadrao = this.catalogoFonte.maxParcelasReembolso(params.prazoMaximoPadraoMeses, periodicidade);
+    const excecoes: string[] = [];
+    if (dto.valorEntrada < r.entradaMinima) excecoes.push(`entrada abaixo do mínimo de ${(params.entradaMinimaPct * 100).toFixed(0)}% (R$ ${reais(r.entradaMinima)})`);
+    if (dto.numeroParcelas > maxParcelasPadrao) excecoes.push(`prazo acima do padrão de ${params.prazoMaximoPadraoMeses} meses (${maxParcelasPadrao} parcelas ${periodicidade}s)`);
+    return {
+      motor: 'catalogo' as const,
+      periodicidade,
+      saldoNegociado: valorTotal,
+      entradaMinima: r.entradaMinima,
+      taxaInicial: r.taxaInicial,
+      tpFinanciada: r.tpFinanciada,
+      amortizacaoEntrada: r.amortizacaoEntrada,
+      taxaPeriodo: r.taxaPeriodo,
+      encargoMensal: params.encargoMensal,
+      saldoAParcelar: r.saldoAParcelar,
+      valorParcela: r.valorParcela,
+      valorMinimoParcela: params.valorMinimoParcela,
+      totalAPagar: r.totalAPagar,
+      excecoes,
+    };
+  }
 
   onModuleInit() {
     this.aprovacao.registrarEfetivador('acordo', {
@@ -167,24 +274,7 @@ export class RenegociacaoService implements OnModuleInit {
     // padrão; excluir exige justificativa auditável. A seleção fica congelada
     // no snapshot e vale na efetivação.
     const exclusoes = dto.faturasExcluidas ?? [];
-    const idsElegiveis = new Set(eleg.faturas.map((f) => f.faturaId));
-    for (const ex of exclusoes) {
-      if (!idsElegiveis.has(ex.faturaId)) {
-        throw new UnprocessableEntityException({
-          erro: 'fatura_invalida',
-          mensagem: 'Uma das faturas excluídas não está entre as faturas vencidas elegíveis desta conta',
-        });
-      }
-    }
-    const excluidas = new Set(exclusoes.map((e) => e.faturaId));
-    if (excluidas.size > 0 && excluidas.size >= eleg.faturas.length) {
-      throw new UnprocessableEntityException({
-        erro: 'selecao_vazia',
-        mensagem: 'Todas as faturas foram excluídas — não há o que renegociar',
-      });
-    }
-    const faturasSelecionadas = eleg.faturas.filter((f) => !excluidas.has(f.faturaId));
-    const valorTotal = faturasSelecionadas.reduce((s, f) => s + f.valorAtualizado, 0);
+    const { faturasSelecionadas, valorTotal } = this.aplicarSelecao(eleg, exclusoes);
 
     if (valorTotal <= 0) {
       throw new UnprocessableEntityException({
@@ -198,24 +288,53 @@ export class RenegociacaoService implements OnModuleInit {
         mensagem: 'A entrada não pode cobrir o total — quite as faturas em vez de renegociar',
       });
     }
-    // Trava anti-parcela-negativa (E2E 17/08; interim até o motor Price do doc
-    // Acordo de Pagamento V1.0/RAP031): o resíduo cai na ÚLTIMA parcela e ela
-    // não pode ficar <= 0 quando o plano informado excede a dívida.
-    const saldoAParcelar = valorTotal - dto.valorEntrada;
-    const ultimaParcela = saldoAParcelar - (dto.numeroParcelasNovas - 1) * dto.valorParcelaNova;
-    if (ultimaParcela <= 0) {
-      const sugerida = Math.floor(saldoAParcelar / dto.numeroParcelasNovas);
-      throw new UnprocessableEntityException({
-        erro: 'plano_excede_divida',
-        mensagem: `O plano informado excede a dívida: com ${dto.numeroParcelasNovas} parcelas de R$ ${reais(dto.valorParcelaNova)}, a última ficaria negativa. Para ${dto.numeroParcelasNovas} parcelas, use até ~R$ ${reais(sugerida)} por parcela (o resíduo ajusta na última).`,
-      });
+    // Motor do Catálogo (doc 02 §7.7, 2026-08-18): produto acordo_pagamento
+    // ATIVO liga TP/TR/Price + frequência herdada; RASCUNHO = placeholder.
+    const previa = await this.simularConta(contaId, {
+      valorEntrada: dto.valorEntrada,
+      numeroParcelas: dto.numeroParcelasNovas,
+      faturasExcluidas: exclusoes,
+    });
+    const freqApi = previa.periodicidade;
+    let valorParcela: number;
+    if (previa.motor === 'catalogo') {
+      // RAP031: o número do servidor é a verdade — o dto não dita a parcela.
+      valorParcela = previa.valorParcela;
+      if ('valorMinimoParcela' in previa && valorParcela < (previa.valorMinimoParcela ?? 0)) {
+        throw new UnprocessableEntityException({
+          erro: 'parcela_minima',
+          mensagem: `A parcela ficou abaixo da mínima do produto (R$ ${reais(previa.valorMinimoParcela ?? 0)}) — reduza o número de parcelas`,
+        });
+      }
+    } else {
+      // Placeholder: divisão simples com trava anti-parcela-negativa.
+      valorParcela = dto.valorParcelaNova || Math.round((valorTotal - dto.valorEntrada) / dto.numeroParcelasNovas);
+      const saldoPh = valorTotal - dto.valorEntrada;
+      const ultimaParcela = saldoPh - (dto.numeroParcelasNovas - 1) * valorParcela;
+      if (ultimaParcela <= 0) {
+        const sugerida = Math.floor(saldoPh / dto.numeroParcelasNovas);
+        throw new UnprocessableEntityException({
+          erro: 'plano_excede_divida',
+          mensagem: `O plano informado excede a dívida: com ${dto.numeroParcelasNovas} parcelas de R$ ${reais(valorParcela)}, a última ficaria negativa. Para ${dto.numeroParcelasNovas} parcelas, use até ~R$ ${reais(sugerida)} por parcela (o resíduo ajusta na última).`,
+        });
+      }
     }
 
     const periodicidade = (
       { semanal: 'SEMANAL', quinzenal: 'QUINZENAL', mensal: 'MENSAL' } as const
-    )[dto.periodicidade ?? 'semanal'];
+    )[freqApi];
 
-    // Fotografia da proposta (RAP034): saldos na data-base, seleção e exclusões.
+    // Entrada com data-limite DURA (decisão 2026-08-18): o operador informa a
+    // data; a cobrança não aceita pagamento depois dela.
+    const prazoDias = previa.motor === 'catalogo' ? 5 : 3;
+    const dataPagamentoEntrada = dto.dataPagamentoEntrada
+      ? new Date(`${dto.dataPagamentoEntrada}T12:00:00-03:00`)
+      : new Date(Date.now() + prazoDias * DIA_MS);
+    if (dataPagamentoEntrada.getTime() < Date.now() - DIA_MS) {
+      throw new UnprocessableEntityException({ erro: 'data_invalida', mensagem: 'A data de pagamento da entrada não pode estar no passado' });
+    }
+
+    // Fotografia da proposta (RAP034): saldos na data-base, seleção, exclusões e cálculo.
     const snapshot = {
       dataBase: new Date().toISOString(),
       faturasSelecionadas: faturasSelecionadas.map((f) => f.faturaId),
@@ -226,7 +345,22 @@ export class RenegociacaoService implements OnModuleInit {
         valorAtualizado: valorTotal,
       },
       moraHerdada: 'multa e juros da regra geral do contrato na data-base (RAP007)',
+      calculo: previa,
+      dataPagamentoEntrada: dataPagamentoEntrada.toISOString(),
     };
+
+    // Termo de confissão de dívida e acordo de parcelamento (instrumento PRÓPRIO
+    // do acordo — doc 02 §7.7, 2026-08-18) gerado e congelado na proposta.
+    const termo = await this.gerarTermo({
+      contaId,
+      valorTotal,
+      valorEntrada: dto.valorEntrada,
+      numeroParcelas: dto.numeroParcelasNovas,
+      valorParcela,
+      periodicidade: freqApi,
+      dataPagamentoEntrada,
+      faturas: faturasSelecionadas,
+    });
 
     const acordo = await this.prisma.db.acordo.create({
       data: {
@@ -235,19 +369,21 @@ export class RenegociacaoService implements OnModuleInit {
         valorTotalRenegociado: reais(valorTotal),
         valorEntrada: reais(dto.valorEntrada),
         numeroParcelasNovas: dto.numeroParcelasNovas,
-        valorParcelaNova: reais(dto.valorParcelaNova),
+        valorParcelaNova: reais(valorParcela),
         periodicidade,
-        snapshotJson: snapshot as unknown as Prisma.InputJsonValue,
+        snapshotJson: { ...snapshot, termo } as unknown as Prisma.InputJsonValue,
       },
     });
 
+    const flagExcecoes = previa.excecoes.length ? ` · ⚠ EXCEÇÕES: ${previa.excecoes.join('; ')}` : '';
     await this.aprovacao.criar({
       tipoOperacao: 'acordo',
       referenciaTipo: 'acordo',
       referenciaId: acordo.id,
       titularId: eleg.titularId,
-      valorCentavos: eleg.valorTotal,
-      resumo: `Renegociação de ${eleg.contratos.length} contrato(s) — entrada R$ ${reais(dto.valorEntrada)} + ${dto.numeroParcelasNovas}× R$ ${reais(dto.valorParcelaNova)}`,
+      valorCentavos: valorTotal,
+      resumo: `Renegociação (${faturasSelecionadas.length} fatura(s)) — entrada R$ ${reais(dto.valorEntrada)} + ${dto.numeroParcelasNovas}× R$ ${reais(valorParcela)} ${freqApi}${previa.motor === 'catalogo' ? ` (motor Catálogo: TP R$ ${reais(previa.taxaInicial)}, TR ${(previa.encargoMensal ?? 0) * 100}% a.m.)` : ' (cálculo provisório)'}${flagExcecoes}`,
+      payload: { excecoes: previa.excecoes, motor: previa.motor },
       solicitanteId: operadorId,
     });
 
@@ -255,8 +391,91 @@ export class RenegociacaoService implements OnModuleInit {
       id: acordo.id,
       status: 'aguardando_aprovacao',
       valorTotalRenegociado: valorTotal,
+      valorParcela,
+      periodicidade: freqApi,
+      motor: previa.motor,
+      excecoes: previa.excecoes,
       faturasSelecionadas: faturasSelecionadas.length,
       contratosAfetados: eleg.contratos.length,
+    };
+  }
+
+  // Texto do termo (template jurídico do Luís adaptado ao conta-cêntrico).
+  private async gerarTermo(p: {
+    contaId: string;
+    valorTotal: number;
+    valorEntrada: number;
+    numeroParcelas: number;
+    valorParcela: number;
+    periodicidade: 'semanal' | 'quinzenal' | 'mensal';
+    dataPagamentoEntrada: Date;
+    faturas: { faturaId: string; numero: number | null; dataVencimento: string | null; valorNominal: number; encargosMora: number; valorAtualizado: number }[];
+  }): Promise<string> {
+    const conta = await this.prisma.db.conta.findFirst({
+      where: { id: p.contaId },
+      select: {
+        titular: { select: { nome: true, cpfCnpj: true, whatsapp: true, email: true } },
+        contratosCredito: {
+          where: { status: { in: ['ATIVO', 'INADIMPLENTE', 'BLOQUEADO', 'SUSPENSO', 'EM_RECUPERACAO_VEICULO'] } },
+          select: { numero: true, dataAssinatura: true, ativo: { select: { descricao: true, placa: true } } },
+        },
+      },
+    });
+    const t = conta?.titular;
+    const contratosOrigem = (conta?.contratosCredito ?? [])
+      .map((c) => `Contrato de Compra e Venda de Veículo com Reserva de Domínio nº ${c.numero}, de ${c.dataAssinatura.toLocaleDateString('pt-BR')} (${c.ativo.descricao}${c.ativo.placa ? `, placa ${c.ativo.placa}` : ''})`)
+      .join('; ');
+    const tabelaFaturas = p.faturas
+      .map((f) => `Fatura ${f.numero ?? '—'} · venc. ${f.dataVencimento ? new Date(f.dataVencimento).toLocaleDateString('pt-BR') : '—'} · original R$ ${reais(f.valorNominal)} · encargos R$ ${reais(f.encargosMora)} · atualizado R$ ${reais(f.valorAtualizado)}`)
+      .join('\n');
+    const passo = p.periodicidade === 'mensal' ? 30 : p.periodicidade === 'quinzenal' ? 14 : 7;
+    const proximaFatura = await this.prisma.db.fatura.findFirst({
+      where: { contaId: p.contaId, status: 'ABERTA', dataVencimento: { gt: new Date() } },
+      orderBy: { dataVencimento: 'asc' },
+      select: { dataVencimento: true },
+    });
+    const dataPrimeira = proximaFatura?.dataVencimento ?? new Date(p.dataPagamentoEntrada.getTime() + passo * DIA_MS);
+    const plural = { semanal: 'semanais', quinzenal: 'quinzenais', mensal: 'mensais' }[p.periodicidade];
+    const params = await this.prisma.db.parametroAssinatura.findFirst();
+    const linhaTest = (nome?: string, cpf?: string) => (nome ? `${nome}\nCPF: ${cpf || '—'}` : 'Nome:\nCPF:');
+    return renderTemplate(TERMO_ACORDO_TEMPLATE, {
+      numeroAcordo: 'a definir na aprovação',
+      nomeCliente: t?.nome ?? '—',
+      cpfCliente: t?.cpfCnpj ?? '—',
+      telefoneCliente: t?.whatsapp ?? '—',
+      emailCliente: t?.email ?? '—',
+      contratosOrigem: contratosOrigem || 'relação contratual mantida junto à CREDORA',
+      tabelaFaturas,
+      valorTotalConfessado: `R$ ${reais(p.valorTotal)}`,
+      valorTotalExtenso: valorPorExtenso(p.valorTotal),
+      valorEntrada: `R$ ${reais(p.valorEntrada)}`,
+      valorEntradaExtenso: valorPorExtenso(p.valorEntrada),
+      dataEntrada: p.dataPagamentoEntrada.toLocaleDateString('pt-BR'),
+      qtdeParcelas: p.numeroParcelas,
+      qtdeParcelasExtenso: numeroPorExtenso(p.numeroParcelas),
+      periodicidadePlural: plural,
+      valorParcela: `R$ ${reais(p.valorParcela)}`,
+      valorParcelaExtenso: valorPorExtenso(p.valorParcela),
+      dataPrimeiraParcela: dataPrimeira.toLocaleDateString('pt-BR'),
+      dataAssinaturaLinha: `VITÓRIA/ES, ${dataPorExtenso(new Date())}.`,
+      testemunha1Linha: linhaTest(params?.testemunha1Nome, params?.testemunha1Cpf),
+      testemunha2Linha: linhaTest(params?.testemunha2Nome, params?.testemunha2Cpf),
+    });
+  }
+
+  // Termo congelado no snapshot — visualização na tela de renegociações.
+  async termo(acordoId: string) {
+    const a = await this.prisma.db.acordo.findFirst({
+      where: { id: acordoId },
+      select: { id: true, snapshotJson: true, conta: { select: { titular: { select: { nome: true } } } } },
+    });
+    if (!a) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Acordo não encontrado' });
+    const snap = a.snapshotJson as null | { termo?: string };
+    return {
+      id: a.id,
+      titular: a.conta.titular.nome,
+      disponivel: !!snap?.termo,
+      texto: snap?.termo ?? 'Termo não disponível (acordo criado antes do instrumento próprio — 18/08/2026).',
     };
   }
 
@@ -275,10 +494,16 @@ export class RenegociacaoService implements OnModuleInit {
     if (!acordo || acordo.status !== 'RASCUNHO') {
       return 'Acordo não está aguardando aprovação.';
     }
+    // Data-limite DURA da entrada (decisão 2026-08-18): vence na data informada
+    // pelo operador e o Asaas cancela o registro após o vencimento — pagamento
+    // tardio não entra; sem pagamento, a proposta expira.
+    const snap = acordo.snapshotJson as null | { dataPagamentoEntrada?: string };
+    const vencimento = snap?.dataPagamentoEntrada ? new Date(snap.dataPagamentoEntrada) : new Date(Date.now() + 3 * DIA_MS);
     const cobranca = await this.asaas.criarCobranca({
       externalReference: `acordo:${acordo.id}`,
       valor: cent(acordo.valorEntrada),
-      vencimento: new Date(Date.now() + 3 * DIA_MS),
+      vencimento,
+      cancelarRegistroAposVencimento: true,
       descricao: `Entrada renegociação — ${acordo.conta.titular.nome}`,
       customerId: acordo.conta.titular.asaasCustomerId ?? undefined,
     });
@@ -294,6 +519,31 @@ export class RenegociacaoService implements OnModuleInit {
       where: { id: acordoId, status: 'RASCUNHO' },
       data: { status: 'CANCELADO' },
     });
+  }
+
+  // Entrada venceu sem pagamento (webhook PAYMENT_OVERDUE com ref acordo:):
+  // a proposta EXPIRA — recálculo obrigatório antes de nova ativação, porque o
+  // saldo de origem seguiu acumulando mora (decisão 2026-08-18).
+  async expirarPorEntradaVencida(acordoId: string) {
+    const r = await this.prisma.db.acordo.updateMany({
+      where: { id: acordoId, status: 'AGUARDANDO_ENTRADA' },
+      data: { status: 'EXPIRADO' },
+    });
+    if (r.count > 0) {
+      this.logger.warn(`Acordo ${acordoId} EXPIRADO: entrada venceu sem pagamento`);
+      const a = await this.prisma.db.acordo.findFirst({
+        where: { id: acordoId },
+        select: { conta: { select: { titular: { select: { nome: true } } } } },
+      });
+      await this.prisma.db.notificacao.create({
+        data: {
+          titulo: `Acordo expirado — ${a?.conta.titular.nome ?? ''}`,
+          corpo: 'A entrada venceu sem pagamento; a proposta expirou. Simule novamente (o saldo seguiu acumulando mora).',
+          rota: '/acordos',
+        },
+      });
+    }
+    return { resultado: r.count > 0 ? 'expirado' : 'ignorado' };
   }
 
   // Efetivação via webhook da entrada (Gatilho 6). Conta-cêntrico: cobre as parcelas
@@ -365,7 +615,17 @@ export class RenegociacaoService implements OnModuleInit {
     )[acordo.periodicidade];
     const passo = periodicidadeApi === 'mensal' ? 30 : periodicidadeApi === 'quinzenal' ? 14 : 7;
     const dataEfetivacao = new Date(paymentDateISO || new Date().toISOString());
-    const dataPrimeira = new Date(dataEfetivacao.getTime() + passo * DIA_MS);
+    // Parcelas do acordo caem NAS DATAS das faturas futuras da conta (doc 02
+    // §7.7, 2026-08-18 — conceito de fatura/cartão): 1ª parcela = próxima fatura
+    // ABERTA futura; a consolidação encaixa as demais nas faturas seguintes e,
+    // além do fim do cronograma original, CRIA faturas novas no mesmo passo
+    // (extensão do calendário — as faturas extras carregam só o acordo).
+    const proximaFatura = await this.prisma.db.fatura.findFirst({
+      where: { contaId: acordo.contaId, status: 'ABERTA', dataVencimento: { gt: dataEfetivacao } },
+      orderBy: { dataVencimento: 'asc' },
+      select: { dataVencimento: true },
+    });
+    const dataPrimeira = proximaFatura?.dataVencimento ?? new Date(dataEfetivacao.getTime() + passo * DIA_MS);
 
     // Rateio proporcional ao atraso de cada contrato; o último absorve o resíduo.
     let acumuladoSaldo = 0;

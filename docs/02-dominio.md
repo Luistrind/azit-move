@@ -834,6 +834,35 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 - Novas parcelas entram na próxima fatura aberta da conta
 - O cliente permanece inadimplente para fins contábeis até cumprir o acordo
 
+> **Decisões 2026-08-18 (Luís, sobre o Produto Acordo de Pagamento do Vicente — respostas às
+> pendências estruturais):**
+> 1. **O instrumento do acordo é um TERMO DE CONFISSÃO DE DÍVIDA E ACORDO DE PARCELAMENTO
+>    próprio** — não vive dentro do contrato do veículo, porque o acordo é sobre FATURAS (que
+>    agregam itens de vários contratos/produtos: parcela, proteção, acordo anterior). Template
+>    jurídico fornecido pelo Luís (base; onde divergir das decisões desta seção, as decisões
+>    prevalecem). O pagamento das parcelas do acordo é abatido **proporcionalmente** nas faturas
+>    vinculadas, e a parcela do acordo entra na fatura corrente — o cliente paga UMA fatura,
+>    modelo cartão de crédito.
+> 2. **Conta-cêntrico CONFIRMADO**: o acordo junta dívidas de contratos diferentes porque se
+>    vincula às faturas da conta (responde à pendência de múltiplos contratos principais do doc
+>    do Vicente).
+> 3. **Prazo além do fim do contrato principal: ESTENDE o calendário de faturas** na mesma
+>    frequência — as faturas após o fim do cronograma original carregam só a parcela do acordo.
+> 4. **Entrada menor que a TP**: seguir a MESMA lógica do comissionamento da venda do veículo
+>    quando a entrada é menor que a comissão (CI). ⚠️ Placeholder enquanto o breakdown do
+>    recebível (Sebastião) não define a mecânica exata da CI: a TP é apropriada até o limite da
+>    entrada e o excedente registrado a apropriar — marcado e substituível.
+> 5. **Entrada com data-limite dura**: o operador informa a data de pagamento da entrada; a
+>    cobrança no Asaas NÃO aceita pagamento após essa data (cancelamento automático do registro
+>    pós-vencimento). Sem pagamento até a data → proposta expira e exige recálculo.
+> 6. Pendentes (a discutir em paralelo): rateio de desconto concedido pelo CONAC entre as
+>    origens; teto absoluto de prazo mesmo para o comitê; conflito termo (resolução de pleno
+>    direito por atraso) × produto (sem estado "rompido" — parcelas vencidas do acordo seguem a
+>    régua e podem compor novo acordo).
+> 7. **Chave de virada do motor financeiro**: o produto `acordo_pagamento` do Catálogo em
+>    **ATIVO** liga o cálculo novo (TP 9,99% + TR 4,99% Price + entrada mínima 30% + frequência
+>    herdada); em RASCUNHO, vale o placeholder atual (divisão simples). Mesmo padrão do RP.
+
 ### 7.7b Novação (recuperação radical)
 - Mecanismo distinto do Acordo: **liquida o ContratoCredito inteiro** e gera um **ContratoCredito novo** completo
 - Usado quando os Acordos brandos não recuperam o cliente, antes da retomada do veículo

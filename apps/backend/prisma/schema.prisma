@@ -222,6 +222,7 @@ enum StatusAcordo {
   ATIVO
   QUITADO
   CANCELADO
+  EXPIRADO // entrada venceu sem pagamento — recálculo obrigatório (doc 02 §7.7, 2026-08-18)
 }
 
 // Motor de aprovação unificado (Doc 2 §7.9-A).

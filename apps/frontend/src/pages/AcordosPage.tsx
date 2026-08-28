@@ -26,6 +26,17 @@ export function AcordosPage() {
   const podeRenegociar = pode(ROLE_RENEGOCIACAO);
   const podeNovar = pode(ROLE_NOVACAO);
   const [ocupado, setOcupado] = useState(false);
+  // Termo de confissão de dívida do acordo (instrumento próprio — 18/08).
+  const [termo, setTermo] = useState<{ titular: string; texto: string } | null>(null);
+
+  async function abrirTermo(acordoId: string) {
+    try {
+      const t = await operacoesService.termoAcordo(acordoId);
+      setTermo({ titular: t.titular, texto: t.texto });
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+    }
+  }
 
   // Novação (recuperação radical) — proposta vai para a Central de Aprovações.
   const [novContratoId, setNovContratoId] = useState('');
@@ -188,13 +199,17 @@ export function AcordosPage() {
                 <td className="px-[18px] py-[12px] text-center tabular-nums" style={{ color: 'var(--text-body)' }}>{a.numeroParcelasNovas} × {formatCurrency(a.valorParcelaNova)}</td>
                 <td className="px-[18px] py-[12px]"><StatusBadge label={LABEL_STATUS[a.status] ?? a.status} colors={ACORDO_STATUS_COLORS} /></td>
                 <td className="px-[18px] py-[12px] text-right">
-                  {(a.status === 'aguardando_entrada' || a.status === 'rascunho') && podeRenegociar && import.meta.env.DEV ? (
-                    <button onClick={() => efetivar(a.id)} disabled={ocupado} className="rounded-[7px] px-[12px] py-[5px] text-[11.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>
-                      Simular entrada (dev)
+                  <div className="flex items-center justify-end gap-[6px]">
+                    {/* Termo de confissão de dívida (instrumento próprio — 18/08) */}
+                    <button onClick={() => void abrirTermo(a.id)} className="rounded-[7px] px-[10px] py-[5px] text-[11.5px] font-semibold" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+                      Ver termo
                     </button>
-                  ) : (
-                    <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>—</span>
-                  )}
+                    {(a.status === 'aguardando_entrada' || a.status === 'rascunho') && podeRenegociar && import.meta.env.DEV && (
+                      <button onClick={() => efetivar(a.id)} disabled={ocupado} className="rounded-[7px] px-[12px] py-[5px] text-[11.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>
+                        Simular entrada (dev)
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -229,6 +244,21 @@ export function AcordosPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Termo de confissão de dívida e acordo de parcelamento */}
+      {termo && (
+        <div onClick={() => setTermo(null)} className="fixed inset-0 z-50 flex items-center justify-center p-[20px]" style={{ background: 'rgba(0,16,41,.45)' }}>
+          <div onClick={(e) => e.stopPropagation()} className="flex max-h-[88vh] w-[760px] max-w-full flex-col overflow-hidden rounded-[16px]" style={{ background: 'var(--surface)', boxShadow: '0 30px 80px rgba(0,16,41,.4)' }}>
+            <div className="flex items-center justify-between px-[18px] py-[13px]" style={{ borderBottom: '1px solid var(--border)' }}>
+              <span className="font-display text-[13.5px] font-bold">Termo de confissão de dívida — {termo.titular}</span>
+              <button onClick={() => setTermo(null)} className="text-[18px] leading-none" style={{ color: 'var(--text-muted)' }}>×</button>
+            </div>
+            <div className="flex-1 overflow-auto p-[18px]">
+              <pre className="whitespace-pre-wrap font-sans text-[12px] leading-[1.55]" style={{ color: 'var(--text-body)' }}>{termo.texto}</pre>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

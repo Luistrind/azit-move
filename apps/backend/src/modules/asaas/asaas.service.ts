@@ -76,6 +76,9 @@ export class AsaasService {
     // Encargo nativo do Asaas (Regra de domínio escolhida): multa (% única) e juros (% a.m.).
     multaPct?: number;
     jurosPct?: number;
+    // Data-limite DURA (doc 02 §7.7, 2026-08-18 — entrada do acordo): o Asaas
+    // cancela o registro no dia seguinte ao vencimento; pagamento tardio não entra.
+    cancelarRegistroAposVencimento?: boolean;
   }): Promise<CobrancaAsaas> {
     if (this.simulado) {
       const id = `pay_sim_${params.externalReference}`;
@@ -103,6 +106,7 @@ export class AsaasService {
       description: params.descricao,
       ...(params.multaPct ? { fine: { value: params.multaPct, type: 'PERCENTAGE' } } : {}),
       ...(params.jurosPct ? { interest: { value: params.jurosPct } } : {}),
+      ...(params.cancelarRegistroAposVencimento ? { daysAfterDueDateToRegistrationCancellation: 1 } : {}),
     });
     return {
       id: data.id,

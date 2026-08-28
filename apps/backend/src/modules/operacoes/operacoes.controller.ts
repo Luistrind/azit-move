@@ -50,6 +50,21 @@ export class OperacoesController {
     return this.renegociacao.elegiveisConta(id);
   }
 
+  // Prévia do acordo (RAP031 — números do servidor): motor do Catálogo quando o
+  // produto acordo_pagamento está ATIVO; senão, placeholder de divisão simples.
+  @Post('contas/:id/renegociacao/simular')
+  @HttpCode(200)
+  simularRenegociacao(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(criarRenegociacaoSchema)) dto: CriarRenegociacaoBody,
+  ) {
+    return this.renegociacao.simularConta(id, {
+      valorEntrada: dto.valorEntrada,
+      numeroParcelas: dto.numeroParcelasNovas,
+      faturasExcluidas: dto.faturasExcluidas,
+    });
+  }
+
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
   @Post('contas/:id/renegociacao')
   @HttpCode(201)
@@ -59,6 +74,12 @@ export class OperacoesController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.renegociacao.criarPorConta(id, dto, user.id);
+  }
+
+  // Termo de confissão de dívida e acordo de parcelamento (instrumento próprio).
+  @Get('acordos/:id/termo')
+  termoAcordo(@Param('id') id: string) {
+    return this.renegociacao.termo(id);
   }
 
   @Get('acordos')

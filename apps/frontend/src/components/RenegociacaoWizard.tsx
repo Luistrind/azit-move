@@ -29,7 +29,8 @@ export function RenegociacaoWizard({
   const [step, setStep] = useState(0);
   const [entrada, setEntrada] = useState('');
   const [parcelas, setParcelas] = useState('4');
-  const [periodicidade, setPeriodicidade] = useState<'semanal' | 'quinzenal' | 'mensal'>('semanal');
+  // Data-limite DURA da entrada (decisão 2026-08-18): default hoje + 5 dias.
+  const [dataEntrada, setDataEntrada] = useState(() => new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10));
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState<{ contratosAfetados: number } | null>(null);
   // Seleção por FATURA (doc Acordo de Pagamento V1.0 RAP005/006): todas entram
@@ -48,9 +49,19 @@ export function RenegociacaoWizard({
   const justificativasOk = Object.values(exclusoes).every((j) => j.trim().length >= 10);
   const entradaCent = reaisParaCentavos(entrada);
   const nParcelas = Math.max(1, parseInt(parcelas || '0', 10) || 0);
-  const saldoNovo = Math.max(0, total - entradaCent);
-  const valorParcela = nParcelas > 0 ? Math.round(saldoNovo / nParcelas) : 0;
-  const propostaValida = total > 0 && entradaCent < total && nParcelas > 0 && valorParcela > 0 && justificativasOk;
+
+  // Números do SERVIDOR (RAP031): motor do Catálogo (TP + TR Price + entrada
+  // mínima + frequência herdada) quando o produto está ATIVO; senão divisão simples.
+  const listaExclusoes = Object.entries(exclusoes).map(([faturaId, justificativa]) => ({ faturaId, justificativa: justificativa.trim() }));
+  const previa = useQuery({
+    queryKey: ['renegociacao-previa', contaId, entradaCent, nParcelas, listaExclusoes.map((e) => e.faturaId).join(',')],
+    queryFn: () => operacoesService.simularRenegociacaoConta(contaId, { valorEntrada: entradaCent, numeroParcelasNovas: nParcelas, faturasExcluidas: listaExclusoes }),
+    enabled: total > 0 && nParcelas > 0 && entradaCent < total && justificativasOk,
+    retry: false,
+  });
+  const p = previa.data;
+  const valorParcela = p?.valorParcela ?? (nParcelas > 0 ? Math.round(Math.max(0, total - entradaCent) / nParcelas) : 0);
+  const propostaValida = total > 0 && entradaCent < total && nParcelas > 0 && valorParcela > 0 && justificativasOk && !!dataEntrada;
 
   function alternarFatura(faturaId: string) {
     setExclusoes((atual) => {
@@ -67,9 +78,8 @@ export function RenegociacaoWizard({
       const r = await operacoesService.criarRenegociacaoConta(contaId, {
         valorEntrada: entradaCent,
         numeroParcelasNovas: nParcelas,
-        valorParcelaNova: valorParcela,
-        periodicidade,
-        faturasExcluidas: Object.entries(exclusoes).map(([faturaId, justificativa]) => ({ faturaId, justificativa: justificativa.trim() })),
+        dataPagamentoEntrada: dataEntrada,
+        faturasExcluidas: listaExclusoes,
       });
       setResultado({ contratosAfetados: r.contratosAfetados });
       setStep(3);
@@ -168,12 +178,12 @@ export function RenegociacaoWizard({
             </div>
           )}
 
-          {/* Passo 2 — Proposta */}
+          {/* Passo 2 — Proposta (números do servidor — RAP031) */}
           {step === 1 && (
             <div className="flex flex-col gap-[12px]">
               <div className="grid grid-cols-2 gap-[10px]">
                 <label className="flex flex-col gap-[4px] text-[12px]">
-                  <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Entrada (R$)</span>
+                  <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Entrada (R$){p?.motor === 'catalogo' ? ` — mínima ${formatCurrency(p.entradaMinima)}` : ''}</span>
                   <input value={entrada} onChange={(e) => setEntrada(e.target.value)} placeholder="0,00" className="h-[34px] rounded-[8px] px-[10px] text-right text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
                 </label>
                 <label className="flex flex-col gap-[4px] text-[12px]">
@@ -181,19 +191,39 @@ export function RenegociacaoWizard({
                   <input value={parcelas} onChange={(e) => setParcelas(e.target.value.replace(/\D/g, ''))} className="h-[34px] rounded-[8px] px-[10px] text-right text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
                 </label>
                 <label className="flex flex-col gap-[4px] text-[12px]">
+                  <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Pagamento da entrada até</span>
+                  <input type="date" value={dataEntrada} onChange={(e) => setDataEntrada(e.target.value)} className="h-[34px] rounded-[8px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+                </label>
+                <label className="flex flex-col gap-[4px] text-[12px]">
                   <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Periodicidade</span>
-                  <select value={periodicidade} onChange={(e) => setPeriodicidade(e.target.value as typeof periodicidade)} className="h-[34px] rounded-[8px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
-                    <option value="semanal">Semanal</option>
-                    <option value="quinzenal">Quinzenal</option>
-                    <option value="mensal">Mensal</option>
-                  </select>
+                  <div className="flex h-[34px] items-center rounded-[8px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                    {p?.periodicidade ? p.periodicidade.charAt(0).toUpperCase() + p.periodicidade.slice(1) : '…'} · herdada do contrato
+                  </div>
                 </label>
               </div>
               <div className="flex flex-col gap-[6px] rounded-[10px] p-[12px] text-[12.5px]" style={{ background: 'var(--surface-input)' }}>
-                <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Total em atraso</span><span className="font-bold tabular-nums">{formatCurrency(total)}</span></div>
+                <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Saldo negociado (com mora)</span><span className="font-bold tabular-nums">{formatCurrency(total)}</span></div>
                 <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Entrada</span><span className="font-bold tabular-nums">− {formatCurrency(entradaCent)}</span></div>
+                {p?.motor === 'catalogo' && (
+                  <>
+                    <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Taxa de processamento (TP{(p.tpFinanciada ?? 0) > 0 ? ' — parte financiada' : ', dentro da entrada'})</span><span className="font-bold tabular-nums">{formatCurrency(p.taxaInicial)}</span></div>
+                    <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Amortiza as faturas de origem</span><span className="font-bold tabular-nums">{formatCurrency(p.amortizacaoEntrada ?? 0)}</span></div>
+                    <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Saldo a parcelar (com TR {((p.encargoMensal ?? 0) * 100).toFixed(2)}% a.m.)</span><span className="font-bold tabular-nums">{formatCurrency(p.saldoAParcelar)}</span></div>
+                  </>
+                )}
                 <div className="flex justify-between border-t pt-[6px]" style={{ borderColor: 'var(--border)' }}><span style={{ color: 'var(--text-muted)' }}>Novo plano</span><span className="font-bold tabular-nums">{nParcelas}× {formatCurrency(valorParcela)}</span></div>
+                {p && <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Total a pagar (entrada + parcelas)</span><span className="font-bold tabular-nums">{formatCurrency(p.totalAPagar)}</span></div>}
               </div>
+              {p?.motor === 'placeholder' && (
+                <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+                  Cálculo provisório (divisão simples) — ative o produto <b>Acordo de Pagamento</b> no Catálogo para ligar TP, TR e entrada mínima.
+                </div>
+              )}
+              {(p?.excecoes ?? []).map((e) => (
+                <div key={e} className="rounded-[10px] p-[10px] text-[12px]" style={{ background: '#fff7e6', color: '#8a5a00' }}>
+                  ⚠ Exceção (vai destacada para a alçada): {e}
+                </div>
+              ))}
               {entradaCent >= total && total > 0 && (
                 <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: '#fff7e6', color: '#8a5a00' }}>
                   A entrada cobre o total em atraso — nesse caso, quite as faturas em vez de renegociar.
@@ -211,7 +241,9 @@ export function RenegociacaoWizard({
                   <div className="flex justify-between"><span>Faturas selecionadas</span><b>{selecionadas.length} de {faturas.length}{Object.keys(exclusoes).length > 0 ? ` (${Object.keys(exclusoes).length} excluída(s) com justificativa)` : ''}</b></div>
                   <div className="flex justify-between"><span>Total renegociado (com mora)</span><b className="tabular-nums">{formatCurrency(total)}</b></div>
                   <div className="flex justify-between"><span>Entrada (aceite do cliente)</span><b className="tabular-nums">{formatCurrency(entradaCent)}</b></div>
-                  <div className="flex justify-between"><span>Plano novo</span><b className="tabular-nums">{nParcelas}× {formatCurrency(valorParcela)} ({periodicidade})</b></div>
+                  <div className="flex justify-between"><span>Plano novo</span><b className="tabular-nums">{nParcelas}× {formatCurrency(valorParcela)} ({p?.periodicidade ?? 'semanal'} · herdada)</b></div>
+                  <div className="flex justify-between"><span>Entrada paga até</span><b>{dataEntrada.split('-').reverse().join('/')}</b></div>
+                  {p?.motor === 'catalogo' && <div className="flex justify-between"><span>TP + TR (motor do Catálogo)</span><b className="tabular-nums">{formatCurrency(p.taxaInicial)} + {((p.encargoMensal ?? 0) * 100).toFixed(2)}% a.m.</b></div>}
                 </div>
               </div>
               <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
