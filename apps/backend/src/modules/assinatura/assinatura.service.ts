@@ -165,12 +165,24 @@ export class AssinaturaService {
       envioWhatsapp: zap,
     });
 
-    const doc = await this.zapSign.criarDocumento({
-      nome: `Contrato ${contrato.numero} — venda com reserva de domínio`,
-      markdown: snapshot.documento,
-      externalId: contrato.id,
-      signatarios,
-    });
+    // Erro da ZapSign vira mensagem legível na tela (caso real 29/08: recusa da
+    // API explodia como 500 e o operador via só "Operação não permitida").
+    let doc: Awaited<ReturnType<ZapSignService['criarDocumento']>>;
+    try {
+      doc = await this.zapSign.criarDocumento({
+        nome: `Contrato ${contrato.numero} — venda com reserva de domínio`,
+        markdown: snapshot.documento,
+        externalId: contrato.id,
+        signatarios,
+      });
+    } catch (e) {
+      const detalhe = (e as Error).message;
+      this.logger.error(`ZapSign recusou a criação do documento (contrato ${contrato.numero}): ${detalhe}`);
+      throw new UnprocessableEntityException({
+        erro: 'zapsign_recusou',
+        mensagem: `A ZapSign recusou a criação do documento: ${detalhe}. Causas comuns: limite do plano de documentos atingido ou dados de signatário inválidos — confira o plano no painel da ZapSign.`,
+      });
+    }
 
     const estado: SignatarioEstado[] = doc.signatarios.map((s) => ({ ...s }));
     const registro = contrato.documentoAssinatura
