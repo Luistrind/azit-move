@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '@azit/utils';
 import { analiseService } from '../services/analise.service';
+import { contratoService } from '../services/contrato.service';
 import { originacaoService } from '../services/originacao.service';
 import { produtoService } from '../services/produto.service';
 import { StatusBadge } from '../components/StatusBadge';
@@ -54,6 +55,16 @@ export function PropostaDetalhePage() {
   const podeParecer = pode(ROLE_PARECER);
   const [ocupado, setOcupado] = useState(false);
   const [documento, setDocumento] = useState('');
+  // Feedback 30/08: o contrato só aparecia no estado transitório pós-formalizar;
+  // ao voltar à tela, sumia. Botão "Ver contrato" abre o documento do snapshot.
+  const [docContrato, setDocContrato] = useState<{ numero: string; texto: string } | null>(null);
+
+  async function verContrato(contratoId: string) {
+    try {
+      const d = await contratoService.documento(contratoId);
+      setDocContrato({ numero: d.numero, texto: d.texto });
+    } catch (e) { alert(mensagemErro(e)); }
+  }
   const [step, setStep] = useState(1);
   const initRef = useRef(false);
 
@@ -541,6 +552,9 @@ export function PropostaDetalhePage() {
                         <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={c.assinadoAzit ? { background: '#eafaf1', color: '#1f9d5b' } : { background: '#eef2f7', color: '#5b6b7f' }}>
                           {c.assinadoAzit ? '✓ Azit assinou' : 'Azit pendente'}
                         </span>
+                        <button onClick={() => void verContrato(c.id)} className="h-[28px] rounded-[8px] px-[10px] text-[11.5px] font-semibold" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                          Ver contrato
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -582,6 +596,21 @@ export function PropostaDetalhePage() {
           {documento && (
             <pre className="mt-[14px] whitespace-pre-wrap text-[11.5px]" style={{ color: 'var(--text-body)' }}>{documento}</pre>
           )}
+        </div>
+      )}
+
+      {/* Documento do contrato (snapshot congelado) — feedback 30/08: sempre acessível. */}
+      {docContrato && (
+        <div onClick={() => setDocContrato(null)} className="fixed inset-0 z-50 flex items-center justify-center p-[20px]" style={{ background: 'rgba(0,16,41,.45)' }}>
+          <div onClick={(e) => e.stopPropagation()} className="flex max-h-[88vh] w-[820px] max-w-full flex-col overflow-hidden rounded-[16px]" style={{ background: 'var(--surface)', boxShadow: '0 30px 80px rgba(0,16,41,.4)' }}>
+            <div className="flex items-center justify-between px-[18px] py-[13px]" style={{ borderBottom: '1px solid var(--border)' }}>
+              <span className="font-display text-[13.5px] font-bold">Contrato {docContrato.numero}</span>
+              <button onClick={() => setDocContrato(null)} className="text-[18px] leading-none" style={{ color: 'var(--text-muted)' }}>×</button>
+            </div>
+            <div className="flex-1 overflow-auto p-[18px]">
+              <pre className="whitespace-pre-wrap font-sans text-[12px] leading-[1.55]" style={{ color: 'var(--text-body)' }}>{docContrato.texto}</pre>
+            </div>
+          </div>
         </div>
       )}
     </div>
