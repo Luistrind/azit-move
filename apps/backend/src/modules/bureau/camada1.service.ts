@@ -93,7 +93,8 @@ export class Camada1Service {
           `${d.processosTotal} processo(s) judicial(is)${d.processosComoReu ? ` — ${d.processosComoReu} como réu` : ''} — avaliar na análise`,
         );
       }
-      if (!d.faixaRendaPresumida) alertas.push('Renda presumida indisponível no birô');
+      // Decisão 28/08: renda presumida deixou de ser campo de renda — o alerta de
+      // indisponibilidade virou ruído (o valor, quando vem, fica no retorno).
       if (d.simulado) alertas.push('Consulta SIMULADA (sem credenciais do birô no ambiente)');
     }
 

@@ -53,6 +53,17 @@ function moeda(c: number | null | undefined) {
   return c === null || c === undefined ? '—' : formatCurrency(c);
 }
 
+// Onde resolver cada item pendente do pacote mínimo (feedback 28/08).
+const DICA_PACOTE: Record<string, string> = {
+  'Decisão válida (aprovação não vencida)': 'a análise precisa estar aprovada (alçada ou COCAD) há menos de 10 dias úteis',
+  'Condutor principal definido com CNH válida': 'no bloco do comprador: marque "CNH válida" e clique "Definir condutor"',
+  'Consultas válidas ou ausência decidida pelo COCAD': 'refaça as consultas vencidas no quadro "Consultas registradas"',
+  'Renda apurada de todos os compradores': 'preencha a Renda APURADA no bloco de cada comprador',
+  'Sem pendências abertas': 'cumpra as pendências no bloco "Pendências e ressalvas"',
+  'Ressalvas cumpridas e validadas': 'valide cada ressalva no bloco "Pendências e ressalvas" acima (botão Validar — alçada de Aprovador/Diretor)',
+  'Sem bloqueio de formalização (fraude/CNH)': 'resolva o alerta de fraude ou a CNH do condutor',
+};
+
 // O coração do modo guiado: o que fazer AGORA, dado o estado do dossiê.
 function proximoPasso(d: DossieAnalise): string {
   // Decisão 08/08: autorização de consulta é VERBAL — sem instrumento no sistema.
@@ -320,19 +331,26 @@ export function AnalisePage() {
             <div key={r.id} className="flex items-center justify-between border-t border-[var(--border)] py-[6px] text-[12px]">
               <span>Ressalva <b>{r.tipo.replaceAll('_', ' ').toLowerCase()}</b> · {r.condicao} · {r.situacao.toLowerCase()}</span>
               {['PENDENTE', 'CUMPRIDA'].includes(r.situacao) && (
-                <button className={btnS} disabled={ocupado} onClick={() => acao(() => analiseService.validarRessalva(d.id, r.id), 'Ressalva validada.')}>Validar</button>
+                <button className={btnS} disabled={ocupado} title="Validação é alçada de Aprovador/Diretor (Admin também pode)" onClick={() => acao(() => analiseService.validarRessalva(d.id, r.id), 'Ressalva validada.')}>Validar (Aprovador/Diretor)</button>
               )}
             </div>
           ))}
         </div>
       )}
 
-      {/* Pacote mínimo */}
+      {/* Pacote mínimo (RF-22): checklist bloqueante da liberação. Feedback
+          28/08: item pendente diz ONDE se resolve — texto morto não guia. */}
       <div className={card}>
         <div className="mb-[8px] font-display text-[13px] font-bold">Pacote mínimo para formalização</div>
+        <div className="mb-[6px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+          Checklist que trava o botão "Liberar para formalização" — todos os itens precisam estar ✓.
+        </div>
         {d.pacoteMinimo.map((x, i) => (
           <div key={i} className="text-[12px]">
             <span style={{ color: x.ok ? '#1c7a3d' : '#b03030' }}>{x.ok ? '✓' : '✗'}</span> {x.item}
+            {!x.ok && DICA_PACOTE[x.item] && (
+              <span className="ml-[6px] text-[11px]" style={{ color: 'var(--text-muted)' }}>→ {DICA_PACOTE[x.item]}</span>
+            )}
           </div>
         ))}
       </div>
@@ -405,7 +423,6 @@ function ProximaAcao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean;
 
 function Participante({ d, p, ocupado, acao, final }: { d: DossieAnalise; p: ParticipanteAnalise; ocupado: boolean; acao: (fn: () => Promise<DossieAnalise>, ok?: string) => Promise<void>; final: boolean }) {
   const [rd, setRd] = useState(p.rendaDeclarada ? (p.rendaDeclarada / 100).toLocaleString('pt-BR') : '');
-  const [rp, setRp] = useState(p.rendaPresumida ? (p.rendaPresumida / 100).toLocaleString('pt-BR') : '');
   const [ra, setRa] = useState(p.rendaApurada !== null ? (p.rendaApurada / 100).toLocaleString('pt-BR') : '');
   const [just, setJust] = useState('');
   const condutor = d.condutorPrincipalTitularId === p.titularId;
@@ -431,10 +448,11 @@ function Participante({ d, p, ocupado, acao, final }: { d: DossieAnalise; p: Par
           </div>
         )}
       </div>
-      <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-3">
+      {/* Decisão 28/08: renda PRESUMIDA saiu como campo — só declarada e apurada.
+          O valor do birô continua visível no retorno da consulta (Camada 1). */}
+      <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-2">
         {[
           ['Renda declarada (R$)', rd, setRd, 'rendaDeclarada', undefined],
-          ['Renda presumida (R$)', rp, setRp, 'rendaPresumida', undefined],
           ['Renda APURADA (R$)', ra, setRa, 'rendaApurada', p.rendaApurada],
         ].map(([rotulo, valor, setValor, campo, atual]) => (
           <label key={campo as string} className="flex flex-col gap-[4px] text-[11px] font-bold">
@@ -451,7 +469,6 @@ function Participante({ d, p, ocupado, acao, final }: { d: DossieAnalise; p: Par
           <button className={btnP} disabled={ocupado} onClick={() => acao(() =>
             analiseService.atualizarParticipante(d.id, p.titularId, {
               rendaDeclarada: rd ? reaisParaCentavos(rd) : null,
-              rendaPresumida: rp ? reaisParaCentavos(rp) : null,
               rendaApurada: ra ? reaisParaCentavos(ra) : null,
               ...(just ? { justificativaRendaApurada: just } : {}),
             }), 'Rendas salvas.')}>Salvar rendas</button>
