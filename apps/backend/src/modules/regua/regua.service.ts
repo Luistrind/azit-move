@@ -8,7 +8,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { inicioHojeBrasilUTC, resolverEstagioRegua } from '@azit/utils';
+import { diasAtrasoCalendario, inicioHojeBrasilUTC, resolverEstagioRegua } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { FaturaService } from '../cobranca/fatura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
@@ -61,9 +61,8 @@ export class ReguaService {
       .map((c) => {
         const v = porId.get(c.id);
         const maisAntiga = v?._min.dataVencimento;
-        const diasAtraso = maisAntiga
-          ? Math.floor((hoje.getTime() - maisAntiga.getTime()) / DIA_MS)
-          : 0;
+        // Dias de CALENDÁRIO (correção 31/08): venceu ontem = 1 dia, sempre.
+        const diasAtraso = maisAntiga ? diasAtrasoCalendario(maisAntiga) : 0;
         return {
           id: c.id,
           numero: c.numero,
@@ -80,7 +79,9 @@ export class ReguaService {
           ativo: c.ativo,
         };
       })
-      .filter((c) => c.estagio !== null);
+      // Kanban por DIAS de atraso (decisão 31/08): entra na régua a partir de
+      // 1 dia de calendário; o estágio segue no payload para as automações.
+      .filter((c) => c.diasAtraso >= 1);
   }
 
   // Job agendado: varre a régua diariamente (madrugada). Em dev o operador também
@@ -199,7 +200,7 @@ export class ReguaService {
       _min: { dataVencimento: true },
     });
     const dv = maisAntiga._min.dataVencimento;
-    const diasAtraso = dv ? Math.floor((hoje.getTime() - dv.getTime()) / DIA_MS) : 0;
+    const diasAtraso = dv ? diasAtrasoCalendario(dv) : 0;
     return { contrato, diasAtraso };
   }
 }

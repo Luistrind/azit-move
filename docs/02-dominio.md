@@ -835,6 +835,16 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 
 > Desbloqueio após pagamento é sempre **manual** — o operador confirma a regularização antes de liberar.
 
+> **Decisão 2026-08-31 (Luís, homologação) — o kanban da régua é por DIAS DE ATRASO.** Colunas
+> **1 a 7 dias + "+7 dias"**; o caso se move de coluna conforme o atraso (em **dias de
+> calendário** — venceu ontem = 1 dia, independente da hora) da parcela vencida mais antiga.
+> Os marcos da tabela acima (D+1/D+2 cobrança, D+3 bloqueio, D+10/D+12) continuam valendo como
+> **automação e alçada** — na tela viram subtítulo da coluna correspondente, não colunas
+> próprias. Correção da mesma data: dias de atraso em TODO o sistema (régua, mora da
+> renegociação, conciliação de pagamento) contam por calendário, nunca por diferença de
+> milissegundos ÷ 24h (que zerava o primeiro dia — caso real: contrato vencido ontem sumia
+> da régua).
+
 ### 7.7 Acordo (recuperação branda)
 
 > **Decisão 2026-07-03, Luís — o Acordo é da CONTA, não do contrato.** O pagamento acontece na fatura, e a fatura é da Conta: ela agrega parcelas de *todos* os contratos do titular. Logo a inadimplência é da conta — o titular nunca atrasa "um contrato", atrasa faturas. A renegociação, portanto, cobre **todas as parcelas em atraso da conta** (de todos os contratos) numa única negociação: uma entrada, um plano novo, uma conversa.

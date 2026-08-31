@@ -1,13 +1,31 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatCurrency, ESTAGIOS_REGUA, ROTULO_ESTAGIO } from '@azit/utils';
+import { formatCurrency, resolverEstagioRegua } from '@azit/utils';
 import { reguaService, type ReguaItem } from '../services/regua.service';
 import { operacoesService } from '../services/operacoes.service';
 import { Modal } from '../components/Modal';
 import { RenegociacaoWizard } from '../components/RenegociacaoWizard';
 import { REGUA_STAGE_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
+
+// Kanban por DIAS DE ATRASO (decisão Luís 31/08): colunas 1 a 7 dias + "+7";
+// o caso se MOVE de coluna conforme o atraso da parcela vencida mais antiga.
+// Os marcos operacionais da régua (cobrança D+1/D+2, bloqueio D+3, extrajudicial
+// D+10, recuperação D+12) continuam como automação — aqui viram o subtítulo da
+// coluna, e a cor vem do estágio correspondente (statusColors, Regra 9).
+const COLUNAS_DIAS: { chave: string; rotulo: string; marco: string; corresponde: (d: number) => boolean }[] = [
+  { chave: 'd1', rotulo: '1 dia', marco: 'Cobrança ativa (D+1)', corresponde: (d) => d === 1 },
+  { chave: 'd2', rotulo: '2 dias', marco: '2ª tentativa (D+2)', corresponde: (d) => d === 2 },
+  { chave: 'd3', rotulo: '3 dias', marco: 'Bloqueio disponível (D+3)', corresponde: (d) => d === 3 },
+  { chave: 'd4', rotulo: '4 dias', marco: '', corresponde: (d) => d === 4 },
+  { chave: 'd5', rotulo: '5 dias', marco: '', corresponde: (d) => d === 5 },
+  { chave: 'd6', rotulo: '6 dias', marco: '', corresponde: (d) => d === 6 },
+  { chave: 'd7', rotulo: '7 dias', marco: '', corresponde: (d) => d === 7 },
+  { chave: 'd7mais', rotulo: '+7 dias', marco: 'Extrajudicial (D+10) · Recuperação (D+12)', corresponde: (d) => d > 7 },
+];
+// Dia representativo da coluna p/ resolver a cor pelo estágio (statusColors).
+const DIA_COR: Record<string, number> = { d1: 1, d2: 2, d3: 3, d4: 4, d5: 5, d6: 6, d7: 7, d7mais: 12 };
 
 function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem; onAcao: (acao: 'bloquear' | 'desbloquear', id: string) => void; onAbrir: () => void; ocupado: boolean; podeOperar: boolean }) {
   const podeBloquear = podeOperar && !item.bloqueado && item.diasAtraso >= 3;
@@ -173,21 +191,27 @@ export function ReguaPage() {
       </div>
 
       <div className="flex flex-1 gap-[13px] overflow-x-auto pb-[8px]">
-        {ESTAGIOS_REGUA.map((estagio) => {
-          const cards = itens.filter((i) => i.estagio === estagio);
-          const cor = REGUA_STAGE_COLORS[estagio] ?? '#8694a4';
+        {COLUNAS_DIAS.map((col) => {
+          const cards = itens.filter((i) => col.corresponde(i.diasAtraso));
+          const estagioCor = resolverEstagioRegua(DIA_COR[col.chave]);
+          const cor = (estagioCor && REGUA_STAGE_COLORS[estagioCor]) || '#8694a4';
           return (
             <div
-              key={estagio}
-              className="flex w-[230px] flex-none flex-col rounded-card"
+              key={col.chave}
+              className="flex w-[200px] flex-none flex-col rounded-card"
               style={{ background: 'var(--surface-muted)', border: '1px solid var(--border)' }}
             >
               <div className="flex items-center gap-[8px] px-[13px] py-[11px]" style={{ borderBottom: '1px solid var(--border)' }}>
                 <span className="h-[9px] w-[9px] flex-none rounded-full" style={{ background: cor }} />
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <div className="text-[12px] font-bold" style={{ color: 'var(--text-primary)' }}>
-                    {ROTULO_ESTAGIO[estagio]}
+                    {col.rotulo}
                   </div>
+                  {col.marco && (
+                    <div className="truncate text-[10px]" style={{ color: 'var(--text-muted)' }} title={col.marco}>
+                      {col.marco}
+                    </div>
+                  )}
                 </div>
                 <div className="font-display text-[14px] font-bold" style={{ color: cor }}>
                   {cards.length}

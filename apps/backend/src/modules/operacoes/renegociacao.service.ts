@@ -14,6 +14,7 @@ import {
   valorPorExtenso,
   numeroPorExtenso,
   dataPorExtenso,
+  diasAtrasoCalendario,
   inicioHojeBrasilUTC,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
@@ -214,7 +215,8 @@ export class RenegociacaoService implements OnModuleInit {
       const jurosMensalPct = Number(c.taxaJurosAtraso.toString()) / 100;
       const comMora = parcelas.map((p) => {
         const nominal = cent(p.valorNominal);
-        const diasAtraso = Math.max(0, Math.floor((hoje.getTime() - p.dataVencimento.getTime()) / DIA_MS));
+        // Dias de CALENDÁRIO (correção 31/08) — venceu ontem = 1 dia de mora.
+        const diasAtraso = diasAtrasoCalendario(p.dataVencimento);
         const encargo = Math.round(nominal * multaPct + nominal * jurosMensalPct * (diasAtraso / 30));
         return { ...p, nominal, diasAtraso, encargo, atualizado: nominal + encargo };
       });

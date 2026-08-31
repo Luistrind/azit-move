@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { calcularEncargoAtraso, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, dataCalendarioUTC } from '@azit/utils';
+import { calcularEncargoAtraso, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, dataCalendarioUTC, diasAtrasoCalendario } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
@@ -127,10 +127,8 @@ export class FaturaService {
       select: { id: true, valor: true, tipo: true },
     });
     const calc = fatura.parcelas.map((parcela) => {
-      const diasAtraso = Math.max(
-        0,
-        Math.floor((dataPagamento.getTime() - parcela.dataVencimento.getTime()) / DIA_MS),
-      );
+      // Dias de CALENDÁRIO entre vencimento e pagamento (correção 31/08).
+      const diasAtraso = diasAtrasoCalendario(parcela.dataVencimento, dataPagamento);
       const nominal = cent(parcela.valorNominal);
       const encargo =
         diasAtraso > 0
