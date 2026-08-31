@@ -31,9 +31,13 @@ export interface FaturaDetalhe extends Fatura {
 export interface LancamentoConta {
   id: string;
   tipo: 'entrada_contrato' | 'entrada_acordo';
+  // 'aguardando_pagamento' = cobrança gerada, dinheiro ainda não entrou
+  // (pendência calculada em runtime — não existe como registro).
+  situacao: 'paga' | 'aguardando_pagamento';
   descricao: string;
   valor: number;
-  dataPagamento: string;
+  dataPagamento: string | null;
+  dataLimite: string | null; // data-limite dura da entrada do acordo
   contratoId: string | null;
   contratoNumero: string | null;
   acordoId: string | null;

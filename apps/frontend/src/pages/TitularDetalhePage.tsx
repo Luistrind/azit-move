@@ -360,18 +360,26 @@ export function TitularDetalhePage() {
         <div className="rounded-card p-[18px]" style={card}>
           <div className="mb-[10px] font-display text-[13px] font-bold">Entradas e lançamentos ({lancamentos.data!.length})</div>
           <div className="flex flex-col">
-            {lancamentos.data!.map((l) => (
-              <div key={l.id} className="flex items-center justify-between py-[8px] text-[12.5px]" style={{ borderBottom: '1px solid var(--border-light)' }}>
-                <span>
-                  <span className="mr-[8px] rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: '#e8f7ef', color: '#1f9d5b' }}>
-                    {l.tipo === 'entrada_contrato' ? 'Entrada de contrato' : 'Entrada de acordo'}
+            {lancamentos.data!.map((l) => {
+              const pendente = l.situacao === 'aguardando_pagamento';
+              return (
+                <div key={l.id} className="flex items-center justify-between py-[8px] text-[12.5px]" style={{ borderBottom: '1px solid var(--border-light)' }}>
+                  <span>
+                    <span className="mr-[8px] rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={pendente ? { background: '#fff4e0', color: '#a86a12' } : { background: '#e8f7ef', color: '#1f9d5b' }}>
+                      {l.tipo === 'entrada_contrato' ? 'Entrada de contrato' : 'Entrada de acordo'}
+                    </span>
+                    {pendente && (
+                      <span className="mr-[8px] rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: '#fdeceb', color: '#c0392b' }}>
+                        Aguardando pagamento{l.dataLimite ? ` · até ${fmtData(l.dataLimite)}` : ''}
+                      </span>
+                    )}
+                    <span style={{ color: 'var(--text-body)' }}>{l.descricao}</span>
+                    {!pendente && <span style={{ color: 'var(--text-muted)' }}> · pago em {fmtData(l.dataPagamento ?? '')}</span>}
                   </span>
-                  <span style={{ color: 'var(--text-body)' }}>{l.descricao}</span>
-                  <span style={{ color: 'var(--text-muted)' }}> · pago em {fmtData(l.dataPagamento)}</span>
-                </span>
-                <span className="font-bold tabular-nums">{formatCurrency(l.valor)}</span>
-              </div>
-            ))}
+                  <span className="font-bold tabular-nums">{formatCurrency(l.valor)}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

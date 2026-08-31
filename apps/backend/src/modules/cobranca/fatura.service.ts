@@ -308,26 +308,80 @@ export class FaturaService {
 
   // Lançamentos avulsos da conta (doc 02 §4-A.3, revisão 2026-08-30): entradas
   // de contrato e de acordo — dinheiro fora do ciclo de fatura, exibido no
-  // histórico da ficha ao lado das faturas.
+  // histórico da ficha ao lado das faturas. Entradas AGUARDANDO pagamento
+  // (cobrança gerada, dinheiro ainda não entrou) aparecem como pendência
+  // CALCULADA em runtime (Regra 7) — pedido do Luís 31/08: a entrada do acordo
+  // recém-aprovado precisa de visibilidade antes de ser paga.
   async lancamentosDaConta(contaId: string) {
-    const lancamentos = await this.prisma.db.lancamentoConta.findMany({
-      where: { contaId },
-      orderBy: { dataPagamento: 'desc' },
-      include: {
-        contrato: { select: { id: true, numero: true } },
-        acordo: { select: { id: true } },
-      },
-    });
-    return lancamentos.map((l) => ({
+    const [lancamentos, acordosAguardando, contratosAguardando] = await Promise.all([
+      this.prisma.db.lancamentoConta.findMany({
+        where: { contaId },
+        orderBy: { dataPagamento: 'desc' },
+        include: {
+          contrato: { select: { id: true, numero: true } },
+          acordo: { select: { id: true } },
+        },
+      }),
+      this.prisma.db.acordo.findMany({
+        where: { contaId, status: 'AGUARDANDO_ENTRADA', deletedAt: null },
+        orderBy: { dataCriacao: 'desc' },
+        select: { id: true, valorEntrada: true, snapshotJson: true },
+      }),
+      this.prisma.db.contratoCredito.findMany({
+        where: { contaId, status: 'AGUARDANDO_PAGAMENTO_INICIAL', deletedAt: null, valorEntrada: { gt: 0 } },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, numero: true, valorEntrada: true, entradaParcelada: true },
+      }),
+    ]);
+
+    const pendentes = [
+      ...acordosAguardando.map((a) => {
+        const snap = a.snapshotJson as null | { dataPagamentoEntrada?: string };
+        return {
+          id: `pendente-acordo-${a.id}`,
+          tipo: 'entrada_acordo' as const,
+          situacao: 'aguardando_pagamento' as const,
+          descricao: 'Entrada do acordo de renegociação',
+          valor: cent(a.valorEntrada),
+          dataPagamento: null as string | null,
+          dataLimite: snap?.dataPagamentoEntrada ?? null,
+          contratoId: null as string | null,
+          contratoNumero: null as string | null,
+          acordoId: a.id as string | null,
+        };
+      }),
+      ...contratosAguardando.map((c) => {
+        const valor = cent(c.valorEntrada);
+        return {
+          id: `pendente-contrato-${c.id}`,
+          tipo: 'entrada_contrato' as const,
+          situacao: 'aguardando_pagamento' as const,
+          descricao: `Entrada do contrato ${c.numero}${c.entradaParcelada ? ' (à vista 60%)' : ''}`,
+          valor: c.entradaParcelada ? Math.round(valor * 0.6) : valor,
+          dataPagamento: null as string | null,
+          dataLimite: null as string | null,
+          contratoId: c.id as string | null,
+          contratoNumero: c.numero as string | null,
+          acordoId: null as string | null,
+        };
+      }),
+    ];
+
+    const pagos = lancamentos.map((l) => ({
       id: l.id,
-      tipo: l.tipo === 'ENTRADA_CONTRATO' ? 'entrada_contrato' : 'entrada_acordo',
+      tipo: (l.tipo === 'ENTRADA_CONTRATO' ? 'entrada_contrato' : 'entrada_acordo') as 'entrada_contrato' | 'entrada_acordo',
+      situacao: 'paga' as const,
       descricao: l.descricao,
       valor: cent(l.valor),
-      dataPagamento: l.dataPagamento.toISOString(),
+      dataPagamento: l.dataPagamento.toISOString() as string | null,
+      dataLimite: null as string | null,
       contratoId: l.contrato?.id ?? null,
       contratoNumero: l.contrato?.numero ?? null,
       acordoId: l.acordo?.id ?? null,
     }));
+
+    // Pendências primeiro (são acionáveis); pagos em ordem cronológica inversa.
+    return [...pendentes, ...pagos];
   }
 
   // 4.9 — Extrato: eventos de pagamento conciliados do contrato.
