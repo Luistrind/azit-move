@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { calcularEncargoAtraso, centavosParaReaisString, imputarPagamento, ItemImputacao } from '@azit/utils';
+import { calcularEncargoAtraso, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, dataCalendarioUTC } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
@@ -308,6 +308,30 @@ export class FaturaService {
     return { resultado: 'vencida' };
   }
 
+  // Lançamentos avulsos da conta (doc 02 §4-A.3, revisão 2026-08-30): entradas
+  // de contrato e de acordo — dinheiro fora do ciclo de fatura, exibido no
+  // histórico da ficha ao lado das faturas.
+  async lancamentosDaConta(contaId: string) {
+    const lancamentos = await this.prisma.db.lancamentoConta.findMany({
+      where: { contaId },
+      orderBy: { dataPagamento: 'desc' },
+      include: {
+        contrato: { select: { id: true, numero: true } },
+        acordo: { select: { id: true } },
+      },
+    });
+    return lancamentos.map((l) => ({
+      id: l.id,
+      tipo: l.tipo === 'ENTRADA_CONTRATO' ? 'entrada_contrato' : 'entrada_acordo',
+      descricao: l.descricao,
+      valor: cent(l.valor),
+      dataPagamento: l.dataPagamento.toISOString(),
+      contratoId: l.contrato?.id ?? null,
+      contratoNumero: l.contrato?.numero ?? null,
+      acordoId: l.acordo?.id ?? null,
+    }));
+  }
+
   // 4.9 — Extrato: eventos de pagamento conciliados do contrato.
   async extrato(contratoId: string) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
@@ -369,12 +393,15 @@ export class FaturaService {
     dataPagamento: Date | null; status: string; valorTotal: Prisma.Decimal; valorPago: Prisma.Decimal | null;
     itensFatura: { descricao: string; tipo: string; valor: Prisma.Decimal; credor: string }[];
   }) {
-    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-    const venc = new Date(f.dataVencimento); venc.setHours(0, 0, 0, 0);
+    // Fuso do negócio (correção 30/08): "hoje" em America/Sao_Paulo comparado
+    // com a data-calendário do vencimento — meia-noite LOCAL do servidor fazia
+    // a fatura que vence HOJE aparecer como "Vencida".
+    const hojeStr = dataHojeBrasil();
+    const vencStr = dataCalendarioUTC(f.dataVencimento);
     const statusReal = f.status.toLowerCase();
     let situacao = statusReal;
     if (f.status === 'ABERTA' || f.status === 'FECHADA') {
-      situacao = venc < hoje ? 'vencida' : venc.getTime() === hoje.getTime() ? 'vence_hoje' : 'em_aberto';
+      situacao = vencStr < hojeStr ? 'vencida' : vencStr === hojeStr ? 'vence_hoje' : 'em_aberto';
     }
     return {
       id: f.id,

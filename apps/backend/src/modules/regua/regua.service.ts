@@ -8,7 +8,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { resolverEstagioRegua } from '@azit/utils';
+import { inicioHojeBrasilUTC, resolverEstagioRegua } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { FaturaService } from '../cobranca/fatura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
@@ -31,7 +31,7 @@ export class ReguaService {
   ) {}
 
   private hojeUTC(): Date {
-    return new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
+    return inicioHojeBrasilUTC(); // fuso do negócio (correção 30/08)
   }
 
   // 5.6 — Dados do kanban: contratos em régua com estágio e dias de atraso.

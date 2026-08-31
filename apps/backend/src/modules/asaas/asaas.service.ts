@@ -42,6 +42,32 @@ export class AsaasService {
     return (await resp.json()) as T;
   }
 
+  // Remove uma cobrança (DELETE /payments/{id}) — usada quando a fatura sai de
+  // cobrança (ex.: coberta por acordo). Falha NÃO propaga: a cobrança órfã é
+  // menos grave que desfazer a operação de negócio; fica o log para conciliação.
+  async removerCobranca(chargeId: string): Promise<boolean> {
+    if (this.simulado) {
+      this.logger.log(`[simulado] cobrança ${chargeId} removida`);
+      return true;
+    }
+    try {
+      const resp = await fetch(`${this.config.get('asaas.apiUrl')}/payments/${chargeId}`, {
+        method: 'DELETE',
+        headers: { access_token: this.config.get<string>('asaas.apiKey') ?? '' },
+      });
+      if (!resp.ok) {
+        const txt = await resp.text().catch(() => '');
+        this.logger.warn(`Asaas DELETE /payments/${chargeId} retornou ${resp.status}: ${txt.slice(0, 200)}`);
+        return false;
+      }
+      this.logger.log(`Cobrança Asaas ${chargeId} removida`);
+      return true;
+    } catch (e) {
+      this.logger.warn(`Falha ao remover cobrança Asaas ${chargeId}: ${(e as Error).message}`);
+      return false;
+    }
+  }
+
   // Cadastro do cliente no Asaas (POST /customers). No modo simulado devolve um id
   // determinístico. Pré-requisito para criar qualquer cobrança real.
   async criarCliente(params: {

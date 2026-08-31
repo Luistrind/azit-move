@@ -204,9 +204,17 @@ enum StatusFatura {
 enum TipoItemFatura {
   PRINCIPAL
   INTERMEDIARIA // parcela-balão da entrada parcelada
-  ENTRADA // entrada à vista do contrato, materializada no dia zero (doc 02 sec.4-A.3, 2026-08-16)
+  ENTRADA // DESCONTINUADO (doc 02 sec.4-A.3, revisão 2026-08-30): entrada virou LancamentoConta
   SERVICO
   ENCARGO
+}
+
+// Lançamento avulso da conta (doc 02 sec.4-A.3, revisão 2026-08-30): dinheiro que
+// entra FORA do ciclo de fatura — entrada de contrato (dia zero) e entrada de
+// acordo (efetivação). Substitui a "fatura sintética PAGA" rejeitada em homologação.
+enum TipoLancamentoConta {
+  ENTRADA_CONTRATO
+  ENTRADA_ACORDO
 }
 
 enum StatusRecebivel {
@@ -390,6 +398,7 @@ model Conta {
   contratosInvestimento ContratoInvestimento[]
   faturas               Fatura[]
   acordos               Acordo[]
+  lancamentos           LancamentoConta[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -901,6 +910,7 @@ model ContratoCredito {
   acordos           Acordo[]
   reajustes         ReajusteIPCA[]
   vinculosPapel     VinculoPapel[]
+  lancamentos       LancamentoConta[]
   propostaOrigem    Proposta?        @relation("PropostaContrato")
   propostaPacote    Proposta?        @relation("PacoteProposta", fields: [propostaPacoteId], references: [id])
   documentoAssinatura DocumentoAssinatura? // ZapSign F1 (doc 02 sec.21)
@@ -1016,6 +1026,30 @@ model Fatura {
   @@map("faturas")
 }
 
+model LancamentoConta {
+  id            String              @id @default(cuid())
+  contaId       String
+  contratoId    String?
+  acordoId      String?
+  tipo          TipoLancamentoConta
+  descricao     String
+  valor         Decimal             @db.Decimal(12, 2)
+  dataPagamento DateTime
+  asaasChargeId String?
+
+  conta    Conta            @relation(fields: [contaId], references: [id])
+  contrato ContratoCredito? @relation(fields: [contratoId], references: [id])
+  acordo   Acordo?          @relation(fields: [acordoId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([contaId])
+  @@index([contratoId])
+  @@index([acordoId])
+  @@map("lancamentos_conta")
+}
+
 model ItemFatura {
   id        String         @id @default(cuid())
   faturaId  String
@@ -1102,6 +1136,7 @@ model Acordo {
   // Itens de crédito NOVOS gerados por este acordo (origem ACORDO) — um por contrato afetado
   itensGerados     ItemContratado[] @relation("ItemGeradoPorAcordo")
   faturas          Fatura[]
+  lancamentos      LancamentoConta[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

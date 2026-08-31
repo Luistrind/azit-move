@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { anteciparParcela, anteciparParcelaComponentes, centavosParaReaisString } from '@azit/utils';
+import { anteciparParcela, anteciparParcelaComponentes, centavosParaReaisString, inicioHojeBrasilUTC } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { CatalogoFonteService, ParametrosCatalogoCompraParcelada } from '../catalogo/catalogo-fonte.service';
 
@@ -26,7 +26,7 @@ export class QuitacaoService {
   ) {}
 
   private hojeUTC(): Date {
-    return new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
+    return inicioHojeBrasilUTC();
   }
 
   private async carregar(contratoId: string, parcelaIds?: string[]) {

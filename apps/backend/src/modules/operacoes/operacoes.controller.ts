@@ -10,6 +10,7 @@ import {
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { RoleUsuario } from '@prisma/client';
+import { dataHojeBrasil } from '@azit/utils';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
@@ -62,6 +63,7 @@ export class OperacoesController {
       valorEntrada: dto.valorEntrada,
       numeroParcelas: dto.numeroParcelasNovas,
       faturasExcluidas: dto.faturasExcluidas,
+      faturasVincendasIncluidas: dto.faturasVincendasIncluidas,
     });
   }
 
@@ -95,7 +97,7 @@ export class OperacoesController {
   async simularEntrada(@Param('acordoId') acordoId: string) {
     await this.filaAcordo.add('efetivar', {
       acordoId,
-      paymentDate: new Date().toISOString().slice(0, 10),
+      paymentDate: dataHojeBrasil(),
     });
     return { enfileirado: true, acordoId };
   }

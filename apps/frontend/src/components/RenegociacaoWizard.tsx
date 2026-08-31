@@ -36,6 +36,9 @@ export function RenegociacaoWizard({
   // Seleção por FATURA (doc Acordo de Pagamento V1.0 RAP005/006): todas entram
   // pré-selecionadas; desmarcar exige justificativa auditável.
   const [exclusoes, setExclusoes] = useState<Record<string, string>>({});
+  // Faturas VINCENDAS incluídas por opção do operador (decisão 30/08): entram
+  // DESMARCADAS por padrão — incluir aumenta a entrada mínima e antecipa a segurança.
+  const [vincendas, setVincendas] = useState<string[]>([]);
 
   const eleg = useQuery({
     queryKey: ['renegociacao-elegivel', contaId],
@@ -43,7 +46,9 @@ export function RenegociacaoWizard({
   });
 
   const faturas = eleg.data?.faturas ?? [];
-  const selecionadas = faturas.filter((f) => !(f.faturaId in exclusoes));
+  const proximas = eleg.data?.faturasProximas ?? [];
+  const vincendasSel = proximas.filter((f) => vincendas.includes(f.faturaId));
+  const selecionadas = [...faturas.filter((f) => !(f.faturaId in exclusoes)), ...vincendasSel];
   const total = selecionadas.reduce((s, f) => s + f.valorAtualizado, 0);
   const encargosSelecionados = selecionadas.reduce((s, f) => s + f.encargosMora, 0);
   const justificativasOk = Object.values(exclusoes).every((j) => j.trim().length >= 10);
@@ -54,8 +59,8 @@ export function RenegociacaoWizard({
   // mínima + frequência herdada) quando o produto está ATIVO; senão divisão simples.
   const listaExclusoes = Object.entries(exclusoes).map(([faturaId, justificativa]) => ({ faturaId, justificativa: justificativa.trim() }));
   const previa = useQuery({
-    queryKey: ['renegociacao-previa', contaId, entradaCent, nParcelas, listaExclusoes.map((e) => e.faturaId).join(',')],
-    queryFn: () => operacoesService.simularRenegociacaoConta(contaId, { valorEntrada: entradaCent, numeroParcelasNovas: nParcelas, faturasExcluidas: listaExclusoes }),
+    queryKey: ['renegociacao-previa', contaId, entradaCent, nParcelas, listaExclusoes.map((e) => e.faturaId).join(','), vincendas.join(',')],
+    queryFn: () => operacoesService.simularRenegociacaoConta(contaId, { valorEntrada: entradaCent, numeroParcelasNovas: nParcelas, faturasExcluidas: listaExclusoes, faturasVincendasIncluidas: vincendas }),
     enabled: total > 0 && nParcelas > 0 && entradaCent < total && justificativasOk,
     retry: false,
   });
@@ -80,6 +85,7 @@ export function RenegociacaoWizard({
         numeroParcelasNovas: nParcelas,
         dataPagamentoEntrada: dataEntrada,
         faturasExcluidas: listaExclusoes,
+        faturasVincendasIncluidas: vincendas,
       });
       setResultado({ contratosAfetados: r.contratosAfetados });
       setStep(3);
@@ -159,8 +165,38 @@ export function RenegociacaoWizard({
                       </div>
                     );
                   })}
+                  {proximas.length > 0 && (
+                    <div className="flex flex-col gap-[8px]">
+                      <p className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
+                        <b>Faturas a vencer</b> (opcional): você pode trazer as próximas faturas para
+                        dentro do acordo — elas entram pelo valor nominal, sem mora, aumentam a
+                        entrada mínima e antecipam a segurança do pagamento.
+                      </p>
+                      {proximas.map((f) => {
+                        const incluida = vincendas.includes(f.faturaId);
+                        return (
+                          <div key={f.faturaId} className="rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)', border: incluida ? '1px solid var(--accent)' : '1px dashed var(--border)' }}>
+                            <div className="flex items-center justify-between gap-[8px] text-[12.5px] font-bold">
+                              <label className="flex cursor-pointer items-center gap-[8px]">
+                                <input
+                                  type="checkbox"
+                                  checked={incluida}
+                                  onChange={() => setVincendas((v) => (v.includes(f.faturaId) ? v.filter((id) => id !== f.faturaId) : [...v, f.faturaId]))}
+                                />
+                                <span>Fatura {f.numero ?? '—'}{f.dataVencimento ? ` · vence ${new Date(f.dataVencimento).toLocaleDateString('pt-BR')}` : ''} · a vencer</span>
+                              </label>
+                              <span className="tabular-nums">{formatCurrency(f.valorAtualizado)}</span>
+                            </div>
+                            <div className="mt-[4px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+                              {f.itens.map((it) => `${it.display} (${it.contratoNumero})`).join(', ')}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div className="flex items-center justify-between rounded-[10px] px-[12px] py-[10px] text-[13px] font-bold" style={{ background: '#fdeceb', color: '#c0392b' }}>
-                    <span>Total selecionado ({selecionadas.length} de {faturas.length} fatura(s))</span>
+                    <span>Total selecionado ({selecionadas.length} fatura(s){vincendasSel.length > 0 ? `, ${vincendasSel.length} a vencer` : ''})</span>
                     <span className="tabular-nums">{formatCurrency(total)}</span>
                   </div>
                   {encargosSelecionados > 0 && (
@@ -238,7 +274,7 @@ export function RenegociacaoWizard({
               <div className="rounded-[10px] p-[14px]" style={{ background: 'var(--surface-input)' }}>
                 <div className="mb-[8px] font-bold">Resumo do acordo</div>
                 <div className="flex flex-col gap-[4px] text-[12.5px]">
-                  <div className="flex justify-between"><span>Faturas selecionadas</span><b>{selecionadas.length} de {faturas.length}{Object.keys(exclusoes).length > 0 ? ` (${Object.keys(exclusoes).length} excluída(s) com justificativa)` : ''}</b></div>
+                  <div className="flex justify-between"><span>Faturas selecionadas</span><b>{selecionadas.length}{vincendasSel.length > 0 ? ` (${vincendasSel.length} a vencer incluída(s))` : ''}{Object.keys(exclusoes).length > 0 ? ` (${Object.keys(exclusoes).length} excluída(s) com justificativa)` : ''}</b></div>
                   <div className="flex justify-between"><span>Total renegociado (com mora)</span><b className="tabular-nums">{formatCurrency(total)}</b></div>
                   <div className="flex justify-between"><span>Entrada (aceite do cliente)</span><b className="tabular-nums">{formatCurrency(entradaCent)}</b></div>
                   <div className="flex justify-between"><span>Plano novo</span><b className="tabular-nums">{nParcelas}× {formatCurrency(valorParcela)} ({p?.periodicidade ?? 'semanal'} · herdada)</b></div>

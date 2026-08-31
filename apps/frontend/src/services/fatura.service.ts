@@ -26,6 +26,19 @@ export interface FaturaDetalhe extends Fatura {
   titular: { id: string; nome: string };
 }
 
+// Lançamento avulso da conta (doc 02 §4-A.3, revisão 30/08): entrada de contrato
+// (dia zero) e entrada de acordo (efetivação) — dinheiro fora do ciclo de fatura.
+export interface LancamentoConta {
+  id: string;
+  tipo: 'entrada_contrato' | 'entrada_acordo';
+  descricao: string;
+  valor: number;
+  dataPagamento: string;
+  contratoId: string | null;
+  contratoNumero: string | null;
+  acordoId: string | null;
+}
+
 export interface PaginaFaturas {
   total: number;
   page: number;
@@ -36,6 +49,10 @@ export interface PaginaFaturas {
 export const faturaService = {
   async daConta(contaId: string, page = 1, limit = 8): Promise<PaginaFaturas> {
     const { data } = await api.get(`/api/v1/contas/${contaId}/faturas`, { params: { page, limit } });
+    return data;
+  },
+  async lancamentos(contaId: string): Promise<LancamentoConta[]> {
+    const { data } = await api.get(`/api/v1/contas/${contaId}/lancamentos`);
     return data;
   },
   async detalhe(faturaId: string): Promise<FaturaDetalhe> {

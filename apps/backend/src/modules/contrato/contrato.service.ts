@@ -279,7 +279,8 @@ export class ContratoService {
       }),
     });
 
-    let seqFatura = await tx.fatura.count({ where: { contaId: p.contaId } });
+    // max+1 (não count+1): numeração sobrevive a remoções (doc 02, 2026-08-30).
+    let seqFatura = (await tx.fatura.aggregate({ where: { contaId: p.contaId }, _max: { numero: true } }))._max.numero ?? 0;
     const faturasDoContrato: { id: string; valorNominal: number; venc: Date }[] = [];
     const credor = p.credorItem ?? 'AZIT';
     const sufixo = p.descricaoItem ? ` · ${p.descricaoItem}` : '';

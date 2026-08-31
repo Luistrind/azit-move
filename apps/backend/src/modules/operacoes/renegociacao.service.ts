@@ -14,6 +14,7 @@ import {
   valorPorExtenso,
   numeroPorExtenso,
   dataPorExtenso,
+  inicioHojeBrasilUTC,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
@@ -34,6 +35,10 @@ export interface CriarRenegociacaoDto {
   dataPagamentoEntrada?: string; // 'YYYY-MM-DD' — data-limite dura da entrada
   // Seleção por FATURA (doc Acordo de Pagamento V1.0 RAP006).
   faturasExcluidas?: { faturaId: string; justificativa: string }[];
+  // Faturas VINCENDAS incluídas por opção do operador (decisão Luís 2026-08-30):
+  // divergência consciente com o RAP003 (somente vencidas) — aumenta a entrada
+  // mínima e antecipa a segurança do pagamento. Opt-in, nunca automático.
+  faturasVincendasIncluidas?: string[];
 }
 
 // Renegociação (Acordo) CONTA-CÊNTRICA — Doc 2 §7.7 (Decisão 2026-07-03): a fatura
@@ -65,9 +70,11 @@ export class RenegociacaoService implements OnModuleInit {
   }
 
   // Seleção por fatura aplicada ao elegível (RAP005/006) — comum a simular/criar.
+  // Vincendas incluídas (opt-in, 2026-08-30) entram sem mora, pelo nominal.
   private aplicarSelecao(
     eleg: Awaited<ReturnType<RenegociacaoService['elegiveisConta']>>,
     exclusoes: { faturaId: string; justificativa: string }[],
+    vincendasIncluidas: string[] = [],
   ) {
     const idsElegiveis = new Set(eleg.faturas.map((f) => f.faturaId));
     for (const ex of exclusoes) {
@@ -78,14 +85,25 @@ export class RenegociacaoService implements OnModuleInit {
         });
       }
     }
+    const idsProximas = new Set(eleg.faturasProximas.map((f) => f.faturaId));
+    for (const id of vincendasIncluidas) {
+      if (!idsProximas.has(id)) {
+        throw new UnprocessableEntityException({
+          erro: 'fatura_invalida',
+          mensagem: 'Uma das faturas vincendas incluídas não está entre as próximas faturas da conta',
+        });
+      }
+    }
     const excluidas = new Set(exclusoes.map((e) => e.faturaId));
-    if (excluidas.size > 0 && excluidas.size >= eleg.faturas.length) {
+    const vencidasSel = eleg.faturas.filter((f) => !excluidas.has(f.faturaId));
+    const vincendasSel = eleg.faturasProximas.filter((f) => vincendasIncluidas.includes(f.faturaId));
+    const faturasSelecionadas = [...vencidasSel, ...vincendasSel];
+    if (faturasSelecionadas.length === 0) {
       throw new UnprocessableEntityException({
         erro: 'selecao_vazia',
         mensagem: 'Todas as faturas foram excluídas — não há o que renegociar',
       });
     }
-    const faturasSelecionadas = eleg.faturas.filter((f) => !excluidas.has(f.faturaId));
     const valorTotal = faturasSelecionadas.reduce((s, f) => s + f.valorAtualizado, 0);
     return { faturasSelecionadas, valorTotal };
   }
@@ -95,10 +113,10 @@ export class RenegociacaoService implements OnModuleInit {
   // mínima + frequência herdada. Em RASCUNHO: placeholder (divisão simples).
   async simularConta(
     contaId: string,
-    dto: { valorEntrada: number; numeroParcelas: number; faturasExcluidas?: { faturaId: string; justificativa: string }[] },
+    dto: { valorEntrada: number; numeroParcelas: number; faturasExcluidas?: { faturaId: string; justificativa: string }[]; faturasVincendasIncluidas?: string[] },
   ) {
     const eleg = await this.elegiveisConta(contaId);
-    const { valorTotal } = this.aplicarSelecao(eleg, dto.faturasExcluidas ?? []);
+    const { valorTotal } = this.aplicarSelecao(eleg, dto.faturasExcluidas ?? [], dto.faturasVincendasIncluidas ?? []);
     const periodicidade = await this.frequenciaHerdada(contaId);
     const params = await this.catalogoFonte.acordoPagamento();
     if (!params) {
@@ -158,7 +176,7 @@ export class RenegociacaoService implements OnModuleInit {
   }
 
   private hojeUTC(): Date {
-    return new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
+    return inicioHojeBrasilUTC(); // fuso do negócio (correção 30/08)
   }
 
   // Diagnóstico do atraso da CONTA: parcelas vencidas não cobertas, por contrato.
@@ -262,7 +280,50 @@ export class RenegociacaoService implements OnModuleInit {
       },
     });
 
-    return { contaId, titularId: conta.titularId, contratos, faturas, valorTotal, valorNominalTotal, encargosMoraTotal: valorTotal - valorNominalTotal, faturasVencidas };
+    // Faturas VINCENDAS próximas (decisão Luís 2026-08-30): o operador PODE
+    // incluí-las no acordo (opt-in na tela, desmarcadas por padrão) — janela de
+    // 35 dias cobre "a próxima fatura" em qualquer periodicidade. Entram pelo
+    // nominal, sem mora. Divergência consciente com o RAP003 do doc V1.0
+    // (somente vencidas), registrada no doc 02 §7.7.
+    const contratoIds = conta.contratosCredito.map((c) => c.id);
+    const proximas = await this.prisma.db.fatura.findMany({
+      where: {
+        contaId,
+        status: { in: ['ABERTA', 'FECHADA'] },
+        dataVencimento: { gte: hoje, lt: new Date(hoje.getTime() + 35 * DIA_MS) },
+        acordoId: null,
+      },
+      orderBy: { dataVencimento: 'asc' },
+      select: {
+        id: true,
+        numero: true,
+        dataVencimento: true,
+        parcelas: {
+          where: { status: null, acordoId: null, contratoId: { in: contratoIds } },
+          select: { display: true, valorNominal: true, contrato: { select: { numero: true } } },
+        },
+      },
+    });
+    const faturasProximas = proximas
+      .filter((f) => f.parcelas.length > 0)
+      .map((f) => {
+        const nominal = f.parcelas.reduce((s, p) => s + cent(p.valorNominal), 0);
+        return {
+          faturaId: f.id,
+          numero: f.numero as number | null,
+          dataVencimento: f.dataVencimento.toISOString() as string | null,
+          valorNominal: nominal,
+          encargosMora: 0,
+          valorAtualizado: nominal,
+          itens: f.parcelas.map((p) => ({
+            display: p.display,
+            contratoNumero: p.contrato.numero,
+            valorAtualizado: cent(p.valorNominal),
+          })),
+        };
+      });
+
+    return { contaId, titularId: conta.titularId, contratos, faturas, faturasProximas, valorTotal, valorNominalTotal, encargosMoraTotal: valorTotal - valorNominalTotal, faturasVencidas };
   }
 
   // Propõe o acordo da conta → solicitação no motor de aprovação (sem gate de alçada
@@ -274,7 +335,8 @@ export class RenegociacaoService implements OnModuleInit {
     // padrão; excluir exige justificativa auditável. A seleção fica congelada
     // no snapshot e vale na efetivação.
     const exclusoes = dto.faturasExcluidas ?? [];
-    const { faturasSelecionadas, valorTotal } = this.aplicarSelecao(eleg, exclusoes);
+    const vincendasIncluidas = dto.faturasVincendasIncluidas ?? [];
+    const { faturasSelecionadas, valorTotal } = this.aplicarSelecao(eleg, exclusoes, vincendasIncluidas);
 
     if (valorTotal <= 0) {
       throw new UnprocessableEntityException({
@@ -294,6 +356,7 @@ export class RenegociacaoService implements OnModuleInit {
       valorEntrada: dto.valorEntrada,
       numeroParcelas: dto.numeroParcelasNovas,
       faturasExcluidas: exclusoes,
+      faturasVincendasIncluidas: vincendasIncluidas,
     });
     const freqApi = previa.periodicidade;
     let valorParcela: number;
@@ -339,6 +402,7 @@ export class RenegociacaoService implements OnModuleInit {
       dataBase: new Date().toISOString(),
       faturasSelecionadas: faturasSelecionadas.map((f) => f.faturaId),
       exclusoes,
+      vincendasIncluidas,
       totais: {
         valorNominal: faturasSelecionadas.reduce((s, f) => s + f.valorNominal, 0),
         encargosMora: faturasSelecionadas.reduce((s, f) => s + f.encargosMora, 0),
@@ -430,7 +494,13 @@ export class RenegociacaoService implements OnModuleInit {
       .join('\n');
     const passo = p.periodicidade === 'mensal' ? 30 : p.periodicidade === 'quinzenal' ? 14 : 7;
     const proximaFatura = await this.prisma.db.fatura.findFirst({
-      where: { contaId: p.contaId, status: 'ABERTA', dataVencimento: { gt: new Date() } },
+      // Faturas cobertas pelo acordo (inclusive vincendas incluídas) não recebem o plano.
+      where: {
+        contaId: p.contaId,
+        status: 'ABERTA',
+        dataVencimento: { gt: new Date() },
+        id: { notIn: p.faturas.map((f) => f.faturaId) },
+      },
       orderBy: { dataVencimento: 'asc' },
       select: { dataVencimento: true },
     });
@@ -571,12 +641,13 @@ export class RenegociacaoService implements OnModuleInit {
 
     const hoje = this.hojeUTC();
     // Seleção por fatura congelada no snapshot (RAP005/034): quando existir, a
-    // cobertura fica restrita às faturas selecionadas; acordos antigos (sem
-    // snapshot) mantêm o comportamento de cobrir todas as vencidas.
+    // SELEÇÃO define o escopo da cobertura — inclusive faturas vincendas
+    // incluídas por opção do operador (2026-08-30), por isso sem trava de
+    // vencimento. Acordos antigos (sem snapshot) cobrem todas as vencidas.
     const snap = acordo.snapshotJson as null | { faturasSelecionadas?: string[] };
-    const filtroFatura = snap?.faturasSelecionadas?.length
+    const filtroCobertura: Prisma.ParcelaWhereInput = snap?.faturasSelecionadas?.length
       ? { faturaId: { in: snap.faturasSelecionadas } }
-      : {};
+      : { dataVencimento: { lt: hoje } };
     // Parcelas vencidas não cobertas, agrupadas por contrato da conta.
     const contratos = await this.prisma.db.contratoCredito.findMany({
       where: { contaId: acordo.contaId },
@@ -590,7 +661,7 @@ export class RenegociacaoService implements OnModuleInit {
     }[] = [];
     for (const c of contratos) {
       const parcelas = await this.prisma.db.parcela.findMany({
-        where: { contratoId: c.id, status: null, dataVencimento: { lt: hoje }, acordoId: null, ...filtroFatura },
+        where: { contratoId: c.id, status: null, acordoId: null, ...filtroCobertura },
         select: { valorNominal: true, faturaId: true },
       });
       if (parcelas.length === 0) continue;
@@ -621,7 +692,13 @@ export class RenegociacaoService implements OnModuleInit {
     // além do fim do cronograma original, CRIA faturas novas no mesmo passo
     // (extensão do calendário — as faturas extras carregam só o acordo).
     const proximaFatura = await this.prisma.db.fatura.findFirst({
-      where: { contaId: acordo.contaId, status: 'ABERTA', dataVencimento: { gt: dataEfetivacao } },
+      // Fatura coberta pelo acordo vira RENEGOCIADA — não pode receber o plano.
+      where: {
+        contaId: acordo.contaId,
+        status: 'ABERTA',
+        dataVencimento: { gt: dataEfetivacao },
+        id: { notIn: snap?.faturasSelecionadas ?? [] },
+      },
       orderBy: { dataVencimento: 'asc' },
       select: { dataVencimento: true },
     });
@@ -656,7 +733,7 @@ export class RenegociacaoService implements OnModuleInit {
       // 1. Vínculo de acordo nas parcelas cobertas + faturas antigas RENEGOCIADAS.
       for (const c of porContrato) {
         await tx.parcela.updateMany({
-          where: { contratoId: c.contratoId, status: null, dataVencimento: { lt: hoje }, acordoId: null, ...filtroFatura },
+          where: { contratoId: c.contratoId, status: null, acordoId: null, ...filtroCobertura },
           data: { acordoId: acordo.id },
         });
       }
@@ -719,7 +796,8 @@ export class RenegociacaoService implements OnModuleInit {
       // 3. Consolidação (Doc 2 §7.7 + reunião 04/07): cada grupo de parcelas entra na
       //    PRÓXIMA fatura ABERTA da conta (venc >= parcela, janela 35d) — renegociação
       //    NÃO gera fatura paralela; só cria quando não há ciclo aberto à frente.
-      let seqFatura = await tx.fatura.count({ where: { contaId: acordo.contaId } });
+      // max+1 (não count+1): numeração sobrevive a remoções (doc 02, 2026-08-30).
+      let seqFatura = (await tx.fatura.aggregate({ where: { contaId: acordo.contaId }, _max: { numero: true } }))._max.numero ?? 0;
       const vencimentos = [...parcelasPorVencimento.keys()].sort((a, b) => a - b);
       for (const venc of vencimentos) {
         const grupo = parcelasPorVencimento.get(venc)!;
@@ -769,13 +847,39 @@ export class RenegociacaoService implements OnModuleInit {
         }
       }
 
-      // 4. Acordo -> ATIVO. Contratos NÃO são liquidados (recuperação branda); o
+      // 4. Entrada do acordo materializa como LANÇAMENTO da conta (doc 02
+      //    §4-A.3, revisão 2026-08-30) — reflete no histórico e no valorPago.
+      if (cent(acordo.valorEntrada) > 0) {
+        await tx.lancamentoConta.create({
+          data: {
+            contaId: acordo.contaId,
+            acordoId: acordo.id,
+            tipo: 'ENTRADA_ACORDO',
+            descricao: 'Entrada do acordo de renegociação',
+            valor: reais(cent(acordo.valorEntrada)),
+            dataPagamento: dataEfetivacao,
+            asaasChargeId: (await tx.acordo.findFirst({ where: { id: acordo.id }, select: { asaasChargeIdEntrada: true } }))?.asaasChargeIdEntrada,
+          },
+        });
+      }
+
+      // 5. Acordo -> ATIVO. Contratos NÃO são liquidados (recuperação branda); o
       //    cliente segue inadimplente (contábil) até cumprir o acordo (Doc 2 §7.7).
       await tx.acordo.update({
         where: { id: acordo.id },
         data: { status: 'ATIVO', dataEfetivacao },
       });
     });
+
+    // Cobranças Asaas das faturas cobertas saem do ar (a dívida agora vive no
+    // acordo) — vale para vencidas e para vincendas incluídas (2026-08-30).
+    const cobertasComCobranca = await this.prisma.db.fatura.findMany({
+      where: { acordoId: acordo.id, status: 'RENEGOCIADA', asaasChargeId: { not: null } },
+      select: { asaasChargeId: true },
+    });
+    for (const f of cobertasComCobranca) {
+      if (f.asaasChargeId) await this.asaas.removerCobranca(f.asaasChargeId);
+    }
 
     this.logger.log(
       `Acordo ${acordoId} efetivado: ${planos.length} contrato(s), ${acordo.numeroParcelasNovas} parcela(s) nova(s)`,

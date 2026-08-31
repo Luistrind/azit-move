@@ -666,9 +666,10 @@ export class FormalizacaoService {
     return { contratoId: contrato.id, numero: contrato.numero, status: 'ativo', cronogramaGerado: true, contratosAtivados: pacote.length };
   }
 
-  // Materialização da entrada paga (doc 02 §4-A.3, 2026-08-16): o dinheiro que
-  // entrou no Asaas vira registro INTERNO — Regra 1. Idempotente (roda no dia
-  // zero e em reprocessamentos): sem entrada ou já materializada, não faz nada.
+  // Materialização da entrada paga (doc 02 §4-A.3, revisão 2026-08-30): o
+  // dinheiro que entrou no Asaas vira LANÇAMENTO da conta (não fatura sintética
+  // — solução rejeitada em homologação). Idempotente: sem entrada ou já
+  // materializada, não faz nada.
   private async materializarEntradaPaga(
     contrato: {
       id: string; numero: string; contaId: string;
@@ -685,29 +686,15 @@ export class FormalizacaoService {
     const dataPagamento = paymentDate ? new Date(`${paymentDate}T12:00:00-03:00`) : new Date();
 
     await this.prisma.db.$transaction(async (tx) => {
-      const seq = await tx.fatura.count({ where: { contaId: contrato.contaId } });
-      const fatura = await tx.fatura.create({
+      await tx.lancamentoConta.create({
         data: {
           contaId: contrato.contaId,
-          numero: seq + 1,
-          periodoReferencia: dataPagamento,
-          dataFechamento: dataPagamento,
-          dataVencimento: dataPagamento,
-          dataPagamento,
-          valorTotal: centavosParaReaisString(valorAVista),
-          valorPago: centavosParaReaisString(valorAVista),
-          status: 'PAGA',
-          asaasChargeId: contrato.entradaCobrancaAsaasId,
-        },
-        select: { id: true },
-      });
-      await tx.itemFatura.create({
-        data: {
-          faturaId: fatura.id,
-          tipo: 'ENTRADA',
+          contratoId: contrato.id,
+          tipo: 'ENTRADA_CONTRATO',
           descricao: `Entrada do contrato ${contrato.numero}${contrato.entradaParcelada ? ' (à vista 60%)' : ''}`,
           valor: centavosParaReaisString(valorAVista),
-          credor: 'AZIT',
+          dataPagamento,
+          asaasChargeId: contrato.entradaCobrancaAsaasId,
         },
       });
       await tx.contratoCredito.update({

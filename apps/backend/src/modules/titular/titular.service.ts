@@ -176,10 +176,12 @@ export class TitularService {
     const ATIVOS = ['ATIVO', 'INADIMPLENTE', 'BLOQUEADO', 'SUSPENSO', 'EM_RECUPERACAO_VEICULO'] as const;
     const idsAtivos = contratos.filter((c) => (ATIVOS as readonly string[]).includes(c.status)).map((c) => c.id);
     const hoje = new Date();
-    const [pago, saldo, atraso, qAcordos, qNovacoes] = await Promise.all([
-      // Total recebido do cliente = soma do valorPago das faturas (inclui principal,
-      // encargos, intermediárias e serviços recorrentes — visão fiel ao caixa).
+    const [pago, lancado, saldo, atraso, qAcordos, qNovacoes] = await Promise.all([
+      // Total recebido do cliente = faturas pagas (principal, encargos,
+      // intermediárias, serviços) + lançamentos avulsos (entradas de contrato e
+      // de acordo — doc 02 §4-A.3, revisão 2026-08-30). Visão fiel ao caixa.
       conta ? this.prisma.db.fatura.aggregate({ where: { contaId: conta.id }, _sum: { valorPago: true } }) : null,
+      conta ? this.prisma.db.lancamentoConta.aggregate({ where: { contaId: conta.id }, _sum: { valor: true } }) : null,
       idsAtivos.length ? this.prisma.db.parcela.aggregate({ where: { contratoId: { in: idsAtivos }, status: null, acordoId: null }, _sum: { valorNominal: true } }) : null,
       ids.length ? this.prisma.db.parcela.aggregate({ where: { contratoId: { in: ids }, status: null, acordoId: null, dataVencimento: { lt: hoje } }, _sum: { valorNominal: true } }) : null,
       // Acordo é CONTA-cêntrico (contratoId só no legado) — contar por contrato
@@ -191,10 +193,9 @@ export class TitularService {
     const valorEmContratoAtivo = contratos
       .filter((c) => (ATIVOS as readonly string[]).includes(c.status))
       .reduce((s, c) => s + cent(c.valorTotal), 0);
-    // Entrada paga: desde 16/08 (doc 02 §4-A.3) ela MATERIALIZA como fatura PAGA
-    // e já entra na soma acima — somar por fora aqui dobrava o KPI (caso real:
-    // R$ 7.980 para entrada de R$ 3.990). A heurística fica SÓ para contratos
-    // antigos ativados antes da materialização (sem entradaPagaEm).
+    // Entrada paga: materializa como LANÇAMENTO da conta (revisão 30/08) e já
+    // entra na soma acima — somar por fora dobraria o KPI. A heurística fica SÓ
+    // para contratos antigos ativados antes da materialização (sem entradaPagaEm).
     const entradaPaga = contratos
       .filter((c) => c.cronogramaGeradoEm && !c.entradaPagaEm)
       .reduce((s, c) => {
@@ -210,7 +211,7 @@ export class TitularService {
       documentos,
       resumoFinanceiro: {
         valorEmContratoAtivo,
-        valorPago: cent(pago?._sum.valorPago) + entradaPaga,
+        valorPago: cent(pago?._sum.valorPago) + cent(lancado?._sum.valor) + entradaPaga,
         saldoDevedor: cent(saldo?._sum.valorNominal),
         valorEmAtraso: cent(atraso?._sum.valorNominal),
         quantidadeRenegociacoes: qAcordos + qNovacoes,

@@ -1,6 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { AreaSistema, RoleUsuario, StatusAnalise } from '@prisma/client';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
+import { inicioHojeBrasilUTC } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 
 // Tela Início (proposta UX §4.3): fila de trabalho do papel logado.
@@ -130,8 +131,7 @@ export class InicioController {
     }
 
     if (areas.has(AreaSistema.CARTEIRA_COBRANCA)) {
-      const hoje = new Date();
-      hoje.setHours(0, 0, 0, 0);
+      const hoje = inicioHojeBrasilUTC(); // fuso do negócio (correção 30/08)
       const vencidas = await this.prisma.db.fatura.findMany({
         where: {
           status: { in: ['ABERTA', 'FECHADA', 'VENCIDA'] },

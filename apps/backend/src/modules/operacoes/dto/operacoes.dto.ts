@@ -16,6 +16,8 @@ export const criarRenegociacaoSchema = z.object({
   faturasExcluidas: z
     .array(z.object({ faturaId: z.string().min(1), justificativa: z.string().trim().min(10, 'Justificativa da exclusão precisa de pelo menos 10 caracteres') }))
     .optional(),
+  // Faturas VINCENDAS incluídas por opção do operador (decisão Luís 2026-08-30).
+  faturasVincendasIncluidas: z.array(z.string().min(1)).optional(),
 });
 export type CriarRenegociacaoBody = z.infer<typeof criarRenegociacaoSchema>;
 

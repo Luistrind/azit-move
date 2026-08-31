@@ -11,6 +11,7 @@ import {
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { RoleUsuario } from '@prisma/client';
+import { dataHojeBrasil } from '@azit/utils';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { PrismaService } from '../../database/prisma.service';
@@ -40,6 +41,12 @@ export class CobrancaController {
     @Query('limit') limit?: string,
   ) {
     return this.fatura.faturasDaConta(contaId, Number(page) || 1, Number(limit) || 8);
+  }
+
+  // Lançamentos avulsos da conta (entradas de contrato/acordo — doc 02 §4-A.3, 30/08).
+  @Get('contas/:contaId/lancamentos')
+  lancamentos(@Param('contaId') contaId: string) {
+    return this.fatura.lancamentosDaConta(contaId);
   }
 
   // Detalhe de uma fatura (composição + datas + valores).
@@ -75,7 +82,7 @@ export class CobrancaController {
     }
     await this.filaRecebido.add('conciliar', {
       faturaId: fatura.id,
-      paymentDate: new Date().toISOString().slice(0, 10),
+      paymentDate: dataHojeBrasil(),
       dueDate: fatura.dataVencimento.toISOString().slice(0, 10),
       valor: 0,
     });
@@ -111,7 +118,7 @@ export class CobrancaController {
     }
     await this.filaRecebido.add('conciliar', {
       faturaId: parcela.faturaId,
-      paymentDate: new Date().toISOString().slice(0, 10),
+      paymentDate: dataHojeBrasil(),
       dueDate: parcela.dataVencimento.toISOString().slice(0, 10),
       valor: 0,
     });

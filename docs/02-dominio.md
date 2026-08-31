@@ -199,6 +199,22 @@ Uma opção concreta apresentada na simulação. **Três origens**:
 > de capital no ativo** (a falha silenciosa no dia zero vira erro claro ANTES do dinheiro) e
 > **falha de job de ativação vira log + notificação no sino** (nunca mais morrer muda no Redis).
 >
+> **Revisão 2026-08-30 (Luís, homologação) — entrada NÃO é fatura: é LANÇAMENTO da conta.**
+> A materialização como "fatura sintética PAGA" (item b acima) foi **rejeitada em homologação**:
+> a entrada aparecia como uma fatura estranha no histórico (numeração deslocada, sem parcelas,
+> sem ciclo) e a entrada do ACORDO não aparecia em lugar nenhum. Modelo novo: **`LancamentoConta`**
+> — registro financeiro próprio da conta para dinheiro que entra **fora do ciclo de fatura**,
+> com tipos `ENTRADA_CONTRATO` e `ENTRADA_ACORDO` (valor, data de pagamento, `asaasChargeId`,
+> vínculo com contrato/acordo). Consequências: (a) a fatura volta a ser SÓ o ciclo de cobrança;
+> (b) o histórico da ficha do titular ganha os lançamentos ao lado das faturas ("relacionamento
+> Azit" completo); (c) o `valorPago` do resumo soma faturas pagas + lançamentos; (d) o extrato
+> do contrato segue com o evento "Entrada paga" (campos do contrato); (e) a **entrada do acordo**
+> passa a materializar como lançamento na efetivação (antes só mudava status). As faturas
+> sintéticas existentes são **convertidas em lançamentos** pela migração (mesmo valor, data e
+> cobrança) e removidas da régua de faturas. A numeração de fatura passa a ser `max(numero)+1`
+> (era `count+1`, frágil a remoções). Itens (a)–(d) da decisão 2026-08-16 seguem valendo no
+> que não conflita (gates de origem de capital e notificação de falha de job intactos).
+
 > **Contrato SEM entrada é caso válido** (decisão 2026-08-16, Luís): incomum para cliente novo,
 > mas real em **upgrade de veículo** de cliente existente e no **Reembolso Parcelado**. Com
 > `valorEntrada = 0`, o passo "gerar cobrança da entrada" **ativa direto**: sem cobrança no
@@ -862,6 +878,18 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > 7. **Chave de virada do motor financeiro**: o produto `acordo_pagamento` do Catálogo em
 >    **ATIVO** liga o cálculo novo (TP 9,99% + TR 4,99% Price + entrada mínima 30% + frequência
 >    herdada); em RASCUNHO, vale o placeholder atual (divisão simples). Mesmo padrão do RP.
+
+> **Decisão 2026-08-30 (Luís, homologação) — faturas VINCENDAS podem entrar no acordo
+> (opt-in).** Divergência CONSCIENTE com o RAP003 do doc do Vicente (que restringe a faturas
+> vencidas): o operador **pode** incluir as próximas faturas a vencer (janela de 35 dias — "a
+> próxima" em qualquer periodicidade) na negociação. Racional do Luís: a fatura fecha D-5 e o
+> cliente em renegociação dificilmente pagará a que está prestes a vencer; incluí-la **aumenta
+> a entrada mínima** (30% sobre um saldo maior) e **antecipa a segurança** do pagamento.
+> Regras: entram pelo valor **nominal, sem mora**; são **desmarcadas por padrão** na tela
+> (nunca automático); a seleção congela no snapshot e define o escopo da cobertura na
+> efetivação (a trava "somente vencidas" sai da efetivação — o escopo é a seleção aprovada);
+> a cobrança Asaas de fatura coberta pelo acordo (vencida ou vincenda) é **removida** na
+> efetivação — a dívida passa a viver no acordo, sem cobrança dupla.
 
 ### 7.7b Novação (recuperação radical)
 - Mecanismo distinto do Acordo: **liquida o ContratoCredito inteiro** e gera um **ContratoCredito novo** completo

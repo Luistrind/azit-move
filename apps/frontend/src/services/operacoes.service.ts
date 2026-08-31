@@ -74,6 +74,8 @@ export interface ElegivelConta {
     parcelas: ParcelaElegivel[];
   }[];
   faturas: FaturaElegivel[];
+  // Faturas VINCENDAS próximas (35 dias) — o operador PODE incluí-las (opt-in, 30/08).
+  faturasProximas: FaturaElegivel[];
   valorTotal: number;
   valorNominalTotal: number;
   encargosMoraTotal: number;
@@ -104,7 +106,7 @@ export const operacoesService = {
   // Acordo de Pagamento está ATIVO; senão divisão simples provisória).
   async simularRenegociacaoConta(
     contaId: string,
-    body: { valorEntrada: number; numeroParcelasNovas: number; faturasExcluidas?: { faturaId: string; justificativa: string }[] },
+    body: { valorEntrada: number; numeroParcelasNovas: number; faturasExcluidas?: { faturaId: string; justificativa: string }[]; faturasVincendasIncluidas?: string[] },
   ): Promise<PreviaAcordo> {
     const { data } = await api.post(`/api/v1/contas/${contaId}/renegociacao/simular`, body);
     return data;
@@ -118,6 +120,7 @@ export const operacoesService = {
       periodicidade?: 'semanal' | 'quinzenal' | 'mensal';
       dataPagamentoEntrada?: string;
       faturasExcluidas?: { faturaId: string; justificativa: string }[];
+      faturasVincendasIncluidas?: string[];
     },
   ): Promise<{ id: string; status: string; valorTotalRenegociado: number; valorParcela: number; periodicidade: string; motor: string; excecoes: string[]; contratosAfetados: number }> {
     const { data } = await api.post(`/api/v1/contas/${contaId}/renegociacao`, body);

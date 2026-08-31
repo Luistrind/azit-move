@@ -8,7 +8,7 @@ import {
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { centavosParaReaisString } from '@azit/utils';
+import { centavosParaReaisString, inicioHojeBrasilUTC } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
@@ -47,7 +47,7 @@ export class ReajusteService implements OnModuleInit {
   }
 
   private hojeUTC(): Date {
-    return new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
+    return inicioHojeBrasilUTC();
   }
 
   // Gera o evento de reajuste (PENDENTE) + solicitação de aprovação.

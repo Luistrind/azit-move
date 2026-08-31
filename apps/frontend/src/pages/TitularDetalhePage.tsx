@@ -26,6 +26,7 @@ const SITUACAO: Record<string, { bg: string; fg: string; label: string }> = {
   vencida: { bg: '#fdeceb', fg: '#c0392b', label: 'Vencida' },
   paga: { bg: '#eafaf1', fg: '#1f9d5b', label: 'Paga' },
   paga_em_atraso: { bg: '#eafaf1', fg: '#1f9d5b', label: 'Paga (em atraso)' },
+  renegociada: { bg: '#eef4ff', fg: '#2456c7', label: 'Renegociada' },
 };
 
 const DOC_LABEL: Record<string, string> = {
@@ -155,6 +156,7 @@ export function TitularDetalhePage() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['titular-detalhe', id] }),
       queryClient.invalidateQueries({ queryKey: ['titular-faturas'] }),
+      queryClient.invalidateQueries({ queryKey: ['titular-lancamentos'] }),
       queryClient.invalidateQueries({ queryKey: ['fatura-detalhe'] }),
     ]);
   }
@@ -178,6 +180,12 @@ export function TitularDetalhePage() {
   const faturas = useQuery({
     queryKey: ['titular-faturas', contaId, pagina],
     queryFn: () => faturaService.daConta(contaId!, pagina, PAGE),
+    enabled: !!contaId,
+  });
+  // Lançamentos avulsos da conta (entradas de contrato/acordo — doc 02 §4-A.3, 30/08).
+  const lancamentos = useQuery({
+    queryKey: ['titular-lancamentos', contaId],
+    queryFn: () => faturaService.lancamentos(contaId!),
     enabled: !!contaId,
   });
   const faturaDet = useQuery({
@@ -345,6 +353,29 @@ export function TitularDetalhePage() {
         )}
       </div>
 
+      {/* Bloco 3½ — Entradas e lançamentos avulsos (doc 02 §4-A.3, revisão 30/08):
+          dinheiro que entra fora do ciclo de fatura — entrada do contrato (dia
+          zero) e entrada do acordo. Não é fatura; é lançamento da conta. */}
+      {(lancamentos.data?.length ?? 0) > 0 && (
+        <div className="rounded-card p-[18px]" style={card}>
+          <div className="mb-[10px] font-display text-[13px] font-bold">Entradas e lançamentos ({lancamentos.data!.length})</div>
+          <div className="flex flex-col">
+            {lancamentos.data!.map((l) => (
+              <div key={l.id} className="flex items-center justify-between py-[8px] text-[12.5px]" style={{ borderBottom: '1px solid var(--border-light)' }}>
+                <span>
+                  <span className="mr-[8px] rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: '#e8f7ef', color: '#1f9d5b' }}>
+                    {l.tipo === 'entrada_contrato' ? 'Entrada de contrato' : 'Entrada de acordo'}
+                  </span>
+                  <span style={{ color: 'var(--text-body)' }}>{l.descricao}</span>
+                  <span style={{ color: 'var(--text-muted)' }}> · pago em {fmtData(l.dataPagamento)}</span>
+                </span>
+                <span className="font-bold tabular-nums">{formatCurrency(l.valor)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Bloco 4 — Histórico de faturas (paginado) */}
       <div className="rounded-card p-[18px]" style={card}>
         <div className="mb-[12px] flex items-center justify-between">
@@ -375,9 +406,13 @@ export function TitularDetalhePage() {
             <tbody>
               {faturas.data!.data.map((f) => {
                 const s = SITUACAO[f.situacao] ?? { bg: '#eef2f7', fg: '#5b6b7f', label: f.situacao };
+                // Visibilidade da renegociação (30/08): a última parcela do acordo
+                // pode cair como resíduo numa fatura menor — o selo aponta onde o
+                // acordo está, e o detalhe discrimina cada item.
+                const temAcordo = f.itens.some((it) => it.descricao.startsWith('Renegociação'));
                 return (
                   <tr key={f.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                    <td className="py-[9px] font-semibold">#{f.numero}</td>
+                    <td className="py-[9px] font-semibold">#{f.numero}{temAcordo && <span className="ml-[6px] rounded-[6px] px-[6px] py-[1px] text-[10.5px] font-semibold" style={{ background: '#eef4ff', color: '#2456c7' }}>inclui acordo</span>}</td>
                     <td className="py-[9px]" style={{ color: 'var(--text-body)' }}>{fmtData(f.dataVencimento)}</td>
                     <td className="py-[9px] text-right tabular-nums">{formatCurrency(f.valorTotal)}</td>
                     <td className="py-[9px]"><span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: s.bg, color: s.fg }}>{s.label}</span></td>
