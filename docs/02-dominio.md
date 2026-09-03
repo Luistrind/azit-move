@@ -901,6 +901,14 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > a cobrança Asaas de fatura coberta pelo acordo (vencida ou vincenda) é **removida** na
 > efetivação — a dívida passa a viver no acordo, sem cobrança dupla.
 
+> **Correção 2026-08-31 — o plano efetivado cobra PMT × N, com parcelas IGUAIS.** A efetivação
+> distribuía o saldo NOMINAL (SN − entrada) usando a parcela do Price: as primeiras parcelas
+> "comiam" o total e a última encolhia (caso real: 3× R$ 407,94 + R$ 162,00) — na prática a TR
+> (e a TP financiada) nunca era cobrada; simulação e termo mostravam encargos que não viravam
+> parcela. Agora o valor do ItemContratado ACORDO é **PMT × N** (encargos embutidos no item,
+> mesmo padrão do contrato de veículo): todas as parcelas iguais, resíduo só de centavos na
+> última, total idêntico ao termo de confissão. Acordos já efetivados não são reprocessados.
+
 ### 7.7b Novação (recuperação radical)
 - Mecanismo distinto do Acordo: **liquida o ContratoCredito inteiro** e gera um **ContratoCredito novo** completo
 - Usado quando os Acordos brandos não recuperam o cliente, antes da retomada do veículo

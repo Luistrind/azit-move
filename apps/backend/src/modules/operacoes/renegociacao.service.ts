@@ -682,7 +682,12 @@ export class RenegociacaoService implements OnModuleInit {
     if (porContrato.length === 0) return { resultado: 'nada_a_renegociar' };
 
     const totalAtraso = porContrato.reduce((s, c) => s + c.atraso, 0);
-    const saldoNovo = cent(acordo.valorTotalRenegociado) - cent(acordo.valorEntrada);
+    // O plano cobrado é o do MOTOR: PMT × N — encargos (TR, TP financiada)
+    // embutidos no valor do item, mesmo padrão do contrato de veículo. Antes
+    // distribuíamos o saldo NOMINAL (SN − E): as parcelas de PMT comiam o total
+    // antes da última, que encolhia, e a TR nunca era cobrada (bug 31/08 —
+    // caso real: 3× R$ 407,94 + R$ 162,00 em vez de 4× R$ 407,94).
+    const saldoNovo = cent(acordo.valorParcelaNova) * acordo.numeroParcelasNovas;
     const periodicidadeApi = (
       { SEMANAL: 'semanal', QUINZENAL: 'quinzenal', MENSAL: 'mensal' } as const
     )[acordo.periodicidade];
