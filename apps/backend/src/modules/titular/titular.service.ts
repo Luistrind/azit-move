@@ -102,7 +102,7 @@ export class TitularService {
         conta: {
           include: {
             contratosCredito: {
-              select: { id: true, numero: true, status: true, saldoDevedor: true, dataAssinatura: true },
+              select: { id: true, numero: true, status: true, saldoDevedor: true, cronogramaGeradoEm: true, dataAssinatura: true },
               orderBy: { createdAt: 'desc' },
             },
             contratosInvestimento: {
@@ -115,6 +115,13 @@ export class TitularService {
     });
     if (!titular) throw this.naoEncontrado();
     const conta = titular.conta;
+    // Saldo devedor ATUAL calculado (Regra 7, correção 03/09) — mesmo padrão do
+    // detalhe(): o campo gravado é o financiado de ORIGEM, congelado na criação.
+    const idsFicha = (conta?.contratosCredito ?? []).map((c) => c.id);
+    const saldosFicha = idsFicha.length
+      ? await this.prisma.db.parcela.groupBy({ by: ['contratoId'], where: { contratoId: { in: idsFicha }, status: null, acordoId: null }, _sum: { valorNominal: true } })
+      : [];
+    const saldoFichaPorContrato = new Map(saldosFicha.map((g) => [g.contratoId, g._sum.valorNominal]));
     return {
       titular: titularParaApi(titular),
       conta: conta
@@ -124,7 +131,9 @@ export class TitularService {
         id: c.id,
         numero: c.numero,
         status: StatusContratoCredito[c.status],
-        saldoDevedor: reaisParaCentavos(c.saldoDevedor.toString()),
+        saldoDevedor: c.cronogramaGeradoEm
+          ? reaisParaCentavos((saldoFichaPorContrato.get(c.id) ?? 0).toString())
+          : reaisParaCentavos(c.saldoDevedor.toString()),
         dataAssinatura: c.dataAssinatura.toISOString(),
       })),
       contratosInvestimento: (conta?.contratosInvestimento ?? []).map((i) => ({
@@ -176,13 +185,16 @@ export class TitularService {
     const ATIVOS = ['ATIVO', 'INADIMPLENTE', 'BLOQUEADO', 'SUSPENSO', 'EM_RECUPERACAO_VEICULO'] as const;
     const idsAtivos = contratos.filter((c) => (ATIVOS as readonly string[]).includes(c.status)).map((c) => c.id);
     const hoje = new Date();
-    const [pago, lancado, saldo, atraso, qAcordos, qNovacoes] = await Promise.all([
+    const [pago, lancado, saldo, saldosContrato, atraso, qAcordos, qNovacoes] = await Promise.all([
       // Total recebido do cliente = faturas pagas (principal, encargos,
       // intermediárias, serviços) + lançamentos avulsos (entradas de contrato e
       // de acordo — doc 02 §4-A.3, revisão 2026-08-30). Visão fiel ao caixa.
       conta ? this.prisma.db.fatura.aggregate({ where: { contaId: conta.id }, _sum: { valorPago: true } }) : null,
       conta ? this.prisma.db.lancamentoConta.aggregate({ where: { contaId: conta.id }, _sum: { valor: true } }) : null,
       idsAtivos.length ? this.prisma.db.parcela.aggregate({ where: { contratoId: { in: idsAtivos }, status: null, acordoId: null }, _sum: { valorNominal: true } }) : null,
+      // Saldo ATUAL por contrato (parcelas em aberto fora de acordo) — a tabela
+      // de contratos da ficha exibia o campo gravado na criação (congelado).
+      ids.length ? this.prisma.db.parcela.groupBy({ by: ['contratoId'], where: { contratoId: { in: ids }, status: null, acordoId: null }, _sum: { valorNominal: true } }) : [],
       ids.length ? this.prisma.db.parcela.aggregate({ where: { contratoId: { in: ids }, status: null, acordoId: null, dataVencimento: { lt: hoje } }, _sum: { valorNominal: true } }) : null,
       // Acordo é CONTA-cêntrico (contratoId só no legado) — contar por contrato
       // mostrava 0 com acordo ativo (caso real 17/08).
@@ -190,6 +202,7 @@ export class TitularService {
       ids.length ? this.prisma.db.novacao.count({ where: { contratoOrigemId: { in: ids } } }) : 0,
     ]);
     const cent = (d: Prisma.Decimal | null | undefined) => (d ? reaisParaCentavos(d.toString()) : 0);
+    const saldoPorContrato = new Map(saldosContrato.map((g) => [g.contratoId, g._sum.valorNominal]));
     const valorEmContratoAtivo = contratos
       .filter((c) => (ATIVOS as readonly string[]).includes(c.status))
       .reduce((s, c) => s + cent(c.valorTotal), 0);
@@ -223,7 +236,11 @@ export class TitularService {
         numero: c.numero,
         status: StatusContratoCredito[c.status],
         valorTotal: cent(c.valorTotal),
-        saldoDevedor: cent(c.saldoDevedor),
+        // Saldo devedor ATUAL calculado (Regra 7, correção 03/09): parcelas em
+        // aberto fora de acordo — o campo gravado é o valor financiado de
+        // ORIGEM e ficava congelado na tela. Contrato sem cronograma (pré-dia
+        // zero) mostra o previsto de origem.
+        saldoDevedor: c.cronogramaGeradoEm ? cent(saldoPorContrato.get(c.id)) : cent(c.saldoDevedor),
         dataAssinatura: c.dataAssinatura.toISOString(),
       })),
       contratosInvestimento: (conta?.contratosInvestimento ?? []).map((i) => ({

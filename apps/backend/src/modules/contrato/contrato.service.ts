@@ -531,7 +531,12 @@ export class ContratoService {
       dataAssinatura: c.dataAssinatura.toISOString(),
       valorTotal: this.cent(c.valorTotal),
       saldoDevedor: this.cent(c.saldoDevedor),
-      saldoDevedorAtual: this.cent(saldoPorId.get(c.id) ?? c.saldoDevedor),
+      // Com cronograma: soma das parcelas em aberto fora de acordo (0 se quitado).
+      // Sem cronograma (pré-dia zero): o previsto de origem (correção 03/09 — o
+      // fallback antigo ressuscitava o saldo de origem em contrato quitado).
+      saldoDevedorAtual: c.cronogramaGeradoEm
+        ? this.cent(saldoPorId.get(c.id) ?? null)
+        : this.cent(c.saldoDevedor),
       numeroParcelas: c.numeroParcelas,
       parcelasPagas: pagasPorId.get(c.id) ?? 0,
       titular: c.conta.titular,
@@ -620,7 +625,11 @@ export class ContratoService {
         // Entrada materializada (doc 02 §4-A.3): o valor pago do contrato inclui a
         // entrada — antes só somava parcelas e a entrada "sumia" (R$ 0,00 pago).
         valorPago: this.cent(pagoAgg._sum.valorPago) + this.cent(contrato.valorEntradaPago),
-        saldoDevedorAtual: this.cent(saldoAtual._sum.valorNominal),
+        // Mesmo fallback da listagem (correção 03/09): pré-dia zero (sem
+        // cronograma) mostra o previsto de origem, não R$ 0,00.
+        saldoDevedorAtual: contrato.cronogramaGeradoEm
+          ? this.cent(saldoAtual._sum.valorNominal)
+          : this.cent(contrato.saldoDevedor),
         proximaParcela: proxima
           ? {
               numero: proxima.numero,
