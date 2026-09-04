@@ -9,6 +9,7 @@ import { titularService } from '../services/titular.service';
 import { ativoService } from '../services/ativo.service';
 import { reaisParaCentavos } from '../lib/valor';
 import { mensagemErro } from '../lib/permissoes';
+import { hojeLocalISO } from '../lib/datas';
 
 // Capital e investimento (doc 02 §15, reunião 18/07): estrutura jurídica (SPE/fundo,
 // por rodada) é a dona do capital; investidor pessoa física nunca é dono direto do ativo.
@@ -212,7 +213,7 @@ function PainelEstrutura({ estrutura, onMudou }: { estrutura: EstruturaJuridica;
       await capitalService.vincularInvestidor(estrutura.id, {
         titularId,
         valorAportado: valorAporte.trim() ? reaisParaCentavos(valorAporte) : undefined,
-        dataAporte: new Date().toISOString().slice(0, 10),
+        dataAporte: hojeLocalISO(),
       });
       setBuscaInvestidor('');
       setValorAporte('');

@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
 import { titularService } from '../services/titular.service';
 import { faturaService } from '../services/fatura.service';
+import { diasAtrasoLocal } from '../lib/datas';
 import { originacaoService } from '../services/originacao.service';
 import { creditoService } from '../services/credito.service';
 import { catalogoService } from '../services/catalogo.service';
@@ -38,11 +39,8 @@ function fmtData(iso: string | null): string {
   return iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—';
 }
 
-function diasDeAtraso(iso: string): number {
-  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-  const v = new Date(iso); v.setHours(0, 0, 0, 0);
-  return Math.max(0, Math.round((hoje.getTime() - v.getTime()) / 86400000));
-}
+// A3 (04/09): parsear 'YYYY-MM-DD' com new Date caía em UTC e somava 1 dia de
+// atraso no fuso local — cálculo agora é por calendário (lib/datas).
 
 function Metrica({ label, valor, alerta }: { label: string; valor: string; alerta?: boolean }) {
   return (
@@ -466,7 +464,7 @@ export function TitularDetalhePage() {
             {import.meta.env.DEV && (() => {
               const fd = faturaDet.data;
               const paga = fd.status === 'paga' || fd.status === 'paga_em_atraso';
-              const atraso = diasDeAtraso(fd.dataVencimento);
+              const atraso = diasAtrasoLocal(fd.dataVencimento);
               return (
                 <div className="flex flex-col gap-[8px] border-t pt-[12px]" style={{ borderColor: 'var(--border)' }}>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, StatusAnalise, PapelTitular } from '@prisma/client';
 import {
+  adicionarDiasUteis,
   avaliarAnaliseCadastro,
   AnaliseInput,
   ParticipanteAnaliseInput,
@@ -675,7 +676,7 @@ export class AnaliseService implements OnModuleInit {
   ) {
     const a = await this.carregar(analiseId);
     this.garantirNaoFinal(a.status);
-    const prazo = new Date(Date.now() + a.parametroVersao.prazoComplementoDiasUteis * DIA_MS);
+    const prazo = adicionarDiasUteis(new Date(), a.parametroVersao.prazoComplementoDiasUteis); // dias ÚTEIS reais (A5, 04/09)
     await this.prisma.db.pendenciaAnalise.create({
       data: { analiseId, titularId: dto.titularId, codigo: dto.codigo, descricao: dto.descricao, prazo, origemStatus: a.status, criadaPor: usuarioId },
     });
@@ -812,7 +813,7 @@ export class AnaliseService implements OnModuleInit {
     if (!ressalvas.length) {
       throw new UnprocessableEntityException({ erro: 'ressalva_obrigatoria', mensagem: 'Informe ao menos uma ressalva' });
     }
-    const prazo = new Date(Date.now() + a.parametroVersao.prazoRessalvaDiasUteis * DIA_MS);
+    const prazo = adicionarDiasUteis(new Date(), a.parametroVersao.prazoRessalvaDiasUteis); // dias ÚTEIS reais (A5, 04/09)
     await this.prisma.db.ressalvaAnalise.createMany({
       data: ressalvas.map((r) => ({
         analiseId, tipo: r.tipo as never, condicao: r.condicao, prazo, criadaPor: usuarioId,
@@ -1007,7 +1008,7 @@ export class AnaliseService implements OnModuleInit {
     const aprovada = ['APROVADO_ALCADA_ANALISTA', 'APROVADO_COCAD'].includes(a.status);
     const aprovacaoValida =
       aprovada && a.aprovadaEm !== null &&
-      Date.now() - (a.aprovadaEm as Date).getTime() <= a.parametroVersao.validadeAprovacaoDiasUteis * DIA_MS * 1.4; // dias úteis aproximados
+      Date.now() <= adicionarDiasUteis(a.aprovadaEm as Date, a.parametroVersao.validadeAprovacaoDiasUteis).getTime(); // dias ÚTEIS reais (A5, 04/09 — antes ×1,4 aproximado)
     const compradores = a.participantes.filter((p) => p.papel !== 'GARANTIDOR');
     const condutor = compradores.find((p) => p.titularId === a.condutorPrincipalTitularId);
     // Ausência de consulta exige decisão consciente: do COCAD ou do analista com

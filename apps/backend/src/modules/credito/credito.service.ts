@@ -105,7 +105,8 @@ export class CreditoService implements OnModuleInit {
         mensagem: 'O Reembolso Parcelado exige um contrato ativo — o titular não tem contrato vigente',
       });
     }
-    const limiteMensal = Math.max(...mensaisEquivalentes) * rp.limiteParcelaAcessoria;
+    // Arredonda em centavos (A7, 04/09) — comparação de limite não usa float.
+    const limiteMensal = Math.round(Math.max(...mensaisEquivalentes) * rp.limiteParcelaAcessoria);
     const limiteParcela = Math.round(limiteMensal / this.catalogoFonte.fatorPrazo(freq));
     return { limiteParcela };
   }

@@ -607,7 +607,7 @@ export class PropostaService {
       referenciaId: propostaId,
       titularId: p.titular.id,
       valorCentavos: total,
-      resumo: `Fora do parâmetro — ${p.titular.nome}: entrada R$ ${Number(p.valorEntrada.toString()).toFixed(2)}, ${p.numeroParcelas}x R$ ${Number(p.valorParcela.toString()).toFixed(2)} (${motivo})`,
+      resumo: `Fora do parâmetro — ${p.titular.nome}: entrada R$ ${centavosParaReaisString(Math.round(Number(p.valorEntrada.toString()) * 100))}, ${p.numeroParcelas}x R$ ${centavosParaReaisString(Math.round(Number(p.valorParcela.toString()) * 100))} (${motivo})`,
       solicitanteId: usuarioId,
     });
   }

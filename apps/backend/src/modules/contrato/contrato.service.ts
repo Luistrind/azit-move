@@ -376,7 +376,9 @@ export class ContratoService {
           await tx.itemFatura.create({
             data: { faturaId: f.id, tipo: 'INTERMEDIARIA', descricao: `Intermediária ${i + 1}/${n} (entrada parcelada)`, valor: reais(valor), credor: 'AZIT' },
           });
-          await tx.fatura.update({ where: { id: f.id }, data: { valorTotal: reais(f.valorNominal + valor) } });
+          // increment, nunca sobrescrever (A1, 04/09): a fatura é da CONTA e pode
+          // já agregar itens de outros contratos — sobrescrever subfaturava.
+          await tx.fatura.update({ where: { id: f.id }, data: { valorTotal: { increment: reais(valor) } } });
         }
       }
     }

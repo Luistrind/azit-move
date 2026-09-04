@@ -448,7 +448,7 @@ export class RenegociacaoService implements OnModuleInit {
       referenciaId: acordo.id,
       titularId: eleg.titularId,
       valorCentavos: valorTotal,
-      resumo: `Renegociação (${faturasSelecionadas.length} fatura(s)) — entrada R$ ${reais(dto.valorEntrada)} + ${dto.numeroParcelasNovas}× R$ ${reais(valorParcela)} ${freqApi}${previa.motor === 'catalogo' ? ` (motor Catálogo: TP R$ ${reais(previa.taxaInicial)}, TR ${(previa.encargoMensal ?? 0) * 100}% a.m.)` : ' (cálculo provisório)'}${flagExcecoes}`,
+      resumo: `Renegociação (${faturasSelecionadas.length} fatura(s)) — entrada R$ ${reais(dto.valorEntrada)} + ${dto.numeroParcelasNovas}× R$ ${reais(valorParcela)} ${freqApi}${previa.motor === 'catalogo' ? ` (motor Catálogo: TP R$ ${reais(previa.taxaInicial)}, TR ${(((previa.encargoMensal ?? 0) * 100)).toFixed(2)}% a.m.)` : ' (cálculo provisório)'}${flagExcecoes}`,
       payload: { excecoes: previa.excecoes, motor: previa.motor },
       solicitanteId: operadorId,
     });

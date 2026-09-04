@@ -10,6 +10,7 @@ import { ATIVO_STATUS_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
 import { reaisParaCentavos, inteiroBR } from '../lib/valor';
 import { toast } from '../components/Toast';
+import { hojeLocalISO } from '../lib/datas';
 
 const DOC_TIPOS: { v: string; l: string }[] = [
   { v: 'crlv', l: 'CRLV / documento' },
@@ -156,7 +157,7 @@ export function AtivoPage() {
       const oc = {
         tipo: form.capTipo,
         valorAportado: 0,
-        dataAporte: new Date().toISOString().slice(0, 10),
+        dataAporte: hojeLocalISO(),
       };
       if (editId) {
         await ativoService.atualizar(editId, { ...body, status });

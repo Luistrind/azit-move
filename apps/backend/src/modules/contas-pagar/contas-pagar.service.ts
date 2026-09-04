@@ -746,7 +746,7 @@ export class ContasPagarService implements OnModuleInit {
           l.dataProgramada.toISOString().slice(0, 10),
           t.fornecedor.nome, t.fornecedor.cpfCnpj,
           db?.banco ?? '', db?.agencia ?? '', db?.conta ?? '', db?.chavePix ?? '',
-          (cent(t.valor) / 100).toFixed(2).replace('.', ','), t.vencimento.toISOString().slice(0, 10),
+          centavosParaReaisString(cent(t.valor)).replace('.', ','), t.vencimento.toISOString().slice(0, 10),
           t.formaPagamento, t.descricao.replace(/;/g, ','),
           t.fornecedor.alertaProximoPagamento ? 'SIM' : '',
         ].join(';');

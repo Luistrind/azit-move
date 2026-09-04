@@ -6,6 +6,7 @@ import { toast } from './Toast';
 import { operacoesService } from '../services/operacoes.service';
 import { reaisParaCentavos } from '../lib/valor';
 import { mensagemErro } from '../lib/permissoes';
+import { somarDiasISO } from '../lib/datas';
 
 const STEPS = [
   { key: 'diagnostico', label: 'Diagnóstico' },
@@ -30,7 +31,7 @@ export function RenegociacaoWizard({
   const [entrada, setEntrada] = useState('');
   const [parcelas, setParcelas] = useState('4');
   // Data-limite DURA da entrada (decisão 2026-08-18): default hoje + 5 dias.
-  const [dataEntrada, setDataEntrada] = useState(() => new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10));
+  const [dataEntrada, setDataEntrada] = useState(() => somarDiasISO(5));
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState<{ contratosAfetados: number } | null>(null);
   // Seleção por FATURA (doc Acordo de Pagamento V1.0 RAP005/006): todas entram

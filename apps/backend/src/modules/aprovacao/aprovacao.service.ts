@@ -7,6 +7,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { inicioHojeBrasilUTC } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AlcadaService } from '../alcada/alcada.service';
 
@@ -341,7 +342,7 @@ export class AprovacaoService {
     >();
     if (titularIds.length === 0) return mapa;
 
-    const hoje = new Date();
+    const hoje = inicioHojeBrasilUTC(); // fuso do negócio (A4, 04/09)
     const contas = await this.prisma.db.conta.findMany({
       where: { titularId: { in: titularIds } },
       select: {

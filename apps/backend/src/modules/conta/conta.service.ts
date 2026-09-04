@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
+import { inicioHojeBrasilUTC } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { CriarContaDto } from './dto/criar-conta.dto';
 import { AtualizarContaDto } from './dto/atualizar-conta.dto';
@@ -27,7 +28,7 @@ export class ContaService {
   // Carteira TITULAR-cêntrica (Doc 2: a arquitetura é centrada no titular): posição
   // consolidada por conta — saldo, atraso, contratos, bloqueio — para a tela Carteira.
   async carteira() {
-    const hoje = new Date();
+    const hoje = inicioHojeBrasilUTC(); // fuso do negócio (A4, 04/09)
     const contas = await this.prisma.db.conta.findMany({
       where: { titular: { deletedAt: null } },
       include: {

@@ -4,7 +4,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { limparDocumento, reaisParaCentavos } from '@azit/utils';
+import { inicioHojeBrasilUTC, limparDocumento, reaisParaCentavos } from '@azit/utils';
 import {
   StatusContratoCredito,
   StatusContratoInvestimento,
@@ -184,7 +184,7 @@ export class TitularService {
     // Resumo financeiro agregado sobre os contratos da conta.
     const ATIVOS = ['ATIVO', 'INADIMPLENTE', 'BLOQUEADO', 'SUSPENSO', 'EM_RECUPERACAO_VEICULO'] as const;
     const idsAtivos = contratos.filter((c) => (ATIVOS as readonly string[]).includes(c.status)).map((c) => c.id);
-    const hoje = new Date();
+    const hoje = inicioHojeBrasilUTC(); // fuso do negócio (A4, 04/09)
     const [pago, lancado, saldo, saldosContrato, atraso, qAcordos, qNovacoes] = await Promise.all([
       // Total recebido do cliente = faturas pagas (principal, encargos,
       // intermediárias, serviços) + lançamentos avulsos (entradas de contrato e

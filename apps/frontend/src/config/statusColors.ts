@@ -45,11 +45,22 @@ export const CONTRATO_STATUS_COLORS: Record<string, StatusColor> = {
   'Quitado (transferência efetivada)': { bg: '#eafaf1', fg: '#1f9d5b' },
 };
 
+// Chaves = rótulos exibidos (A2, 04/09): antes as chaves não batiam com os
+// labels da tela e todo badge de acordo caía no fallback cinza.
 export const ACORDO_STATUS_COLORS: Record<string, StatusColor> = {
-  Rascunho: { bg: '#f1f4f8', fg: '#8694a4' },
-  Ativo: { bg: '#fef6e9', fg: '#c98a0a' },
+  'Aguardando aprovação': { bg: '#f1f4f8', fg: '#8694a4' },
+  'Aguardando entrada': { bg: '#fef6e9', fg: '#c98a0a' },
+  Ativo: { bg: '#eafaf1', fg: '#1f9d5b' },
   Quitado: { bg: '#eafaf1', fg: '#1f9d5b' },
   Cancelado: { bg: '#fdeceb', fg: '#e0413c' },
+  Expirado: { bg: '#fdeceb', fg: '#e0413c' },
+};
+
+// Novação é mecanismo DISTINTO do acordo (Regra 5) — mapa próprio.
+export const NOVACAO_STATUS_COLORS: Record<string, StatusColor> = {
+  'Aguardando aprovação': { bg: '#f1f4f8', fg: '#8694a4' },
+  Ativa: { bg: '#eafaf1', fg: '#1f9d5b' },
+  Cancelada: { bg: '#fdeceb', fg: '#e0413c' },
 };
 
 // Status de Ativo (estoque, Bloco 7) — Doc 2 §4.4.

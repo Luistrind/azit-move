@@ -29,6 +29,21 @@ export function diasCalendarioEntre(aISO: string, bISO: string): number {
   return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000);
 }
 
+// Soma N dias ÚTEIS (seg–sex) a uma data (A5, 04/09): antes os prazos "em dias
+// úteis" da análise eram somados como corridos ou aproximados por ×1,4 num
+// gate de crédito. Feriados nacionais NÃO são considerados (placeholder
+// funcional — Regra 12; calendário de feriados é parametrização futura).
+export function adicionarDiasUteis(inicio: Date, diasUteis: number): Date {
+  const d = new Date(inicio.getTime());
+  let restantes = Math.max(0, Math.round(diasUteis));
+  while (restantes > 0) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    const dow = d.getUTCDay();
+    if (dow !== 0 && dow !== 6) restantes -= 1;
+  }
+  return d;
+}
+
 // Dias de atraso de um vencimento, em dias de CALENDÁRIO (correção 31/08):
 // dividir a diferença de milissegundos por 24h zera o primeiro dia quando o
 // vencimento carrega hora (ex.: venc ontem 14:02 → "0,4 dia" → 0) — caso real:

@@ -5,8 +5,9 @@ import { formatCurrency } from '@azit/utils';
 import { operacoesService } from '../services/operacoes.service';
 import { contratoService } from '../services/contrato.service';
 import { StatusBadge } from '../components/StatusBadge';
-import { ACORDO_STATUS_COLORS } from '../config/statusColors';
+import { ACORDO_STATUS_COLORS, NOVACAO_STATUS_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_RENEGOCIACAO, ROLE_NOVACAO, mensagemErro } from '../lib/permissoes';
+import { somarDiasISO } from '../lib/datas';
 import { toast } from '../components/Toast';
 
 const LABEL_STATUS: Record<string, string> = {
@@ -15,6 +16,14 @@ const LABEL_STATUS: Record<string, string> = {
   ativo: 'Ativo',
   quitado: 'Quitado',
   cancelado: 'Cancelado',
+  expirado: 'Expirado',
+};
+
+// Novação ≠ Acordo (Regra 5): rótulos próprios.
+const LABEL_STATUS_NOVACAO: Record<string, string> = {
+  rascunho: 'Aguardando aprovação',
+  ativo: 'Ativa',
+  cancelado: 'Cancelada',
 };
 
 // Acompanhamento de acordos e novações. A CRIAÇÃO nasce da ficha do titular
@@ -64,10 +73,8 @@ export function AcordosPage() {
     if (!novContratoId || novValorTotalCent <= 0) return;
     setOcupado(true);
     try {
-      const hoje = new Date();
-      const primeira = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 10);
       await operacoesService.novar(novContratoId, {
-        dataPrimeiraParcela: primeira.toISOString().slice(0, 10),
+        dataPrimeiraParcela: somarDiasISO(10),
         valorTotal: novValorTotalCent,
         numeroParcelas: novN,
         valorParcelaInicial: novParcela,
@@ -238,7 +245,7 @@ export function AcordosPage() {
                 <td className="px-[18px] py-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{nv.contratoOrigem}</td>
                 <td className="px-[18px] py-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{nv.contratoNovo}</td>
                 <td className="px-[18px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>{formatCurrency(nv.saldoLiquidado)}</td>
-                <td className="px-[18px] py-[12px]"><StatusBadge label={LABEL_STATUS[nv.status] ?? nv.status} colors={ACORDO_STATUS_COLORS} /></td>
+                <td className="px-[18px] py-[12px]"><StatusBadge label={LABEL_STATUS_NOVACAO[nv.status] ?? nv.status} colors={NOVACAO_STATUS_COLORS} /></td>
               </tr>
             ))}
           </tbody>

@@ -10,6 +10,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { Stepper } from '../components/Stepper';
 import { PROPOSTA_STATUS_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, ROLE_PARECER, mensagemErro } from '../lib/permissoes';
+import { proximaSegundaISO, somarDiasISO } from '../lib/datas';
 import { toast } from '../components/Toast';
 
 const LABEL_STATUS: Record<string, string> = {
@@ -78,18 +79,11 @@ export function PropostaDetalhePage() {
   const [observacao, setObservacao] = useState('');
   const [produtoSel, setProdutoSel] = useState('');
   // Parametrização do contrato (reunião 11/07): default = próxima segunda-feira.
-  const [dataPrimeira, setDataPrimeira] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7));
-    return d.toISOString().slice(0, 10);
-  });
+  // Data LOCAL (A6, 04/09): toISOString virava o dia seguinte após as 21h.
+  const [dataPrimeira, setDataPrimeira] = useState(() => proximaSegundaISO());
   // Doc 02 §20 passo 12: previsão de ativação (pagamento da entrada) — a
   // cobrança da entrada vence NESTA data. Default: amanhã.
-  const [dataAtivacao, setDataAtivacao] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
-  });
+  const [dataAtivacao, setDataAtivacao] = useState(() => somarDiasISO(1));
   const catalogo = useQuery({ queryKey: ['produtos'], queryFn: () => produtoService.listar() });
 
   const q = useQuery({ queryKey: ['proposta', id], queryFn: () => originacaoService.detalheProposta(id), enabled: !!id });
