@@ -420,7 +420,7 @@ export class ContratoService {
   }
 
   // "Dia zero" — gera o cronograma e ATIVA o contrato (chamado no pagamento da
-  // entrada na originação nativa). A primeira parcela conta a partir de agora.
+  // entrada na originação nativa).
   async ativarComCronograma(contratoId: string): Promise<void> {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id: contratoId },
@@ -442,7 +442,17 @@ export class ContratoService {
 
     const periodicidade = PeriodicidadeTypes[contrato.periodicidade] as 'semanal' | 'quinzenal' | 'mensal';
     const passo = periodicidade === 'mensal' ? 30 : periodicidade === 'quinzenal' ? 14 : 7;
-    const dataPrimeira = new Date(Date.now() + passo * 24 * 60 * 60 * 1000);
+    // 1ª parcela: respeita a data PARAMETRIZADA na formalização (reunião 11/07
+    // — ex.: "toda segunda" p/ motorista de app). Antes era sempre hoje+passo,
+    // sobrescrevendo a escolha do operador (pego no E2E 05/09: parametrizada
+    // 07/09 segunda, gerada 12/09 sábado). Se a entrada demorou e a data ficou
+    // no passado, rola em passos — preserva o dia do ciclo escolhido.
+    const dataPrimeira = contrato.dataPrimeiraParcela
+      ? new Date(contrato.dataPrimeiraParcela.getTime())
+      : new Date(Date.now() + passo * 24 * 60 * 60 * 1000);
+    while (dataPrimeira.getTime() <= Date.now()) {
+      dataPrimeira.setUTCDate(dataPrimeira.getUTCDate() + passo);
+    }
     const saldo = this.cent(contrato.valorTotal) - this.cent(contrato.valorEntrada);
     const cronograma = gerarCronograma({
       numeroParcelas: contrato.numeroParcelas,
@@ -483,7 +493,10 @@ export class ContratoService {
         where: { id: contratoId },
         data: { status: 'ATIVO', dataPrimeiraParcela: dataPrimeira, cronogramaGeradoEm: new Date() },
       });
-    });
+      // Cronograma longo (209 parcelas semanais = centenas de writes): o timeout
+      // default de 5s do Prisma derrubava a ativação com P2028 em banco mais
+      // lento (pego no E2E local 05/09 — em produção passava por pouco).
+    }, { timeout: 120_000, maxWait: 10_000 });
   }
 
   async listar(filtros: ListarContratosDto) {

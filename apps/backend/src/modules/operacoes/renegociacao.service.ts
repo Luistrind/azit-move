@@ -876,7 +876,9 @@ export class RenegociacaoService implements OnModuleInit {
         where: { id: acordo.id },
         data: { status: 'ATIVO', dataEfetivacao },
       });
-    });
+      // Mesma proteção da ativação do contrato: plano longo excede o timeout
+      // default de 5s do Prisma (P2028) em banco mais lento.
+    }, { timeout: 120_000, maxWait: 10_000 });
 
     // Cobranças Asaas das faturas cobertas saem do ar (a dívida agora vive no
     // acordo) — vale para vencidas e para vincendas incluídas (2026-08-30).
