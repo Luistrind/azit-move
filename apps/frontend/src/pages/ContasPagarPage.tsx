@@ -11,6 +11,7 @@ import { rotuloStatus, ROTULO_RESPONSAVEL_ECONOMICO, ROTULO_STATUS_LOTE } from '
 import { mascararDinheiro, dinheiroParaCentavos } from '../lib/mascaras';
 import { Modal } from '../components/Modal';
 import { toast } from '../components/Toast';
+import { CONTAS_PAGAR_STATUS_COLORS } from '../config/statusColors';
 import { hojeLocalISO } from '../lib/datas';
 import { mensagemErro } from '../lib/permissoes';
 
@@ -32,23 +33,8 @@ function dataBR(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
 }
 
-const COR_STATUS: Record<string, { bg: string; fg: string }> = {
-  SOLICITADO: { bg: '#eef4ff', fg: '#1c4587' },
-  EM_VALIDACAO: { bg: '#eef4ff', fg: '#1c4587' },
-  DEVOLVIDO: { bg: '#fff3d6', fg: '#8a5a00' },
-  AGUARDANDO_APROVACAO: { bg: '#fff3d6', fg: '#8a5a00' },
-  APROVADO: { bg: '#e5f5ec', fg: '#1c7c4c' },
-  PROGRAMADO: { bg: '#e5f5ec', fg: '#1c7c4c' },
-  ENVIADO_BPO: { bg: '#eef4ff', fg: '#1c4587' },
-  AGUARDANDO_CORA: { bg: '#fff3d6', fg: '#8a5a00' },
-  PAGO: { bg: '#e5f5ec', fg: '#1c7c4c' },
-  CONCILIADO: { bg: '#e5f5ec', fg: '#1c7c4c' },
-  CANCELADO: { bg: '#fdecec', fg: '#a12622' },
-  BLOQUEADO: { bg: '#fdecec', fg: '#a12622' },
-};
-
 function Chip({ status, deLote }: { status: string; deLote?: boolean }) {
-  const c = COR_STATUS[status] ?? { bg: '#f2f3f5', fg: '#5a6472' };
+  const c = CONTAS_PAGAR_STATUS_COLORS[status] ?? { bg: '#f1f4f8', fg: '#8694a4' };
   const rotulo = deLote ? (ROTULO_STATUS_LOTE[status] ?? rotuloStatus(status)) : rotuloStatus(status);
   return (
     <span className="whitespace-nowrap rounded-full px-[9px] py-[2px] text-[11px] font-bold" style={{ background: c.bg, color: c.fg }}>
@@ -462,7 +448,7 @@ function ModalNovaDespesa({ config, fechar, onCriou }: { config: ConfiguracaoFin
           </select></label>
         <label className="text-[12px] font-semibold">Responsável econômico (quem arca com o valor)
           <select className={inputCls} style={inputStyle} value={f.responsavelEconomico} onChange={set('responsavelEconomico')}>
-            <option value="AZIT">Azitmove</option><option value="INVESTIDOR">Investidor</option><option value="CLIENTE">Cliente</option><option value="OUTRA_ENTIDADE">Outra entidade</option>
+            <option value="AZIT">Azit Move</option><option value="INVESTIDOR">Investidor</option><option value="CLIENTE">Cliente</option><option value="OUTRA_ENTIDADE">Outra entidade</option>
           </select></label>
         <label className="text-[12px] font-semibold">Documento (nome do arquivo — nota fiscal, boleto, guia…)
           <input className={inputCls} style={inputStyle} value={f.documentoNome} onChange={set('documentoNome')} placeholder="ex.: nf-1234-autocentro.pdf" /></label>

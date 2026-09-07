@@ -178,7 +178,12 @@ export function AtivoPage() {
         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar placa/chassi" className={`${inputCls} w-[200px]`} style={inStyle} />
         <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className={`${inputCls} w-[160px]`} style={inStyle}>
           <option value="">Todos os status</option>
-          {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          {/* Regra "não clica, não exiba" (doc 03 §1): quitado/recuperado/sinistrado
+              não têm produtor hoje (grupo B da varredura) — filtro que nada retorna
+              some; voltam quando as transições existirem. */}
+          {Object.entries(STATUS_LABEL)
+            .filter(([k]) => k === 'disponivel' || k === 'em_contrato')
+            .map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <div className="flex-1" />
         {podeEditar && (

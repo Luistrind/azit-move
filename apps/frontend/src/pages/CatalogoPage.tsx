@@ -12,6 +12,7 @@ import {
 import { usePodeRole, mensagemErro } from '../lib/permissoes';
 import { Modal } from '../components/Modal';
 import { toast } from '../components/Toast';
+import { CATALOGO_CICLO_COLORS } from '../config/statusColors';
 
 // Catálogo de Produtos F1 (doc 02 §17): Produto → Variante → Versão, com herança
 // visível (herdado × sobrescrito), ciclo de vida e histórico de versões.
@@ -22,15 +23,8 @@ const btn = 'rounded-[8px] px-[12px] py-[7px] text-[12px] font-bold';
 const btnP = `${btn} bg-[var(--navy)] text-white disabled:opacity-40`;
 const btnS = `${btn} border border-[var(--border)]`;
 
-const COR_CICLO: Record<string, { bg: string; fg: string }> = {
-  RASCUNHO: { bg: '#f2f3f5', fg: '#5a6472' },
-  ATIVO: { bg: '#e5f5ec', fg: '#1c7c4c' },
-  SUSPENSO: { bg: '#fff3d6', fg: '#8a5a00' },
-  ENCERRADO: { bg: '#fdecec', fg: '#a12622' },
-};
-
 function ChipCiclo({ status }: { status: string }) {
-  const c = COR_CICLO[status] ?? COR_CICLO.RASCUNHO;
+  const c = CATALOGO_CICLO_COLORS[status] ?? CATALOGO_CICLO_COLORS.RASCUNHO;
   return (
     <span className="rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: c.bg, color: c.fg }}>
       {NOME_CICLO[status] ?? status}

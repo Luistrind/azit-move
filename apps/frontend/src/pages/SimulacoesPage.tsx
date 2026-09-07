@@ -4,11 +4,7 @@ import { formatCurrency } from '@azit/utils';
 import { originacaoService } from '../services/originacao.service';
 import { StatusBadge } from '../components/StatusBadge';
 import { PROPOSTA_STATUS_COLORS } from '../config/statusColors';
-
-const LABEL_STATUS: Record<string, string> = {
-  pendente: 'Pendente', em_analise: 'Em análise', aprovada: 'Aprovada',
-  reprovada: 'Reprovada', em_formalizacao: 'Em formalização', convertida: 'Convertida', cancelada: 'Cancelada',
-};
+import { ROTULO_SITUACAO_PROPOSTA as LABEL_STATUS } from '../lib/rotulos';
 
 export function SimulacoesPage() {
   const navigate = useNavigate();

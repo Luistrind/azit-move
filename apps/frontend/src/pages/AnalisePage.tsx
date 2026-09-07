@@ -9,6 +9,7 @@ import { rotuloStatus } from '../lib/rotulos';
 import { Modal } from '../components/Modal';
 import { BotaoVerRetorno } from '../components/RetornoBiro';
 import { toast } from '../components/Toast';
+import { ANALISE_SITUACAO_FG } from '../config/statusColors';
 import { mensagemErro } from '../lib/permissoes';
 
 // UX-3 — Análise de cadastro GUIADA (proposta UX §4.2): stepper de etapas,
@@ -20,7 +21,6 @@ const btnP = `${btn} bg-[var(--navy)] text-white disabled:opacity-40`;
 const btnS = `${btn} border border-[var(--border)]`;
 const card = 'rounded-[12px] border border-[var(--border)] bg-[var(--surface)] p-[16px]';
 
-const SIT_COR: Record<string, string> = { alcada: '#1c7a3d', complemento: '#b07000', cocad: '#b03030' };
 const SIT_ROTULO: Record<string, string> = { alcada: 'Conforme', complemento: 'Pede complemento', cocad: 'Vai ao Comitê' };
 const ROTULO_DOC: Record<string, string> = {
   cnh: 'CNH',
@@ -309,7 +309,7 @@ export function AnalisePage() {
         {d.criterios.length === 0 && <div className="text-[12px] opacity-70">Nenhum apontamento — proposta dentro da política.</div>}
         {d.criterios.map((c, i) => (
           <div key={i} className="border-t border-[var(--border)] py-[6px] text-[12px]">
-            <b style={{ color: SIT_COR[c.situacao] }}>{SIT_ROTULO[c.situacao] ?? c.situacao}</b> {c.codigo && `· ${c.codigo}`} · {c.descricao}
+            <b style={{ color: ANALISE_SITUACAO_FG[c.situacao] }}>{SIT_ROTULO[c.situacao] ?? c.situacao}</b> {c.codigo && `· ${c.codigo}`} · {c.descricao}
             {c.valorObservado && ` (${c.valorObservado})`}
           </div>
         ))}

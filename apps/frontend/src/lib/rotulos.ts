@@ -1,6 +1,13 @@
 // Rótulos legíveis de status (proposta UX, princípio P4: nenhuma sigla/código em tela).
 // Cor continua vindo de config/statusColors.ts (Regra 9); aqui é só o texto.
 
+// Situação da proposta em lower_snake, como o backend envia nas listas do funil
+// (padronização E1, 07/09 — antes três páginas duplicavam este mapa).
+export const ROTULO_SITUACAO_PROPOSTA: Record<string, string> = {
+  pendente: 'Pendente', em_analise: 'Em análise', aprovada: 'Aprovada',
+  reprovada: 'Reprovada', em_formalizacao: 'Em formalização', convertida: 'Convertida', cancelada: 'Cancelada',
+};
+
 export const ROTULO_STATUS_ANALISE: Record<string, string> = {
   ATENDIMENTO_INICIADO: 'Atendimento iniciado',
   SIMULACAO_REALIZADA: 'Simulação realizada',
@@ -89,7 +96,7 @@ export const ROTULO_STATUS_FORNECEDOR: Record<string, string> = {
 };
 
 export const ROTULO_RESPONSAVEL_ECONOMICO: Record<string, string> = {
-  AZIT: 'Azitmove',
+  AZIT: 'Azit Move',
   INVESTIDOR: 'Investidor',
   CLIENTE: 'Cliente',
   OUTRA_ENTIDADE: 'Outra entidade',

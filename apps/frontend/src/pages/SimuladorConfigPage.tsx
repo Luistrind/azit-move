@@ -5,6 +5,7 @@ import { simuladorService, ParametrosSimulador } from '../services/simulador.ser
 import { reaisParaCentavos } from '../lib/valor';
 import { usePodeRole, mensagemErro } from '../lib/permissoes';
 import { toast } from '../components/Toast';
+import { Metrica } from '../components/Metrica';
 
 const ROLES_CONFIG = ['ADMIN', 'DIRETOR'];
 const reaisFmt = (c: number) => (c / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
@@ -131,16 +132,16 @@ export function SimuladorConfigPage() {
           <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
         ) : !form ? (
           <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-5">
-            <Metrica rotulo="CI" valor={formatCurrency(p.comissaoInicial)} />
-            <Metrica rotulo="CR" valor={formatCurrency(p.comissaoRecorrente)} />
-            <Metrica rotulo="TR" valor={`${(p.taxaMensal * 100).toFixed(2)}% a.m.`} />
-            <Metrica rotulo="Entrada mín." valor={formatCurrency(p.entradaMinima)} />
-            <Metrica rotulo="Prazo" valor={`${p.prazoMinMeses}–${p.prazoMaxMeses} meses`} />
-            <Metrica rotulo="Prazos padrão" valor={p.prazosPadronizados.join(', ')} />
-            <Metrica rotulo="Divisor parcela (sem·quinz)" valor={`÷${p.fatorPrecificacaoSemanal} · ÷${p.fatorPrecificacaoQuinzenal}`} />
-            <Metrica rotulo="Fator nº parcelas" valor={`${p.fatorSemanal} · ${p.fatorQuinzenal}`} />
-            <Metrica rotulo="Validade" valor={`${p.validadeDias} dias`} />
-            <Metrica rotulo="Ofertas padrão" valor={p.ofertasPadrao.map((o) => `${o.prazoMeses}m/${o.frequencia.toLowerCase()}`).join(' · ')} />
+            <Metrica label="CI" valor={formatCurrency(p.comissaoInicial)} />
+            <Metrica label="CR" valor={formatCurrency(p.comissaoRecorrente)} />
+            <Metrica label="TR" valor={`${(p.taxaMensal * 100).toFixed(2)}% a.m.`} />
+            <Metrica label="Entrada mín." valor={formatCurrency(p.entradaMinima)} />
+            <Metrica label="Prazo" valor={`${p.prazoMinMeses}–${p.prazoMaxMeses} meses`} />
+            <Metrica label="Prazos padrão" valor={p.prazosPadronizados.join(', ')} />
+            <Metrica label="Divisor parcela (sem·quinz)" valor={`÷${p.fatorPrecificacaoSemanal} · ÷${p.fatorPrecificacaoQuinzenal}`} />
+            <Metrica label="Fator nº parcelas" valor={`${p.fatorSemanal} · ${p.fatorQuinzenal}`} />
+            <Metrica label="Validade" valor={`${p.validadeDias} dias`} />
+            <Metrica label="Ofertas padrão" valor={p.ofertasPadrao.map((o) => `${o.prazoMeses}m/${o.frequencia.toLowerCase()}`).join(' · ')} />
           </div>
         ) : (
           <div className="flex flex-col gap-[12px]">
@@ -229,11 +230,3 @@ export function SimuladorConfigPage() {
   );
 }
 
-function Metrica({ rotulo, valor }: { rotulo: string; valor: string }) {
-  return (
-    <div className="rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)' }}>
-      <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>{rotulo}</div>
-      <div className="mt-[2px] text-[13px] font-bold">{valor}</div>
-    </div>
-  );
-}

@@ -12,11 +12,7 @@ import { PROPOSTA_STATUS_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, ROLE_PARECER, mensagemErro } from '../lib/permissoes';
 import { proximaSegundaISO, somarDiasISO } from '../lib/datas';
 import { toast } from '../components/Toast';
-
-const LABEL_STATUS: Record<string, string> = {
-  pendente: 'Pendente', em_analise: 'Em análise', aprovada: 'Aprovada',
-  reprovada: 'Reprovada', em_formalizacao: 'Em formalização', convertida: 'Convertida', cancelada: 'Cancelada',
-};
+import { ROTULO_SITUACAO_PROPOSTA as LABEL_STATUS } from '../lib/rotulos';
 const PAPEL_LABEL: Record<string, string> = {
   comprador_principal: 'Comprador principal', comprador_secundario: 'Comprador secundário', garantidor: 'Garantidor',
 };

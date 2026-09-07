@@ -7,11 +7,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { Modal } from '../components/Modal';
 import { PROPOSTA_STATUS_COLORS } from '../config/statusColors';
 import { mensagemErro } from '../lib/permissoes';
-
-const LABEL_STATUS: Record<string, string> = {
-  pendente: 'Pendente', em_analise: 'Em análise', aprovada: 'Aprovada',
-  reprovada: 'Reprovada', em_formalizacao: 'Em formalização', convertida: 'Convertida', cancelada: 'Cancelada',
-};
+import { ROTULO_SITUACAO_PROPOSTA as LABEL_STATUS } from '../lib/rotulos';
 // Uma coluna por status do funil (Doc 3 §8-A.3).
 const KANBAN_COLS = ['pendente', 'em_analise', 'aprovada', 'em_formalizacao', 'convertida', 'reprovada', 'cancelada'];
 // Arrasto livre só entre Pendente e Em Análise.

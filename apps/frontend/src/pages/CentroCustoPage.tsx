@@ -6,6 +6,7 @@ import { Modal } from '../components/Modal';
 import { toast } from '../components/Toast';
 import { mensagemErro } from '../lib/permissoes';
 import { reaisParaCentavos } from '../lib/valor';
+import { Metrica } from '../components/Metrica';
 
 const TIPOS_CUSTO = ['manutencao', 'documentacao', 'seguro', 'franquia', 'preparacao', 'outro'];
 const TIPO_LABEL: Record<string, string> = {
@@ -94,10 +95,10 @@ export function CentroCustoPage() {
       {aba === 'veiculos' && (
         <>
           <div className="grid grid-cols-2 gap-[12px] sm:grid-cols-4">
-            <Kpi rotulo="Total investido" valor={formatCurrency(totais.gasto)} />
-            <Kpi rotulo="Total recebido" valor={formatCurrency(totais.recebido)} />
-            <Kpi rotulo="A receber" valor={formatCurrency(totais.aReceber)} />
-            <Kpi rotulo="Resultado" valor={<Resultado valor={totais.recebido - totais.gasto} />} />
+            <Metrica tom="kpi" label="Total investido" valor={formatCurrency(totais.gasto)} />
+            <Metrica tom="kpi" label="Total recebido" valor={formatCurrency(totais.recebido)} />
+            <Metrica tom="kpi" label="A receber" valor={formatCurrency(totais.aReceber)} />
+            <Metrica tom="kpi" label="Resultado" valor={<Resultado valor={totais.recebido - totais.gasto} />} />
           </div>
 
           <div className="rounded-card overflow-x-auto" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
@@ -139,10 +140,10 @@ export function CentroCustoPage() {
       {aba === 'credito' && (
         <>
           <div className="grid grid-cols-2 gap-[12px] sm:grid-cols-4">
-            <Kpi rotulo="Créditos concedidos" valor={String(credito.data?.quantidade ?? '—')} />
-            <Kpi rotulo="Total liberado" valor={formatCurrency(credito.data?.totalLiberado ?? 0)} />
-            <Kpi rotulo="Retornado" valor={formatCurrency(credito.data?.totalRetornado ?? 0)} />
-            <Kpi rotulo="Em aberto" valor={formatCurrency(credito.data?.totalEmAberto ?? 0)} />
+            <Metrica tom="kpi" label="Créditos concedidos" valor={String(credito.data?.quantidade ?? '—')} />
+            <Metrica tom="kpi" label="Total liberado" valor={formatCurrency(credito.data?.totalLiberado ?? 0)} />
+            <Metrica tom="kpi" label="Retornado" valor={formatCurrency(credito.data?.totalRetornado ?? 0)} />
+            <Metrica tom="kpi" label="Em aberto" valor={formatCurrency(credito.data?.totalEmAberto ?? 0)} />
           </div>
           <div className="rounded-card overflow-x-auto" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
             <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
@@ -236,11 +237,3 @@ export function CentroCustoPage() {
   );
 }
 
-function Kpi({ rotulo, valor }: { rotulo: string; valor: React.ReactNode }) {
-  return (
-    <div className="rounded-card p-[14px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-      <div className="text-[11px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>{rotulo}</div>
-      <div className="mt-[4px] font-display text-[18px] font-bold">{valor}</div>
-    </div>
-  );
-}

@@ -3,30 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
 import { contratoService } from '../services/contrato.service';
 import { contaService } from '../services/conta.service';
+import { Metrica } from '../components/Metrica';
+import { CONTA_SITUACAO_COLORS, CONTA_SITUACAO_LABEL } from '../config/statusColors';
 
-function Kpi({ label, valor }: { label: string; valor: string }) {
-  return (
-    <div
-      className="rounded-card p-[18px]"
-      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-    >
-      <div className="text-[11px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>
-        {label}
-      </div>
-      <div className="mt-[6px] font-display text-[22px] font-bold" style={{ color: 'var(--text-primary)' }}>
-        {valor}
-      </div>
-    </div>
-  );
-}
-
-const SITUACAO: Record<string, { rotulo: string; bg: string; fg: string }> = {
-  em_dia: { rotulo: 'Em dia', bg: '#eafaf1', fg: '#1f9d5b' },
-  em_atraso: { rotulo: 'Em atraso', bg: '#fdeceb', fg: '#e0413c' },
-  // Atraso coberto por acordo ativo (doc 02 §5.2, 07/09) — cliente em regularização.
-  em_acordo: { rotulo: 'Em acordo', bg: '#eef4ff', fg: '#2456c7' },
-  bloqueada: { rotulo: 'Bloqueada', bg: '#fdeceb', fg: '#e0413c' },
-};
+// Situação calculada da conta — cores/rótulos canônicos (padronização E1, 07/09).
+const SITUACAO: Record<string, { rotulo: string; bg: string; fg: string }> = Object.fromEntries(
+  Object.entries(CONTA_SITUACAO_COLORS).map(([k, c]) => [k, { ...c, rotulo: CONTA_SITUACAO_LABEL[k] ?? k }]),
+);
 
 // Carteira TITULAR-cêntrica (Doc 2: arquitetura centrada no titular): a lista é de
 // pessoas com posição consolidada; o contrato é o drill-down (ficha do titular).
@@ -42,10 +25,10 @@ export function CarteiraPage() {
     <div className="flex flex-col gap-[18px]">
       {/* KPIs (Doc 3 §8.1) */}
       <div className="grid grid-cols-2 gap-[10px] lg:grid-cols-4 lg:gap-[14px]">
-        <Kpi label="Carteira sob gestão" valor={k ? formatCurrency(k.carteiraSobGestao) : '—'} />
-        <Kpi label="Contratos ativos" valor={String(k?.contratosAtivos ?? '—')} />
-        <Kpi label="Inadimplência" valor={k ? `${k.inadimplenciaPct}%` : '—'} />
-        <Kpi label="Recebido na semana" valor={k ? formatCurrency(k.recebidoNaSemana) : '—'} />
+        <Metrica tom="kpi" label="Carteira sob gestão" valor={k ? formatCurrency(k.carteiraSobGestao) : '—'} />
+        <Metrica tom="kpi" label="Contratos ativos" valor={String(k?.contratosAtivos ?? '—')} />
+        <Metrica tom="kpi" label="Inadimplência" valor={k ? `${k.inadimplenciaPct}%` : '—'} />
+        <Metrica tom="kpi" label="Recebido na semana" valor={k ? formatCurrency(k.recebidoNaSemana) : '—'} />
       </div>
 
       {/* Posição consolidada por titular */}

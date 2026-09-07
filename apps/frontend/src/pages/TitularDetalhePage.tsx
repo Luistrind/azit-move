@@ -16,19 +16,16 @@ import { Modal } from '../components/Modal';
 import { BotaoVerRetorno } from '../components/RetornoBiro';
 import { RenegociacaoWizard } from '../components/RenegociacaoWizard';
 import { toast } from '../components/Toast';
-import { CONTRATO_STATUS_COLORS, SITUACAO_CONTRATO_COLORS, SITUACAO_CONTRATO_LABEL } from '../config/statusColors';
+import { CONTRATO_STATUS_COLORS, SITUACAO_CONTRATO_COLORS, SITUACAO_CONTRATO_LABEL, FATURA_SITUACAO_COLORS, FATURA_SITUACAO_LABEL } from '../config/statusColors';
+import { Metrica, Campo } from '../components/Metrica';
 
 const card = { background: 'var(--surface)', border: '1px solid var(--border)' };
 
-// Situação da fatura calculada em runtime (Regra 7).
-const SITUACAO: Record<string, { bg: string; fg: string; label: string }> = {
-  em_aberto: { bg: '#eef2f7', fg: '#5b6b7f', label: 'Em aberto' },
-  vence_hoje: { bg: '#fff4e0', fg: '#a86a12', label: 'Vence hoje' },
-  vencida: { bg: '#fdeceb', fg: '#c0392b', label: 'Vencida' },
-  paga: { bg: '#eafaf1', fg: '#1f9d5b', label: 'Paga' },
-  paga_em_atraso: { bg: '#eafaf1', fg: '#1f9d5b', label: 'Paga (em atraso)' },
-  renegociada: { bg: '#eef4ff', fg: '#2456c7', label: 'Renegociada' },
-};
+// Situação da fatura calculada em runtime (Regra 7) — cores/rótulos canônicos
+// (padronização E1, 07/09: o mapa local divergente foi absorvido).
+const SITUACAO: Record<string, { bg: string; fg: string; label: string }> = Object.fromEntries(
+  Object.entries(FATURA_SITUACAO_COLORS).map(([k, c]) => [k, { ...c, label: FATURA_SITUACAO_LABEL[k] ?? k }]),
+);
 
 const DOC_LABEL: Record<string, string> = {
   cnh: 'CNH', comprovante_endereco: 'Comprovante de endereço',
@@ -42,23 +39,6 @@ function fmtData(iso: string | null): string {
 // A3 (04/09): parsear 'YYYY-MM-DD' com new Date caía em UTC e somava 1 dia de
 // atraso no fuso local — cálculo agora é por calendário (lib/datas).
 
-function Metrica({ label, valor, alerta }: { label: string; valor: string; alerta?: boolean }) {
-  return (
-    <div className="rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)' }}>
-      <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>{label}</div>
-      <div className="mt-[4px] font-display text-[17px] font-bold tabular-nums" style={{ color: alerta ? '#c0392b' : 'var(--text-primary)' }}>{valor}</div>
-    </div>
-  );
-}
-
-function Campo({ label, valor }: { label: string; valor: string | null }) {
-  return (
-    <div>
-      <div className="text-[11px]" style={{ color: 'var(--text-label)' }}>{label}</div>
-      <div className="text-[13px]" style={{ color: 'var(--text-primary)' }}>{valor || '—'}</div>
-    </div>
-  );
-}
 
 const PAGE = 8;
 

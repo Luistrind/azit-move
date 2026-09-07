@@ -5,6 +5,7 @@ import { rotuloStatus, ROTULO_STATUS_FORNECEDOR } from '../lib/rotulos';
 import { mascararCpfCnpj, somenteDigitos } from '../lib/mascaras';
 import { Modal } from '../components/Modal';
 import { toast } from '../components/Toast';
+import { FORNECEDOR_STATUS_COLORS } from '../config/statusColors';
 import { mensagemErro } from '../lib/permissoes';
 
 // Fornecedores do contas a pagar (FA-CP-01): Financeiro cadastra, Diretor aprova
@@ -18,13 +19,6 @@ const btn = 'rounded-[8px] px-[12px] py-[7px] text-[12px] font-bold';
 const btnP = `${btn} bg-[var(--navy)] text-white disabled:opacity-40`;
 const btnS = `${btn} border border-[var(--border)]`;
 
-const COR: Record<string, { bg: string; fg: string }> = {
-  ATIVO: { bg: '#e5f5ec', fg: '#1c7c4c' },
-  AGUARDANDO_APROVACAO: { bg: '#fff3d6', fg: '#8a5a00' },
-  EM_CADASTRO: { bg: '#f2f3f5', fg: '#5a6472' },
-  BLOQUEADO: { bg: '#fdecec', fg: '#a12622' },
-  INATIVO: { bg: '#f2f3f5', fg: '#5a6472' },
-};
 
 export function FornecedoresPage() {
   const qc = useQueryClient();
@@ -71,7 +65,7 @@ export function FornecedoresPage() {
             <div className="flex flex-wrap items-center justify-between gap-[8px]">
               <div>
                 <span className="font-display text-[14px] font-bold">{f.nome}</span>
-                <span className="ml-[8px] rounded-full px-[9px] py-[2px] text-[11px] font-bold" style={{ background: (COR[f.status] ?? COR.EM_CADASTRO).bg, color: (COR[f.status] ?? COR.EM_CADASTRO).fg }}>
+                <span className="ml-[8px] rounded-full px-[9px] py-[2px] text-[11px] font-bold" style={{ background: (FORNECEDOR_STATUS_COLORS[f.status] ?? FORNECEDOR_STATUS_COLORS.EM_CADASTRO).bg, color: (FORNECEDOR_STATUS_COLORS[f.status] ?? FORNECEDOR_STATUS_COLORS.EM_CADASTRO).fg }}>
                   {rotuloStatus(f.status)}
                 </span>
                 {f.alertaProximoPagamento && (

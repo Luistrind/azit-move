@@ -20,14 +20,8 @@ export const PARCELA_STATUS_COLORS: Record<string, StatusColor> = {
   Suspensa: { bg: '#f1f4f8', fg: '#9aa7b5' },
 };
 
-export const FATURA_STATUS_COLORS: Record<string, StatusColor> = {
-  Aberta: { bg: '#f1f4f8', fg: '#8694a4' },
-  Fechada: { bg: '#eef1f5', fg: '#5b6b7f' },
-  Vencida: { bg: '#fef6e9', fg: '#c98a0a' },
-  Paga: { bg: '#eafaf1', fg: '#1f9d5b' },
-  'Paga em atraso': { bg: '#eafaf1', fg: '#1f9d5b' },
-  Renegociada: { bg: '#efeaff', fg: '#6b4fd6' },
-};
+// (FATURA_STATUS_COLORS por rótulo foi absorvido por FATURA_SITUACAO_COLORS
+// abaixo — chaves lower_snake, como o backend envia a situação calculada.)
 
 // FASE do contrato (doc 02 §5.2, decisão 07/09 — três camadas): o badge de
 // status é só a fase; a condição financeira usa SITUACAO_CONTRATO_COLORS e as
@@ -101,10 +95,82 @@ export const REGUA_STAGE_COLORS: Record<string, string> = {
   'D+12': '#5b6b7f',
 };
 
-// Origens de capital — Doc 3 §4.6.
-export const ORIGEM_CAPITAL_COLORS: Record<string, string> = {
-  'Investidor de ativo específico': '#FA8E0D',
-  'Fundo coletivo / exclusivo': '#6b4fd6',
-  'Capital próprio Azit': '#1f9d5b',
-  'Empréstimo / alavancagem': '#4f8af0',
+// ============================================================
+// Padronização E1 (07/09): TODOS os mapas de cor de status vivem AQUI (Regra 9),
+// na paleta canônica (verde #eafaf1/#1f9d5b · âmbar #fef6e9/#c98a0a · vermelho
+// #fdeceb/#e0413c · neutro #f1f4f8/#8694a4 · cinza #eef1f5/#5b6b7f · azul
+// #eef4ff/#2456c7). Os mapas locais por página foram absorvidos.
+// ============================================================
+
+// Situação da FATURA calculada em runtime (Regra 7) — chaves lower_snake como o
+// backend envia. Vencida é VERMELHA (padrão de atraso de todo o sistema).
+export const FATURA_SITUACAO_COLORS: Record<string, StatusColor> = {
+  em_aberto: { bg: '#f1f4f8', fg: '#8694a4' },
+  vence_hoje: { bg: '#fef6e9', fg: '#c98a0a' },
+  vencida: { bg: '#fdeceb', fg: '#e0413c' },
+  paga: { bg: '#eafaf1', fg: '#1f9d5b' },
+  paga_em_atraso: { bg: '#eafaf1', fg: '#1f9d5b' },
+  renegociada: { bg: '#efeaff', fg: '#6b4fd6' },
+};
+export const FATURA_SITUACAO_LABEL: Record<string, string> = {
+  em_aberto: 'Em aberto',
+  vence_hoje: 'Vence hoje',
+  vencida: 'Vencida',
+  paga: 'Paga',
+  paga_em_atraso: 'Paga (em atraso)',
+  renegociada: 'Renegociada',
+};
+
+// Contas a Pagar (RF-15/18) — chaves = valores do enum StatusTituloPagar.
+export const CONTAS_PAGAR_STATUS_COLORS: Record<string, StatusColor> = {
+  SOLICITADO: { bg: '#eef4ff', fg: '#2456c7' },
+  EM_VALIDACAO: { bg: '#eef4ff', fg: '#2456c7' },
+  DEVOLVIDO: { bg: '#fef6e9', fg: '#c98a0a' },
+  AGUARDANDO_APROVACAO: { bg: '#fef6e9', fg: '#c98a0a' },
+  APROVADO: { bg: '#eafaf1', fg: '#1f9d5b' },
+  PROGRAMADO: { bg: '#eafaf1', fg: '#1f9d5b' },
+  ENVIADO_BPO: { bg: '#eef4ff', fg: '#2456c7' },
+  AGUARDANDO_CORA: { bg: '#fef6e9', fg: '#c98a0a' },
+  PAGO: { bg: '#eafaf1', fg: '#1f9d5b' },
+  CONCILIADO: { bg: '#eafaf1', fg: '#1f9d5b' },
+  CANCELADO: { bg: '#fdeceb', fg: '#e0413c' },
+  BLOQUEADO: { bg: '#fdeceb', fg: '#e0413c' },
+};
+
+// Fornecedores (RF-16).
+export const FORNECEDOR_STATUS_COLORS: Record<string, StatusColor> = {
+  ATIVO: { bg: '#eafaf1', fg: '#1f9d5b' },
+  AGUARDANDO_APROVACAO: { bg: '#fef6e9', fg: '#c98a0a' },
+  EM_CADASTRO: { bg: '#f1f4f8', fg: '#8694a4' },
+  BLOQUEADO: { bg: '#fdeceb', fg: '#e0413c' },
+  INATIVO: { bg: '#f1f4f8', fg: '#8694a4' },
+};
+
+// Ciclo de vida do produto do Catálogo (doc 02 §17).
+export const CATALOGO_CICLO_COLORS: Record<string, StatusColor> = {
+  RASCUNHO: { bg: '#f1f4f8', fg: '#8694a4' },
+  ATIVO: { bg: '#eafaf1', fg: '#1f9d5b' },
+  SUSPENSO: { bg: '#fef6e9', fg: '#c98a0a' },
+  ENCERRADO: { bg: '#fdeceb', fg: '#e0413c' },
+};
+
+// Situação da CONTA na carteira (calculada) — em acordo = atraso coberto (07/09).
+export const CONTA_SITUACAO_COLORS: Record<string, StatusColor> = {
+  em_dia: { bg: '#eafaf1', fg: '#1f9d5b' },
+  em_atraso: { bg: '#fdeceb', fg: '#e0413c' },
+  em_acordo: { bg: '#eef4ff', fg: '#2456c7' },
+  bloqueada: { bg: '#fdeceb', fg: '#e0413c' },
+};
+export const CONTA_SITUACAO_LABEL: Record<string, string> = {
+  em_dia: 'Em dia',
+  em_atraso: 'Em atraso',
+  em_acordo: 'Em acordo',
+  bloqueada: 'Bloqueada',
+};
+
+// Situação da análise (alçada do analista / complemento / COCAD) — cor de texto.
+export const ANALISE_SITUACAO_FG: Record<string, string> = {
+  alcada: '#1f9d5b',
+  complemento: '#c98a0a',
+  cocad: '#e0413c',
 };

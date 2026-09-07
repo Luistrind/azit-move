@@ -15,6 +15,7 @@ import {
 } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, ROLE_REAJUSTE, mensagemErro } from '../lib/permissoes';
 import { reaisParaCentavos, numeroBR } from '../lib/valor';
+import { Metrica } from '../components/Metrica';
 
 const ORIGEM_CAPITAL_LABEL: Record<string, string> = {
   CAPITAL_PROPRIO: 'Capital próprio',
@@ -23,21 +24,6 @@ const ORIGEM_CAPITAL_LABEL: Record<string, string> = {
   FUNDO: 'Fundo',
 };
 
-function Metrica({ label, valor, destaque }: { label: string; valor: string; destaque?: boolean }) {
-  return (
-    <div>
-      <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--navy-text-meta)' }}>
-        {label}
-      </div>
-      <div
-        className="mt-[4px] font-display text-[16px] font-bold"
-        style={{ color: destaque ? 'var(--accent)' : '#fff' }}
-      >
-        {valor}
-      </div>
-    </div>
-  );
-}
 
 function fmtData(iso: string): string {
   return iso.slice(0, 10).split('-').reverse().join('/');
@@ -263,7 +249,7 @@ export function ContratoDetalhePage() {
               </div>
             )}
             <div className="mt-[20px] grid grid-cols-4 gap-[16px]">
-              <Metrica label="Saldo devedor" valor={formatCurrency(c.resumo.saldoDevedorAtual)} />
+              <Metrica tom="escuro" label="Saldo devedor" valor={formatCurrency(c.resumo.saldoDevedorAtual)} />
               <Metrica
                 label="Parcela"
                 valor={`${c.resumo.parcelasPagas}/${c.resumo.totalParcelas}`}
