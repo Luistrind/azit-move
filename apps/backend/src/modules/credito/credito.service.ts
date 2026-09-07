@@ -182,10 +182,25 @@ export class CreditoService implements OnModuleInit {
     };
   }
 
+  // Periodicidade HERDADA do contrato principal da conta (decisão Luís 07/09 —
+  // mesmo padrão do acordo, doc 02 §7.7): o crédito avulso cai nas MESMAS
+  // faturas do titular, então segue o ritmo delas; o operador não escolhe.
+  private async periodicidadeHerdada(titularId?: string): Promise<'semanal' | 'quinzenal' | 'mensal'> {
+    if (!titularId) return 'mensal';
+    const principal = await this.prisma.db.contratoCredito.findFirst({
+      where: { conta: { titularId }, status: 'ATIVO' },
+      orderBy: { createdAt: 'asc' },
+      select: { periodicidade: true },
+    });
+    return principal?.periodicidade === 'MENSAL' ? 'mensal' : principal?.periodicidade === 'QUINZENAL' ? 'quinzenal' : principal?.periodicidade === 'SEMANAL' ? 'semanal' : 'mensal';
+  }
+
   // Prévia da parcela para a tela (não persiste).
   async simular(dto: SimularCreditoDto) {
-    const p = await this.precificar(dto, dto.titularId);
+    const periodicidade = await this.periodicidadeHerdada(dto.titularId);
+    const p = await this.precificar({ ...dto, periodicidade }, dto.titularId);
     return {
+      periodicidade,
       produto: p.produto,
       valor: dto.valor,
       valorEntrada: dto.valorEntrada,
@@ -222,6 +237,9 @@ export class CreditoService implements OnModuleInit {
       });
     }
 
+    // Periodicidade herdada (07/09): ignora a enviada — o ritmo é o das faturas.
+    const periodicidadeHerdada = await this.periodicidadeHerdada(titularId);
+    dto = { ...dto, periodicidade: periodicidadeHerdada };
     const p = await this.precificar(dto, titularId);
     // RF-RP04: na CONTRATAÇÃO o limite de 30% da parcela principal bloqueia.
     if (p.limiteParcela !== null && p.valorParcela > p.limiteParcela) {

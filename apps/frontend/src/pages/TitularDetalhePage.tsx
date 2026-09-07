@@ -83,7 +83,7 @@ export function TitularDetalhePage() {
   const [cValor, setCValor] = useState('');
   const [cParcelas, setCParcelas] = useState('12');
   const [cEntrada, setCEntrada] = useState('');
-  const [cPeriodicidade, setCPeriodicidade] = useState<'semanal' | 'quinzenal' | 'mensal'>('mensal');
+
 
   // Fonte ÚNICA: produtos do CATÁLOGO com contratação avulsa (doc 02 §17,
   // 2026-08-16) — o model Produto legado (itens de contrato) saiu deste modal.
@@ -105,8 +105,8 @@ export function TitularDetalhePage() {
   // Prévia REAL no servidor (F3: se o Reembolso Parcelado está ativo no Catálogo,
   // vem com taxa inicial, encargo e limite de 30% da parcela principal).
   const previa = useQuery({
-    queryKey: ['credito-previa', id, cValorCent, cEntradaCent, cNumParcelas, cPeriodicidade],
-    queryFn: () => creditoService.simular({ valor: cValorCent, numeroParcelas: cNumParcelas, valorEntrada: cEntradaCent, periodicidade: cPeriodicidade, titularId: id }),
+    queryKey: ['credito-previa', id, cValorCent, cEntradaCent, cNumParcelas],
+    queryFn: () => creditoService.simular({ valor: cValorCent, numeroParcelas: cNumParcelas, valorEntrada: cEntradaCent, titularId: id }),
     enabled: creditoOpen && cValorCent > 0 && cNumParcelas > 0,
     retry: false,
   });
@@ -121,7 +121,6 @@ export function TitularDetalhePage() {
         valor: cValorCent,
         numeroParcelas: cNumParcelas,
         valorEntrada: cEntradaCent,
-        periodicidade: cPeriodicidade,
       });
       setCreditoOpen(false);
       setCValor('');
@@ -531,11 +530,11 @@ export function TitularDetalhePage() {
             </label>
             <label className="flex flex-col gap-[4px] text-[12px]">
               <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Periodicidade</span>
-              <select value={cPeriodicidade} onChange={(e) => setCPeriodicidade(e.target.value as typeof cPeriodicidade)} className="h-[34px] rounded-[8px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
-                <option value="semanal">Semanal</option>
-                <option value="quinzenal">Quinzenal</option>
-                <option value="mensal">Mensal</option>
-              </select>
+              {/* Herdada do contrato principal (decisão 07/09, padrão do acordo):
+                  o crédito cai nas MESMAS faturas — o operador não escolhe. */}
+              <div className="flex h-[34px] items-center rounded-[8px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                {previa.data?.periodicidade ? previa.data.periodicidade.charAt(0).toUpperCase() + previa.data.periodicidade.slice(1) : '…'} · herdada das faturas
+              </div>
             </label>
           </div>
           {previa.data ? (

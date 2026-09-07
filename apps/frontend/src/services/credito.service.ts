@@ -2,6 +2,7 @@ import { api } from '../lib/api';
 
 // Crédito de manutenção (crédito avulso para cliente já ativo) — Doc 2 §4.7-A. Centavos.
 export interface SimulacaoCredito {
+  periodicidade: 'semanal' | 'quinzenal' | 'mensal';
   produto: 'reembolso_parcelado' | 'credito_avulso';
   valor: number;
   valorEntrada: number;
@@ -21,7 +22,7 @@ export interface OriginarCreditoBody {
   valor: number; // centavos
   numeroParcelas: number;
   valorEntrada: number; // centavos
-  periodicidade: 'semanal' | 'quinzenal' | 'mensal';
+  // Periodicidade é HERDADA das faturas no servidor (decisão 07/09) — não se envia.
 }
 
 export const creditoService = {

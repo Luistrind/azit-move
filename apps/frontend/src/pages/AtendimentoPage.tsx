@@ -93,6 +93,8 @@ export function AtendimentoPage() {
   // Passo 2/3 — simulação
   const [simulacao, setSimulacao] = useState<SimulacaoResultado | null>(null);
   const [apresentando, setApresentando] = useState(false);
+  // Ofertas que o operador escolheu NÃO mostrar no modo apresentação (07/09).
+  const [ofertasOcultas, setOfertasOcultas] = useState<string[]>([]);
 
   // Personalizada
   const [entradaTexto, setEntradaTexto] = useState('');
@@ -454,24 +456,19 @@ export function AtendimentoPage() {
           <div>
             <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Produto de interesse</span>
             <div className="flex flex-col gap-[8px]">
-              {PRODUTOS.map((p) => {
-                // Doc 02 §20 passo 2: cliente NOVO só segue com Compra Parcelada.
-                const bloqueado = tipoCliente === 'novo' && p.v !== 'compra_parcelada';
-                return (
-                  <button
-                    key={p.v}
-                    onClick={() => !bloqueado && setProduto(p.v)}
-                    disabled={bloqueado}
-                    className="rounded-[10px] p-[12px] text-left disabled:opacity-45"
-                    style={produto === p.v && !bloqueado ? { ...seletorInativo, border: '2px solid var(--accent)' } : seletorInativo}
-                  >
-                    <div className="text-[14.5px] font-bold">{p.l}</div>
-                    <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
-                      {bloqueado ? 'Disponível para quem já é cliente' : p.d}
-                    </div>
-                  </button>
-                );
-              })}
+              {/* Regra de UI (Luís, 07/09): se não pode clicar, NÃO exiba —
+                  cliente novo vê só a Compra Parcelada, sem cartões apagados. */}
+              {PRODUTOS.filter((p) => !(tipoCliente === 'novo' && p.v !== 'compra_parcelada')).map((p) => (
+                <button
+                  key={p.v}
+                  onClick={() => setProduto(p.v)}
+                  className="rounded-[10px] p-[12px] text-left"
+                  style={produto === p.v ? { ...seletorInativo, border: '2px solid var(--accent)' } : seletorInativo}
+                >
+                  <div className="text-[14.5px] font-bold">{p.l}</div>
+                  <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>{p.d}</div>
+                </button>
+              ))}
             </div>
           </div>
 
@@ -577,9 +574,6 @@ export function AtendimentoPage() {
           >
             {ocupado ? 'Registrando…' : 'Continuar'}
           </button>
-          <Link to="/originacao" className="text-center text-[13px]" style={{ color: 'var(--text-muted)', minHeight: 44 }}>
-            Prefiro a versão completa de escritório
-          </Link>
         </div>
       )}
 
@@ -670,8 +664,20 @@ export function AtendimentoPage() {
             let padrao = 0;
             return simulacao.ofertas.map((o) => {
               if (o.tipo === 'padrao') padrao += 1;
+              const oculta = ofertasOcultas.includes(o.id);
               return (
-                <CartaoOferta key={o.id} oferta={o} titulo={rotuloOferta(o, padrao)} onSelecionar={() => selecionar(o)} />
+                <div key={o.id} className="flex flex-col gap-[4px]" style={oculta ? { opacity: 0.55 } : undefined}>
+                  <CartaoOferta oferta={o} titulo={rotuloOferta(o, padrao)} onSelecionar={() => selecionar(o)} />
+                  {/* Apresentação limpa (Luís, 07/09): o operador escolhe o que o
+                      cliente vê — oferta oculta não aparece no modo apresentação. */}
+                  <button
+                    onClick={() => setOfertasOcultas((v) => (v.includes(o.id) ? v.filter((x) => x !== o.id) : [...v, o.id]))}
+                    className="self-end text-[12px] font-semibold"
+                    style={{ color: oculta ? 'var(--accent)' : 'var(--text-muted)' }}
+                  >
+                    {oculta ? 'Mostrar na apresentação' : 'Ocultar da apresentação'}
+                  </button>
+                </div>
               );
             });
           })()}
@@ -1000,6 +1006,8 @@ export function AtendimentoPage() {
               return simulacao.ofertas.map((o) => {
                 if (o.tipo === 'padrao') padrao += 1;
                 const titulo = rotuloOferta(o, padrao);
+                // Oferta oculta pelo operador não aparece para o cliente (07/09).
+                if (ofertasOcultas.includes(o.id)) return null;
                 return (
                   <button
                     key={o.id}

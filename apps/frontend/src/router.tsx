@@ -10,7 +10,6 @@ import { EstruturasPage } from './pages/EstruturasPage';
 import { ContratoDetalhePage } from './pages/ContratoDetalhePage';
 import { ReguaPage } from './pages/ReguaPage';
 import { AcordosPage } from './pages/AcordosPage';
-import { OriginacaoPage } from './pages/OriginacaoPage';
 import { AtendimentoPage } from './pages/AtendimentoPage';
 import { SimulacoesPage } from './pages/SimulacoesPage';
 import { PropostasPage } from './pages/PropostasPage';
@@ -77,10 +76,6 @@ export const router = createBrowserRouter([
       {
         path: 'acordos',
         element: <AcordosPage />,
-      },
-      {
-        path: 'originacao',
-        element: <OriginacaoPage />,
       },
       {
         path: 'atendimento',

@@ -18,7 +18,7 @@ export function SimulacoesPage() {
     <div className="flex flex-col gap-[16px]">
       <div className="flex items-center justify-between">
         <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Simulações são exploratórias; a escolhida vira proposta.</div>
-        <button onClick={() => navigate('/originacao')} className="h-[34px] rounded-[8px] px-[16px] text-[12.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff' }}>
+        <button onClick={() => navigate('/atendimento')} className="h-[34px] rounded-[8px] px-[16px] text-[12.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff' }}>
           + Novo atendimento
         </button>
       </div>

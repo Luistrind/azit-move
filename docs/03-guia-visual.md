@@ -34,6 +34,14 @@ Este documento é a fonte da verdade para o frontend da plataforma V3. Deve ser 
 
 Quando houver conflito entre o protótipo e os documentos de domínio, **o domínio prevalece**. O protótipo foi gerado antes da validação completa de status com Vicente e contém simplificações que este documento corrige.
 
+> **Regra de interação (Luís, 2026-09-07): se não pode clicar, NÃO exiba.** Opção
+> indisponível para o contexto atual (produto exclusivo de cliente ativo numa triagem
+> de cliente novo, ação sem permissão do papel, filtro de estado que nada produz)
+> **some da tela** — nunca aparece desabilitada/apagada. Elemento desabilitado só é
+> aceitável quando a própria tela oferece o caminho para habilitá-lo (ex.: botão de
+> envio enquanto um campo obrigatório está vazio) e, nesse caso, a tela DIZ o que
+> falta. Vale para todo o sistema.
+
 ---
 
 ## 2. Identidade visual
