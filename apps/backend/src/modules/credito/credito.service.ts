@@ -85,7 +85,7 @@ export class CreditoService implements OnModuleInit {
       where: { titularId },
       include: {
         contratosCredito: {
-          where: { status: { in: ['ATIVO', 'INADIMPLENTE'] } },
+          where: { status: 'ATIVO' },
           select: { valorParcelaInicial: true, periodicidade: true },
         },
       },
@@ -382,7 +382,8 @@ export class CreditoService implements OnModuleInit {
     await this.prisma.db.contratoCredito.update({
       where: { id: contrato.id },
       data: {
-        status: 'CANCELADO',
+        status: 'ENCERRADO',
+        motivoEncerramento: 'CANCELAMENTO',
         dataEncerramento: new Date(),
         aprovadoPor: decisorId,
       },

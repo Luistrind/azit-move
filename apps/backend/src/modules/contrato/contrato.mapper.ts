@@ -54,6 +54,10 @@ export interface ContratoApi {
   taxaJurosAtraso: number | null;
   taxaDescontoQuitacao: number | null;
   status: string;
+  // Intervenções (doc 02 §5.2, camada 3) — carimbos paralelos à fase.
+  veiculoBloqueadoEm: string | null;
+  recuperacaoIniciadaEm: string | null;
+  transferenciaEfetivadaEm: string | null;
   dataEncerramento: string | null;
   motivoEncerramento: string | null;
   createdAt: string;
@@ -79,9 +83,12 @@ export function contratoParaApi(c: ContratoCredito): ContratoApi {
     taxaJurosAtraso: taxa(c.taxaJurosAtraso),
     taxaDescontoQuitacao: taxa(c.taxaDescontoQuitacao),
     status: StatusContratoCredito[c.status],
+    veiculoBloqueadoEm: c.veiculoBloqueadoEm ? c.veiculoBloqueadoEm.toISOString() : null,
+    recuperacaoIniciadaEm: c.recuperacaoIniciadaEm ? c.recuperacaoIniciadaEm.toISOString() : null,
+    transferenciaEfetivadaEm: c.transferenciaEfetivadaEm ? c.transferenciaEfetivadaEm.toISOString() : null,
     dataEncerramento: c.dataEncerramento ? c.dataEncerramento.toISOString() : null,
     motivoEncerramento: c.motivoEncerramento
-      ? MotivoEncerramento[c.motivoEncerramento]
+      ? MotivoEncerramento[c.motivoEncerramento as keyof typeof MotivoEncerramento]
       : null,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),

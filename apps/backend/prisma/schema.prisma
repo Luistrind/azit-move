@@ -90,25 +90,21 @@ enum Periodicidade {
   MENSAL
 }
 
+// FASE do contrato (doc 02 §5.2, decisão 2026-09-07 — três camadas): o enum é só
+// a fase de vida. Inadimplência virou SITUAÇÃO calculada (Regra 7); bloqueio e
+// recuperação viraram INTERVENÇÕES paralelas (carimbos no contrato).
 enum StatusContratoCredito {
   RASCUNHO
   AGUARDANDO_ASSINATURA
   AGUARDANDO_PAGAMENTO_INICIAL
   AGUARDANDO_ENTREGA_VEICULO
   ATIVO
-  INADIMPLENTE
-  BLOQUEADO
-  SUSPENSO
-  EM_RECUPERACAO_VEICULO
-  CANCELADO
-  RESCINDIDO
-  LIQUIDADO_POR_NOVACAO
-  QUITADO_AGUARDANDO_TRANSFERENCIA
-  QUITADO_TRANSFERENCIA_EFETIVADA
+  ENCERRADO // sempre com motivoEncerramento
 }
 
 enum MotivoEncerramento {
   QUITACAO
+  NOVACAO
   RESCISAO
   CANCELAMENTO
 }
@@ -894,6 +890,12 @@ model ContratoCredito {
   taxaJurosAtraso      Decimal               @default(1.0) @db.Decimal(5, 2)
   taxaDescontoQuitacao Decimal?              @db.Decimal(8, 6)
   status               StatusContratoCredito @default(RASCUNHO)
+  // Intervenções operacionais (doc 02 §5.2, camada 3): estados reais PARALELOS à
+  // fase — convivem com ATIVO. Limpar o carimbo desfaz a intervenção (auditoria
+  // fica no logAuditoria).
+  veiculoBloqueadoEm      DateTime? // bloqueio remoto D+3 (Regra 6); desbloqueio manual limpa
+  recuperacaoIniciadaEm   DateTime? // processo de retomada do veículo em andamento
+  transferenciaEfetivadaEm DateTime? // reserva de domínio transferida (só Encerrado por quitação)
   solicitadoPor        String? // crédito de manutenção: usuário que originou (Doc 2 §4.7-A)
   aprovadoPor          String? // usuário que aprovou pela alçada (§7.9)
   dataAprovacao        DateTime?

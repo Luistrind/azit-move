@@ -9,13 +9,9 @@ import { CriarContaDto } from './dto/criar-conta.dto';
 import { AtualizarContaDto } from './dto/atualizar-conta.dto';
 import { ContaApi, contaParaApi, mapearStatusConta } from './conta.mapper';
 
-const CONTRATOS_VIGENTES = [
-  'ATIVO',
-  'INADIMPLENTE',
-  'BLOQUEADO',
-  'SUSPENSO',
-  'EM_RECUPERACAO_VEICULO',
-] as const;
+// Modelo de 3 camadas (doc 02 §5.2, 07/09): vigente = fase ATIVO; bloqueio é
+// carimbo (veiculoBloqueadoEm); situação financeira é calculada — inclusive o
+// novo estado 'em_acordo' (atraso coberto por acordo ativo).
 
 @Injectable()
 export class ContaService {
@@ -33,16 +29,15 @@ export class ContaService {
       where: { titular: { deletedAt: null } },
       include: {
         titular: { select: { id: true, nome: true, cpfCnpj: true } },
-        contratosCredito: { select: { id: true, status: true } },
+        contratosCredito: { select: { id: true, status: true, veiculoBloqueadoEm: true } },
+        acordos: { where: { status: 'ATIVO' }, select: { id: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
 
     // Agregados em lote (evita N+1 pesado): parcelas por contrato, faturas por conta.
     const todosContratos = contas.flatMap((c) =>
-      c.contratosCredito
-        .filter((ct) => (CONTRATOS_VIGENTES as readonly string[]).includes(ct.status))
-        .map((ct) => ct.id),
+      c.contratosCredito.filter((ct) => ct.status === 'ATIVO').map((ct) => ct.id),
     );
     const [saldos, atrasos, vencidas] = await Promise.all([
       this.prisma.db.parcela.groupBy({
@@ -76,12 +71,11 @@ export class ContaService {
 
     return contas
       .map((conta) => {
-        const vigentes = conta.contratosCredito.filter((ct) =>
-          (CONTRATOS_VIGENTES as readonly string[]).includes(ct.status),
-        );
+        const vigentes = conta.contratosCredito.filter((ct) => ct.status === 'ATIVO');
         const saldoDevedor = vigentes.reduce((s, ct) => s + (saldoPorContrato.get(ct.id) ?? 0), 0);
         const valorEmAtraso = vigentes.reduce((s, ct) => s + (atrasoPorContrato.get(ct.id) ?? 0), 0);
-        const bloqueada = conta.contratosCredito.some((ct) => ct.status === 'BLOQUEADO');
+        const bloqueada = conta.contratosCredito.some((ct) => ct.veiculoBloqueadoEm !== null);
+        const emAcordo = conta.acordos.length > 0;
         return {
           contaId: conta.id,
           titularId: conta.titular.id,
@@ -93,7 +87,7 @@ export class ContaService {
           valorEmAtraso,
           faturasVencidas: vencidasPorConta.get(conta.id) ?? 0,
           bloqueada,
-          situacao: bloqueada ? 'bloqueada' : valorEmAtraso > 0 ? 'em_atraso' : 'em_dia',
+          situacao: bloqueada ? 'bloqueada' : valorEmAtraso > 0 ? 'em_atraso' : emAcordo ? 'em_acordo' : 'em_dia',
         };
       })
       .filter((c) => c.contratosTotal > 0);

@@ -17,7 +17,9 @@ const DIA_MS = 24 * 60 * 60 * 1000;
 const cent = (d: Prisma.Decimal | null): number =>
   d !== null ? Math.round(Number(d.toString()) * 100) : 0;
 
-const STATUS_REGUA = ['INADIMPLENTE', 'BLOQUEADO', 'EM_RECUPERACAO_VEICULO'] as const;
+// Modelo de 3 camadas (doc 02 §5.2, 07/09): a régua seleciona contratos ATIVOS
+// e deriva o caso do ATRASO calculado + intervenções (bloqueio/recuperação) —
+// não existe mais status INADIMPLENTE gravado.
 
 @Injectable()
 export class ReguaService {
@@ -37,7 +39,7 @@ export class ReguaService {
   // 5.6 — Dados do kanban: contratos em régua com estágio e dias de atraso.
   async listar() {
     const contratos = await this.prisma.db.contratoCredito.findMany({
-      where: { status: { in: [...STATUS_REGUA] } },
+      where: { status: 'ATIVO' },
       include: {
         conta: { include: { titular: { select: { nome: true, cpfCnpj: true } } } },
         ativo: { select: { placa: true, modelo: true } },
@@ -69,8 +71,8 @@ export class ReguaService {
           // Fluxo do operador de cobrança (18/08): o card da régua abre o caso e
           // renegocia dali — a renegociação é da CONTA (doc 02 §7.7).
           contaId: c.contaId,
-          bloqueado: c.status === 'BLOQUEADO',
-          emRecuperacao: c.status === 'EM_RECUPERACAO_VEICULO',
+          bloqueado: c.veiculoBloqueadoEm !== null,
+          emRecuperacao: c.recuperacaoIniciadaEm !== null,
           diasAtraso,
           estagio: resolverEstagioRegua(diasAtraso),
           valorVencido: cent(v?._sum.valorNominal ?? null),
@@ -80,8 +82,9 @@ export class ReguaService {
         };
       })
       // Kanban por DIAS de atraso (decisão 31/08): entra na régua a partir de
-      // 1 dia de calendário; o estágio segue no payload para as automações.
-      .filter((c) => c.diasAtraso >= 1);
+      // 1 dia de calendário — e permanece enquanto houver intervenção ativa
+      // (bloqueio/recuperação), mesmo sem atraso, até o desbloqueio manual.
+      .filter((c) => c.diasAtraso >= 1 || c.bloqueado || c.emRecuperacao);
   }
 
   // Job agendado: varre a régua diariamente (madrugada). Em dev o operador também
@@ -123,13 +126,18 @@ export class ReguaService {
 
   // 5.4 — Bloqueio D+3 (regra absoluta, registrado no sistema; integração externa
   // é placeholder). Só permitido a partir de D+3.
+  // Modelo de 3 camadas (07/09): bloqueio é INTERVENÇÃO (carimbo), não fase —
+  // o contrato segue ATIVO com o veículo bloqueado.
   async bloquear(contratoId: string, usuarioId?: string) {
     const { contrato, diasAtraso } = await this.contratoComAtraso(contratoId);
-    if (contrato.status !== 'INADIMPLENTE') {
+    if (contrato.status !== 'ATIVO') {
       throw new UnprocessableEntityException({
         erro: 'estado_invalido',
-        mensagem: `Só é possível bloquear contrato inadimplente (atual: ${contrato.status})`,
+        mensagem: `Só é possível bloquear contrato em vida (fase atual: ${contrato.status})`,
       });
+    }
+    if (contrato.veiculoBloqueadoEm) {
+      throw new UnprocessableEntityException({ erro: 'ja_bloqueado', mensagem: 'O veículo já está bloqueado' });
     }
     if (diasAtraso < 3) {
       throw new UnprocessableEntityException({
@@ -139,7 +147,7 @@ export class ReguaService {
     }
     await this.prisma.db.contratoCredito.update({
       where: { id: contratoId },
-      data: { status: 'BLOQUEADO' },
+      data: { veiculoBloqueadoEm: new Date() },
     });
     // Auditoria: bloqueio é evento sensível — registra o responsável (reunião 13/07).
     await this.prisma.db.logAuditoria.create({
@@ -148,8 +156,8 @@ export class ReguaService {
         acao: 'contrato_bloqueado',
         entidade: 'contrato',
         entidadeId: contratoId,
-        antes: { status: contrato.status },
-        depois: { status: 'BLOQUEADO', diasAtraso },
+        antes: { veiculoBloqueado: false },
+        depois: { veiculoBloqueado: true, diasAtraso },
       },
     });
     // Placeholder: integração de bloqueio remoto do veículo (telemetria).
@@ -157,20 +165,19 @@ export class ReguaService {
     return { resultado: 'bloqueado' };
   }
 
-  // 5.5 — Desbloqueio sempre manual, após confirmação de regularização.
+  // 5.5 — Desbloqueio sempre manual, após confirmação de regularização: limpa o
+  // carimbo; a situação financeira (em dia/em atraso/em acordo) é calculada.
   async desbloquear(contratoId: string, usuarioId?: string) {
     const { contrato, diasAtraso } = await this.contratoComAtraso(contratoId);
-    if (contrato.status !== 'BLOQUEADO') {
+    if (!contrato.veiculoBloqueadoEm) {
       throw new UnprocessableEntityException({
         erro: 'estado_invalido',
-        mensagem: 'Contrato não está bloqueado',
+        mensagem: 'O veículo não está bloqueado',
       });
     }
-    // Se ainda há atraso, volta a Inadimplente; se regularizado, a Ativo.
-    const novoStatus = diasAtraso >= 1 ? 'INADIMPLENTE' : 'ATIVO';
     await this.prisma.db.contratoCredito.update({
       where: { id: contratoId },
-      data: { status: novoStatus },
+      data: { veiculoBloqueadoEm: null },
     });
     await this.prisma.db.logAuditoria.create({
       data: {
@@ -178,18 +185,18 @@ export class ReguaService {
         acao: 'contrato_desbloqueado',
         entidade: 'contrato',
         entidadeId: contratoId,
-        antes: { status: 'BLOQUEADO' },
-        depois: { status: novoStatus, diasAtraso },
+        antes: { veiculoBloqueado: true },
+        depois: { veiculoBloqueado: false, diasAtraso },
       },
     });
-    this.logger.warn(`[desbloqueio] contrato ${contrato.numero} -> ${novoStatus} (stub remoto)`);
-    return { resultado: 'desbloqueado', status: novoStatus };
+    this.logger.warn(`[desbloqueio] contrato ${contrato.numero} (stub remoto)`);
+    return { resultado: 'desbloqueado', diasAtraso };
   }
 
   private async contratoComAtraso(contratoId: string) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id: contratoId },
-      select: { id: true, numero: true, status: true },
+      select: { id: true, numero: true, status: true, veiculoBloqueadoEm: true },
     });
     if (!contrato) {
       throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Contrato não encontrado' });

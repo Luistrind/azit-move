@@ -28,13 +28,7 @@ export interface EfetivadorAprovacao {
   reprovada?: (a: AprovacaoEfetivacao) => Promise<void>;
 }
 
-const CONTRATOS_VIGENTES = [
-  'ATIVO',
-  'INADIMPLENTE',
-  'BLOQUEADO',
-  'SUSPENSO',
-  'EM_RECUPERACAO_VEICULO',
-] as const;
+// Vigente = fase ATIVO (doc 02 §5.2, 07/09).
 
 // Motor de aprovação unificado (Doc 2 §7.9-A): propor e aprovar são atos distintos.
 // Solicitação → decisões (aprovar exige alçada; recomendar escala; reprovar encerra)
@@ -354,7 +348,7 @@ export class AprovacaoService {
 
     for (const conta of contas) {
       const vigentes = conta.contratosCredito.filter((c) =>
-        (CONTRATOS_VIGENTES as readonly string[]).includes(c.status),
+        c.status === 'ATIVO',
       );
       const idsContratos = vigentes.map((c) => c.id);
       const [saldo, atraso, faturasVencidas] = await Promise.all([

@@ -7,6 +7,7 @@ export enum Periodicidade {
 
 export enum MotivoEncerramento {
   QUITACAO     = 'quitacao',
+  NOVACAO      = 'novacao',
   RESCISAO     = 'rescisao',
   CANCELAMENTO = 'cancelamento',
 }

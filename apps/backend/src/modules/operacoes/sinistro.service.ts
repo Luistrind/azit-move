@@ -65,7 +65,7 @@ export class SinistroService {
       if ((saldoRestante._sum.valorNominal ?? new Prisma.Decimal(0)).equals(0)) {
         await tx.contratoCredito.update({
           where: { id: contratoId },
-          data: { status: 'QUITADO_AGUARDANDO_TRANSFERENCIA', dataEncerramento: hoje },
+          data: { status: 'ENCERRADO', motivoEncerramento: 'QUITACAO', dataEncerramento: hoje },
         });
       }
     });

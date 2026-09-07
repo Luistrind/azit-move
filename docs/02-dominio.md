@@ -650,33 +650,52 @@ Evento de reajuste anual das parcelas por IPCA. Precisa de aprovação humana an
 
 ### 5.2 Status do ContratoCredito
 
-**Pré-ativação:**
-| Status | Descrição |
+> **Decisão 2026-09-07 (Luís) — o status do contrato tem TRÊS camadas.** O enum antigo
+> misturava fase de vida, condição financeira e intervenção operacional num campo só —
+> raiz da família de inconsistências da Carteira (KPI "ativos" ≠ tabela, inadimplência
+> contábil × operacional na mesma tela, flips ATIVO↔INADIMPLENTE dependentes de job).
+> Modelo novo:
+>
+> **Camada 1 — FASE (status gravado, exclusivo):** Rascunho → Aguardando assinatura →
+> Aguardando pagamento inicial → Aguardando entrega do veículo → **Ativo** → **Encerrado**.
+> Encerrado SEMPRE carrega `motivoEncerramento`: **Quitação**, **Novação**, **Rescisão**
+> (desfeito depois de vivo) ou **Cancelamento** (morreu antes de entrar em vida). Os dois
+> "Quitado" antigos viram Encerrado por quitação + carimbo `transferenciaEfetivadaEm`
+> (transferência da reserva de domínio, registrada por ação manual na tela do contrato).
+>
+> **Camada 2 — SITUAÇÃO FINANCEIRA (calculada, Regra 7 — NUNCA gravada):** Em dia ·
+> Em atraso (X dias de calendário) · **Em acordo** (atraso coberto por acordo ativo).
+> Deriva das parcelas em aberto fora de acordo — sempre correta, sem job.
+> "Inadimplente" DEIXA DE SER STATUS.
+>
+> **Camada 3 — INTERVENÇÕES (estados reais paralelos, carimbo + auditoria):**
+> `veiculoBloqueadoEm` (bloqueio remoto D+3, Regra 6 — desbloqueio manual limpa o
+> carimbo) e `recuperacaoIniciadaEm` (processo de retomada). Convivem com fase Ativo.
+> **"Suspenso" SAI do modelo** (nenhum produtor; se surgir suspensão administrativa
+> real, nasce como intervenção com motivo, neste padrão).
+>
+> Consequências: "vigente" = fase Ativo (régua única em todo o sistema); a régua de
+> cobrança seleciona por atraso calculado + intervenções; KPIs da Carteira derivam
+> tudo da mesma fonte (inadimplência exibida é a OPERACIONAL; "Recebido na semana" =
+> faturas pagas + lançamentos da janela).
+
+**Fase (gravada):**
+| Fase | Descrição |
 |---|---|
 | Rascunho | Criado, incompleto, não enviado |
-| Aguardando assinatura | Enviado, não assinado |
-| Aguardando pagamento inicial | Depende de entrada ou primeira parcela |
-| Aguardando entrega do veículo | Assinado, veículo não entregue |
+| Aguardando assinatura | Formalizado, não assinado por todos |
+| Aguardando pagamento inicial | Assinado; entrada cobrada, não paga |
+| Aguardando entrega do veículo | Pago, veículo não entregue |
+| Ativo | Em vida — inclusive durante atraso, acordo, bloqueio |
+| Encerrado | Terminal; motivo: Quitação / Novação / Rescisão / Cancelamento |
 
-**Em vigor:**
-| Status | Descrição |
-|---|---|
-| Ativo | Em dia, parcelas em andamento |
-| Inadimplente | Uma ou mais parcelas vencidas |
-| Bloqueado | Veículo bloqueado por inadimplência ou regra operacional |
-| Suspenso / Pausado | Pausado temporariamente por situação especial |
-| Em recuperação de veículo | Processo de retomada do veículo em andamento |
+**Situação financeira (calculada):** Em dia · Em atraso (X dias) · Em acordo.
 
-**Encerramento:**
-| Status | Descrição |
-|---|---|
-| Cancelado | Encerrado antes da ativação ou por erro/distrato |
-| Rescindido | Encerrado por inadimplência grave após retomada do veículo |
-| Liquidado por novação | Extinto por novação (substituído por um contrato novo); preservado para auditoria |
-| Quitado (aguardando transferência) | Obrigações pagas, transferência do ativo pendente |
-| Quitado (transferência efetivada) | Obrigações pagas e ativo transferido ao cliente |
+**Intervenções (paralelas):** Veículo bloqueado (`veiculoBloqueadoEm`) · Em recuperação
+de veículo (`recuperacaoIniciadaEm`) · Transferência efetivada (`transferenciaEfetivadaEm`,
+só em Encerrado por quitação).
 
-> **Nota:** O contrato não tem status "Renegociado". O **Acordo** (recuperação branda) é um evento registrado na entidade `Acordo` e não muda o status do contrato (que segue como está, inadimplente até o acordo ser cumprido). A **Novação** (recuperação radical) leva o contrato origem a "Liquidado por novação" e cria um contrato novo. Acordo e Novação são mecanismos distintos (ver 4.14, 4.16, 7.7, 7.7b).
+> **Nota:** O contrato não tem status "Renegociado". O **Acordo** (recuperação branda) é um evento registrado na entidade `Acordo` e não muda a fase do contrato (segue Ativo; a situação calculada vira "Em acordo" enquanto o acordo cobre o atraso). A **Novação** (recuperação radical) leva o contrato origem a "Encerrado por novação" e cria um contrato novo. Acordo e Novação são mecanismos distintos (ver 4.14, 4.16, 7.7, 7.7b).
 
 ---
 

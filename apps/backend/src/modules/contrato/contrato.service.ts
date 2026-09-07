@@ -11,7 +11,7 @@ import {
   StatusContratoCredito as StatusContratoCreditoPrisma,
 } from '@prisma/client';
 import { StatusContratoCredito, Credor, Periodicidade as PeriodicidadeTypes } from '@azit/types';
-import { gerarCronograma, centavosParaReaisString } from '@azit/utils';
+import { diasAtrasoCalendario, gerarCronograma, centavosParaReaisString, inicioHojeBrasilUTC } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { CriarContratoDto } from './dto/criar-contrato.dto';
 import { ListarContratosDto } from './dto/listar-contratos.dto';
@@ -69,15 +69,7 @@ export class ContratoService {
     const jaContratado = opts.verificarEstoque === false ? null : await this.prisma.db.contratoCredito.findFirst({
       where: {
         ativoId: dto.ativoId,
-        status: {
-          notIn: [
-            'LIQUIDADO_POR_NOVACAO',
-            'CANCELADO',
-            'RESCINDIDO',
-            'QUITADO_AGUARDANDO_TRANSFERENCIA',
-            'QUITADO_TRANSFERENCIA_EFETIVADA',
-          ],
-        },
+        status: { not: 'ENCERRADO' }, // fase Encerrado libera o ativo (doc 02 §5.2)
       },
       select: { id: true },
     });
@@ -561,35 +553,50 @@ export class ContratoService {
     return { total, page: filtros.page, limit: filtros.limit, data };
   }
 
+  // KPIs da Carteira — régua única (doc 02 §5.2, 07/09; bug de produção 05/09):
+  // vigente = fase ATIVO; inadimplência exibida é a OPERACIONAL (contratos ativos
+  // com parcela vencida fora de acordo — mesma régua da tabela de posições);
+  // carteira sob gestão só soma contratos vigentes (parcela órfã de contrato
+  // encerrado não infla); recebido na semana = parcelas pagas + LANÇAMENTOS
+  // (entradas de contrato/acordo) da janela.
   async kpis() {
     const seteDiasAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const [porStatus, saldo, recebido] = await Promise.all([
+    const hoje = inicioHojeBrasilUTC();
+    const [porStatus, ativosIds, saldo, recebido, lancado] = await Promise.all([
       this.prisma.db.contratoCredito.groupBy({ by: ['status'], _count: { _all: true } }),
+      this.prisma.db.contratoCredito.findMany({ where: { status: 'ATIVO' }, select: { id: true } }),
       this.prisma.db.parcela.aggregate({
-        where: { status: null, acordoId: null },
+        where: { status: null, acordoId: null, contrato: { status: 'ATIVO' } },
         _sum: { valorNominal: true },
       }),
-      // Recebido na semana: parcelas pagas (com data de pagamento) nos últimos 7 dias.
       this.prisma.db.parcela.aggregate({
         where: { status: { in: PARCELA_PAGA }, dataPagamento: { gte: seteDiasAtras } },
         _sum: { valorPago: true },
       }),
+      this.prisma.db.lancamentoConta.aggregate({
+        where: { dataPagamento: { gte: seteDiasAtras } },
+        _sum: { valor: true },
+      }),
     ]);
-    const cont = (s: string) => porStatus.find((g) => g.status === s)?._count._all ?? 0;
+    const emAtrasoPorContrato = ativosIds.length
+      ? await this.prisma.db.parcela.groupBy({
+          by: ['contratoId'],
+          where: { contratoId: { in: ativosIds.map((c) => c.id) }, status: null, acordoId: null, dataVencimento: { lt: hoje } },
+          _count: { _all: true },
+        })
+      : [];
     const totalContratos = porStatus.reduce((s, g) => s + g._count._all, 0);
-    const ativos = cont('ATIVO');
-    const inadimplentes = cont('INADIMPLENTE') + cont('BLOQUEADO');
-    const baseVigente = ativos + inadimplentes; // contratos vigentes (não terminais)
+    const ativos = ativosIds.length;
+    const emAtraso = emAtrasoPorContrato.length;
     return {
       totalContratos,
       porStatus: porStatus.map((g) => ({ status: StatusContratoCredito[g.status], total: g._count._all })),
       saldoDevedorTotal: this.cent(saldo._sum.valorNominal),
-      // KPIs da Carteira (Doc 3 §8.1).
       carteiraSobGestao: this.cent(saldo._sum.valorNominal),
       contratosAtivos: ativos,
-      inadimplentes,
-      inadimplenciaPct: baseVigente > 0 ? Math.round((inadimplentes / baseVigente) * 1000) / 10 : 0,
-      recebidoNaSemana: this.cent(recebido._sum.valorPago),
+      inadimplentes: emAtraso,
+      inadimplenciaPct: ativos > 0 ? Math.round((emAtraso / ativos) * 1000) / 10 : 0,
+      recebidoNaSemana: this.cent(recebido._sum.valorPago) + this.cent(lancado._sum.valor),
     };
   }
 
@@ -613,7 +620,7 @@ export class ContratoService {
         select: { numero: true, dataVencimento: true, valorNominal: true },
       }),
     ]);
-    const [saldoAtual, pagoAgg] = await Promise.all([
+    const [saldoAtual, pagoAgg, vencidasAgg, coberturaAtiva] = await Promise.all([
       this.prisma.db.parcela.aggregate({
         where: { contratoId: id, status: null, acordoId: null },
         _sum: { valorNominal: true },
@@ -622,10 +629,30 @@ export class ContratoService {
         where: { contratoId: id, status: { in: PARCELA_PAGA } },
         _sum: { valorPago: true },
       }),
+      // Situação financeira CALCULADA (doc 02 §5.2, camada 2).
+      this.prisma.db.parcela.aggregate({
+        where: { contratoId: id, status: null, acordoId: null, dataVencimento: { lt: inicioHojeBrasilUTC() } },
+        _min: { dataVencimento: true },
+        _count: { _all: true },
+      }),
+      this.prisma.db.parcela.count({
+        where: { contratoId: id, acordoCobertura: { status: { in: ['ATIVO', 'AGUARDANDO_ENTRADA'] } } },
+      }),
     ]);
+    const diasAtraso = vencidasAgg._min.dataVencimento ? diasAtrasoCalendario(vencidasAgg._min.dataVencimento) : 0;
+    const situacaoFinanceira =
+      contrato.status !== 'ATIVO'
+        ? null
+        : vencidasAgg._count._all > 0
+          ? ('em_atraso' as const)
+          : coberturaAtiva > 0
+            ? ('em_acordo' as const)
+            : ('em_dia' as const);
 
     return {
       ...contratoParaApi(contrato),
+      situacaoFinanceira,
+      diasAtraso,
       titular: contrato.conta.titular,
       ativo: {
         placa: contrato.ativo.placa,
@@ -693,6 +720,38 @@ export class ContratoService {
       select: { id: true },
     });
     if (!existe) throw this.naoEncontrado();
+  }
+
+  // Reserva de domínio transferida ao cliente (doc 02 §5.2, 07/09): ação manual
+  // do operador em contrato Encerrado por quitação — carimbo + auditoria.
+  async registrarTransferencia(id: string, usuarioId?: string) {
+    const contrato = await this.prisma.db.contratoCredito.findFirst({
+      where: { id },
+      select: { id: true, numero: true, status: true, motivoEncerramento: true, transferenciaEfetivadaEm: true },
+    });
+    if (!contrato) throw this.naoEncontrado();
+    if (contrato.status !== 'ENCERRADO' || contrato.motivoEncerramento !== 'QUITACAO') {
+      throw new UnprocessableEntityException({
+        erro: 'estado_invalido',
+        mensagem: 'A transferência só se registra em contrato encerrado por quitação',
+      });
+    }
+    if (contrato.transferenciaEfetivadaEm) {
+      throw new UnprocessableEntityException({ erro: 'ja_registrada', mensagem: 'Transferência já registrada' });
+    }
+    const agora = new Date();
+    await this.prisma.db.contratoCredito.update({ where: { id }, data: { transferenciaEfetivadaEm: agora } });
+    await this.prisma.db.logAuditoria.create({
+      data: {
+        usuarioId,
+        acao: 'transferencia_efetivada',
+        entidade: 'contrato',
+        entidadeId: id,
+        antes: { transferenciaEfetivadaEm: null },
+        depois: { transferenciaEfetivadaEm: agora.toISOString() },
+      },
+    });
+    return { resultado: 'registrada', em: agora.toISOString() };
   }
 
   private naoEncontrado(): NotFoundException {

@@ -200,8 +200,9 @@ export class FaturaService {
         },
       });
 
-      // Status do contrato: quitado se não restam parcelas em aberto; senão, se
-      // estava inadimplente e regularizou, volta a Ativo.
+      // Fase do contrato (doc 02 §5.2, 07/09): encerra por QUITAÇÃO quando não
+      // restam parcelas em aberto. Inadimplência é situação CALCULADA — não há
+      // mais flip de status ao regularizar.
       for (const contratoId of contratosTocados) {
         const emAberto = await tx.parcela.count({
           where: { contratoId, status: null, acordoId: null },
@@ -209,16 +210,8 @@ export class FaturaService {
         if (emAberto === 0) {
           await tx.contratoCredito.update({
             where: { id: contratoId },
-            data: { status: 'QUITADO_AGUARDANDO_TRANSFERENCIA' },
+            data: { status: 'ENCERRADO', motivoEncerramento: 'QUITACAO', dataEncerramento: dataPagamento },
           });
-        } else {
-          const c = fatura.parcelas.find((x) => x.contrato.id === contratoId)?.contrato;
-          if (c?.status === 'INADIMPLENTE') {
-            await tx.contratoCredito.update({
-              where: { id: contratoId },
-              data: { status: 'ATIVO' },
-            });
-          }
         }
       }
     });
@@ -296,13 +289,8 @@ export class FaturaService {
       where: { id: fatura.id },
       data: { status: 'VENCIDA' },
     });
-    const contratoIds = [...new Set(fatura.parcelas.map((p) => p.contratoId))];
-    for (const contratoId of contratoIds) {
-      await this.prisma.db.contratoCredito.update({
-        where: { id: contratoId },
-        data: { status: 'INADIMPLENTE' },
-      });
-    }
+    // Doc 02 §5.2 (07/09): a fatura vira VENCIDA (estado real); o contrato NÃO
+    // muda de fase — inadimplência é situação calculada das parcelas.
     return { resultado: 'vencida' };
   }
 

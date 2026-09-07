@@ -23,7 +23,8 @@ export interface Titular {
 export interface FichaTitular {
   titular: Titular;
   conta: { id: string; status: string; dataAbertura: string } | null;
-  contratosCredito: { id: string; numero: string; status: string; saldoDevedor: number; dataAssinatura: string }[];
+  contratosCredito: { id: string; numero: string; status: string; saldoDevedor: number;
+    situacao: 'em_dia' | 'em_atraso' | 'em_acordo' | null; dataAssinatura: string }[];
   contratosInvestimento: { id: string; numero: string; status: string; valorAportado: number }[];
 }
 
@@ -40,7 +41,7 @@ export interface DetalheTitular {
     contratosAtivos: number;
     contratosTotal: number;
   };
-  contratosCredito: { id: string; numero: string; status: string; valorTotal: number; saldoDevedor: number; dataAssinatura: string }[];
+  contratosCredito: { id: string; numero: string; status: string; valorTotal: number; saldoDevedor: number; situacao: 'em_dia' | 'em_atraso' | 'em_acordo' | null; dataAssinatura: string }[];
   contratosInvestimento: { id: string; numero: string; status: string; valorAportado: number }[];
 }
 

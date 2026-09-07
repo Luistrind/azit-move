@@ -22,7 +22,9 @@ function Kpi({ label, valor }: { label: string; valor: string }) {
 
 const SITUACAO: Record<string, { rotulo: string; bg: string; fg: string }> = {
   em_dia: { rotulo: 'Em dia', bg: '#eafaf1', fg: '#1f9d5b' },
-  em_atraso: { rotulo: 'Em atraso', bg: '#fef6e9', fg: '#c98a0a' },
+  em_atraso: { rotulo: 'Em atraso', bg: '#fdeceb', fg: '#e0413c' },
+  // Atraso coberto por acordo ativo (doc 02 §5.2, 07/09) — cliente em regularização.
+  em_acordo: { rotulo: 'Em acordo', bg: '#eef4ff', fg: '#2456c7' },
   bloqueada: { rotulo: 'Bloqueada', bg: '#fdeceb', fg: '#e0413c' },
 };
 

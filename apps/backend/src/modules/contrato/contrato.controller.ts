@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ContratoService } from './contrato.service';
 import { criarContratoSchema, CriarContratoDto } from './dto/criar-contrato.dto';
@@ -55,5 +56,14 @@ export class ContratoController {
   @Get(':id/documento')
   documento(@Param('id') id: string) {
     return this.contratoService.documento(id);
+  }
+
+  // Reserva de domínio transferida ao cliente (doc 02 §5.2, 07/09) — ação manual
+  // em contrato Encerrado por quitação.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.FINANCEIRO)
+  @Post(':id/transferencia-efetivada')
+  @HttpCode(200)
+  transferenciaEfetivada(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.contratoService.registrarTransferencia(id, user.id);
   }
 }

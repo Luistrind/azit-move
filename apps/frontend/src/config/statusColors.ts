@@ -29,20 +29,29 @@ export const FATURA_STATUS_COLORS: Record<string, StatusColor> = {
   Renegociada: { bg: '#efeaff', fg: '#6b4fd6' },
 };
 
+// FASE do contrato (doc 02 §5.2, decisão 07/09 — três camadas): o badge de
+// status é só a fase; a condição financeira usa SITUACAO_CONTRATO_COLORS e as
+// intervenções (bloqueio/recuperação) viram selos próprios.
 export const CONTRATO_STATUS_COLORS: Record<string, StatusColor> = {
   Rascunho: { bg: '#f1f4f8', fg: '#8694a4' },
   'Aguardando assinatura': { bg: '#f1f4f8', fg: '#8694a4' },
   'Aguardando pagamento inicial': { bg: '#fef6e9', fg: '#c98a0a' },
   'Aguardando entrega do veículo': { bg: '#fef6e9', fg: '#c98a0a' },
   Ativo: { bg: '#eafaf1', fg: '#1f9d5b' },
-  Inadimplente: { bg: '#fef6e9', fg: '#c98a0a' },
-  Bloqueado: { bg: '#fdeceb', fg: '#e0413c' },
-  Suspenso: { bg: '#f1f4f8', fg: '#9aa7b5' },
-  'Em recuperação de veículo': { bg: '#f3eafb', fg: '#9a3bd1' },
-  Cancelado: { bg: '#fdeceb', fg: '#e0413c' },
-  Rescindido: { bg: '#f1f4f8', fg: '#5b6b7f' },
-  'Quitado (aguardando transferência)': { bg: '#eafaf1', fg: '#1f9d5b' },
-  'Quitado (transferência efetivada)': { bg: '#eafaf1', fg: '#1f9d5b' },
+  Encerrado: { bg: '#f1f4f8', fg: '#5b6b7f' },
+};
+
+// Situação financeira do contrato — CALCULADA (Regra 7), chaves em lower_snake
+// como o backend envia.
+export const SITUACAO_CONTRATO_COLORS: Record<string, StatusColor> = {
+  em_dia: { bg: '#eafaf1', fg: '#1f9d5b' },
+  em_atraso: { bg: '#fdeceb', fg: '#e0413c' },
+  em_acordo: { bg: '#eef4ff', fg: '#2456c7' },
+};
+export const SITUACAO_CONTRATO_LABEL: Record<string, string> = {
+  em_dia: 'Em dia',
+  em_atraso: 'Em atraso',
+  em_acordo: 'Em acordo',
 };
 
 // Chaves = rótulos exibidos (A2, 04/09): antes as chaves não batiam com os

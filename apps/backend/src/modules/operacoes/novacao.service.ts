@@ -16,13 +16,7 @@ const reais = (c: number) => centavosParaReaisString(c);
 const cent = (d: Prisma.Decimal | null): number =>
   d !== null ? Math.round(Number(d.toString()) * 100) : 0;
 
-const TERMINAIS: StatusContratoCredito[] = [
-  'LIQUIDADO_POR_NOVACAO',
-  'CANCELADO',
-  'RESCINDIDO',
-  'QUITADO_AGUARDANDO_TRANSFERENCIA',
-  'QUITADO_TRANSFERENCIA_EFETIVADA',
-];
+const TERMINAIS: StatusContratoCredito[] = ['ENCERRADO'];
 
 // 6.6 — Novação (recuperação RADICAL): liquida o ContratoCredito origem inteiro
 // (LIQUIDADO_POR_NOVACAO) e gera um ContratoCredito novo completo. Passa pelo motor
@@ -97,7 +91,7 @@ export class NovacaoService implements OnModuleInit {
     //    liberar o ativo na regra "1 ativo = 1 contrato ATIVO".
     await this.prisma.db.contratoCredito.update({
       where: { id: origem.id },
-      data: { status: 'LIQUIDADO_POR_NOVACAO', dataEncerramento: new Date() },
+      data: { status: 'ENCERRADO', motivoEncerramento: 'NOVACAO', dataEncerramento: new Date() },
     });
 
     // 2. Cria o contrato novo (mesmo titular/conta e ativo) reusando o núcleo.

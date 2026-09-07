@@ -63,7 +63,7 @@ export class RenegociacaoService implements OnModuleInit {
   // o acordo pega o ritmo das faturas — o operador não escolhe mais.
   private async frequenciaHerdada(contaId: string): Promise<'semanal' | 'quinzenal' | 'mensal'> {
     const principal = await this.prisma.db.contratoCredito.findFirst({
-      where: { contaId, status: { in: ['ATIVO', 'INADIMPLENTE', 'BLOQUEADO', 'SUSPENSO', 'EM_RECUPERACAO_VEICULO'] } },
+      where: { contaId, status: 'ATIVO' },
       orderBy: { createdAt: 'asc' },
       select: { periodicidade: true },
     });
@@ -482,7 +482,7 @@ export class RenegociacaoService implements OnModuleInit {
       select: {
         titular: { select: { nome: true, cpfCnpj: true, whatsapp: true, email: true } },
         contratosCredito: {
-          where: { status: { in: ['ATIVO', 'INADIMPLENTE', 'BLOQUEADO', 'SUSPENSO', 'EM_RECUPERACAO_VEICULO'] } },
+          where: { status: 'ATIVO' },
           select: { numero: true, dataAssinatura: true, ativo: { select: { descricao: true, placa: true } } },
         },
       },

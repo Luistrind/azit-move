@@ -182,10 +182,10 @@ export class TitularService {
       .map((d) => ({ id: d.id, tipo: d.tipo.toLowerCase(), arquivoRef: d.arquivoRef, dataAnexo: d.dataAnexo.toISOString() }));
 
     // Resumo financeiro agregado sobre os contratos da conta.
-    const ATIVOS = ['ATIVO', 'INADIMPLENTE', 'BLOQUEADO', 'SUSPENSO', 'EM_RECUPERACAO_VEICULO'] as const;
-    const idsAtivos = contratos.filter((c) => (ATIVOS as readonly string[]).includes(c.status)).map((c) => c.id);
+    // Vigente = fase ATIVO (doc 02 §5.2, 07/09).
+    const idsAtivos = contratos.filter((c) => c.status === 'ATIVO').map((c) => c.id);
     const hoje = inicioHojeBrasilUTC(); // fuso do negócio (A4, 04/09)
-    const [pago, lancado, saldo, saldosContrato, atraso, qAcordos, qNovacoes] = await Promise.all([
+    const [pago, lancado, saldo, saldosContrato, atrasoContrato, coberturaContrato, atraso, qAcordos, qNovacoes] = await Promise.all([
       // Total recebido do cliente = faturas pagas (principal, encargos,
       // intermediárias, serviços) + lançamentos avulsos (entradas de contrato e
       // de acordo — doc 02 §4-A.3, revisão 2026-08-30). Visão fiel ao caixa.
@@ -195,6 +195,9 @@ export class TitularService {
       // Saldo ATUAL por contrato (parcelas em aberto fora de acordo) — a tabela
       // de contratos da ficha exibia o campo gravado na criação (congelado).
       ids.length ? this.prisma.db.parcela.groupBy({ by: ['contratoId'], where: { contratoId: { in: ids }, status: null, acordoId: null }, _sum: { valorNominal: true } }) : [],
+      // Situação financeira por contrato (doc 02 §5.2, camada 2 — calculada).
+      ids.length ? this.prisma.db.parcela.groupBy({ by: ['contratoId'], where: { contratoId: { in: ids }, status: null, acordoId: null, dataVencimento: { lt: hoje } }, _count: { _all: true } }) : [],
+      ids.length ? this.prisma.db.parcela.groupBy({ by: ['contratoId'], where: { contratoId: { in: ids }, acordoCobertura: { status: { in: ['ATIVO', 'AGUARDANDO_ENTRADA'] } } }, _count: { _all: true } }) : [],
       ids.length ? this.prisma.db.parcela.aggregate({ where: { contratoId: { in: ids }, status: null, acordoId: null, dataVencimento: { lt: hoje } }, _sum: { valorNominal: true } }) : null,
       // Acordo é CONTA-cêntrico (contratoId só no legado) — contar por contrato
       // mostrava 0 com acordo ativo (caso real 17/08).
@@ -203,8 +206,10 @@ export class TitularService {
     ]);
     const cent = (d: Prisma.Decimal | null | undefined) => (d ? reaisParaCentavos(d.toString()) : 0);
     const saldoPorContrato = new Map(saldosContrato.map((g) => [g.contratoId, g._sum.valorNominal]));
+    const atrasoPorContratoFicha = new Set(atrasoContrato.map((g) => g.contratoId));
+    const coberturaPorContrato = new Set(coberturaContrato.map((g) => g.contratoId));
     const valorEmContratoAtivo = contratos
-      .filter((c) => (ATIVOS as readonly string[]).includes(c.status))
+      .filter((c) => c.status === 'ATIVO')
       .reduce((s, c) => s + cent(c.valorTotal), 0);
     // Entrada paga: materializa como LANÇAMENTO da conta (revisão 30/08) e já
     // entra na soma acima — somar por fora dobraria o KPI. A heurística fica SÓ
@@ -241,6 +246,8 @@ export class TitularService {
         // ORIGEM e ficava congelado na tela. Contrato sem cronograma (pré-dia
         // zero) mostra o previsto de origem.
         saldoDevedor: c.cronogramaGeradoEm ? cent(saldoPorContrato.get(c.id)) : cent(c.saldoDevedor),
+        // Situação financeira calculada (doc 02 §5.2, camada 2) — só em vida.
+        situacao: c.status !== 'ATIVO' ? null : atrasoPorContratoFicha.has(c.id) ? 'em_atraso' : coberturaPorContrato.has(c.id) ? 'em_acordo' : 'em_dia',
         dataAssinatura: c.dataAssinatura.toISOString(),
       })),
       contratosInvestimento: (conta?.contratosInvestimento ?? []).map((i) => ({

@@ -6,8 +6,11 @@ import { contratoService } from '../services/contrato.service';
 import { operacoesService, SimulacaoQuitacao } from '../services/operacoes.service';
 import { StatusBadge } from '../components/StatusBadge';
 import { Modal } from '../components/Modal';
+import { toast } from '../components/Toast';
 import {
   CONTRATO_STATUS_COLORS,
+  SITUACAO_CONTRATO_COLORS,
+  SITUACAO_CONTRATO_LABEL,
   PARCELA_STATUS_COLORS,
 } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, ROLE_REAJUSTE, mensagemErro } from '../lib/permissoes';
@@ -64,6 +67,16 @@ export function ContratoDetalhePage() {
     const a = document.createElement('a');
     a.href = url; a.download = `contrato-${documento.data?.numero ?? id}.txt`; a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function registrarTransferencia() {
+    try {
+      await contratoService.registrarTransferencia(id);
+      await queryClient.invalidateQueries({ queryKey: ['contrato', id] });
+      toast.sucesso('Transferência registrada.');
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+    }
   }
 
   const detalhe = useQuery({ queryKey: ['contrato', id], queryFn: () => contratoService.detalhe(id) });
@@ -203,8 +216,52 @@ export function ContratoDetalhePage() {
                   {c.ativo.descricao} · origem {fmtData(c.dataAssinatura)}
                 </div>
               </div>
-              <StatusBadge label={c.status} colors={CONTRATO_STATUS_COLORS} />
+              <div className="flex flex-wrap items-center justify-end gap-[6px]">
+                {/* Três camadas (doc 02 §5.2, 07/09): fase + situação calculada + selos. */}
+                <StatusBadge label={c.status} colors={CONTRATO_STATUS_COLORS} />
+                {c.situacaoFinanceira && (
+                  <StatusBadge
+                    label={`${SITUACAO_CONTRATO_LABEL[c.situacaoFinanceira]}${c.situacaoFinanceira === 'em_atraso' && c.diasAtraso > 0 ? ` (${c.diasAtraso}d)` : ''}`}
+                    colors={{ [`${SITUACAO_CONTRATO_LABEL[c.situacaoFinanceira]}${c.situacaoFinanceira === 'em_atraso' && c.diasAtraso > 0 ? ` (${c.diasAtraso}d)` : ''}`]: SITUACAO_CONTRATO_COLORS[c.situacaoFinanceira] }}
+                  />
+                )}
+                {c.veiculoBloqueadoEm && (
+                  <span className="rounded-[20px] px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: '#fdeceb', color: '#e0413c' }}>
+                    Veículo bloqueado
+                  </span>
+                )}
+                {c.recuperacaoIniciadaEm && (
+                  <span className="rounded-[20px] px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: '#f3eafb', color: '#9a3bd1' }}>
+                    Em recuperação
+                  </span>
+                )}
+                {c.status === 'Encerrado' && c.motivoEncerramento && (
+                  <span className="rounded-[20px] px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: '#f1f4f8', color: '#5b6b7f' }}>
+                    {c.motivoEncerramento}
+                  </span>
+                )}
+              </div>
             </div>
+            {/* Transferência da reserva de domínio (doc 02 §5.2): ação manual do
+                encerrado por quitação. */}
+            {c.status === 'Encerrado' && c.motivoEncerramento === 'quitacao' && (
+              <div className="mt-[12px] flex items-center gap-[10px] text-[12px]" style={{ color: 'var(--navy-text-body)' }}>
+                {c.transferenciaEfetivadaEm ? (
+                  <span>✓ Transferência do veículo efetivada em {fmtData(c.transferenciaEfetivadaEm)}</span>
+                ) : (
+                  <>
+                    <span>Transferência da reserva de domínio pendente.</span>
+                    <button
+                      onClick={() => void registrarTransferencia()}
+                      className="rounded-[7px] px-[10px] py-[5px] text-[11.5px] font-semibold"
+                      style={{ background: 'var(--accent)', color: '#fff' }}
+                    >
+                      Registrar transferência efetivada
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
             <div className="mt-[20px] grid grid-cols-4 gap-[16px]">
               <Metrica label="Saldo devedor" valor={formatCurrency(c.resumo.saldoDevedorAtual)} />
               <Metrica

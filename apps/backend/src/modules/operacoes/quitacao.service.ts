@@ -211,7 +211,7 @@ export class QuitacaoService {
       if (restantes === 0) {
         await tx.contratoCredito.update({
           where: { id: contratoId },
-          data: { status: 'QUITADO_AGUARDANDO_TRANSFERENCIA', dataEncerramento: hoje, motivoEncerramento: 'QUITACAO' },
+          data: { status: 'ENCERRADO', motivoEncerramento: 'QUITACAO', dataEncerramento: hoje },
         });
       }
     });

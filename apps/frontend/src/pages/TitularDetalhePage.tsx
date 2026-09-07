@@ -16,7 +16,7 @@ import { Modal } from '../components/Modal';
 import { BotaoVerRetorno } from '../components/RetornoBiro';
 import { RenegociacaoWizard } from '../components/RenegociacaoWizard';
 import { toast } from '../components/Toast';
-import { CONTRATO_STATUS_COLORS } from '../config/statusColors';
+import { CONTRATO_STATUS_COLORS, SITUACAO_CONTRATO_COLORS, SITUACAO_CONTRATO_LABEL } from '../config/statusColors';
 
 const card = { background: 'var(--surface)', border: '1px solid var(--border)' };
 
@@ -343,7 +343,7 @@ export function TitularDetalhePage() {
                   <td className="py-[9px]" style={{ color: 'var(--text-body)' }}>{fmtData(c.dataAssinatura)}</td>
                   <td className="py-[9px] text-right tabular-nums">{formatCurrency(c.valorTotal)}</td>
                   <td className="py-[9px] text-right tabular-nums">{formatCurrency(c.saldoDevedor)}</td>
-                  <td className="py-[9px]"><StatusBadge label={c.status} colors={CONTRATO_STATUS_COLORS} /></td>
+                  <td className="py-[9px]"><span className="inline-flex items-center gap-[5px]"><StatusBadge label={c.status} colors={CONTRATO_STATUS_COLORS} />{c.situacao && <span className="rounded-[6px] px-[7px] py-[1px] text-[10.5px] font-semibold" style={{ background: SITUACAO_CONTRATO_COLORS[c.situacao]?.bg, color: SITUACAO_CONTRATO_COLORS[c.situacao]?.fg }}>{SITUACAO_CONTRATO_LABEL[c.situacao]}</span>}</span></td>
                 </tr>
               ))}
             </tbody>

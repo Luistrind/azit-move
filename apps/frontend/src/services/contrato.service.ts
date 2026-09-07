@@ -45,6 +45,13 @@ export interface ContratoDetalhe {
   saldoDevedor: number;
   numeroParcelas: number;
   periodicidade: string;
+  // Três camadas (doc 02 §5.2, 07/09): situação calculada + intervenções.
+  situacaoFinanceira: 'em_dia' | 'em_atraso' | 'em_acordo' | null;
+  diasAtraso: number;
+  veiculoBloqueadoEm: string | null;
+  recuperacaoIniciadaEm: string | null;
+  transferenciaEfetivadaEm: string | null;
+  motivoEncerramento: string | null;
   titular: { id: string; nome: string; cpfCnpj: string; whatsapp: string };
   ativo: {
     placa: string | null;
@@ -89,6 +96,11 @@ export const contratoService = {
   },
   async listar(params: { page?: number; limit?: number; status?: string } = {}): Promise<ListaContratos> {
     const { data } = await api.get<ListaContratos>('/api/v1/contratos', { params });
+    return data;
+  },
+  // Reserva de domínio transferida (doc 02 §5.2) — só Encerrado por quitação.
+  async registrarTransferencia(id: string): Promise<{ resultado: string; em: string }> {
+    const { data } = await api.post(`/api/v1/contratos/${id}/transferencia-efetivada`);
     return data;
   },
   async detalhe(id: string): Promise<ContratoDetalhe> {
