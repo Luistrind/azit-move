@@ -18,6 +18,7 @@ import { RenegociacaoWizard } from '../components/RenegociacaoWizard';
 import { toast } from '../components/Toast';
 import { CONTRATO_STATUS_COLORS, SITUACAO_CONTRATO_COLORS, SITUACAO_CONTRATO_LABEL, FATURA_SITUACAO_COLORS, FATURA_SITUACAO_LABEL } from '../config/statusColors';
 import { Metrica, Campo } from '../components/Metrica';
+import { DocumentoViewer, useDocumentoViewer } from '../components/DocumentoViewer';
 
 const card = { background: 'var(--surface)', border: '1px solid var(--border)' };
 
@@ -53,6 +54,7 @@ export function TitularDetalhePage() {
   // Hub de ações do titular: contratar crédito, renegociar, desbloquear.
   const pode = usePodeRole();
   const [renegOpen, setRenegOpen] = useState(false);
+  const viewer = useDocumentoViewer(); // visualização inline de documentos (08/09)
   const [desbloqueando, setDesbloqueando] = useState(false);
 
   // Contratar crédito avulso (Doc 2 §4.7-A) — produto do catálogo + finalidade livre.
@@ -178,6 +180,7 @@ export function TitularDetalhePage() {
 
   return (
     <div className="flex flex-col gap-[16px] p-[24px]">
+      {viewer.doc && <DocumentoViewer doc={viewer.doc} onClose={viewer.fechar} />}
       {/* Header + hub de ações contextuais (a ficha do titular é o hub de operações) */}
       <div className="flex flex-wrap items-center gap-[12px]">
         <button onClick={() => navigate('/titulares')} className="rounded-[8px] px-[10px] py-[6px] text-[12px] font-semibold" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>← Titulares</button>
@@ -255,7 +258,7 @@ export function TitularDetalhePage() {
               {documentos.map((d) => (
                 <div key={d.id} className="flex items-center justify-between rounded-[8px] px-[10px] py-[7px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
                   <span>{DOC_LABEL[d.tipo] ?? d.tipo} <span style={{ color: 'var(--text-muted)' }}>· {fmtData(d.dataAnexo)}</span></span>
-                  <button onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--navy)' }}>Baixar</button>
+                  <span className="flex items-center gap-[10px]"><button onClick={() => void viewer.abrir(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--accent)' }}>Visualizar</button><button onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--navy)' }}>Baixar</button></span>
                 </div>
               ))}
             </div>

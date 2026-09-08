@@ -9,6 +9,7 @@ import { rotuloStatus } from '../lib/rotulos';
 import { Modal } from '../components/Modal';
 import { BotaoVerRetorno } from '../components/RetornoBiro';
 import { toast } from '../components/Toast';
+import { DocumentoViewer, useDocumentoViewer } from '../components/DocumentoViewer';
 import { ANALISE_SITUACAO_FG } from '../config/statusColors';
 import { mensagemErro } from '../lib/permissoes';
 
@@ -114,6 +115,8 @@ export function AnalisePage() {
   const qc = useQueryClient();
   const { data: d, refetch } = useQuery({ queryKey: ['analise', id], queryFn: () => analiseService.dossie(id) });
   const [ocupado, setOcupado] = useState(false);
+  // Visualização inline de documentos (imagem/PDF) sem baixar (08/09).
+  const viewer = useDocumentoViewer();
 
   async function acao(fn: () => Promise<DossieAnalise>, ok?: string) {
     setOcupado(true);
@@ -132,6 +135,7 @@ export function AnalisePage() {
 
   return (
     <div className="flex flex-col gap-[16px] p-[8px]">
+      {viewer.doc && <DocumentoViewer doc={viewer.doc} onClose={viewer.fechar} />}
       <div className="flex flex-wrap items-center justify-between gap-[8px]">
         <div>
           <h1 className="font-display text-[20px] font-bold">Análise de Cadastro</h1>
@@ -201,13 +205,22 @@ export function AnalisePage() {
                 <b>{ROTULO_DOC[doc.tipo] ?? doc.tipo.replace(/_/g, ' ')}</b> · {doc.nome}
                 <span className="opacity-60"> · {new Date(doc.anexadoEm).toLocaleDateString('pt-BR')}</span>
               </span>
-              <button
-                className="font-semibold"
-                style={{ color: 'var(--navy)' }}
-                onClick={() => void originacaoService.baixarDocumento(doc.id, doc.nome)}
-              >
-                Baixar
-              </button>
+              <span className="flex items-center gap-[10px]">
+                <button
+                  className="font-semibold"
+                  style={{ color: 'var(--accent)' }}
+                  onClick={() => void viewer.abrir(doc.id, doc.nome)}
+                >
+                  Visualizar
+                </button>
+                <button
+                  className="font-semibold"
+                  style={{ color: 'var(--navy)' }}
+                  onClick={() => void originacaoService.baixarDocumento(doc.id, doc.nome)}
+                >
+                  Baixar
+                </button>
+              </span>
             </div>
           ))
         )}
