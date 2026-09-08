@@ -48,6 +48,33 @@ const TIPO_CONSULTA_LABEL: Record<string, string> = {
   PROCESSOS: 'Processos judiciais',
 };
 
+// 2ª camada — gatilho único (08/09): um clique dispara todas; o backend pula
+// as já válidas. A lista abaixo espelha a ordem/custos do backend.
+const CONSULTAS_2A_CAMADA = [
+  { enumDb: 'SCORE_QUOD', label: 'Score Quod', pago: true },
+  { enumDb: 'RESTRITIVOS', label: 'Restritivos Quod', pago: true },
+  { enumDb: 'BOAVISTA_SCORE', label: 'Score Boa Vista', pago: true },
+  { enumDb: 'SCORE_POSITIVO', label: 'Score Positivo', pago: true },
+  { enumDb: 'DISTRIBUICAO_PROCESSOS', label: 'Distribuição de processos', pago: false },
+  { enumDb: 'PROCESSOS', label: 'Processos judiciais', pago: false },
+] as const;
+
+// Espelha o critério do backend: CONCLUÍDA, dentro da validade e com os dados
+// que a política consome (registro vazio não conta — correção 08/08).
+function birosPendentes(d: DossieAnalise): { label: string; pago: boolean }[] {
+  const titularId = d.participantes.find((p) => p.papel === 'COMPRADOR_PRINCIPAL')?.titularId;
+  return CONSULTAS_2A_CAMADA.filter((t) => {
+    const valida = d.consultas.some((c) => {
+      if (c.titularId !== titularId || c.tipo !== t.enumDb || c.situacao !== 'CONCLUIDA' || !c.valida) return false;
+      const r = (c.resultado ?? {}) as Record<string, unknown>;
+      if (t.enumDb === 'SCORE_QUOD') return typeof r.score === 'number';
+      if (t.enumDb === 'RESTRITIVOS') return typeof r.restritivosFinanceiros === 'number' && typeof r.restritivosNaoFinanceiros === 'number';
+      return true;
+    });
+    return !valida;
+  }).map((t) => ({ label: t.label, pago: t.pago }));
+}
+
 // Etapas macro do stepper e a qual etapa cada status pertence.
 const ETAPAS = ['Cadastro e documentos', 'Consultas', 'Parecer', 'Decisão', 'Liberação'] as const;
 const ETAPA_DO_STATUS: Record<string, number> = {
@@ -257,66 +284,23 @@ export function AnalisePage() {
                 >
                   Repetir Camada 1 no birô
                 </button>
-                <button
-                  className={btnS}
-                  disabled={ocupado}
-                  onClick={() => {
-                    if (!window.confirm('Consultar o SCORE Quod via Marketplace da BigDataCorp?\n\nEsta chamada é PAGA (~R$ 2,41) e fica FORA da franquia gratuita.')) return;
-                    void acao(() => analiseService.consultarBiro(d.id, 'score_quod'), 'Score Quod consultado no birô.');
-                  }}
-                >
-                  Consultar Score Quod (pago)
-                </button>
-                <button
-                  className={btnS}
-                  disabled={ocupado}
-                  onClick={() => {
-                    if (!window.confirm('Consultar os RESTRITIVOS Quod via Marketplace da BigDataCorp?\n\nEsta chamada é PAGA (~R$ 2,41) e fica FORA da franquia gratuita.')) return;
-                    void acao(() => analiseService.consultarBiro(d.id, 'restritivos'), 'Restritivos Quod consultados no birô.');
-                  }}
-                >
-                  Consultar Restritivos Quod (pago)
-                </button>
-                <button
-                  className={btnS}
-                  disabled={ocupado}
-                  onClick={() => {
-                    if (!window.confirm('Consultar o SCORE Boa Vista via Marketplace da BigDataCorp?\n\nEsta chamada é PAGA e fica FORA da franquia gratuita.')) return;
-                    void acao(() => analiseService.consultarBiro(d.id, 'boavista_score'), 'Score Boa Vista consultado no birô.');
-                  }}
-                >
-                  Consultar Score Boa Vista (pago)
-                </button>
-                <button
-                  className={btnS}
-                  disabled={ocupado}
-                  onClick={() => {
-                    if (!window.confirm('Consultar o SCORE POSITIVO via Marketplace da BigDataCorp?\n\nEsta chamada é PAGA e fica FORA da franquia gratuita.')) return;
-                    void acao(() => analiseService.consultarBiro(d.id, 'score_positivo'), 'Score Positivo consultado no birô.');
-                  }}
-                >
-                  Consultar Score Positivo (pago)
-                </button>
-                <button
-                  className={btnS}
-                  disabled={ocupado}
-                  onClick={() => {
-                    if (!window.confirm('Consultar a DISTRIBUIÇÃO DE PROCESSOS na Plataforma da BigDataCorp? Consome 1 consulta da franquia gratuita.')) return;
-                    void acao(() => analiseService.consultarBiro(d.id, 'distribuicao_processos'), 'Distribuição de processos consultada no birô.');
-                  }}
-                >
-                  Consultar Distribuição de processos (franquia)
-                </button>
-                <button
-                  className={btnS}
-                  disabled={ocupado}
-                  onClick={() => {
-                    if (!window.confirm('Consultar os PROCESSOS JUDICIAIS detalhados na Plataforma da BigDataCorp? Consome 1 consulta da franquia gratuita.')) return;
-                    void acao(() => analiseService.consultarBiro(d.id, 'processos'), 'Processos judiciais consultados no birô.');
-                  }}
-                >
-                  Consultar Processos judiciais (franquia)
-                </button>
+                {(() => {
+                  const pend = birosPendentes(d);
+                  if (pend.length === 0) return null;
+                  return (
+                    <button
+                      className={btnS}
+                      disabled={ocupado}
+                      onClick={() => {
+                        const linhas = pend.map((t) => `• ${t.label}${t.pago ? ' (paga)' : ' (franquia)'}`).join('\n');
+                        if (!window.confirm(`Consultar os birôs da 2ª camada agora?\n\nSerão disparadas:\n${linhas}\n\nAs pagas saem via Marketplace da BigDataCorp (fora da franquia). Consultas já válidas não são repetidas.`)) return;
+                        void acao(() => analiseService.consultarBiroTodas(d.id), 'Consultas de birô disparadas — resultados registrados abaixo.');
+                      }}
+                    >
+                      Consultar birôs ({pend.length} pendente{pend.length > 1 ? 's' : ''})
+                    </button>
+                  );
+                })()}
               </span>
             )}
           </div>

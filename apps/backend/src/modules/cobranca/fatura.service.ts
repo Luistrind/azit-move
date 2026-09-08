@@ -65,6 +65,7 @@ export class FaturaService {
       include: {
         conta: { include: { titular: { select: { id: true, nome: true, cpfCnpj: true, email: true, whatsapp: true, asaasCustomerId: true } } } },
         parcelas: { include: { contrato: { select: { taxaMultaAtraso: true, taxaJurosAtraso: true } } }, take: 1 },
+        itensFatura: { orderBy: { tipo: 'asc' }, select: { descricao: true, valor: true } },
       },
     });
     if (!fatura || fatura.asaasChargeId) return;
@@ -84,7 +85,7 @@ export class FaturaService {
       externalReference: fatura.id,
       valor: cent(fatura.valorTotal),
       vencimento: fatura.dataVencimento,
-      descricao: `Fatura ${fatura.numero}`,
+      descricao: this.descricaoCobranca(fatura.numero, cent(fatura.valorTotal), fatura.itensFatura),
       customerId,
       multaPct: taxas ? Number(taxas.taxaMultaAtraso.toString()) : undefined,
       jurosPct: taxas ? Number(taxas.taxaJurosAtraso.toString()) : undefined,
@@ -93,6 +94,28 @@ export class FaturaService {
       where: { id: fatura.id },
       data: { asaasChargeId: cobranca.id },
     });
+  }
+
+  // Descrição da cobrança no Asaas = composição da fatura, espelhada da tela
+  // (Luís 08/09): uma linha por item com valor, mais o total. O campo do Asaas
+  // aceita até 500 caracteres — acima disso, resume as linhas excedentes.
+  private descricaoCobranca(numero: number, totalCent: number, itens: { descricao: string; valor: Prisma.Decimal }[]): string {
+    const brl = (c: number) => `R$ ${(c / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const cab = `Fatura #${numero}`;
+    const rodape = `Total: ${brl(totalCent)}`;
+    if (!itens.length) return `${cab} — ${rodape}`;
+    const linhas = itens.map((it) => `${it.descricao} — ${brl(cent(it.valor))}`);
+    const LIMITE = 490;
+    let usadas = 0;
+    let tamanho = cab.length + rodape.length + 2; // quebras de linha do cabeçalho/rodapé
+    for (const l of linhas) {
+      if (tamanho + l.length + 1 > LIMITE) break;
+      tamanho += l.length + 1;
+      usadas++;
+    }
+    const corpo = linhas.slice(0, usadas);
+    if (usadas < linhas.length) corpo.push(`… e mais ${linhas.length - usadas} item(ns)`);
+    return [cab, ...corpo, rodape].join('\n');
   }
 
   // 4.6 + 4.7 — Conciliação de pagamento. Baixa fatura + parcelas, calcula

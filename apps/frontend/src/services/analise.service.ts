@@ -75,6 +75,11 @@ export const analiseService = {
     return data;
   },
   // Camada 2 via Marketplace da BigDataCorp (pago por chamada, fora da franquia).
+  // Gatilho único: dispara todas as consultas da 2ª camada ainda não válidas.
+  async consultarBiroTodas(id: string, titularId?: string): Promise<DossieAnalise> {
+    const { data } = await api.post(`/api/v1/analises/${id}/consultar-biro-todas`, titularId ? { titularId } : {});
+    return data;
+  },
   async consultarBiro(
     id: string,
     tipo: 'score_quod' | 'restritivos' | 'boavista_score' | 'score_positivo' | 'distribuicao_processos' | 'processos',

@@ -398,6 +398,51 @@ export class AnaliseService implements OnModuleInit {
     }, usuarioId);
   }
 
+  // Gatilho ÚNICO da 2ª camada (Luís 08/09): um clique dispara TODAS as
+  // consultas manuais, cada uma registrada separadamente como hoje. Consulta
+  // já CONCLUÍDA e válida (com os dados que a política consome) é PULADA —
+  // repetir consulta paga sem necessidade é custo jogado fora.
+  async consultarBiroCamada2Todas(analiseId: string, dto: { titularId?: string }, usuarioId?: string) {
+    const a = await this.carregar(analiseId);
+    this.garantirNaoFinal(a.status);
+    const alvo = dto.titularId
+      ? a.participantes.find((p) => p.titularId === dto.titularId)
+      : a.participantes.find((p) => p.papel === 'COMPRADOR_PRINCIPAL');
+    if (!alvo) throw new UnprocessableEntityException({ erro: 'participante_invalido', mensagem: 'Participante não encontrado na análise' });
+
+    const TIPOS: { chave: 'score_quod' | 'restritivos' | 'boavista_score' | 'score_positivo' | 'distribuicao_processos' | 'processos'; enumDb: string }[] = [
+      { chave: 'score_quod', enumDb: 'SCORE_QUOD' },
+      { chave: 'restritivos', enumDb: 'RESTRITIVOS' },
+      { chave: 'boavista_score', enumDb: 'BOAVISTA_SCORE' },
+      { chave: 'score_positivo', enumDb: 'SCORE_POSITIVO' },
+      { chave: 'distribuicao_processos', enumDb: 'DISTRIBUICAO_PROCESSOS' },
+      { chave: 'processos', enumDb: 'PROCESSOS' },
+    ];
+    const temDados = (enumDb: string, resultado: unknown): boolean => {
+      const r = (resultado ?? {}) as Record<string, unknown>;
+      if (enumDb === 'SCORE_QUOD') return typeof r.score === 'number';
+      if (enumDb === 'RESTRITIVOS') return typeof r.restritivosFinanceiros === 'number' && typeof r.restritivosNaoFinanceiros === 'number';
+      return true; // adicionais: campos vazios já registram como FALHA na origem
+    };
+    const jaValida = (enumDb: string) =>
+      a.consultas.some(
+        (c) =>
+          c.titularId === alvo.titularId &&
+          c.tipo === enumDb &&
+          c.situacao === 'CONCLUIDA' &&
+          this.consultaValida(c.dataConsulta, a.parametroVersao.validadeConsultaDias) &&
+          temDados(enumDb, c.resultado),
+      );
+
+    // Sequencial de propósito: cada consulta registra concluída/falha por si
+    // (falha de uma não impede as demais — o catch mora em consultarBiroCamada2).
+    for (const t of TIPOS) {
+      if (jaValida(t.enumDb)) continue;
+      await this.consultarBiroCamada2(analiseId, { tipo: t.chave, titularId: alvo.titularId }, usuarioId);
+    }
+    return this.dossie(analiseId);
+  }
+
   // Consultas de birô vinculadas ao CADASTRO do cliente (decisão 09/08): tudo
   // o que já consultamos sobre a pessoa, em qualquer análise — visível na ficha.
   async consultasDoTitular(titularId: string) {

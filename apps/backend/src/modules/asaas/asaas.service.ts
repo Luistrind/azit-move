@@ -109,7 +109,7 @@ export class AsaasService {
     if (this.simulado) {
       const id = `pay_sim_${params.externalReference}`;
       this.logger.log(
-        `[simulado] cobrança ${id} ref=${params.externalReference} valor=${params.valor}c`,
+        `[simulado] cobrança ${id} ref=${params.externalReference} valor=${params.valor}c descricao="${params.descricao.replace(/\n/g, ' | ')}"`,
       );
       return {
         id,

@@ -188,6 +188,20 @@ export class AnaliseController {
     return this.analise.consultarBiroCamada2(id, dto, user.id);
   }
 
+  // Gatilho único (Luís 08/09): dispara TODAS as consultas da 2ª camada de uma
+  // vez, pulando as que já estão válidas; cada uma registra separadamente.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('analises/:id/consultar-biro-todas')
+  @HttpCode(201)
+  consultarBiroTodas(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(z.object({ titularId: z.string().min(1).optional() })))
+    dto: { titularId?: string },
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.analise.consultarBiroCamada2Todas(id, dto, user.id);
+  }
+
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('analises/:id/transicao')
   @HttpCode(200)
