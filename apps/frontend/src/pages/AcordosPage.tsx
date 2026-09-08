@@ -14,7 +14,7 @@ const LABEL_STATUS: Record<string, string> = {
   rascunho: 'Aguardando aprovação',
   aguardando_entrada: 'Aguardando entrada',
   ativo: 'Ativo',
-  quitado: 'Quitado',
+  cumprido: 'Cumprido',
   cancelado: 'Cancelado',
   expirado: 'Expirado',
 };
@@ -131,7 +131,7 @@ export function AcordosPage() {
             >
               <option value="">Selecione…</option>
               {carteira.data?.data
-                .filter((c) => c.status === 'Ativo' || c.status === 'Inadimplente' || c.status === 'Bloqueado')
+                .filter((c) => c.status === 'Ativo') // 3 camadas (07/09): vigente = fase Ativo
                 .map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.numero} · {c.titular.nome}

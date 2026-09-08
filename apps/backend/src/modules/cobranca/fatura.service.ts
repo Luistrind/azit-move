@@ -7,6 +7,7 @@ import { calcularEncargoAtraso, centavosParaReaisString, imputarPagamento, ItemI
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
+import { cumprirAcordosSePagos } from '../operacoes/acordo-cumprimento';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 const reais = (centavos: number) => centavosParaReaisString(centavos);
@@ -216,6 +217,10 @@ export class FaturaService {
       }
     });
 
+    // Acordo CUMPRIDO quando a última parcela do plano pagar (doc 02 §5.4, 07/09).
+    const cumpridos = await cumprirAcordosSePagos(this.prisma.db, [...contratosTocados]);
+    if (cumpridos > 0) this.logger.log(`${cumpridos} acordo(s) CUMPRIDO(s) na conciliação`);
+
     return { resultado: algumAtraso ? 'pago_em_atraso' : 'pago' };
   }
 
@@ -271,27 +276,24 @@ export class FaturaService {
     });
 
     this.logger.warn(`Conciliação PARCIAL fatura ${faturaId}: recebido ${valorPagoCent}c (imputação encargo→serviço→principal)`);
+    // A parcial pode ter fechado a ÚLTIMA parcela do plano do acordo.
+    await cumprirAcordosSePagos(this.prisma.db, [...new Set(calc.map((c) => c.parcela.contrato.id))]);
     return { resultado: 'pago_parcial' };
   }
 
-  // PAYMENT_OVERDUE: fatura -> Vencida, contrato -> Inadimplente. A régua de
-  // cobrança em si é o Bloco 5 (aqui só marcamos os estados).
+  // PAYMENT_OVERDUE: NÃO grava mais estado (Vocabulário 07/09 — "vencida" é
+  // SITUAÇÃO calculada por data, mesma cirurgia do INADIMPLENTE do contrato).
+  // O webhook continua chegando; o retorno preserva o contrato da fila.
   async marcarVencida(faturaId: string): Promise<{ resultado: string }> {
     const fatura = await this.prisma.db.fatura.findFirst({
       where: { id: faturaId },
-      include: { parcelas: { select: { contratoId: true } } },
+      select: { id: true, status: true },
     });
     if (!fatura) return { resultado: 'fatura_nao_encontrada' };
     if (fatura.status === 'PAGA' || fatura.status === 'PAGA_EM_ATRASO') {
       return { resultado: 'ja_paga' };
     }
-    await this.prisma.db.fatura.update({
-      where: { id: fatura.id },
-      data: { status: 'VENCIDA' },
-    });
-    // Doc 02 §5.2 (07/09): a fatura vira VENCIDA (estado real); o contrato NÃO
-    // muda de fase — inadimplência é situação calculada das parcelas.
-    return { resultado: 'vencida' };
+    return { resultado: 'vencida_calculada' };
   }
 
   // Lançamentos avulsos da conta (doc 02 §4-A.3, revisão 2026-08-30): entradas

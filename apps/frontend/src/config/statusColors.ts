@@ -15,6 +15,7 @@ export const PARCELA_STATUS_COLORS: Record<string, StatusColor> = {
   'Paga em atraso': { bg: '#eafaf1', fg: '#1f9d5b' },
   'Paga antecipada': { bg: '#eafaf1', fg: '#1f9d5b' },
   Renegociada: { bg: '#efeaff', fg: '#6b4fd6' },
+  'Em acordo': { bg: '#eef4ff', fg: '#2456c7' }, // parcela coberta (Vocabulário 07/09)
   Cancelada: { bg: '#fdeceb', fg: '#e0413c' },
   Estornada: { bg: '#fdeceb', fg: '#e0413c' },
   Suspensa: { bg: '#f1f4f8', fg: '#9aa7b5' },
@@ -54,7 +55,7 @@ export const ACORDO_STATUS_COLORS: Record<string, StatusColor> = {
   'Aguardando aprovação': { bg: '#f1f4f8', fg: '#8694a4' },
   'Aguardando entrada': { bg: '#fef6e9', fg: '#c98a0a' },
   Ativo: { bg: '#eafaf1', fg: '#1f9d5b' },
-  Quitado: { bg: '#eafaf1', fg: '#1f9d5b' },
+  Cumprido: { bg: '#eafaf1', fg: '#1f9d5b' },
   Cancelado: { bg: '#fdeceb', fg: '#e0413c' },
   Expirado: { bg: '#fdeceb', fg: '#e0413c' },
 };
@@ -70,7 +71,7 @@ export const NOVACAO_STATUS_COLORS: Record<string, StatusColor> = {
 export const ATIVO_STATUS_COLORS: Record<string, StatusColor> = {
   Disponível: { bg: '#eafaf1', fg: '#1f9d5b' },
   'Em contrato': { bg: '#eef1f5', fg: '#5b6b7f' },
-  Quitado: { bg: '#eafaf1', fg: '#1f9d5b' },
+  Transferido: { bg: '#eafaf1', fg: '#1f9d5b' }, // Vocabulário 07/09: era Quitado
   Recuperado: { bg: '#f3eafb', fg: '#9a3bd1' },
   Sinistrado: { bg: '#fdeceb', fg: '#e0413c' },
 };

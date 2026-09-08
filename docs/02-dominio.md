@@ -26,6 +26,35 @@ O sistema é a **fonte única da verdade** da operação. O Asaas é a camada de
 
 ---
 
+## 2-A. Vocabulário do domínio (decisão 2026-09-07)
+
+Um conceito = um nome. Todo código e tela novos são revisados contra esta seção;
+divergência é sinalizada, nunca resolvida em silêncio.
+
+**Convenções estruturais:**
+- **status** = estado REAL gravado (fase de vida, ação registrada). **situação** =
+  leitura CALCULADA em runtime (Regra 7). Exceções legadas registradas:
+  `SituacaoPendencia` e `SituacaoRessalva` são gravadas (renomear em janela futura).
+- **periodicidade** é o nome canônico do ritmo (semanal/quinzenal/mensal);
+  `frequencia` sobrevive como parâmetro interno dos motores de precificação, mas
+  API e tela novas usam periodicidade.
+
+**Termos reservados (um dono cada):**
+| Termo | Dono único | O que NÃO é |
+|---|---|---|
+| Quitação / quitado | Encerramento do CONTRATO com todas as obrigações pagas | Acordo cumprido usa **Cumprido**; veículo ao fim usa **Transferido** |
+| Cumprido | ACORDO com todas as parcelas do plano pagas | — |
+| Transferido | ATIVO cuja reserva de domínio foi transferida ao cliente (Gatilho 9) | — |
+| Em acordo | Situação calculada de contrato/conta/parcela coberta por acordo vigente | Não é status gravado |
+| Renegociada | Só a FATURA coberta por acordo (status real) | Parcela coberta exibe "Em acordo"; KPI da ficha é "Acordos" (novação NÃO soma — Regra 5) |
+| Vencida | Situação CALCULADA por data (fatura/parcela) | Não existe mais como status gravado de fatura (revisão 07/09 — mesma cirurgia do Inadimplente) |
+| Bloqueado | Sempre qualificado em tela: "Veículo bloqueado", "Bloqueado p/ pagamento" (título), fornecedor bloqueado | — |
+| Entrada | Pagamento inicial (contrato ou acordo) | A data-limite da entrada do acordo é `dataLimiteEntrada` (é vencimento, não pagamento) |
+| Conta | Visão de relacionamento do titular (Regra 11) | Conta BANCÁRIA (financeiro) sempre por extenso em tela |
+| Ativo (entidade) | O bem/veículo | ⚠️ Colide com o status "Ativo" de 9 enums — convivência aceita por ora (decisão Luís 07/09: mudar depois); não criar NOVOS usos ambíguos |
+
+---
+
 ## 3. Hierarquia de Entidades
 
 ```
@@ -716,10 +745,17 @@ só em Encerrado por quitação).
 
 | Status | Descrição |
 |---|---|
-| Rascunho | Acordo estruturado, aguardando pagamento da entrada |
+| Rascunho | Acordo estruturado, aguardando aprovação pela alçada |
+| Aguardando entrada | Aprovado; cobrança da entrada gerada |
 | Ativo | Entrada paga, renegociação efetivada |
-| Quitado | Todas as parcelas do acordo foram pagas |
-| Cancelado | Acordo cancelado antes da efetivação |
+| **Cumprido** | Todas as parcelas do acordo foram pagas (Vocabulário 2026-09-07: acordo não se "quita", se **cumpre** — "quitação" é exclusivo do contrato) |
+| Cancelado | Acordo cancelado/reprovado antes da efetivação |
+| Expirado | Entrada venceu sem pagamento (doc 02 §7.7, 18/08) |
+
+> A transição para **Cumprido** é automática: quando a última parcela do plano do
+> acordo (itens de origem ACORDO) é paga — em QUALQUER caminho (conciliação de
+> fatura, quitação antecipada, sinistro) — o acordo cumpre e a situação calculada
+> do cliente volta a "Em dia". (Decisão 2026-09-07, grupo B da varredura.)
 
 ---
 
@@ -770,11 +806,16 @@ só em Encerrado por quitação).
 
 ### Gatilho 8 — Quitação total confirmada
 - Todas as parcelas restantes: Em aberto → **Paga antecipada**
-- Contrato: Ativo → **Quitado (aguardando transferência)**
-- Ativo: em_contrato → **quitado**
+- Contrato: Ativo → **Encerrado (motivo: Quitação)** *(modelo de 3 camadas, 07/09)*
+- Ativo: **permanece em_contrato** — *(revisão 2026-09-07, contraditório do grupo B:
+  na quitação o veículo ainda está em nome da Azit; a reserva de domínio só morre
+  na transferência. O estado do ativo muda no Gatilho 9, não aqui.)*
 
 ### Gatilho 9 — Transferência do ativo efetivada
-- Contrato: Quitado (aguardando transferência) → **Quitado (transferência efetivada)**
+- Ação manual "Registrar transferência efetivada" na tela do contrato encerrado
+  por quitação (carimbo `transferenciaEfetivadaEm` + auditoria)
+- Ativo: em_contrato → **Transferido** *(Vocabulário 07/09: era "quitado" —
+  veículo não se quita; ele é transferido ao cliente)*
 
 ### Gatilho 10 — Reajuste IPCA aprovado pelo operador
 - ReajusteIPCA: Pendente → **Aprovado**
@@ -784,8 +825,10 @@ só em Encerrado por quitação).
 
 ### Gatilho 11 — Sinistro registrado
 - Seguro acionado (ação externa)
+- Ativo: em_contrato → **Sinistrado** *(o bem deixou de existir para a operação;
+  a dívida NÃO — Regra 3)*
 - Indenização recebida: amortiza saldo devedor via pagamento parcial
-- Se saldo zerado: Contrato → **Quitado (aguardando transferência)**
+- Se saldo zerado: Contrato → **Encerrado (motivo: Quitação)**
 - Se saldo remanescente: Contrato permanece **Ativo**, cliente responsável pelo saldo
 
 ---

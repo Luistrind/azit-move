@@ -14,7 +14,7 @@ type TipoApi = 'veiculo' | 'outro';
 type StatusApi =
   | 'disponivel'
   | 'em_contrato'
-  | 'quitado'
+  | 'transferido' // Vocabulário 07/09: era 'quitado' — veículo não se quita, é transferido
   | 'recuperado'
   | 'sinistrado';
 type OrigemApi = 'locadora' | 'particular' | 'concessionaria';
@@ -29,14 +29,14 @@ const status = {
   paraApi: {
     DISPONIVEL: 'disponivel',
     EM_CONTRATO: 'em_contrato',
-    QUITADO: 'quitado',
+    TRANSFERIDO: 'transferido',
     RECUPERADO: 'recuperado',
     SINISTRADO: 'sinistrado',
   } as Record<StatusAtivo, StatusApi>,
   paraPrisma: {
     disponivel: 'DISPONIVEL',
     em_contrato: 'EM_CONTRATO',
-    quitado: 'QUITADO',
+    transferido: 'TRANSFERIDO',
     recuperado: 'RECUPERADO',
     sinistrado: 'SINISTRADO',
   } as Record<StatusApi, StatusAtivo>,

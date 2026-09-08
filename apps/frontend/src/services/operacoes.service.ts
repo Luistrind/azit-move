@@ -118,7 +118,7 @@ export const operacoesService = {
       numeroParcelasNovas: number;
       valorParcelaNova?: number;
       periodicidade?: 'semanal' | 'quinzenal' | 'mensal';
-      dataPagamentoEntrada?: string;
+      dataLimiteEntrada?: string;
       faturasExcluidas?: { faturaId: string; justificativa: string }[];
       faturasVincendasIncluidas?: string[];
     },

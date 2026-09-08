@@ -42,7 +42,7 @@ enum TipoAtivo {
 enum StatusAtivo {
   DISPONIVEL
   EM_CONTRATO
-  QUITADO
+  TRANSFERIDO // reserva de domínio transferida ao cliente (Gatilho 9; Vocabulário 07/09 — era QUITADO)
   RECUPERADO
   SINISTRADO
 }
@@ -188,10 +188,11 @@ enum StatusParcela {
   SUSPENSA
 }
 
+// Vencimento é SITUAÇÃO calculada (Regra 7; revisão 07/09 — VENCIDA saiu do
+// enum, mesma cirurgia do INADIMPLENTE do contrato). Fases reais:
 enum StatusFatura {
   ABERTA
   FECHADA
-  VENCIDA
   PAGA
   PAGA_EM_ATRASO
   RENEGOCIADA
@@ -224,7 +225,7 @@ enum StatusAcordo {
   RASCUNHO // criado, aguardando aprovação pela alçada (Doc 2 §7.9-A)
   AGUARDANDO_ENTRADA // aprovado; cobrança da entrada gerada, aguardando pagamento
   ATIVO
-  QUITADO
+  CUMPRIDO // todas as parcelas do plano pagas (Vocabulário 07/09 — acordo se cumpre, não se quita)
   CANCELADO
   EXPIRADO // entrada venceu sem pagamento — recálculo obrigatório (doc 02 §7.7, 2026-08-18)
 }

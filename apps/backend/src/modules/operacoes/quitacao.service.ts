@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, UnprocessableEntityException } from '@ne
 import { Prisma } from '@prisma/client';
 import { anteciparParcela, anteciparParcelaComponentes, centavosParaReaisString, inicioHojeBrasilUTC } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
+import { cumprirAcordosSePagos } from './acordo-cumprimento';
 import { CatalogoFonteService, ParametrosCatalogoCompraParcelada } from '../catalogo/catalogo-fonte.service';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
@@ -215,6 +216,8 @@ export class QuitacaoService {
         });
       }
     });
+    // Acordo CUMPRIDO se a antecipação fechou o plano (doc 02 §5.4, 07/09).
+    await cumprirAcordosSePagos(this.prisma.db, [contratoId]);
     // Auditoria: quitação/antecipação é evento sensível (reunião 13/07).
     await this.prisma.db.logAuditoria.create({
       data: {

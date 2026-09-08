@@ -232,7 +232,8 @@ export class TitularService {
         valorPago: cent(pago?._sum.valorPago) + cent(lancado?._sum.valor) + entradaPaga,
         saldoDevedor: cent(saldo?._sum.valorNominal),
         valorEmAtraso: cent(atraso?._sum.valorNominal),
-        quantidadeRenegociacoes: qAcordos + qNovacoes,
+        quantidadeAcordos: qAcordos, // Vocabulário 07/09: novação NÃO soma (Regra 5)
+        quantidadeNovacoes: qNovacoes,
         contratosAtivos: idsAtivos.length,
         contratosTotal: contratos.length,
       },

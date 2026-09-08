@@ -20,7 +20,7 @@ const DOC_TIPOS: { v: string; l: string }[] = [
 ];
 
 const STATUS_LABEL: Record<string, string> = {
-  disponivel: 'Disponível', em_contrato: 'Em contrato', quitado: 'Quitado', recuperado: 'Recuperado', sinistrado: 'Sinistrado',
+  disponivel: 'Disponível', em_contrato: 'Em contrato', transferido: 'Transferido', recuperado: 'Recuperado', sinistrado: 'Sinistrado',
 };
 const COMBUSTIVEIS = ['flex', 'gasolina', 'eletrico', 'diesel', 'hibrido'];
 const ORIGENS = ['locadora', 'particular', 'concessionaria'];
@@ -182,7 +182,7 @@ export function AtivoPage() {
               não têm produtor hoje (grupo B da varredura) — filtro que nada retorna
               some; voltam quando as transições existirem. */}
           {Object.entries(STATUS_LABEL)
-            .filter(([k]) => k === 'disponivel' || k === 'em_contrato')
+            .filter(([k]) => k !== 'recuperado') // recuperado ainda sem produtor (retomada é processo futuro)
             .map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <div className="flex-1" />

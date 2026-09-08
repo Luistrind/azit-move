@@ -25,7 +25,7 @@ export const atualizarAtivoSchema = z.object({
   pacoteOfertaId: z.string().trim().min(1).nullish(),
   ofertaFixaId: z.string().trim().min(1).nullish(),
   status: z
-    .enum(['disponivel', 'em_contrato', 'quitado', 'recuperado', 'sinistrado'])
+    .enum(['disponivel', 'em_contrato', 'transferido', 'recuperado', 'sinistrado'])
     .optional(),
 });
 

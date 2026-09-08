@@ -293,7 +293,7 @@ export function TitularDetalhePage() {
             <Metrica label="Pago até o momento" valor={formatCurrency(rf.valorPago)} />
             <Metrica label="Saldo devedor" valor={formatCurrency(rf.saldoDevedor)} />
             <Metrica label="Em atraso" valor={formatCurrency(rf.valorEmAtraso)} alerta={rf.valorEmAtraso > 0} />
-            <Metrica label="Renegociações" valor={String(rf.quantidadeRenegociacoes)} />
+            <Metrica label="Acordos" valor={String(rf.quantidadeAcordos)} />
             <Metrica label="Contratos ativos" valor={`${rf.contratosAtivos} de ${rf.contratosTotal}`} />
           </div>
         </div>

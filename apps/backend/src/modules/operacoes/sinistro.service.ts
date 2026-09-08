@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { centavosParaReaisString } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
+import { cumprirAcordosSePagos } from './acordo-cumprimento';
 
 const reais = (c: number) => centavosParaReaisString(c);
 const cent = (d: Prisma.Decimal | null): number =>
@@ -69,6 +70,11 @@ export class SinistroService {
         });
       }
     });
+
+    // Gatilho 11 (doc 02, 07/09): o bem sinistrou — a dívida não (Regra 3).
+    const c = await this.prisma.db.contratoCredito.findFirst({ where: { id: contratoId }, select: { ativoId: true } });
+    if (c) await this.prisma.db.ativo.update({ where: { id: c.ativoId }, data: { status: 'SINISTRADO' } });
+    await cumprirAcordosSePagos(this.prisma.db, [contratoId]);
 
     const saldoRemanescente = abertas
       .slice(quitadas)

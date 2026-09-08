@@ -33,7 +33,7 @@ export interface CriarRenegociacaoDto {
   numeroParcelasNovas: number;
   valorParcelaNova?: number; // centavos — ignorado com motor do Catálogo ativo (RAP031)
   periodicidade?: 'semanal' | 'quinzenal' | 'mensal'; // ignorada com motor ativo (herdada)
-  dataPagamentoEntrada?: string; // 'YYYY-MM-DD' — data-limite dura da entrada
+  dataLimiteEntrada?: string; // 'YYYY-MM-DD' — data-LIMITE dura da entrada (Vocabulário 07/09: é vencimento, não pagamento)
   // Seleção por FATURA (doc Acordo de Pagamento V1.0 RAP006).
   faturasExcluidas?: { faturaId: string; justificativa: string }[];
   // Faturas VINCENDAS incluídas por opção do operador (decisão Luís 2026-08-30):
@@ -278,7 +278,7 @@ export class RenegociacaoService implements OnModuleInit {
       where: {
         contaId,
         dataVencimento: { lt: hoje },
-        status: { in: ['ABERTA', 'FECHADA', 'VENCIDA'] },
+        status: { in: ['ABERTA', 'FECHADA'] },
       },
     });
 
@@ -392,10 +392,10 @@ export class RenegociacaoService implements OnModuleInit {
     // Entrada com data-limite DURA (decisão 2026-08-18): o operador informa a
     // data; a cobrança não aceita pagamento depois dela.
     const prazoDias = previa.motor === 'catalogo' ? 5 : 3;
-    const dataPagamentoEntrada = dto.dataPagamentoEntrada
-      ? new Date(`${dto.dataPagamentoEntrada}T12:00:00-03:00`)
+    const dataLimiteEntrada = dto.dataLimiteEntrada
+      ? new Date(`${dto.dataLimiteEntrada}T12:00:00-03:00`)
       : new Date(Date.now() + prazoDias * DIA_MS);
-    if (dataPagamentoEntrada.getTime() < Date.now() - DIA_MS) {
+    if (dataLimiteEntrada.getTime() < Date.now() - DIA_MS) {
       throw new UnprocessableEntityException({ erro: 'data_invalida', mensagem: 'A data de pagamento da entrada não pode estar no passado' });
     }
 
@@ -412,7 +412,7 @@ export class RenegociacaoService implements OnModuleInit {
       },
       moraHerdada: 'multa e juros da regra geral do contrato na data-base (RAP007)',
       calculo: previa,
-      dataPagamentoEntrada: dataPagamentoEntrada.toISOString(),
+      dataLimiteEntrada: dataLimiteEntrada.toISOString(),
     };
 
     // Termo de confissão de dívida e acordo de parcelamento (instrumento PRÓPRIO
@@ -424,7 +424,7 @@ export class RenegociacaoService implements OnModuleInit {
       numeroParcelas: dto.numeroParcelasNovas,
       valorParcela,
       periodicidade: freqApi,
-      dataPagamentoEntrada,
+      dataLimiteEntrada,
       faturas: faturasSelecionadas,
     });
 
@@ -474,7 +474,7 @@ export class RenegociacaoService implements OnModuleInit {
     numeroParcelas: number;
     valorParcela: number;
     periodicidade: 'semanal' | 'quinzenal' | 'mensal';
-    dataPagamentoEntrada: Date;
+    dataLimiteEntrada: Date;
     faturas: { faturaId: string; numero: number | null; dataVencimento: string | null; valorNominal: number; encargosMora: number; valorAtualizado: number }[];
   }): Promise<string> {
     const conta = await this.prisma.db.conta.findFirst({
@@ -506,7 +506,7 @@ export class RenegociacaoService implements OnModuleInit {
       orderBy: { dataVencimento: 'asc' },
       select: { dataVencimento: true },
     });
-    const dataPrimeira = proximaFatura?.dataVencimento ?? new Date(p.dataPagamentoEntrada.getTime() + passo * DIA_MS);
+    const dataPrimeira = proximaFatura?.dataVencimento ?? new Date(p.dataLimiteEntrada.getTime() + passo * DIA_MS);
     const plural = { semanal: 'semanais', quinzenal: 'quinzenais', mensal: 'mensais' }[p.periodicidade];
     const params = await this.prisma.db.parametroAssinatura.findFirst();
     const linhaTest = (nome?: string, cpf?: string) => (nome ? `${nome}\nCPF: ${cpf || '—'}` : 'Nome:\nCPF:');
@@ -522,7 +522,7 @@ export class RenegociacaoService implements OnModuleInit {
       valorTotalExtenso: valorPorExtenso(p.valorTotal),
       valorEntrada: `R$ ${reais(p.valorEntrada)}`,
       valorEntradaExtenso: valorPorExtenso(p.valorEntrada),
-      dataEntrada: p.dataPagamentoEntrada.toLocaleDateString('pt-BR'),
+      dataEntrada: p.dataLimiteEntrada.toLocaleDateString('pt-BR'),
       qtdeParcelas: p.numeroParcelas,
       qtdeParcelasExtenso: numeroPorExtenso(p.numeroParcelas),
       periodicidadePlural: plural,
@@ -569,8 +569,10 @@ export class RenegociacaoService implements OnModuleInit {
     // Data-limite DURA da entrada (decisão 2026-08-18): vence na data informada
     // pelo operador e o Asaas cancela o registro após o vencimento — pagamento
     // tardio não entra; sem pagamento, a proposta expira.
-    const snap = acordo.snapshotJson as null | { dataPagamentoEntrada?: string };
-    const vencimento = snap?.dataPagamentoEntrada ? new Date(snap.dataPagamentoEntrada) : new Date(Date.now() + 3 * DIA_MS);
+    // Retrocompat: acordos antigos gravaram 'dataPagamentoEntrada' no snapshot.
+    const snap = acordo.snapshotJson as null | { dataLimiteEntrada?: string; dataPagamentoEntrada?: string };
+    const limiteSnap = snap?.dataLimiteEntrada ?? snap?.dataPagamentoEntrada;
+    const vencimento = limiteSnap ? new Date(limiteSnap) : new Date(Date.now() + 3 * DIA_MS);
     const cobranca = await this.asaas.criarCobranca({
       externalReference: `acordo:${acordo.id}`,
       valor: cent(acordo.valorEntrada),

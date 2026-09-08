@@ -369,7 +369,7 @@ export class AprovacaoService {
           where: {
             contaId: conta.id,
             dataVencimento: { lt: hoje },
-            status: { in: ['ABERTA', 'FECHADA', 'VENCIDA'] },
+            status: { in: ['ABERTA', 'FECHADA'] },
           },
         }),
       ]);

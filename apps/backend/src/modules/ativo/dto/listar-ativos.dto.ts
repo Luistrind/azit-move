@@ -3,7 +3,7 @@ import { z } from 'zod';
 // Filtros de listagem de ativos (api-spec §4.9: status, placa, chassi, page, limit).
 export const listarAtivosSchema = z.object({
   status: z
-    .enum(['disponivel', 'em_contrato', 'quitado', 'recuperado', 'sinistrado'])
+    .enum(['disponivel', 'em_contrato', 'transferido', 'recuperado', 'sinistrado'])
     .optional(),
   placa: z.string().trim().min(1).optional(),
   chassi: z.string().trim().min(1).optional(),

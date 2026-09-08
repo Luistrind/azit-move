@@ -99,16 +99,14 @@ export class ReguaService {
   // automáticas da régua (WhatsApp em D+1/D+2). Job em prod; trigger dev aqui.
   async rodar() {
     const hoje = this.hojeUTC();
-    const aVencer = await this.prisma.db.fatura.findMany({
+    // Vocabulário 07/09: "vencida" é situação CALCULADA por data — a varredura
+    // não grava mais estado na fatura; só conta para o relatório da rodada.
+    const aVencer = await this.prisma.db.fatura.count({
       where: {
         status: { in: ['ABERTA', 'FECHADA'] },
         dataVencimento: { lt: hoje },
       },
-      select: { id: true },
     });
-    for (const f of aVencer) {
-      await this.fatura.marcarVencida(f.id);
-    }
 
     const emRegua = await this.listar();
     let notificados = 0;
@@ -121,7 +119,7 @@ export class ReguaService {
         notificados += 1;
       }
     }
-    return { faturasVencidas: aVencer.length, emRegua: emRegua.length, notificados };
+    return { faturasVencidas: aVencer, emRegua: emRegua.length, notificados };
   }
 
   // 5.4 — Bloqueio D+3 (regra absoluta, registrado no sistema; integração externa

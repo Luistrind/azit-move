@@ -37,7 +37,8 @@ export interface DetalheTitular {
     valorPago: number;
     saldoDevedor: number;
     valorEmAtraso: number;
-    quantidadeRenegociacoes: number;
+    quantidadeAcordos: number;
+    quantidadeNovacoes: number;
     contratosAtivos: number;
     contratosTotal: number;
   };

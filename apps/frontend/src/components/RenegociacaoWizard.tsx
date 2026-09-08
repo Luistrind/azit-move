@@ -84,7 +84,7 @@ export function RenegociacaoWizard({
       const r = await operacoesService.criarRenegociacaoConta(contaId, {
         valorEntrada: entradaCent,
         numeroParcelasNovas: nParcelas,
-        dataPagamentoEntrada: dataEntrada,
+        dataLimiteEntrada: dataEntrada,
         faturasExcluidas: listaExclusoes,
         faturasVincendasIncluidas: vincendas,
       });

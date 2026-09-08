@@ -727,7 +727,7 @@ export class ContratoService {
   async registrarTransferencia(id: string, usuarioId?: string) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id },
-      select: { id: true, numero: true, status: true, motivoEncerramento: true, transferenciaEfetivadaEm: true },
+      select: { id: true, numero: true, status: true, motivoEncerramento: true, transferenciaEfetivadaEm: true, ativoId: true },
     });
     if (!contrato) throw this.naoEncontrado();
     if (contrato.status !== 'ENCERRADO' || contrato.motivoEncerramento !== 'QUITACAO') {
@@ -741,6 +741,8 @@ export class ContratoService {
     }
     const agora = new Date();
     await this.prisma.db.contratoCredito.update({ where: { id }, data: { transferenciaEfetivadaEm: agora } });
+    // Gatilho 9 (doc 02, 07/09): a reserva de domínio morreu — o ativo é TRANSFERIDO.
+    await this.prisma.db.ativo.update({ where: { id: contrato.ativoId }, data: { status: 'TRANSFERIDO' } });
     await this.prisma.db.logAuditoria.create({
       data: {
         usuarioId,

@@ -10,7 +10,7 @@ export const criarRenegociacaoSchema = z.object({
   valorParcelaNova: z.coerce.number().int().min(0).optional().default(0),
   periodicidade: z.enum(['semanal', 'quinzenal', 'mensal']).optional(), // ignorada com motor ativo (frequência herdada)
   // Data-limite dura da entrada (decisão 2026-08-18) — 'YYYY-MM-DD'.
-  dataPagamentoEntrada: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dataLimiteEntrada: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   // Seleção por FATURA (doc Acordo de Pagamento V1.0 RAP006): excluir uma
   // fatura pré-selecionada exige justificativa textual auditável.
   faturasExcluidas: z

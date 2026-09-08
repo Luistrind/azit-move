@@ -134,7 +134,7 @@ export class InicioController {
       const hoje = inicioHojeBrasilUTC(); // fuso do negócio (correção 30/08)
       const vencidas = await this.prisma.db.fatura.findMany({
         where: {
-          status: { in: ['ABERTA', 'FECHADA', 'VENCIDA'] },
+          status: { in: ['ABERTA', 'FECHADA'] },
           dataVencimento: { lt: hoje },
         },
         orderBy: { dataVencimento: 'asc' },
@@ -149,7 +149,7 @@ export class InicioController {
         rotaRotulo: 'Abrir régua de cobrança',
         itens: vencidas.slice(0, 5).map((f) => ({
           titulo: f.conta.titular.nome,
-          subtitulo: `Venceu em ${f.dataVencimento.toISOString().slice(0, 10)}`,
+          subtitulo: `Venceu em ${f.dataVencimento.toISOString().slice(0, 10).split('-').reverse().join('/')}`,
           rota: `/titulares/${f.conta.titular.id}`,
         })),
       });

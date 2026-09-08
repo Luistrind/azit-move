@@ -150,7 +150,7 @@ export function parcelaParaApi(p: Parcela): ParcelaApi {
   // Para EXIBIÇÃO mostramos o rótulo "Renegociada" — sem gravar esse status (Regra 5).
   const statusLabel =
     p.acordoId && !p.status
-      ? StatusParcela.RENEGOCIADA
+      ? ('Em acordo' as string) // Vocabulário 07/09: parcela coberta exibe 'Em acordo' (Renegociada é só fatura)
       : // Status calculado em runtime: nunca lido do banco quando é em aberto/vencida.
         resolverStatusParcela({
           status: p.status ? StatusParcela[p.status] : null,

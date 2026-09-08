@@ -60,7 +60,7 @@ export class ContaService {
         where: {
           contaId: { in: contas.map((c) => c.id) },
           dataVencimento: { lt: hoje },
-          status: { in: ['ABERTA', 'FECHADA', 'VENCIDA'] },
+          status: { in: ['ABERTA', 'FECHADA'] },
         },
         _count: { _all: true },
       }),
