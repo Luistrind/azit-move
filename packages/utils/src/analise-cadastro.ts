@@ -203,3 +203,26 @@ export function avaliarAnaliseCadastro(input: AnaliseInput): ResultadoAnalise {
     codigosComplemento,
   };
 }
+
+// Rótulos GENÉRICOS por código de critério (Central de Aprovações, 07/09):
+// ninguém decora "COC-08" — aprovações antigas gravaram só os códigos no
+// resumo, e a tela os traduz com este mapa. Aprovações novas já levam as
+// descrições completas no payload.motivos.
+export const ROTULO_CODIGO_ANALISE: Record<string, string> = {
+  'COC-01': 'Comprometimento de renda acima do limite',
+  'COC-02': 'Score abaixo do mínimo',
+  'COC-03': 'Restritivo financeiro ativo',
+  'COC-04': 'Restritivo não financeiro acima do limite',
+  'COC-05': 'Protesto, cheque sem fundo ou execução ativa',
+  'COC-06': 'Processo judicial relevante ativo',
+  'COC-07': 'Indício de fraude não resolvido',
+  'COC-08': 'Renda parcialmente comprovada',
+  'COC-10': 'Garantidor presente — decisão do Comitê',
+  'COC-11': 'Consulta de birô ausente ou falhou',
+  'COM-03': 'CNH válida ausente',
+  'COM-04': 'Identidade ou condutor não validado',
+  'COM-05': 'Autorização de consulta ausente',
+  'COM-06': 'Renda apurada não registrada',
+  'COM-08': 'Atividade não evidenciada',
+  'APR-01': 'Dentro da política',
+};

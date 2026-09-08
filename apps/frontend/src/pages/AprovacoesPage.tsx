@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { formatCurrency } from '@azit/utils';
+import { formatCurrency, ROTULO_CODIGO_ANALISE } from '@azit/utils';
 import { aprovacaoService, Aprovacao, DecisaoInput } from '../services/aprovacao.service';
 import { mensagemErro } from '../lib/permissoes';
 import { toast } from '../components/Toast';
@@ -14,6 +14,28 @@ function fmtDataHora(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+// Central legível (feedback Luís 07/09): título sem id interno nem códigos —
+// aprovações antigas gravaram "proposta cmXXXX (COC-08, ...)" no resumo.
+function tituloHumano(resumo: string): string {
+  return resumo
+    .replace(/\bcm[a-z0-9]{16,}\b/g, '') // ids internos somem
+    .replace(/\(?\b(?:COC|COM|APR)-\d+(?:,\s*(?:COC|COM|APR)-\d+)*\)?/g, '') // códigos viram bullets
+    .replace(/COCAD — análise da proposta\s*/,'Análise de cadastro · decisão do Comitê ')
+    .replace(/\(exceção\)/, '· exceção encaminhada pelo analista')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/[\s—·:]+$/, '')
+    .trim();
+}
+
+// Motivos por extenso: payload das aprovações novas; nas antigas, traduz os
+// códigos que estiverem no resumo pelo dicionário da política.
+function motivosDe(a: Aprovacao): string[] {
+  if (a.motivos?.length) return a.motivos;
+  const codigos = [...new Set(a.resumo.match(/\b(?:COC|COM|APR)-\d+\b/g) ?? [])];
+  return codigos.map((c) => ROTULO_CODIGO_ANALISE[c] ?? c);
 }
 
 const DECISAO_LABEL: Record<string, { rotulo: string; cor: string }> = {
@@ -201,7 +223,19 @@ function CardAprovacao({
               <span className="text-[11px] font-bold" style={{ color: statusCor }}>{a.status}</span>
             )}
           </div>
-          <div className="mt-[6px] text-[14px] font-bold">{a.resumo}</div>
+          <div className="mt-[6px] text-[14px] font-bold">{tituloHumano(a.resumo)}</div>
+          {/* Motivos por extenso (07/09): ninguém decora COC-08 — novos vêm no
+              payload; legados são traduzidos do próprio resumo. */}
+          {motivosDe(a).length > 0 && (
+            <ul className="mt-[6px] flex flex-col gap-[3px]">
+              {motivosDe(a).map((m) => (
+                <li key={m} className="flex items-start gap-[6px] text-[12.5px]" style={{ color: 'var(--text-body)' }}>
+                  <span style={{ color: '#c98a0a' }}>⚠</span>
+                  <span>{m}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="mt-[2px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
             {a.titular ? (
               <button onClick={() => onTitular(a.titular!.id)} className="font-semibold" style={{ color: 'var(--navy)' }}>

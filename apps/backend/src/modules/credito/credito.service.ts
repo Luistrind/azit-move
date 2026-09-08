@@ -4,7 +4,7 @@ import {
   OnModuleInit,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { precificarCreditoAvulso, precificarReembolsoParcelado, centavosParaReaisString } from '@azit/utils';
+import { precificarCreditoAvulso, precificarReembolsoParcelado, centavosParaReaisString , formatCurrency} from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AtivoService } from '../ativo/ativo.service';
 import { OrigemCapitalService } from '../origem-capital/origem-capital.service';
@@ -295,8 +295,8 @@ export class CreditoService implements OnModuleInit {
       titularId,
       valorCentavos: p.totalAPagar,
       resumo: ehReembolso
-        ? `Reembolso Parcelado (termo TRP001) — ${dto.descricao} — ${dto.numeroParcelas}× de R$ ${centavosParaReaisString(p.valorParcela)} (taxa inicial R$ ${centavosParaReaisString(p.taxaInicial)} financiada)`
-        : `${dto.descricao} — ${dto.numeroParcelas}× de R$ ${centavosParaReaisString(p.valorParcela)}`,
+        ? `Reembolso Parcelado — ${dto.descricao} — ${dto.numeroParcelas}× de ${formatCurrency(p.valorParcela)} (taxa inicial ${formatCurrency(p.taxaInicial)} financiada)`
+        : `${dto.descricao} — ${dto.numeroParcelas}× de ${formatCurrency(p.valorParcela)}`,
       solicitanteId,
     });
 

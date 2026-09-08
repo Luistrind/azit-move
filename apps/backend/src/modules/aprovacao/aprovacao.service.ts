@@ -239,6 +239,12 @@ export class AprovacaoService {
         tipoOperacao: r.tipoOperacao,
         tipoOperacaoNome: r.operacao.nome,
         resumo: r.resumo,
+        // Motivos por extenso (Central legível, 07/09): payload.motivos nas
+        // aprovações novas; exceções da renegociação valem como motivos.
+        motivos: (() => {
+          const p = r.payload as null | { motivos?: string[]; excecoes?: string[] };
+          return p?.motivos?.length ? p.motivos : (p?.excecoes ?? []);
+        })(),
         valor: valorCentavos,
         status: r.status,
         solicitanteId: r.solicitanteId,

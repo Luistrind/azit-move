@@ -21,6 +21,8 @@ export interface Aprovacao {
   tipoOperacao: string;
   tipoOperacaoNome: string;
   resumo: string;
+  // Motivos por extenso (payload das novas; a tela traduz códigos das antigas).
+  motivos: string[];
   valor: number;
   status: 'PENDENTE' | 'APROVADA' | 'REPROVADA' | 'CANCELADA';
   solicitanteId: string;

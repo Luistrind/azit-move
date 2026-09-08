@@ -785,14 +785,22 @@ export class AnaliseService implements OnModuleInit {
       throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: this.mensagemEtapa(a.status, 'Submeter ao COCAD') });
     }
     const avaliacao = this.avaliar(a);
+    // Central de Aprovações fala a língua do aprovador (feedback Luís 07/09):
+    // título humano; os motivos por extenso vão no payload; os códigos ficam
+    // para a trilha/auditoria.
+    const titularCocad = await this.prisma.db.titular.findFirst({
+      where: { id: a.proposta.titularId },
+      select: { nome: true },
+    });
+    const motivos = [...new Set(avaliacao.criterios.filter((c) => c.situacao === 'cocad').map((c) => c.descricao))];
     const { id } = await this.aprovacao.criar({
       tipoOperacao: 'analise_cadastro',
       referenciaTipo: 'analise_cadastro',
       referenciaId: analiseId,
       titularId: a.proposta.titularId,
       valorCentavos: cent(a.proposta.valorParcela),
-      resumo: `COCAD — análise da proposta ${a.propostaId} (${avaliacao.codigosCocad.join(', ') || 'exceção'})`,
-      payload: { recomendacao, codigos: avaliacao.codigosCocad },
+      resumo: `Análise de cadastro — ${titularCocad?.nome ?? 'titular'} · decisão do Comitê`,
+      payload: { recomendacao, codigos: avaliacao.codigosCocad, motivos },
       solicitanteId: usuarioId,
     });
     await this.prisma.db.analiseCadastro.update({ where: { id: analiseId }, data: { aprovacaoId: id } });

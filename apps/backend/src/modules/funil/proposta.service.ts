@@ -13,7 +13,7 @@ import {
 } from '@prisma/client';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { limparDocumento, reaisParaCentavos, centavosParaReaisString } from '@azit/utils';
+import { limparDocumento, reaisParaCentavos, centavosParaReaisString , formatCurrency} from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { TitularService } from '../titular/titular.service';
 import { ContaService } from '../conta/conta.service';
@@ -607,7 +607,8 @@ export class PropostaService {
       referenciaId: propostaId,
       titularId: p.titular.id,
       valorCentavos: total,
-      resumo: `Fora do parâmetro — ${p.titular.nome}: entrada R$ ${centavosParaReaisString(Math.round(Number(p.valorEntrada.toString()) * 100))}, ${p.numeroParcelas}x R$ ${centavosParaReaisString(Math.round(Number(p.valorParcela.toString()) * 100))} (${motivo})`,
+      resumo: `Condição comercial fora do parâmetro — ${p.titular.nome}: entrada ${formatCurrency(Math.round(Number(p.valorEntrada.toString()) * 100))} + ${p.numeroParcelas}× ${formatCurrency(Math.round(Number(p.valorParcela.toString()) * 100))}`,
+      payload: { motivos: [motivo] },
       solicitanteId: usuarioId,
     });
   }
