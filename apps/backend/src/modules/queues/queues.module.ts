@@ -40,6 +40,15 @@ function redisConnectionFromUrl(url: string) {
         connection: redisConnectionFromUrl(
           config.get<string>('redisUrl') ?? 'redis://localhost:6379',
         ),
+        // Retry com backoff (correção 08/09 — fatura FECHADA ficava sem cobrança
+        // Asaas para sempre após 1 falha transitória). Todos os processors são
+        // idempotentes por guard de estado (ja_conciliada/ja_efetivado/chargeId).
+        defaultJobOptions: {
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 30_000 }, // 30s → 1m → 2m → 4m
+          removeOnComplete: { age: 7 * 24 * 3600, count: 1000 },
+          removeOnFail: { age: 30 * 24 * 3600 },
+        },
       }),
     }),
     BullModule.registerQueue(

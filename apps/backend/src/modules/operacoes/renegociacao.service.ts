@@ -559,13 +559,23 @@ export class RenegociacaoService implements OnModuleInit {
       include: {
         conta: {
           select: {
-            titular: { select: { nome: true, asaasCustomerId: true } },
+            titular: { select: { id: true, nome: true, cpfCnpj: true, email: true, whatsapp: true, asaasCustomerId: true } },
           },
         },
       },
     });
     if (!acordo || acordo.status !== 'RASCUNHO') {
       return 'Acordo não está aguardando aprovação.';
+    }
+    // Garante o cliente no Asaas (correção 08/09: cobrança sem customer — ou com
+    // id simulado reaproveitado em modo real — era rejeitada com 400 em silêncio).
+    const titular = acordo.conta.titular;
+    let customerId = this.asaas.clienteReutilizavel(titular.asaasCustomerId);
+    if (!customerId) {
+      customerId = await this.asaas.criarCliente({
+        titularId: titular.id, nome: titular.nome, cpfCnpj: titular.cpfCnpj, email: titular.email, telefone: titular.whatsapp,
+      });
+      await this.prisma.db.titular.update({ where: { id: titular.id }, data: { asaasCustomerId: customerId } });
     }
     // Data-limite DURA da entrada (decisão 2026-08-18): vence na data informada
     // pelo operador e o Asaas cancela o registro após o vencimento — pagamento
@@ -580,7 +590,7 @@ export class RenegociacaoService implements OnModuleInit {
       vencimento,
       cancelarRegistroAposVencimento: true,
       descricao: `Entrada renegociação — ${acordo.conta.titular.nome}`,
-      customerId: acordo.conta.titular.asaasCustomerId ?? undefined,
+      customerId,
     });
     await this.prisma.db.acordo.update({
       where: { id: acordo.id },

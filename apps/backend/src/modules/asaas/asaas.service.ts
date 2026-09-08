@@ -93,6 +93,15 @@ export class AsaasService {
     return data.id;
   }
 
+  // Id de cliente gravado em modo SIMULADO não existe no Asaas real (correção
+  // 08/09: cus_sim_ reaproveitado em modo real gerava "Customer inválido" e a
+  // cobrança morria em silêncio). Descarta para forçar a recriação.
+  clienteReutilizavel(id: string | null): string | null {
+    if (!id) return null;
+    if (!this.simulado && id.startsWith('cus_sim_')) return null;
+    return id;
+  }
+
   async criarCobranca(params: {
     externalReference: string; // id da fatura (ou ativacao:/acordo:)
     valor: number; // centavos

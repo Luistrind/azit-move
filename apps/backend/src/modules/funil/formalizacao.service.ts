@@ -628,7 +628,8 @@ export class FormalizacaoService {
   private async garantirCliente(titular: {
     id: string; nome: string; cpfCnpj: string; email: string | null; whatsapp: string; asaasCustomerId: string | null;
   }): Promise<string> {
-    if (titular.asaasCustomerId) return titular.asaasCustomerId;
+    const reutilizavel = this.asaas.clienteReutilizavel(titular.asaasCustomerId);
+    if (reutilizavel) return reutilizavel;
     const customerId = await this.asaas.criarCliente({
       titularId: titular.id, nome: titular.nome, cpfCnpj: titular.cpfCnpj, email: titular.email, telefone: titular.whatsapp,
     });

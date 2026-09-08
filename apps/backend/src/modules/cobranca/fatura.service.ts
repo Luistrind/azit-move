@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client';
 import { calcularEncargoAtraso, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, dataCalendarioUTC, diasAtrasoCalendario } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
+import { NotificacaoService } from '../notificacao/notificacao.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { cumprirAcordosSePagos } from '../operacoes/acordo-cumprimento';
 
@@ -28,6 +29,7 @@ export class FaturaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly asaas: AsaasService,
+    private readonly notificacao: NotificacaoService,
     @InjectQueue(QUEUE_NAMES.GERAR_COBRANCA_ASAAS)
     private readonly filaCobranca: Queue,
   ) {}
@@ -57,6 +59,52 @@ export class FaturaService {
     return { fechadas: aFechar.length };
   }
 
+  // Rede de segurança (correção 08/09 — produção: fatura FECHADA sem cobrança
+  // no Asaas ficava invisível para sempre; casos Max/Elizabete). Reenfileira as
+  // recuperáveis (vencimento ainda no futuro — o gerar é idempotente) e alerta
+  // a carteira sobre as que já venceram sem cobrança (reemissão de vencida tem
+  // política própria a definir — o Asaas rejeita vencimento no passado).
+  @Cron('30 3 * * *')
+  async cronVarrerCobrancas(): Promise<void> {
+    const r = await this.varrerCobrancasPendentes();
+    if (r.reenfileiradas || r.vencidasSemCobranca) {
+      this.logger.log(`[cron] varredura: ${r.reenfileiradas} cobrança(s) reenfileirada(s); ${r.vencidasSemCobranca} vencida(s) sem cobrança`);
+    }
+  }
+
+  async varrerCobrancasPendentes(): Promise<{ reenfileiradas: number; vencidasSemCobranca: number }> {
+    const pendentes = await this.prisma.db.fatura.findMany({
+      where: { status: 'FECHADA', asaasChargeId: null, deletedAt: null },
+      select: {
+        id: true, numero: true, dataVencimento: true,
+        conta: { select: { titular: { select: { nome: true } } } },
+      },
+      orderBy: { dataVencimento: 'asc' },
+    });
+    const hoje = dataHojeBrasil();
+    let reenfileiradas = 0;
+    const vencidas: typeof pendentes = [];
+    for (const f of pendentes) {
+      if (dataCalendarioUTC(f.dataVencimento) >= hoje) {
+        await this.filaCobranca.add('gerar', { faturaId: f.id });
+        reenfileiradas++;
+      } else {
+        vencidas.push(f);
+      }
+    }
+    if (vencidas.length) {
+      const nomes = vencidas.slice(0, 5).map((f) => `#${f.numero} — ${f.conta.titular.nome}`).join(' · ');
+      await this.notificacao.emitir({
+        titulo: `${vencidas.length} fatura(s) vencida(s) sem cobrança no Asaas`,
+        corpo: `${nomes}${vencidas.length > 5 ? ' · …' : ''}. O Asaas não aceita vencimento no passado — trate na régua (acordo ou reemissão manual).`,
+        rota: '/regua',
+        tipo: 'FALHA',
+        area: 'CARTEIRA_COBRANCA',
+      });
+    }
+    return { reenfileiradas, vencidasSemCobranca: vencidas.length };
+  }
+
   // 4.4 — Geração de cobrança no Asaas. O encargo de atraso é nativo do Asaas
   // (multa/juros do contrato): o valor pago no webhook já vem com encargo (opção 2).
   async gerarCobranca(faturaId: string): Promise<void> {
@@ -70,9 +118,9 @@ export class FaturaService {
     });
     if (!fatura || fatura.asaasChargeId) return;
 
-    // Garante o cliente no Asaas (idempotente).
+    // Garante o cliente no Asaas (idempotente). Id simulado não vale em modo real.
     const titular = fatura.conta.titular;
-    let customerId = titular.asaasCustomerId;
+    let customerId = this.asaas.clienteReutilizavel(titular.asaasCustomerId);
     if (!customerId) {
       customerId = await this.asaas.criarCliente({
         titularId: titular.id, nome: titular.nome, cpfCnpj: titular.cpfCnpj, email: titular.email, telefone: titular.whatsapp,

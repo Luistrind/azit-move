@@ -63,6 +63,15 @@ export class CobrancaController {
     return this.fatura.fechar();
   }
 
+  // Operacional (também em produção): dispara a varredura de cobranças pendentes
+  // sem esperar o cron das 3h30 — reenfileira FECHADA sem chargeId e alerta as
+  // vencidas. Idempotente (correção 08/09).
+  @Roles(RoleUsuario.ADMIN)
+  @Post('cobrancas/varrer')
+  varrerCobrancas() {
+    return this.fatura.varrerCobrancasPendentes();
+  }
+
   // Dev: simula o pagamento de UMA fatura (o que o cliente paga é a fatura, não a
   // parcela) — enfileira o MESMO job do webhook do Asaas (conciliação real).
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)

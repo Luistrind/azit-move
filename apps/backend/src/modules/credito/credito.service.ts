@@ -429,7 +429,8 @@ export class CreditoService implements OnModuleInit {
     whatsapp: string;
     asaasCustomerId: string | null;
   }): Promise<string> {
-    if (titular.asaasCustomerId) return titular.asaasCustomerId;
+    const reutilizavel = this.asaas.clienteReutilizavel(titular.asaasCustomerId);
+    if (reutilizavel) return reutilizavel;
     const customerId = await this.asaas.criarCliente({
       titularId: titular.id,
       nome: titular.nome,
