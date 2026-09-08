@@ -605,11 +605,13 @@ export class FormalizacaoService {
       // fatura interna a esta cobrança do Asaas (doc 02 §4-A.3, 2026-08-16).
       data: { status: 'AGUARDANDO_PAGAMENTO_INICIAL', entradaCobrancaAsaasId: cobranca.id },
     });
-    await this.notificacao.emitir(
-      `Cobrança da entrada gerada — contrato ${contrato.numero}`,
-      `R$ ${centavosParaReaisString(valorAVista)} com vencimento em ${vencimentoEntrada.toLocaleDateString('pt-BR')}. O pagamento ativa o contrato automaticamente.`,
-      `/contratos/${contrato.id}`,
-    );
+    await this.notificacao.emitir({
+      titulo: `Cobrança da entrada gerada — contrato ${contrato.numero}`,
+      corpo: `R$ ${centavosParaReaisString(valorAVista)} com vencimento em ${vencimentoEntrada.toLocaleDateString('pt-BR')}. O pagamento ativa o contrato automaticamente.`,
+      rota: `/contratos/${contrato.id}`,
+      tipo: 'DINHEIRO',
+      area: 'COMERCIAL',
+    });
     return {
       contratoId: contrato.id,
       numero: contrato.numero,
@@ -657,11 +659,13 @@ export class FormalizacaoService {
     }
     await this.materializarEntradaPaga(contrato, paymentDate);
     const semEntrada = cent(contrato.valorEntrada) === 0;
-    await this.notificacao.emitir(
-      semEntrada ? `Contrato ${contrato.numero} ativado (sem entrada)` : `Entrada paga — contrato ${contrato.numero} ativado`,
-      `Cronograma gerado e ${pacote.length > 1 ? `${pacote.length} contratos do pacote ativados` : 'contrato ativado'} automaticamente (dia zero).`,
-      `/contratos/${contrato.id}`,
-    );
+    await this.notificacao.emitir({
+      titulo: semEntrada ? `Contrato ${contrato.numero} ativado (sem entrada)` : `Entrada paga — contrato ${contrato.numero} ativado`,
+      corpo: `Cronograma gerado e ${pacote.length > 1 ? `${pacote.length} contratos do pacote ativados` : 'contrato ativado'} automaticamente (dia zero).`,
+      rota: `/contratos/${contrato.id}`,
+      tipo: 'DINHEIRO',
+      area: 'CONTRATOS',
+    });
     this.logger.log(`Pacote ativado (${pacote.length} contrato(s)): entrada paga → cronogramas gerados.`);
     return { contratoId: contrato.id, numero: contrato.numero, status: 'ativo', cronogramaGerado: true, contratosAtivados: pacote.length };
   }

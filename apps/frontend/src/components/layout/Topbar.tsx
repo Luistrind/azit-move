@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
+import { tempoRelativo } from '../../lib/datas';
 
 // Topbar 60px — Doc 3 §7.3. Título da página + sub à esquerda; notificações à direita.
 // Sino REAL (doc 02 §20 passo 13): marcos do pós-contrato (assinado / cobrança
@@ -17,9 +18,21 @@ interface NotificacaoItem {
   titulo: string;
   corpo: string | null;
   rota: string | null;
+  tipo: string;
   lida: boolean;
   em: string;
 }
+
+// Tipo → ícone e cor (doc 02 §16.1): o dropdown é escaneável por natureza do
+// evento — aprovação, dinheiro, assinatura, cobrança, falha.
+const TIPO_NOTIF: Record<string, { icone: string; bg: string; fg: string }> = {
+  aprovacao: { icone: '✔', bg: '#eef4ff', fg: '#2456c7' },
+  dinheiro: { icone: '$', bg: '#eafaf1', fg: '#1f9d5b' },
+  assinatura: { icone: '✍', bg: '#efeaff', fg: '#6b4fd6' },
+  cobranca: { icone: '!', bg: '#fef6e9', fg: '#c98a0a' },
+  falha: { icone: '×', bg: '#fdeceb', fg: '#e0413c' },
+  info: { icone: 'i', bg: '#f1f4f8', fg: '#8694a4' },
+};
 
 export function Topbar({ title, subtitle, onMenu }: TopbarProps) {
   const [aberto, setAberto] = useState(false);
@@ -117,20 +130,43 @@ export function Topbar({ title, subtitle, onMenu }: TopbarProps) {
                   entrada, ativação) aparecem aqui.
                 </div>
               ) : (
-                (notif.data?.itens ?? []).map((n) => (
-                  <button
-                    key={n.id}
-                    onClick={() => void abrirNotificacao(n)}
-                    className="block w-full px-[14px] py-[10px] text-left"
-                    style={{ borderBottom: '1px solid var(--border-light)', background: n.lida ? 'transparent' : 'var(--surface-input)' }}
-                  >
-                    <div className="text-[12.5px] font-bold">{n.titulo}</div>
-                    {n.corpo && <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>{n.corpo}</div>}
-                    <div className="mt-[2px] text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
-                      {new Date(n.em).toLocaleString('pt-BR')}
+                (() => {
+                  const itens = notif.data?.itens ?? [];
+                  const hojeISO = new Date().toDateString();
+                  const grupos: { rotulo: string; itens: NotificacaoItem[] }[] = [
+                    { rotulo: 'Hoje', itens: itens.filter((n) => new Date(n.em).toDateString() === hojeISO) },
+                    { rotulo: 'Anteriores', itens: itens.filter((n) => new Date(n.em).toDateString() !== hojeISO) },
+                  ].filter((g) => g.itens.length > 0);
+                  return grupos.map((g) => (
+                    <div key={g.rotulo}>
+                      <div className="px-[14px] pb-[2px] pt-[8px] text-[10.5px] font-semibold uppercase tracking-[0.05em]" style={{ color: 'var(--text-label)' }}>
+                        {g.rotulo}
+                      </div>
+                      {g.itens.map((n) => {
+                        const t = TIPO_NOTIF[n.tipo] ?? TIPO_NOTIF.info;
+                        return (
+                          <button
+                            key={n.id}
+                            onClick={() => void abrirNotificacao(n)}
+                            className="flex w-full items-start gap-[10px] px-[14px] py-[10px] text-left"
+                            style={{ borderBottom: '1px solid var(--border-light)', background: n.lida ? 'transparent' : 'var(--surface-input)' }}
+                          >
+                            <span className="mt-[1px] flex h-[24px] w-[24px] flex-none items-center justify-center rounded-full text-[12px] font-bold" style={{ background: t.bg, color: t.fg }}>
+                              {t.icone}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-baseline justify-between gap-[8px]">
+                                <span className="truncate text-[12.5px] font-bold">{n.titulo}</span>
+                                <span className="flex-none text-[10.5px]" style={{ color: 'var(--text-muted)' }}>{tempoRelativo(n.em)}</span>
+                              </span>
+                              {n.corpo && <span className="block truncate text-[12px]" style={{ color: 'var(--text-muted)' }}>{n.corpo}</span>}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
-                  </button>
-                ))
+                  ));
+                })()
               )}
             </div>
           </div>

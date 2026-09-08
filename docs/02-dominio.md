@@ -1237,6 +1237,26 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 >
 > Áreas de sistema = as áreas de navegação da proposta de UX (Comercial, Análise de Cadastro, Contratos, Carteira & Cobrança, Pessoas, Ativos & Frota, Capital & Investimento, Produtos, Aprovações, Configurações). Permissões efetivas = união das áreas dos papéis ± exceções. Ações sensíveis dentro das áreas continuam protegidas por papel/alçada (nível 2); permissão fina por ação é evolução futura sem retrabalho (nível 3). Toda mutação de usuário/permissão é evento sensível auditado (responsável + antes/depois).
 
+### 16.1 Notificações (sino) — decisão 2026-09-07 (Luís)
+
+> O sino era GLOBAL (toda notificação para todos; "lida" apagava para todos) e
+> cobria poucos eventos — competia com a Central e o Início sem endereçar ninguém.
+> Modelo novo:
+> - **Destinatário**: por **usuário direto** (ex.: "sua solicitação foi aprovada" →
+>   solicitante) ou por **área do sistema** (ex.: aprovação pendente → área
+>   Aprovações), usando a mesma matriz do §16. Sem destinatário = todos (ex.:
+>   falha de sistema).
+> - **Leitura INDIVIDUAL** (decisão Luís): cada usuário marca a sua; o sino de um
+>   não apaga o do outro. Fila de trabalho é papel do Início/Central — o sino é
+>   aviso pessoal.
+> - **Rota obrigatória**: toda notificação leva ao OCORRIDO ao clicar (aprovação →
+>   Central; análise → dossiê; acordo → renegociações; contrato → detalhe).
+> - **Tipo** (aprovação · dinheiro · assinatura · cobrança · falha · info) com
+>   ícone/cor — o dropdown é escaneável.
+> - Eventos mínimos emitidos: aprovação criada (→ área Aprovações), decisão tomada
+>   (→ solicitante), contrato assinado/ativado, entrada de acordo paga/efetivada,
+>   acordo expirado, falha de job.
+
 ---
 
 ## 17. Catálogo de Produtos — Produto, Variante e Versão (F1 da Gestão de Produtos)

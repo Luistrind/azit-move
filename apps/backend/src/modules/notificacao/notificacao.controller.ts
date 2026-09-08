@@ -1,25 +1,26 @@
 import { Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { NotificacaoService } from './notificacao.service';
 
-// Autenticação vem do guard global (JWT) — mesmo padrão dos demais controllers.
+// Sino por USUÁRIO (doc 02 §16.1): a listagem e a leitura são individuais.
 @Controller('notificacoes')
 export class NotificacaoController {
   constructor(private readonly service: NotificacaoService) {}
 
   @Get()
-  listar() {
-    return this.service.listar();
+  listar(@CurrentUser() user: UsuarioAutenticado) {
+    return this.service.listar(user.id);
   }
 
   @Post(':id/lida')
   @HttpCode(200)
-  marcarLida(@Param('id') id: string) {
-    return this.service.marcarLida(id);
+  marcarLida(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.service.marcarLida(id, user.id);
   }
 
   @Post('marcar-todas-lidas')
   @HttpCode(200)
-  marcarTodas() {
-    return this.service.marcarTodasLidas();
+  marcarTodas(@CurrentUser() user: UsuarioAutenticado) {
+    return this.service.marcarTodasLidas(user.id);
   }
 }

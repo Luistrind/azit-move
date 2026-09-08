@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client';
 import { inicioHojeBrasilUTC } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AlcadaService } from '../alcada/alcada.service';
+import { NotificacaoService } from '../notificacao/notificacao.service';
 
 // Registro passado ao efetivador quando a solicitação completa (ou é reprovada).
 export interface AprovacaoEfetivacao {
@@ -41,7 +42,33 @@ export class AprovacaoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly alcada: AlcadaService,
+    private readonly notificacao: NotificacaoService,
   ) {}
+
+  // Sino §16.1 (07/09): toda notificação leva ao OCORRIDO — a rota depende do
+  // tipo de operação aprovada.
+  private rotaDoOcorrido(a: { tipoOperacao: string; referenciaId: string; titularId: string | null }): string {
+    switch (a.tipoOperacao) {
+      case 'analise_cadastro':
+        return `/analises/${a.referenciaId}`;
+      case 'acordo':
+      case 'novacao':
+        return '/acordos';
+      case 'reajuste':
+        return `/contratos/${a.referenciaId}`;
+      case 'condicao_fora_parametro':
+        return `/propostas/${a.referenciaId}`;
+      case 'credito_avulso':
+      case 'reembolso_parcelado':
+        return a.titularId ? `/titulares/${a.titularId}` : '/carteira';
+      case 'despesa':
+      case 'orcamento':
+      case 'lote_pagamento':
+        return '/contas-a-pagar';
+      default:
+        return '/aprovacoes';
+    }
+  }
 
   private cent(v: unknown): number {
     return Math.round(Number(v?.toString() ?? '0') * 100);
@@ -73,6 +100,14 @@ export class AprovacaoService {
         payload: params.payload as Prisma.InputJsonValue | undefined,
         solicitanteId: params.solicitanteId,
       },
+    });
+    // Sino §16.1: quem decide (área Aprovações) fica sabendo na hora.
+    await this.notificacao.emitir({
+      titulo: 'Aprovação aguardando decisão',
+      corpo: params.resumo,
+      rota: '/aprovacoes',
+      tipo: 'APROVACAO',
+      area: 'APROVACOES',
     });
     return { id: aprovacao.id, status: 'pendente' };
   }
@@ -143,6 +178,14 @@ export class AprovacaoService {
       });
       const ef = this.efetivadores.get(aprovacao.tipoOperacao);
       if (ef?.reprovada) await ef.reprovada(efetivacao);
+      // Sino §16.1: o solicitante fica sabendo, com rota para o ocorrido.
+      await this.notificacao.emitir({
+        titulo: 'Sua solicitação foi reprovada',
+        corpo: aprovacao.resumo,
+        rota: this.rotaDoOcorrido(aprovacao),
+        tipo: 'APROVACAO',
+        usuarioId: aprovacao.solicitanteId,
+      });
       this.logger.log(`Aprovação ${aprovacaoId} (${aprovacao.tipoOperacao}) REPROVADA por ${usuarioId}`);
       return { status: 'reprovada', efetivada: false };
     }
@@ -172,6 +215,14 @@ export class AprovacaoService {
     } else {
       this.logger.warn(`Sem efetivador registrado para ${aprovacao.tipoOperacao}`);
     }
+    // Sino §16.1: o solicitante fica sabendo, com rota para o ocorrido.
+    await this.notificacao.emitir({
+      titulo: 'Sua solicitação foi aprovada',
+      corpo: mensagem ?? aprovacao.resumo,
+      rota: this.rotaDoOcorrido(aprovacao),
+      tipo: 'APROVACAO',
+      usuarioId: aprovacao.solicitanteId,
+    });
     this.logger.log(`Aprovação ${aprovacaoId} (${aprovacao.tipoOperacao}) APROVADA e efetivada`);
     return { status: 'aprovada', efetivada: true, mensagem };
   }

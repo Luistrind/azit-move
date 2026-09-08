@@ -843,16 +843,46 @@ model ParametroAssinatura {
 
 // Notificacao ao operador (doc 02 sec.20 passo 13): marcos do pos-contrato
 // (assinado / cobranca gerada / entrada paga) aparecem no sino do topo.
+// Notificações do sino (doc 02 §16.1, decisão 2026-09-07): destinatário por
+// usuário direto OU por área (matriz §16); sem ambos = todos. Leitura é
+// INDIVIDUAL (NotificacaoLida); rota leva ao ocorrido.
+enum TipoNotificacao {
+  APROVACAO
+  DINHEIRO
+  ASSINATURA
+  COBRANCA
+  FALHA
+  INFO
+}
+
 model Notificacao {
-  id        String    @id @default(cuid())
+  id        String          @id @default(cuid())
   titulo    String
   corpo     String?
-  rota      String? // rota do frontend para abrir ao clicar
-  lidaEm    DateTime?
-  createdAt DateTime  @default(now())
+  rota      String? // rota do frontend — abre o OCORRIDO ao clicar
+  tipo      TipoNotificacao @default(INFO)
+  area      AreaSistema? // público por área; null = sem restrição de área
+  usuarioId String? // destinatário direto; sobrepõe a área
+  createdAt DateTime        @default(now())
 
-  @@index([lidaEm])
+  leituras NotificacaoLida[]
+
+  @@index([usuarioId])
+  @@index([area])
+  @@index([createdAt])
   @@map("notificacoes")
+}
+
+model NotificacaoLida {
+  notificacaoId String
+  usuarioId     String
+  em            DateTime @default(now())
+
+  notificacao Notificacao @relation(fields: [notificacaoId], references: [id], onDelete: Cascade)
+
+  @@id([notificacaoId, usuarioId])
+  @@index([usuarioId])
+  @@map("notificacoes_lidas")
 }
 
 model ContratoCredito {

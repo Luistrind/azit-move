@@ -31,3 +31,15 @@ export function diasAtrasoLocal(iso: string): number {
   const hoje = new Date(hy, hm - 1, hd).getTime();
   return Math.max(0, Math.round((hoje - venc) / 86400000));
 }
+
+// Tempo relativo curto para o sino ("agora", "há 5 min", "há 2 h", "ontem", dd/mm).
+export function tempoRelativo(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h} h`;
+  if (h < 48) return 'ontem';
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}

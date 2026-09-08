@@ -615,6 +615,8 @@ export class RenegociacaoService implements OnModuleInit {
           titulo: `Acordo expirado — ${a?.conta.titular.nome ?? ''}`,
           corpo: 'A entrada venceu sem pagamento; a proposta expirou. Simule novamente (o saldo seguiu acumulando mora).',
           rota: '/acordos',
+          tipo: 'COBRANCA',
+          area: 'CARTEIRA_COBRANCA',
         },
       });
     }

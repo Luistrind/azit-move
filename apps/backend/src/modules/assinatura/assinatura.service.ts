@@ -288,11 +288,13 @@ export class AssinaturaService {
         where: { id: d.id },
         data: { status: 'recusado', motivoRecusa: payload.rejected_reason ?? 'Recusado pelo signatário' },
       });
-      await this.notificacao.emitir(
-        `Contrato ${d.contrato.numero}: assinatura RECUSADA`,
-        payload.rejected_reason ?? undefined,
-        `/propostas`,
-      );
+      await this.notificacao.emitir({
+        titulo: `Contrato ${d.contrato.numero}: assinatura RECUSADA`,
+        corpo: payload.rejected_reason ?? undefined,
+        rota: '/propostas',
+        tipo: 'ASSINATURA',
+        area: 'COMERCIAL',
+      });
       return;
     }
 
@@ -359,11 +361,13 @@ export class AssinaturaService {
     });
 
     if (todosOk && d.status !== 'assinado') {
-      await this.notificacao.emitir(
-        `Contrato ${d.contrato.numero} assinado por todos`,
-        'Assinatura digital concluída — pronto para cobrar a entrada.',
-        `/propostas`,
-      );
+      await this.notificacao.emitir({
+        titulo: `Contrato ${d.contrato.numero} assinado por todos`,
+        corpo: 'Assinatura digital concluída — pronto para cobrar a entrada.',
+        rota: '/propostas',
+        tipo: 'ASSINATURA',
+        area: 'COMERCIAL',
+      });
     }
   }
 
