@@ -1400,6 +1400,13 @@ enum TipoConsultaExterna {
   CAMADA1
   SCORE_QUOD
   RESTRITIVOS
+  // Consultas adicionais (Luís 08/09): duas do Marketplace (pagas) e duas da
+  // Plataforma (franquia). São APOIO ao analista — não entram nos critérios da
+  // política (score mínimo segue sendo o Quod).
+  BOAVISTA_SCORE // partner-boavista-credit-score-person (Marketplace, paga)
+  SCORE_POSITIVO // partner-scorepositivo-individual-finance (Marketplace, paga)
+  DISTRIBUICAO_PROCESSOS // lawsuits-distribution-data (Plataforma, franquia)
+  PROCESSOS // processes detalhado (Plataforma, franquia)
 }
 
 enum SituacaoConsulta {

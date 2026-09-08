@@ -158,8 +158,31 @@ export class AnaliseController {
   @HttpCode(201)
   consultarBiro(
     @Param('id') id: string,
-    @Body(new ZodValidationPipe(z.object({ tipo: z.enum(['score_quod', 'restritivos']), titularId: z.string().min(1).optional() })))
-    dto: { tipo: 'score_quod' | 'restritivos'; titularId?: string },
+    @Body(
+      new ZodValidationPipe(
+        z.object({
+          tipo: z.enum([
+            'score_quod',
+            'restritivos',
+            'boavista_score',
+            'score_positivo',
+            'distribuicao_processos',
+            'processos',
+          ]),
+          titularId: z.string().min(1).optional(),
+        }),
+      ),
+    )
+    dto: {
+      tipo:
+        | 'score_quod'
+        | 'restritivos'
+        | 'boavista_score'
+        | 'score_positivo'
+        | 'distribuicao_processos'
+        | 'processos';
+      titularId?: string;
+    },
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.analise.consultarBiroCamada2(id, dto, user.id);

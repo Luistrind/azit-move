@@ -279,7 +279,7 @@ export class AnaliseService implements OnModuleInit {
   // consome; a transcrição manual vira plano B.
   async consultarBiroCamada2(
     analiseId: string,
-    dto: { tipo: 'score_quod' | 'restritivos'; titularId?: string },
+    dto: { tipo: 'score_quod' | 'restritivos' | 'boavista_score' | 'score_positivo' | 'distribuicao_processos' | 'processos'; titularId?: string },
     usuarioId?: string,
   ) {
     const a = await this.carregar(analiseId);
@@ -290,6 +290,48 @@ export class AnaliseService implements OnModuleInit {
     if (!alvo) throw new UnprocessableEntityException({ erro: 'participante_invalido', mensagem: 'Participante não encontrado na análise' });
     const titular = await this.prisma.db.titular.findFirst({ where: { id: alvo.titularId }, select: { cpfCnpj: true } });
     const cpf = (titular?.cpfCnpj ?? '').replace(/\D/g, '');
+
+    // Consultas ADICIONAIS (Luís 08/09) — trilho genérico: chama o dataset,
+    // registra concluída/falha com resumo + payload bruto. São APOIO ao
+    // analista: não entram nos critérios da política nem transitam o status.
+    const ADICIONAIS: Record<string, { fornecedor: string; chamar: (c: string) => Promise<import('../bureau/bigdatacorp.service').ConsultaAdicionalRetorno> }> = {
+      boavista_score: { fornecedor: 'Boa Vista (via BigDataCorp Marketplace)', chamar: (c) => this.bigDataCorp.boavistaScore(c) },
+      score_positivo: { fornecedor: 'Score Positivo (via BigDataCorp Marketplace)', chamar: (c) => this.bigDataCorp.scorePositivo(c) },
+      distribuicao_processos: { fornecedor: 'BigDataCorp (Plataforma)', chamar: (c) => this.bigDataCorp.distribuicaoProcessos(c) },
+      processos: { fornecedor: 'BigDataCorp (Plataforma)', chamar: (c) => this.bigDataCorp.processosDetalhados(c) },
+    };
+    const adicional = ADICIONAIS[dto.tipo];
+    if (adicional) {
+      let r: import('../bureau/bigdatacorp.service').ConsultaAdicionalRetorno;
+      try {
+        r = await adicional.chamar(cpf);
+      } catch (e) {
+        return this.registrarConsulta(analiseId, {
+          titularId: alvo.titularId, tipo: dto.tipo, fornecedor: adicional.fornecedor,
+          situacao: 'falha', motivoFalha: `Birô indisponível: ${(e as Error).message}`,
+        }, usuarioId);
+      }
+      const ok = Object.keys(r.campos).length > 0;
+      return this.registrarConsulta(analiseId, {
+        titularId: alvo.titularId,
+        tipo: dto.tipo,
+        fornecedor: r.simulado
+          ? adicional.fornecedor.startsWith('BigDataCorp')
+            ? 'BigDataCorp (simulado)'
+            : `${adicional.fornecedor.split(' (')[0]} via BigDataCorp (simulado)`
+          : adicional.fornecedor,
+        protocolo: r.protocolo ?? undefined,
+        situacao: ok ? 'concluida' : 'falha',
+        motivoFalha: ok ? undefined : (r.statusApi ?? 'Birô não retornou os campos esperados — payload gravado nesta consulta'),
+        resultado: {
+          ...r.campos,
+          simulado: r.simulado,
+          ...(r.resumo ? { resumo: r.resumo } : {}),
+          statusApi: r.statusApi,
+          bruto: r.bruto,
+        },
+      }, usuarioId);
+    }
 
     if (dto.tipo === 'score_quod') {
       let r;
@@ -553,7 +595,7 @@ export class AnaliseService implements OnModuleInit {
     analiseId: string,
     dto: {
       titularId: string;
-      tipo: 'camada1' | 'score_quod' | 'restritivos';
+      tipo: 'camada1' | 'score_quod' | 'restritivos' | 'boavista_score' | 'score_positivo' | 'distribuicao_processos' | 'processos';
       fornecedor: string;
       protocolo?: string;
       situacao: 'concluida' | 'falha';
@@ -610,7 +652,17 @@ export class AnaliseService implements OnModuleInit {
         mensagem: 'Informe os valores de restritivos financeiros e não financeiros (use 0 quando nada constar) — eles entram nos critérios COC-03/04',
       });
     }
-    const tipo = dto.tipo === 'camada1' ? 'CAMADA1' : dto.tipo === 'score_quod' ? 'SCORE_QUOD' : 'RESTRITIVOS';
+    // Consultas ADICIONAIS (08/09) mapeadas junto; são apoio — sem critério novo.
+    const MAPA_TIPO: Record<string, 'CAMADA1' | 'SCORE_QUOD' | 'RESTRITIVOS' | 'BOAVISTA_SCORE' | 'SCORE_POSITIVO' | 'DISTRIBUICAO_PROCESSOS' | 'PROCESSOS'> = {
+      camada1: 'CAMADA1',
+      score_quod: 'SCORE_QUOD',
+      restritivos: 'RESTRITIVOS',
+      boavista_score: 'BOAVISTA_SCORE',
+      score_positivo: 'SCORE_POSITIVO',
+      distribuicao_processos: 'DISTRIBUICAO_PROCESSOS',
+      processos: 'PROCESSOS',
+    };
+    const tipo = MAPA_TIPO[dto.tipo] ?? 'RESTRITIVOS';
     const tentativas =
       (await this.prisma.db.consultaExterna.count({ where: { analiseId, titularId: dto.titularId, tipo } })) + 1;
     await this.prisma.db.consultaExterna.create({
@@ -640,8 +692,10 @@ export class AnaliseService implements OnModuleInit {
         'SCORE_CONSULTADO',
         'RESTRICOES_CONSULTADAS',
       ];
-      const alvo: StatusAnalise =
-        tipo === 'CAMADA1' ? 'CONSULTA_INICIAL_REALIZADA' : tipo === 'SCORE_QUOD' ? 'SCORE_CONSULTADO' : 'RESTRICOES_CONSULTADAS';
+      // Só as consultas da POLÍTICA puxam o status; as adicionais não transitam.
+      const alvo: StatusAnalise | null =
+        tipo === 'CAMADA1' ? 'CONSULTA_INICIAL_REALIZADA' : tipo === 'SCORE_QUOD' ? 'SCORE_CONSULTADO' : tipo === 'RESTRITIVOS' ? 'RESTRICOES_CONSULTADAS' : null;
+      if (alvo === null) return this.dossie(analiseId);
       const de = CADEIA.indexOf(a.status);
       const ate = CADEIA.indexOf(alvo);
       if (de >= 0 && de < ate) {

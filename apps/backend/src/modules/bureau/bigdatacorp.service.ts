@@ -49,6 +49,17 @@ export interface ScoreQuodRetorno {
   bruto?: unknown;
 }
 
+// Retorno das consultas ADICIONAIS (08/09) — shape único: campos extraídos de
+// forma defensiva + resumo curto + payload bruto sempre presente.
+export interface ConsultaAdicionalRetorno {
+  simulado: boolean;
+  campos: Record<string, unknown>;
+  resumo: string | null;
+  protocolo: string | null;
+  statusApi: string | null;
+  bruto?: unknown;
+}
+
 export interface RestritivosQuodRetorno {
   simulado: boolean;
   apontamentosAtivos: number | null;
@@ -208,6 +219,114 @@ export class BigDataCorpService {
       statusApi: this.resumirStatus(corpo.Status),
       bruto: { result: r0, status: corpo.Status ?? null },
     };
+  }
+
+  // ============================================================
+  // Consultas ADICIONAIS (Luís 08/09) — duas do Marketplace (pagas) e duas da
+  // Plataforma (franquia). Extração DEFENSIVA: os nomes de bloco/campo variam
+  // por parceiro e só se confirmam com retorno real — o payload bruto vai
+  // SEMPRE junto (consulta paga nunca fica às cegas, correção 09/08).
+  // ============================================================
+
+  // partner-boavista-credit-score-person (Marketplace, ~paga por chamada).
+  async boavistaScore(cpf: string): Promise<ConsultaAdicionalRetorno> {
+    if (!this.configurado) {
+      this.logger.warn('BigDataCorp SEM credenciais — Score Boa Vista SIMULADO');
+      return { simulado: true, campos: { score: 720 }, resumo: 'score 720', protocolo: `sim_bv_${cpf.slice(-4)}`, statusApi: null };
+    }
+    const corpo = await this.consultar(cpf, 'partner_boavista_credit_score_person', URL_MARKETPLACE);
+    const r0 = (corpo.Result?.[0] ?? {}) as Record<string, unknown>;
+    const bloco =
+      this.acharBloco(r0, ['BoaVistaCreditScorePerson', 'BoavistaCreditScore', 'CreditScore']) ??
+      this.acharBlocoComCampo(r0, 'Score') ?? {};
+    const score = this.numDe(bloco.Score) ?? this.numDe(r0.Score);
+    return {
+      simulado: false,
+      campos: score !== null ? { score } : {},
+      resumo: score !== null ? `score ${score}` : null,
+      protocolo: corpo.QueryId ?? null,
+      statusApi: this.resumirStatus(corpo.Status),
+      bruto: { result: r0, status: corpo.Status ?? null },
+    };
+  }
+
+  // partner-scorepositivo-individual-finance (Marketplace, ~paga por chamada).
+  async scorePositivo(cpf: string): Promise<ConsultaAdicionalRetorno> {
+    if (!this.configurado) {
+      this.logger.warn('BigDataCorp SEM credenciais — Score Positivo SIMULADO');
+      return { simulado: true, campos: { score: 680 }, resumo: 'score 680', protocolo: `sim_sp_${cpf.slice(-4)}`, statusApi: null };
+    }
+    const corpo = await this.consultar(cpf, 'partner_scorepositivo_individual_finance', URL_MARKETPLACE);
+    const r0 = (corpo.Result?.[0] ?? {}) as Record<string, unknown>;
+    const bloco =
+      this.acharBloco(r0, ['ScorePositivoIndividualFinance', 'ScorePositivo', 'IndividualFinance']) ??
+      this.acharBlocoComCampo(r0, 'Score') ?? {};
+    const score = this.numDe(bloco.Score) ?? this.numDe(r0.Score);
+    return {
+      simulado: false,
+      campos: score !== null ? { score } : {},
+      resumo: score !== null ? `score ${score}` : null,
+      protocolo: corpo.QueryId ?? null,
+      statusApi: this.resumirStatus(corpo.Status),
+      bruto: { result: r0, status: corpo.Status ?? null },
+    };
+  }
+
+  // lawsuits-distribution-data (PLATAFORMA — dentro da franquia).
+  async distribuicaoProcessos(cpf: string): Promise<ConsultaAdicionalRetorno> {
+    if (!this.configurado) {
+      this.logger.warn('BigDataCorp SEM credenciais — distribuição de processos SIMULADA');
+      return { simulado: true, campos: { totalDistribuicoes: 0 }, resumo: '0 distribuição(ões)', protocolo: `sim_ld_${cpf.slice(-4)}`, statusApi: null };
+    }
+    const corpo = await this.consultar(cpf, 'lawsuits_distribution_data', URL_PESSOAS);
+    const r0 = (corpo.Result?.[0] ?? {}) as Record<string, unknown>;
+    const bloco =
+      this.acharBloco(r0, ['LawsuitsDistributionData', 'LawsuitsDistribution']) ??
+      this.acharBlocoComCampo(r0, 'TotalLawsuits') ?? {};
+    const total =
+      this.numDe(bloco.TotalLawsuits) ?? this.numDe(bloco.TotalDistributions) ??
+      (Array.isArray(bloco.Distributions) ? bloco.Distributions.length : null) ??
+      (Array.isArray(bloco.Lawsuits) ? bloco.Lawsuits.length : null);
+    return {
+      simulado: false,
+      campos: total !== null ? { totalDistribuicoes: total } : {},
+      resumo: total !== null ? `${total} distribuição(ões)` : null,
+      protocolo: corpo.QueryId ?? null,
+      statusApi: this.resumirStatus(corpo.Status),
+      bruto: { result: r0, status: corpo.Status ?? null },
+    };
+  }
+
+  // processes detalhado (PLATAFORMA — dentro da franquia).
+  async processosDetalhados(cpf: string): Promise<ConsultaAdicionalRetorno> {
+    if (!this.configurado) {
+      this.logger.warn('BigDataCorp SEM credenciais — processos SIMULADOS');
+      return { simulado: true, campos: { processosTotal: 0, processosComoReu: 0 }, resumo: 'sem processos judiciais', protocolo: `sim_pr_${cpf.slice(-4)}`, statusApi: null };
+    }
+    const corpo = await this.consultar(cpf, 'processes', URL_PESSOAS);
+    const r0 = (corpo.Result?.[0] ?? {}) as Record<string, unknown>;
+    const proc = (this.acharBloco(r0, ['Processes', 'Lawsuits']) ?? this.acharBlocoComCampo(r0, 'TotalLawsuits') ?? {}) as Record<string, unknown>;
+    const total =
+      this.numDe(proc.TotalLawsuits) ?? this.numDe(proc.TotalProcesses) ??
+      (Array.isArray(proc.Lawsuits) ? proc.Lawsuits.length : null);
+    const comoReu = this.numDe(proc.TotalLawsuitsAsDefendant) ?? this.numDe(proc.TotalAsDefendant);
+    return {
+      simulado: false,
+      campos: { ...(total !== null ? { processosTotal: total } : {}), ...(comoReu !== null ? { processosComoReu: comoReu } : {}) },
+      resumo:
+        total === null
+          ? null
+          : total === 0
+            ? 'sem processos judiciais'
+            : `${total} processo(s)${comoReu !== null && comoReu > 0 ? ` (${comoReu} como réu)` : ''}`,
+      protocolo: corpo.QueryId ?? null,
+      statusApi: this.resumirStatus(corpo.Status),
+      bruto: { result: r0, status: corpo.Status ?? null },
+    };
+  }
+
+  private numDe(v: unknown): number | null {
+    return typeof v === 'number' ? v : typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : null;
   }
 
   private async consultar(cpf: string, datasets: string, url: string = URL_PESSOAS) {

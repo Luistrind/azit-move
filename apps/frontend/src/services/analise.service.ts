@@ -75,7 +75,11 @@ export const analiseService = {
     return data;
   },
   // Camada 2 via Marketplace da BigDataCorp (pago por chamada, fora da franquia).
-  async consultarBiro(id: string, tipo: 'score_quod' | 'restritivos', titularId?: string): Promise<DossieAnalise> {
+  async consultarBiro(
+    id: string,
+    tipo: 'score_quod' | 'restritivos' | 'boavista_score' | 'score_positivo' | 'distribuicao_processos' | 'processos',
+    titularId?: string,
+  ): Promise<DossieAnalise> {
     const { data } = await api.post<DossieAnalise>(`/api/v1/analises/${id}/consultar-biro`, { tipo, titularId });
     return data;
   },

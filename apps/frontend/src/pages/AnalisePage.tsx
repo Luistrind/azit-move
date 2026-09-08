@@ -37,6 +37,17 @@ const ROTULO_DOC: Record<string, string> = {
 };
 const PAPEL: Record<string, string> = { COMPRADOR_PRINCIPAL: 'Comprador principal', COMPRADOR_SECUNDARIO: '2º comprador', GARANTIDOR: 'Garantidor' };
 
+// Rótulo humano por tipo de consulta externa (enum TipoConsultaExterna).
+const TIPO_CONSULTA_LABEL: Record<string, string> = {
+  CAMADA1: 'Camada 1',
+  SCORE_QUOD: 'Score Quod',
+  RESTRITIVOS: 'Restritivos Quod',
+  BOAVISTA_SCORE: 'Score Boa Vista',
+  SCORE_POSITIVO: 'Score Positivo',
+  DISTRIBUICAO_PROCESSOS: 'Distribuição de processos',
+  PROCESSOS: 'Processos judiciais',
+};
+
 // Etapas macro do stepper e a qual etapa cada status pertence.
 const ETAPAS = ['Cadastro e documentos', 'Consultas', 'Parecer', 'Decisão', 'Liberação'] as const;
 const ETAPA_DO_STATUS: Record<string, number> = {
@@ -266,6 +277,46 @@ export function AnalisePage() {
                 >
                   Consultar Restritivos Quod (pago)
                 </button>
+                <button
+                  className={btnS}
+                  disabled={ocupado}
+                  onClick={() => {
+                    if (!window.confirm('Consultar o SCORE Boa Vista via Marketplace da BigDataCorp?\n\nEsta chamada é PAGA e fica FORA da franquia gratuita.')) return;
+                    void acao(() => analiseService.consultarBiro(d.id, 'boavista_score'), 'Score Boa Vista consultado no birô.');
+                  }}
+                >
+                  Consultar Score Boa Vista (pago)
+                </button>
+                <button
+                  className={btnS}
+                  disabled={ocupado}
+                  onClick={() => {
+                    if (!window.confirm('Consultar o SCORE POSITIVO via Marketplace da BigDataCorp?\n\nEsta chamada é PAGA e fica FORA da franquia gratuita.')) return;
+                    void acao(() => analiseService.consultarBiro(d.id, 'score_positivo'), 'Score Positivo consultado no birô.');
+                  }}
+                >
+                  Consultar Score Positivo (pago)
+                </button>
+                <button
+                  className={btnS}
+                  disabled={ocupado}
+                  onClick={() => {
+                    if (!window.confirm('Consultar a DISTRIBUIÇÃO DE PROCESSOS na Plataforma da BigDataCorp? Consome 1 consulta da franquia gratuita.')) return;
+                    void acao(() => analiseService.consultarBiro(d.id, 'distribuicao_processos'), 'Distribuição de processos consultada no birô.');
+                  }}
+                >
+                  Consultar Distribuição de processos (franquia)
+                </button>
+                <button
+                  className={btnS}
+                  disabled={ocupado}
+                  onClick={() => {
+                    if (!window.confirm('Consultar os PROCESSOS JUDICIAIS detalhados na Plataforma da BigDataCorp? Consome 1 consulta da franquia gratuita.')) return;
+                    void acao(() => analiseService.consultarBiro(d.id, 'processos'), 'Processos judiciais consultados no birô.');
+                  }}
+                >
+                  Consultar Processos judiciais (franquia)
+                </button>
               </span>
             )}
           </div>
@@ -280,7 +331,7 @@ export function AnalisePage() {
                 (c.tipo === 'RESTRITIVOS' && (typeof r.restritivosFinanceiros !== 'number' || typeof r.restritivosNaoFinanceiros !== 'number')));
             return (
               <div key={c.id} className="border-t border-[var(--border)] py-[6px] text-[12px]">
-                <b>{c.tipo === 'CAMADA1' ? 'Camada 1' : c.tipo === 'SCORE_QUOD' ? 'Score' : 'Restritivos'}</b> · {c.fornecedor} {c.protocolo && `· ${c.protocolo}`} · {new Date(c.dataConsulta).toLocaleDateString('pt-BR')} ·
+                <b>{TIPO_CONSULTA_LABEL[c.tipo] ?? c.tipo}</b> · {c.fornecedor} {c.protocolo && `· ${c.protocolo}`} · {new Date(c.dataConsulta).toLocaleDateString('pt-BR')} ·
                 {c.situacao === 'FALHA' ? <span style={{ color: '#b03030' }}> falhou ({c.motivoFalha}) · tentativa {c.tentativas}</span> : c.valida ? ' válida' : <span style={{ color: '#b07000' }}> vencida (mais de 30 dias)</span>}
                 {c.resultado && ` · ${resumoResultado(c.resultado)}`}
                 {semDados && (
@@ -289,7 +340,7 @@ export function AnalisePage() {
                   </span>
                 )}
                 <BotaoVerRetorno
-                  titulo={`Retorno do birô — ${c.tipo === 'CAMADA1' ? 'Camada 1' : c.tipo === 'SCORE_QUOD' ? 'Score Quod' : 'Restritivos Quod'} · ${new Date(c.dataConsulta).toLocaleDateString('pt-BR')}`}
+                  titulo={`Retorno do birô — ${TIPO_CONSULTA_LABEL[c.tipo] ?? c.tipo} · ${new Date(c.dataConsulta).toLocaleDateString('pt-BR')}`}
                   resultado={c.resultado}
                 />
                 {typeof r.statusApi === 'string' && r.statusApi && (
@@ -405,7 +456,7 @@ function resumoResultado(r: Record<string, unknown>): string {
   if (r.restritivosFinanceiros !== undefined) partes.push(`restritivos financeiros ${formatCurrency(r.restritivosFinanceiros as number)}`);
   if (r.restritivosNaoFinanceiros !== undefined) partes.push(`não financeiros ${formatCurrency(r.restritivosNaoFinanceiros as number)}`);
   if (r.protestoChequeExecucao) partes.push('protesto/cheque/execução');
-  if (r.resumo) partes.push(String(r.resumo));
+  if (r.resumo && !partes.includes(String(r.resumo))) partes.push(String(r.resumo));
   return partes.join(' · ');
 }
 
