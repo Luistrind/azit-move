@@ -72,37 +72,51 @@ export class FaturaService {
     }
   }
 
-  async varrerCobrancasPendentes(): Promise<{ reenfileiradas: number; vencidasSemCobranca: number }> {
+  async varrerCobrancasPendentes(): Promise<{ reenfileiradas: number; vencidasSemCobranca: number; possivelFilaParada: number }> {
     const pendentes = await this.prisma.db.fatura.findMany({
       where: { status: 'FECHADA', asaasChargeId: null, deletedAt: null },
       select: {
-        id: true, numero: true, dataVencimento: true,
+        id: true, numero: true, dataVencimento: true, dataFechamento: true,
         conta: { select: { titular: { select: { nome: true } } } },
       },
       orderBy: { dataVencimento: 'asc' },
     });
     const hoje = dataHojeBrasil();
     let reenfileiradas = 0;
+    let filaParada = 0;
     const vencidas: typeof pendentes = [];
     for (const f of pendentes) {
       if (dataCalendarioUTC(f.dataVencimento) >= hoje) {
         await this.filaCobranca.add('gerar', { faturaId: f.id });
         reenfileiradas++;
+        // Fechou ONTEM ou antes e segue sem cobrança: o job da véspera não rodou.
+        // Detecta worker travado no 1º dia, não só quando a fatura vence
+        // (aprendizado de produção 09/09: worker ficou ~2 semanas sem consumir).
+        if (dataCalendarioUTC(f.dataFechamento) < hoje) filaParada++;
       } else {
         vencidas.push(f);
       }
     }
-    if (vencidas.length) {
-      const nomes = vencidas.slice(0, 5).map((f) => `#${f.numero} — ${f.conta.titular.nome}`).join(' · ');
+    if (filaParada > 0) {
       await this.notificacao.emitir({
-        titulo: `${vencidas.length} fatura(s) vencida(s) sem cobrança no Asaas`,
-        corpo: `${nomes}${vencidas.length > 5 ? ' · …' : ''}. O Asaas não aceita vencimento no passado — trate na régua (acordo ou reemissão manual).`,
+        titulo: `${filaParada} cobrança(s) deviam existir no Asaas e não existem`,
+        corpo: 'Faturas fechadas desde ontem seguem sem cobrança — foram reenfileiradas agora. Se este aviso repetir amanhã, a fila está parada: reinicie o backend (deploy/update-backend.sh).',
         rota: '/regua',
         tipo: 'FALHA',
         area: 'CARTEIRA_COBRANCA',
       });
     }
-    return { reenfileiradas, vencidasSemCobranca: vencidas.length };
+    if (vencidas.length) {
+      const nomes = vencidas.slice(0, 5).map((f) => `#${f.numero} — ${f.conta.titular.nome}`).join(' · ');
+      await this.notificacao.emitir({
+        titulo: `${vencidas.length} fatura(s) vencida(s) sem cobrança no Asaas`,
+        corpo: `${nomes}${vencidas.length > 5 ? ' · …' : ''}. O Asaas não aceita vencimento no passado — reemita no detalhe da fatura (ficha do titular) ou trate na régua.`,
+        rota: '/regua',
+        tipo: 'FALHA',
+        area: 'CARTEIRA_COBRANCA',
+      });
+    }
+    return { reenfileiradas, vencidasSemCobranca: vencidas.length, possivelFilaParada: filaParada };
   }
 
   // 4.4 — Geração de cobrança no Asaas. O encargo de atraso é nativo do Asaas
