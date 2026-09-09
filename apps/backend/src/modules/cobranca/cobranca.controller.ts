@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -8,6 +9,8 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { z } from 'zod';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { RoleUsuario } from '@prisma/client';
@@ -70,6 +73,28 @@ export class CobrancaController {
   @Post('cobrancas/varrer')
   varrerCobrancas() {
     return this.fatura.varrerCobrancasPendentes();
+  }
+
+  // Reemissão manual pela tela (plano de contingência 08/09): fatura FECHADA sem
+  // cobrança no Asaas — o sistema emite mantendo o vínculo (externalReference),
+  // para o webhook conciliar sozinho. Vencida sai com vencimento >= hoje, com ou
+  // sem o encargo corrido (escolha do operador no modal).
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.FINANCEIRO, RoleUsuario.DIRETOR)
+  @Post('faturas/:id/gerar-cobranca')
+  @HttpCode(201)
+  gerarCobrancaManual(
+    @Param('id') id: string,
+    @Body(
+      new ZodValidationPipe(
+        z.object({
+          vencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          incluirEncargo: z.boolean().optional(),
+        }),
+      ),
+    )
+    dto: { vencimento?: string; incluirEncargo?: boolean },
+  ) {
+    return this.fatura.emitirCobrancaManual(id, dto);
   }
 
   // Dev: simula o pagamento de UMA fatura (o que o cliente paga é a fatura, não a

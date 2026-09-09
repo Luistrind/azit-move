@@ -19,11 +19,16 @@ export interface Fatura {
   situacao: string; // em_aberto | vence_hoje | vencida | paga | ...
   valorTotal: number;
   valorPago: number;
+  // false em fatura FECHADA = a cobrança automática falhou (estado de exceção).
+  temCobrancaAsaas: boolean;
   itens: FaturaItem[];
 }
 
 export interface FaturaDetalhe extends Fatura {
   titular: { id: string; nome: string };
+  // Encargo de atraso corrido até hoje (centavos) — só vem quando a fatura está
+  // fechada SEM cobrança no Asaas, para a decisão de reemissão.
+  encargoAtual: number;
 }
 
 // Lançamento avulso da conta (doc 02 §4-A.3, revisão 30/08): entrada de contrato
@@ -61,6 +66,12 @@ export const faturaService = {
   },
   async detalhe(faturaId: string): Promise<FaturaDetalhe> {
     const { data } = await api.get(`/api/v1/faturas/${faturaId}`);
+    return data;
+  },
+  // Reemissão manual (contingência): o sistema emite mantendo o vínculo — nunca
+  // criar cobrança pelo painel do Asaas (sem externalReference não concilia).
+  async gerarCobranca(faturaId: string, body: { vencimento?: string; incluirEncargo?: boolean }): Promise<{ chargeId: string; valorCobrado: number; vencimento: string; encargoIncluido: number }> {
+    const { data } = await api.post(`/api/v1/faturas/${faturaId}/gerar-cobranca`, body);
     return data;
   },
   // Dev: paga a fatura (enfileira a conciliação, como o webhook do Asaas).

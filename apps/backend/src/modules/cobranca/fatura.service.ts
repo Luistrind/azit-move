@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
@@ -504,6 +504,7 @@ export class FaturaService {
   private mapearFatura(f: {
     id: string; numero: number; periodoReferencia: Date; dataVencimento: Date; dataFechamento: Date | null;
     dataPagamento: Date | null; status: string; valorTotal: Prisma.Decimal; valorPago: Prisma.Decimal | null;
+    asaasChargeId: string | null;
     itensFatura: { descricao: string; tipo: string; valor: Prisma.Decimal; credor: string }[];
   }) {
     // Fuso do negócio (correção 30/08): "hoje" em America/Sao_Paulo comparado
@@ -527,6 +528,9 @@ export class FaturaService {
       situacao,
       valorTotal: cent(f.valorTotal),
       valorPago: cent(f.valorPago),
+      // Visível na tela (correção 08/09): fatura fechada SEM cobrança no Asaas
+      // é um estado de exceção que o operador precisa enxergar e resolver.
+      temCobrancaAsaas: !!f.asaasChargeId,
       itens: f.itensFatura.map((it) => ({
         descricao: it.descricao,
         tipo: it.tipo.toLowerCase(),
@@ -554,16 +558,102 @@ export class FaturaService {
   }
 
   // Detalhe de uma fatura (modal): composição completa + datas + valores.
+  // Fatura FECHADA sem cobrança traz o encargo corrido até hoje, para o
+  // operador decidir a reemissão com o número na mão (correção 08/09).
   async detalheFatura(faturaId: string) {
     const f = await this.prisma.db.fatura.findFirst({
       where: { id: faturaId },
       include: {
         itensFatura: { orderBy: { tipo: 'asc' } },
         conta: { include: { titular: { select: { id: true, nome: true } } } },
+        parcelas: { include: { contrato: { select: { taxaMultaAtraso: true, taxaJurosAtraso: true } } } },
       },
     });
     if (!f) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Fatura não encontrada' });
-    return { ...this.mapearFatura(f), titular: f.conta.titular };
+    const encargoAtual =
+      f.status === 'FECHADA' && !f.asaasChargeId ? this.encargoAteHoje(f.parcelas) : 0;
+    return { ...this.mapearFatura(f), titular: f.conta.titular, encargoAtual };
+  }
+
+  private encargoAteHoje(
+    parcelas: { valorNominal: Prisma.Decimal; dataVencimento: Date; contrato: { taxaMultaAtraso: Prisma.Decimal; taxaJurosAtraso: Prisma.Decimal } }[],
+  ): number {
+    const agora = new Date();
+    let total = 0;
+    for (const p of parcelas) {
+      const dias = diasAtrasoCalendario(p.dataVencimento, agora);
+      if (dias <= 0) continue;
+      total += Math.round(
+        calcularEncargoAtraso(
+          cent(p.valorNominal),
+          dias,
+          Number(p.contrato.taxaMultaAtraso.toString()),
+          Number(p.contrato.taxaJurosAtraso.toString()),
+        ),
+      );
+    }
+    return total;
+  }
+
+  // Reemissão MANUAL pela tela (correção 08/09 — plano de contingência): quando a
+  // cobrança automática falhou, o operador emite daqui — NUNCA pelo painel do
+  // Asaas, porque só a emissão pelo sistema carrega o externalReference que faz
+  // o webhook conciliar sozinho. O Asaas rejeita vencimento no passado, então a
+  // fatura vencida sai com vencimento >= hoje, com ou sem o encargo corrido
+  // (escolha do operador, caso a caso).
+  async emitirCobrancaManual(
+    faturaId: string,
+    dto: { vencimento?: string; incluirEncargo?: boolean },
+  ): Promise<{ chargeId: string; valorCobrado: number; vencimento: string; encargoIncluido: number }> {
+    const fatura = await this.prisma.db.fatura.findFirst({
+      where: { id: faturaId },
+      include: {
+        conta: { include: { titular: { select: { id: true, nome: true, cpfCnpj: true, email: true, whatsapp: true, asaasCustomerId: true } } } },
+        parcelas: { include: { contrato: { select: { taxaMultaAtraso: true, taxaJurosAtraso: true } } } },
+        itensFatura: { orderBy: { tipo: 'asc' }, select: { descricao: true, valor: true } },
+      },
+    });
+    if (!fatura) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Fatura não encontrada' });
+    if (fatura.asaasChargeId) {
+      throw new UnprocessableEntityException({ erro: 'ja_tem_cobranca', mensagem: 'Esta fatura já tem cobrança no Asaas' });
+    }
+    if (fatura.status !== 'FECHADA') {
+      throw new UnprocessableEntityException({ erro: 'fatura_nao_fechada', mensagem: 'Só fatura FECHADA recebe cobrança (a aberta fecha no D-5)' });
+    }
+    const hoje = dataHojeBrasil();
+    const vencStr = dto.vencimento ?? (dataCalendarioUTC(fatura.dataVencimento) >= hoje ? dataCalendarioUTC(fatura.dataVencimento) : hoje);
+    if (vencStr < hoje) {
+      throw new UnprocessableEntityException({ erro: 'vencimento_passado', mensagem: 'O Asaas não aceita vencimento no passado — informe hoje ou uma data futura' });
+    }
+
+    const encargo = dto.incluirEncargo ? this.encargoAteHoje(fatura.parcelas) : 0;
+    const valorCobrado = cent(fatura.valorTotal) + encargo;
+    const itens = [...fatura.itensFatura];
+    if (encargo > 0) {
+      itens.push({ descricao: 'Encargo de atraso (até a emissão)', valor: new Prisma.Decimal(reais(encargo)) });
+    }
+
+    const titular = fatura.conta.titular;
+    let customerId = this.asaas.clienteReutilizavel(titular.asaasCustomerId);
+    if (!customerId) {
+      customerId = await this.asaas.criarCliente({
+        titularId: titular.id, nome: titular.nome, cpfCnpj: titular.cpfCnpj, email: titular.email, telefone: titular.whatsapp,
+      });
+      await this.prisma.db.titular.update({ where: { id: titular.id }, data: { asaasCustomerId: customerId } });
+    }
+
+    const taxas = fatura.parcelas[0]?.contrato;
+    const cobranca = await this.asaas.criarCobranca({
+      externalReference: fatura.id,
+      valor: valorCobrado,
+      vencimento: new Date(`${vencStr}T12:00:00.000Z`),
+      descricao: this.descricaoCobranca(fatura.numero, valorCobrado, itens),
+      customerId,
+      multaPct: taxas ? Number(taxas.taxaMultaAtraso.toString()) : undefined,
+      jurosPct: taxas ? Number(taxas.taxaJurosAtraso.toString()) : undefined,
+    });
+    await this.prisma.db.fatura.update({ where: { id: fatura.id }, data: { asaasChargeId: cobranca.id } });
+    return { chargeId: cobranca.id, valorCobrado, vencimento: vencStr, encargoIncluido: encargo };
   }
 
   // Dev: simula atraso "dia a dia" — cada clique deixa a fatura +N dias vencida.

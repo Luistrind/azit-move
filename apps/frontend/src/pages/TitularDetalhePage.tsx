@@ -3,8 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
 import { titularService } from '../services/titular.service';
-import { faturaService } from '../services/fatura.service';
-import { diasAtrasoLocal } from '../lib/datas';
+import { faturaService, FaturaDetalhe } from '../services/fatura.service';
+import { diasAtrasoLocal, hojeLocalISO } from '../lib/datas';
 import { originacaoService } from '../services/originacao.service';
 import { creditoService } from '../services/credito.service';
 import { catalogoService } from '../services/catalogo.service';
@@ -150,6 +150,20 @@ export function TitularDetalhePage() {
     setOcupado(true);
     try { await faturaService.envelhecer(faturaId); await recarregar(); }
     finally { setOcupado(false); }
+  }
+  // Contingência (08/09): fatura fechada cuja cobrança automática falhou — o
+  // sistema reemite mantendo o vínculo (o webhook concilia sozinho).
+  async function gerarCobrancaManual(faturaId: string, vencimento: string, incluirEncargo: boolean) {
+    setOcupado(true);
+    try {
+      await faturaService.gerarCobranca(faturaId, { vencimento, incluirEncargo });
+      await recarregar();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { mensagem?: string } } })?.response?.data?.mensagem;
+      window.alert(msg ?? 'Não foi possível gerar a cobrança — tente de novo.');
+    } finally {
+      setOcupado(false);
+    }
   }
 
   const det = useQuery({ queryKey: ['titular-detalhe', id], queryFn: () => titularService.detalhe(id), enabled: !!id });
@@ -441,6 +455,10 @@ export function TitularDetalhePage() {
               <span className="tabular-nums">{formatCurrency(faturaDet.data.valorTotal)}</span>
             </div>
 
+            {faturaDet.data.status === 'fechada' && !faturaDet.data.temCobrancaAsaas && (
+              <BlocoReemissao fd={faturaDet.data} ocupado={ocupado} emitir={gerarCobrancaManual} />
+            )}
+
             {/* Ações dev — paga a FATURA; atraso aumenta dia a dia. Só fora de produção:
                 em produção o cliente paga a cobrança no Asaas e o webhook concilia. */}
             {import.meta.env.DEV && (() => {
@@ -565,6 +583,45 @@ export function TitularDetalhePage() {
       {renegOpen && contaId && (
         <RenegociacaoWizard contaId={contaId} titular={t.nome} onClose={() => { setRenegOpen(false); void recarregar(); }} />
       )}
+    </div>
+  );
+}
+
+// Contingência (08/09): fatura FECHADA sem cobrança no Asaas — a emissão sai
+// DAQUI (o vínculo externalReference faz o webhook conciliar sozinho); nunca
+// criar a cobrança pelo painel do Asaas. O Asaas rejeita vencimento no passado,
+// então a vencida sai com vencimento de hoje em diante, com ou sem o encargo
+// corrido — decisão do operador, caso a caso.
+function BlocoReemissao({ fd, ocupado, emitir }: { fd: FaturaDetalhe; ocupado: boolean; emitir: (faturaId: string, vencimento: string, incluirEncargo: boolean) => Promise<void> }) {
+  const [venc, setVenc] = useState(hojeLocalISO());
+  const [comEncargo, setComEncargo] = useState(fd.encargoAtual > 0);
+  const total = fd.valorTotal + (comEncargo ? fd.encargoAtual : 0);
+  return (
+    <div className="flex flex-col gap-[8px] rounded-[10px] p-[12px]" style={{ background: '#fdf3e7', border: '1px solid #e8c9a0' }}>
+      <div className="text-[12px] font-bold" style={{ color: '#8a5a13' }}>Sem cobrança no Asaas</div>
+      <div className="text-[12px]" style={{ color: '#6b5230' }}>
+        A cobrança automática desta fatura falhou. Emita por aqui — o boleto sai vinculado à fatura e o pagamento concilia sozinho.
+      </div>
+      <div className="flex flex-wrap items-end gap-[10px]">
+        <label className="flex flex-col gap-[3px] text-[11px] font-semibold" style={{ color: '#6b5230' }}>
+          Vencimento da cobrança
+          <input type="date" value={venc} min={hojeLocalISO()} onChange={(e) => setVenc(e.target.value)} className="rounded-[8px] border px-[8px] py-[6px] text-[12px]" style={{ borderColor: '#e8c9a0', background: 'var(--surface)' }} />
+        </label>
+        {fd.encargoAtual > 0 && (
+          <label className="flex items-center gap-[6px] pb-[8px] text-[12px]" style={{ color: '#6b5230' }}>
+            <input type="checkbox" checked={comEncargo} onChange={(e) => setComEncargo(e.target.checked)} />
+            Incluir encargo de atraso até hoje ({formatCurrency(fd.encargoAtual)})
+          </label>
+        )}
+      </div>
+      <button
+        disabled={ocupado || !venc}
+        onClick={() => void emitir(fd.id, venc, comEncargo)}
+        className="h-[34px] self-start rounded-[8px] px-[14px] text-[12px] font-bold disabled:opacity-50"
+        style={{ background: 'var(--navy)', color: '#fff' }}
+      >
+        Gerar cobrança de {formatCurrency(total)} no Asaas
+      </button>
     </div>
   );
 }
