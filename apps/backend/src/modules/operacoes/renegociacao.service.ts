@@ -11,10 +11,6 @@ import {
   centavosParaReaisString,
   formatCurrency,
   precificarAcordoPagamento,
-  renderTemplate,
-  valorPorExtenso,
-  numeroPorExtenso,
-  dataPorExtenso,
   diasAtrasoCalendario,
   inicioHojeBrasilUTC,
 } from '@azit/utils';
@@ -22,7 +18,6 @@ import { PrismaService } from '../../database/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
-import { TERMO_ACORDO_TEMPLATE } from './templates/termo-acordo.template';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 const reais = (c: number) => centavosParaReaisString(c);
@@ -41,6 +36,8 @@ export interface CriarRenegociacaoDto {
   // divergência consciente com o RAP003 (somente vencidas) — aumenta a entrada
   // mínima e antecipa a segurança do pagamento. Opt-in, nunca automático.
   faturasVincendasIncluidas?: string[];
+  // De acordo do cliente via WhatsApp (doc 02 §7.7, 2026-09-09) — obrigatório.
+  aceiteWhatsapp?: boolean;
 }
 
 // Renegociação (Acordo) CONTA-CÊNTRICA — Doc 2 §7.7 (Decisão 2026-07-03): a fatura
@@ -332,6 +329,14 @@ export class RenegociacaoService implements OnModuleInit {
   // Propõe o acordo da conta → solicitação no motor de aprovação (sem gate de alçada
   // na criação: propor e aprovar são atos distintos — Doc 2 §7.9-A).
   async criarPorConta(contaId: string, dto: CriarRenegociacaoDto, operadorId: string) {
+    // De acordo do cliente via WhatsApp (doc 02 §7.7, decisão 2026-09-09):
+    // substitui o termo de confissão — sem a confirmação, a proposta não sobe.
+    if (dto.aceiteWhatsapp !== true) {
+      throw new UnprocessableEntityException({
+        erro: 'sem_aceite_cliente',
+        mensagem: 'Registre o "de acordo" do cliente (mensagem enviada pelo WhatsApp na revisão) antes de enviar para aprovação',
+      });
+    }
     const eleg = await this.elegiveisConta(contaId);
 
     // Seleção por FATURA (doc V1.0 RAP005/006): todas as vencidas entram por
@@ -414,20 +419,10 @@ export class RenegociacaoService implements OnModuleInit {
       moraHerdada: 'multa e juros da regra geral do contrato na data-base (RAP007)',
       calculo: previa,
       dataLimiteEntrada: dataLimiteEntrada.toISOString(),
+      // De acordo do cliente pelo WhatsApp (doc 02 §7.7, decisão 2026-09-09):
+      // substitui o termo de confissão; a flag é obrigatória e fica auditada.
+      aceiteWhatsapp: { confirmadoPeloOperadorEm: new Date().toISOString() },
     };
-
-    // Termo de confissão de dívida e acordo de parcelamento (instrumento PRÓPRIO
-    // do acordo — doc 02 §7.7, 2026-08-18) gerado e congelado na proposta.
-    const termo = await this.gerarTermo({
-      contaId,
-      valorTotal,
-      valorEntrada: dto.valorEntrada,
-      numeroParcelas: dto.numeroParcelasNovas,
-      valorParcela,
-      periodicidade: freqApi,
-      dataLimiteEntrada,
-      faturas: faturasSelecionadas,
-    });
 
     const acordo = await this.prisma.db.acordo.create({
       data: {
@@ -438,7 +433,7 @@ export class RenegociacaoService implements OnModuleInit {
         numeroParcelasNovas: dto.numeroParcelasNovas,
         valorParcelaNova: reais(valorParcela),
         periodicidade,
-        snapshotJson: { ...snapshot, termo } as unknown as Prisma.InputJsonValue,
+        snapshotJson: snapshot as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -464,91 +459,6 @@ export class RenegociacaoService implements OnModuleInit {
       excecoes: previa.excecoes,
       faturasSelecionadas: faturasSelecionadas.length,
       contratosAfetados: eleg.contratos.length,
-    };
-  }
-
-  // Texto do termo (template jurídico do Luís adaptado ao conta-cêntrico).
-  private async gerarTermo(p: {
-    contaId: string;
-    valorTotal: number;
-    valorEntrada: number;
-    numeroParcelas: number;
-    valorParcela: number;
-    periodicidade: 'semanal' | 'quinzenal' | 'mensal';
-    dataLimiteEntrada: Date;
-    faturas: { faturaId: string; numero: number | null; dataVencimento: string | null; valorNominal: number; encargosMora: number; valorAtualizado: number }[];
-  }): Promise<string> {
-    const conta = await this.prisma.db.conta.findFirst({
-      where: { id: p.contaId },
-      select: {
-        titular: { select: { nome: true, cpfCnpj: true, whatsapp: true, email: true } },
-        contratosCredito: {
-          where: { status: 'ATIVO' },
-          select: { numero: true, dataAssinatura: true, ativo: { select: { descricao: true, placa: true } } },
-        },
-      },
-    });
-    const t = conta?.titular;
-    const contratosOrigem = (conta?.contratosCredito ?? [])
-      .map((c) => `Contrato de Compra e Venda de Veículo com Reserva de Domínio nº ${c.numero}, de ${c.dataAssinatura.toLocaleDateString('pt-BR')} (${c.ativo.descricao}${c.ativo.placa ? `, placa ${c.ativo.placa}` : ''})`)
-      .join('; ');
-    const tabelaFaturas = p.faturas
-      .map((f) => `Fatura ${f.numero ?? '—'} · venc. ${f.dataVencimento ? new Date(f.dataVencimento).toLocaleDateString('pt-BR') : '—'} · original R$ ${reais(f.valorNominal)} · encargos R$ ${reais(f.encargosMora)} · atualizado R$ ${reais(f.valorAtualizado)}`)
-      .join('\n');
-    const passo = p.periodicidade === 'mensal' ? 30 : p.periodicidade === 'quinzenal' ? 14 : 7;
-    const proximaFatura = await this.prisma.db.fatura.findFirst({
-      // Faturas cobertas pelo acordo (inclusive vincendas incluídas) não recebem o plano.
-      where: {
-        contaId: p.contaId,
-        status: 'ABERTA',
-        dataVencimento: { gt: new Date() },
-        id: { notIn: p.faturas.map((f) => f.faturaId) },
-      },
-      orderBy: { dataVencimento: 'asc' },
-      select: { dataVencimento: true },
-    });
-    const dataPrimeira = proximaFatura?.dataVencimento ?? new Date(p.dataLimiteEntrada.getTime() + passo * DIA_MS);
-    const plural = { semanal: 'semanais', quinzenal: 'quinzenais', mensal: 'mensais' }[p.periodicidade];
-    const params = await this.prisma.db.parametroAssinatura.findFirst();
-    const linhaTest = (nome?: string, cpf?: string) => (nome ? `${nome}\nCPF: ${cpf || '—'}` : 'Nome:\nCPF:');
-    return renderTemplate(TERMO_ACORDO_TEMPLATE, {
-      numeroAcordo: 'a definir na aprovação',
-      nomeCliente: t?.nome ?? '—',
-      cpfCliente: t?.cpfCnpj ?? '—',
-      telefoneCliente: t?.whatsapp ?? '—',
-      emailCliente: t?.email ?? '—',
-      contratosOrigem: contratosOrigem || 'relação contratual mantida junto à CREDORA',
-      tabelaFaturas,
-      valorTotalConfessado: `R$ ${reais(p.valorTotal)}`,
-      valorTotalExtenso: valorPorExtenso(p.valorTotal),
-      valorEntrada: `R$ ${reais(p.valorEntrada)}`,
-      valorEntradaExtenso: valorPorExtenso(p.valorEntrada),
-      dataEntrada: p.dataLimiteEntrada.toLocaleDateString('pt-BR'),
-      qtdeParcelas: p.numeroParcelas,
-      qtdeParcelasExtenso: numeroPorExtenso(p.numeroParcelas),
-      periodicidadePlural: plural,
-      valorParcela: `R$ ${reais(p.valorParcela)}`,
-      valorParcelaExtenso: valorPorExtenso(p.valorParcela),
-      dataPrimeiraParcela: dataPrimeira.toLocaleDateString('pt-BR'),
-      dataAssinaturaLinha: `VITÓRIA/ES, ${dataPorExtenso(new Date())}.`,
-      testemunha1Linha: linhaTest(params?.testemunha1Nome, params?.testemunha1Cpf),
-      testemunha2Linha: linhaTest(params?.testemunha2Nome, params?.testemunha2Cpf),
-    });
-  }
-
-  // Termo congelado no snapshot — visualização na tela de renegociações.
-  async termo(acordoId: string) {
-    const a = await this.prisma.db.acordo.findFirst({
-      where: { id: acordoId },
-      select: { id: true, snapshotJson: true, conta: { select: { titular: { select: { nome: true } } } } },
-    });
-    if (!a) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Acordo não encontrado' });
-    const snap = a.snapshotJson as null | { termo?: string };
-    return {
-      id: a.id,
-      titular: a.conta.titular.nome,
-      disponivel: !!snap?.termo,
-      texto: snap?.termo ?? 'Termo não disponível (acordo criado antes do instrumento próprio — 18/08/2026).',
     };
   }
 

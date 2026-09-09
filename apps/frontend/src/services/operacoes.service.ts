@@ -121,13 +121,11 @@ export const operacoesService = {
       dataLimiteEntrada?: string;
       faturasExcluidas?: { faturaId: string; justificativa: string }[];
       faturasVincendasIncluidas?: string[];
+      // De acordo do cliente via WhatsApp (doc 02 §7.7, 09/09) — obrigatório.
+      aceiteWhatsapp: boolean;
     },
   ): Promise<{ id: string; status: string; valorTotalRenegociado: number; valorParcela: number; periodicidade: string; motor: string; excecoes: string[]; contratosAfetados: number }> {
     const { data } = await api.post(`/api/v1/contas/${contaId}/renegociacao`, body);
-    return data;
-  },
-  async termoAcordo(acordoId: string): Promise<{ id: string; titular: string; disponivel: boolean; texto: string }> {
-    const { data } = await api.get(`/api/v1/acordos/${acordoId}/termo`);
     return data;
   },
   async simularEntrada(acordoId: string): Promise<void> {

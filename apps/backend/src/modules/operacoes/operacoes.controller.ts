@@ -78,11 +78,8 @@ export class OperacoesController {
     return this.renegociacao.criarPorConta(id, dto, user.id);
   }
 
-  // Termo de confissão de dívida e acordo de parcelamento (instrumento próprio).
-  @Get('acordos/:id/termo')
-  termoAcordo(@Param('id') id: string) {
-    return this.renegociacao.termo(id);
-  }
+  // Termo de confissão removido (doc 02 §7.7, 2026-09-09): o de acordo do
+  // cliente agora é a mensagem de WhatsApp + flag do operador na revisão.
 
   @Get('acordos')
   acordos() {

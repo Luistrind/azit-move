@@ -18,6 +18,9 @@ export const criarRenegociacaoSchema = z.object({
     .optional(),
   // Faturas VINCENDAS incluídas por opção do operador (decisão Luís 2026-08-30).
   faturasVincendasIncluidas: z.array(z.string().min(1)).optional(),
+  // De acordo do cliente via WhatsApp (doc 02 §7.7, 2026-09-09) — obrigatório
+  // no CRIAR (o service valida); ignorado na simulação.
+  aceiteWhatsapp: z.boolean().optional(),
 });
 export type CriarRenegociacaoBody = z.infer<typeof criarRenegociacaoSchema>;
 

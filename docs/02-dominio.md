@@ -971,6 +971,18 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > mesmo padrão do contrato de veículo): todas as parcelas iguais, resíduo só de centavos na
 > última, total idêntico ao termo de confissão. Acordos já efetivados não são reprocessados.
 
+> **Decisão 2026-09-09 (Luís, homologação) — aceite prévio via WhatsApp substitui o termo de
+> confissão de dívida.** O termo de confissão gerado pelo sistema é **descontinuado**: acordo
+> novo não gera termo e a tela "Ver termo" sai do sistema (acordos antigos mantêm o texto já
+> gravado no snapshot, como dado histórico). No lugar, a etapa de **revisão** do wizard monta
+> uma **mensagem curta e personalizada** com as condições (total renegociado, entrada com
+> data-limite, N× valor na periodicidade herdada) para o operador **copiar e enviar pelo
+> WhatsApp** do cliente; o cliente responde o "de acordo" na própria conversa e o operador
+> marca a flag **"cliente deu o de acordo"** — obrigatória (o backend recusa a proposta sem
+> ela) e auditada no snapshot (`aceiteWhatsapp.confirmadoPeloOperadorEm`). O aceite FORMAL
+> continua sendo o **pagamento da entrada** (data-limite dura, item 5); a mensagem e a flag
+> documentam o de acordo prévio às condições.
+
 ### 7.7b Novação (recuperação radical)
 - Mecanismo distinto do Acordo: **liquida o ContratoCredito inteiro** e gera um **ContratoCredito novo** completo
 - Usado quando os Acordos brandos não recuperam o cliente, antes da retomada do veículo

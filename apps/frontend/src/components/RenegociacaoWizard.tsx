@@ -40,6 +40,10 @@ export function RenegociacaoWizard({
   // Faturas VINCENDAS incluídas por opção do operador (decisão 30/08): entram
   // DESMARCADAS por padrão — incluir aumenta a entrada mínima e antecipa a segurança.
   const [vincendas, setVincendas] = useState<string[]>([]);
+  // De acordo do cliente via WhatsApp (doc 02 §7.7, 09/09): substitui o termo de
+  // confissão — sem a flag, o envio para aprovação fica travado.
+  const [aceite, setAceite] = useState(false);
+  const [copiado, setCopiado] = useState(false);
 
   const eleg = useQuery({
     queryKey: ['renegociacao-elegivel', contaId],
@@ -78,6 +82,35 @@ export function RenegociacaoWizard({
     });
   }
 
+  // Mensagem personalizada para o operador copiar e enviar no WhatsApp do
+  // cliente — o "de acordo" respondido lá substitui o termo de confissão.
+  function mensagemWhatsApp(): string {
+    const nome = titular.trim().split(/\s+/)[0];
+    const plural = ({ semanal: 'semanais', quinzenal: 'quinzenais', mensal: 'mensais' } as Record<string, string>)[p?.periodicidade ?? 'semanal'] ?? 'semanais';
+    const s = nParcelas > 1 ? 's' : '';
+    return [
+      `Olá, ${nome}! Confirmando as condições da renegociação do seu contrato com a Azit Move:`,
+      '',
+      `• Valor em atraso renegociado: ${formatCurrency(total)}`,
+      ...(entradaCent > 0 ? [`• Entrada: ${formatCurrency(entradaCent)}, a pagar até ${dataEntrada.split('-').reverse().join('/')}`] : []),
+      `• Novo plano: ${nParcelas} parcela${s} ${plural} de ${formatCurrency(valorParcela)}, somada${s} às suas próximas faturas`,
+      '',
+      entradaCent > 0
+        ? 'Se estiver de acordo, responda "DE ACORDO" aqui nesta conversa. Em seguida enviaremos a cobrança da entrada — o pagamento dela confirma e ativa o acordo.'
+        : 'Se estiver de acordo, responda "DE ACORDO" aqui nesta conversa para ativarmos o novo plano nas suas próximas faturas.',
+    ].join('\n');
+  }
+
+  async function copiarMensagem() {
+    try {
+      await navigator.clipboard.writeText(mensagemWhatsApp());
+      setCopiado(true);
+      toast.sucesso('Mensagem copiada — cole na conversa de WhatsApp do cliente.');
+    } catch {
+      toast.erro('Não foi possível copiar — selecione o texto e copie manualmente.');
+    }
+  }
+
   async function enviar() {
     setEnviando(true);
     try {
@@ -87,6 +120,7 @@ export function RenegociacaoWizard({
         dataLimiteEntrada: dataEntrada,
         faturasExcluidas: listaExclusoes,
         faturasVincendasIncluidas: vincendas,
+        aceiteWhatsapp: aceite,
       });
       setResultado({ contratosAfetados: r.contratosAfetados });
       setStep(3);
@@ -283,10 +317,24 @@ export function RenegociacaoWizard({
                   {p?.motor === 'catalogo' && <div className="flex justify-between"><span>TP + TR (motor do Catálogo)</span><b className="tabular-nums">{formatCurrency(p.taxaInicial)} + {((p.encargoMensal ?? 0) * 100).toFixed(2)}% a.m.</b></div>}
                 </div>
               </div>
+              {/* De acordo do cliente via WhatsApp (doc 02 §7.7, 09/09) — substitui o termo */}
+              <div className="flex flex-col gap-[8px] rounded-[10px] p-[14px]" style={{ background: '#e9f6ef', border: '1px solid #bfe3cf' }}>
+                <div className="flex items-center justify-between gap-[8px]">
+                  <span className="text-[12.5px] font-bold" style={{ color: '#1f7a4c' }}>De acordo do cliente (WhatsApp)</span>
+                  <button onClick={() => void copiarMensagem()} className="rounded-[7px] px-[10px] py-[5px] text-[11.5px] font-semibold" style={{ background: '#1f9d5b', color: '#fff' }}>
+                    {copiado ? '✓ Copiada' : 'Copiar mensagem'}
+                  </button>
+                </div>
+                <pre className="whitespace-pre-wrap rounded-[8px] p-[10px] font-sans text-[12px] leading-[1.5]" style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)' }}>{mensagemWhatsApp()}</pre>
+                <label className="flex cursor-pointer items-start gap-[8px] text-[12.5px] font-semibold" style={{ color: '#1f7a4c' }}>
+                  <input type="checkbox" checked={aceite} onChange={(e) => setAceite(e.target.checked)} className="mt-[2px]" />
+                  O cliente respondeu o "de acordo" no WhatsApp com estas condições
+                </label>
+              </div>
               <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                Ao enviar, a proposta segue para a <b>Central de Aprovações</b> (alçada). Aprovada, a
-                cobrança da entrada é gerada no Asaas — o pagamento da entrada é o aceite formal do
-                cliente e efetiva o plano nas próximas faturas.
+                Com o de acordo registrado, a proposta segue para a <b>Central de Aprovações</b> (alçada).
+                Aprovada, a cobrança da entrada é gerada no Asaas — o pagamento da entrada é o aceite
+                formal do cliente e efetiva o plano nas próximas faturas.
               </p>
             </div>
           )}
@@ -315,8 +363,14 @@ export function RenegociacaoWizard({
             <button disabled={!propostaValida} onClick={() => setStep(2)} className="h-[36px] rounded-[9px] px-[16px] text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--navy)', color: '#fff' }}>Revisar →</button>
           )}
           {step === 2 && (
-            <button disabled={enviando || !propostaValida} onClick={enviar} className="h-[36px] rounded-[9px] px-[16px] text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>
-              {enviando ? 'Enviando…' : 'Enviar para aprovação'}
+            <button
+              disabled={enviando || !propostaValida || !aceite}
+              onClick={enviar}
+              title={aceite ? undefined : 'Marque o "de acordo" do cliente para liberar o envio'}
+              className="h-[36px] rounded-[9px] px-[16px] text-[13px] font-semibold disabled:opacity-50"
+              style={{ background: 'var(--accent)', color: '#fff' }}
+            >
+              {enviando ? 'Enviando…' : aceite ? 'Enviar para aprovação' : 'Aguardando o de acordo do cliente'}
             </button>
           )}
           {step === 3 && (
