@@ -46,7 +46,9 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN_DAYS: "7"
-      ASAAS_API_URL: https://api-sandbox.asaas.com/v3
+      # Parametrizada no stack.env (08/09): sandbox por padrão; a virada para o
+      # Asaas real é só trocar ASAAS_API_URL + ASAAS_API_KEY no stack.env.
+      ASAAS_API_URL: ${ASAAS_API_URL:-https://api-sandbox.asaas.com/v3}
       ASAAS_API_KEY: ${ASAAS_API_KEY}
       ASAAS_WEBHOOK_SECRET: ${ASAAS_WEBHOOK_SECRET}
       # BigDataCorp (Camada 1 da analise) — par TokenId+AccessToken no stack.env.
