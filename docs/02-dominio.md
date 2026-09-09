@@ -983,6 +983,13 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > continua sendo o **pagamento da entrada** (data-limite dura, item 5); a mensagem e a flag
 > documentam o de acordo prévio às condições.
 
+> **Decisão 2026-09-09 (Luís, homologação) — limites do acordo.** (1) **Vincendas: só a
+> PRÓXIMA fatura** pode entrar no acordo (revisão da decisão 2026-08-30: a janela de 35 dias
+> pegava ~5 faturas no ritmo semanal — o opt-in agora oferece apenas a próxima a vencer).
+> (2) **Máximo de 2 acordos em aberto por conta** (RASCUNHO, AGUARDANDO_ENTRADA ou ATIVO):
+> o terceiro é recusado (`limite_acordos`); a tela alerta o operador quando o cliente já
+> possui acordo em aberto cobrindo faturas.
+
 ### 7.7b Novação (recuperação radical)
 - Mecanismo distinto do Acordo: **liquida o ContratoCredito inteiro** e gera um **ContratoCredito novo** completo
 - Usado quando os Acordos brandos não recuperam o cliente, antes da retomada do veículo

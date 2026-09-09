@@ -57,14 +57,17 @@ export function TitularDetalhePage() {
   const viewer = useDocumentoViewer(); // visualização inline de documentos (08/09)
   const [desbloqueando, setDesbloqueando] = useState(false);
 
-  // Contratar crédito avulso (Doc 2 §4.7-A) — produto do catálogo + finalidade livre.
+  // Novo produto (Doc 2 §4.7-A + decisão 09/09): o modal abre na SELEÇÃO do
+  // produto — Acordo de pagamento desvia para o wizard da régua; produto avulso
+  // do catálogo (ex.: Reembolso Parcelado) segue para o formulário próprio,
+  // SEM entrada e sem a palavra "crédito" na tela.
   const [creditoOpen, setCreditoOpen] = useState(false);
   const [creditoBusy, setCreditoBusy] = useState(false);
   const [cProdutoId, setCProdutoId] = useState('');
+  const [produtoDefinido, setProdutoDefinido] = useState(false);
   const [cFinalidade, setCFinalidade] = useState('');
   const [cValor, setCValor] = useState('');
   const [cParcelas, setCParcelas] = useState('12');
-  const [cEntrada, setCEntrada] = useState('');
 
 
   // Fonte ÚNICA: produtos do CATÁLOGO com contratação avulsa (doc 02 §17,
@@ -78,39 +81,43 @@ export function TitularDetalhePage() {
   const produtoSel = produtosCredito.find((p) => p.id === cProdutoId);
 
   const cValorCent = reaisParaCentavos(cValor);
-  const cEntradaCent = reaisParaCentavos(cEntrada);
   const cNumParcelas = Math.max(1, parseInt(cParcelas || '0', 10) || 0);
-  const cParcelaPrev =
-    cValorCent > 0 && cNumParcelas > 0
-      ? Math.round((cValorCent - cEntradaCent) / cNumParcelas)
-      : 0;
+  // Reembolso parcelado NÃO tem entrada (decisão 09/09) — o campo saiu da tela.
+  const cParcelaPrev = cValorCent > 0 && cNumParcelas > 0 ? Math.round(cValorCent / cNumParcelas) : 0;
+  // Rótulo sem a palavra "crédito" (decisão 09/09): reembolso é reembolso.
+  const rotuloValor = produtoSel?.nome.toLowerCase().includes('reembolso') ? 'Valor do reembolso (R$)' : 'Valor (R$)';
   // Prévia REAL no servidor (F3: se o Reembolso Parcelado está ativo no Catálogo,
   // vem com taxa inicial, encargo e limite de 30% da parcela principal).
   const previa = useQuery({
-    queryKey: ['credito-previa', id, cValorCent, cEntradaCent, cNumParcelas],
-    queryFn: () => creditoService.simular({ valor: cValorCent, numeroParcelas: cNumParcelas, valorEntrada: cEntradaCent, titularId: id }),
-    enabled: creditoOpen && cValorCent > 0 && cNumParcelas > 0,
+    queryKey: ['credito-previa', id, cValorCent, cNumParcelas],
+    queryFn: () => creditoService.simular({ valor: cValorCent, numeroParcelas: cNumParcelas, valorEntrada: 0, titularId: id }),
+    enabled: creditoOpen && produtoDefinido && cValorCent > 0 && cNumParcelas > 0,
     retry: false,
   });
 
-  async function contratarCredito() {
+  function fecharModalProduto() {
+    setCreditoOpen(false);
+    setProdutoDefinido(false);
+    setCProdutoId('');
+  }
+
+  async function contratarProduto() {
     if (cValorCent <= 0 || cNumParcelas <= 0) return;
     setCreditoBusy(true);
     try {
-      const nomeProduto = produtoSel?.nome ?? 'Crédito avulso';
+      const nomeProduto = produtoSel?.nome ?? 'Contratação avulsa';
       const r = await creditoService.originar(id, {
         descricao: cFinalidade.trim() ? `${nomeProduto} — ${cFinalidade.trim()}` : nomeProduto,
         valor: cValorCent,
         numeroParcelas: cNumParcelas,
-        valorEntrada: cEntradaCent,
+        valorEntrada: 0,
       });
-      setCreditoOpen(false);
+      fecharModalProduto();
       setCValor('');
-      setCEntrada('');
       setCFinalidade('');
       await recarregar();
       await queryClient.invalidateQueries({ queryKey: ['aprovacoes-contagem'] });
-      toast.sucesso(`Crédito ${r.numero} enviado para a Central de Aprovações.`);
+      toast.sucesso(`${nomeProduto} ${r.numero} enviado para a Central de Aprovações.`);
     } catch (e) {
       toast.erro(mensagemErro(e));
     } finally {
@@ -209,7 +216,7 @@ export function TitularDetalhePage() {
             className="h-[32px] rounded-[9px] px-[14px] text-[12px] font-semibold"
             style={{ background: 'var(--navy)', color: '#fff' }}
           >
-            + Contratar crédito
+            + Novo produto
           </button>
           {rf.valorEmAtraso > 0 && contaId && (
             <button
@@ -490,40 +497,51 @@ export function TitularDetalhePage() {
         )}
       </Modal>
 
-      {/* Contratar crédito avulso — produto do catálogo + finalidade; decisão na Central. */}
-      <Modal open={creditoOpen} onClose={() => setCreditoOpen(false)} title="Contratar crédito">
+      {/* Novo produto (decisão 09/09): SELEÇÃO primeiro — Acordo de pagamento desvia
+          para o wizard da régua; produto avulso do catálogo segue no formulário. */}
+      <Modal open={creditoOpen} onClose={fecharModalProduto} title={produtoDefinido && produtoSel ? `Novo produto — ${produtoSel.nome}` : 'Novo produto'}>
+        {!produtoDefinido ? (
+          <div className="flex flex-col gap-[10px]">
+            <p className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Qual produto este cliente vai contratar?</p>
+            <button
+              onClick={() => { fecharModalProduto(); setRenegOpen(true); }}
+              disabled={!contaId}
+              className="rounded-[10px] p-[14px] text-left disabled:opacity-50"
+              style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
+            >
+              <div className="text-[13px] font-bold">Acordo de pagamento</div>
+              <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Regularizar faturas em atraso — mesmo fluxo da régua de cobrança.</div>
+            </button>
+            {produtos.isLoading && (
+              <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Carregando produtos do Catálogo…</div>
+            )}
+            {produtosCredito.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => { setCProdutoId(p.id); setProdutoDefinido(true); }}
+                className="rounded-[10px] p-[14px] text-left"
+                style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
+              >
+                <div className="text-[13px] font-bold">{p.nome}</div>
+                {p.finalidade && <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>{p.finalidade}</div>}
+              </button>
+            ))}
+            {!produtos.isLoading && produtosCredito.length === 0 && (
+              <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: '#fff7e6', color: '#8a5a00' }}>
+                Nenhum produto de contratação avulsa ativo no Catálogo.
+              </div>
+            )}
+          </div>
+        ) : (
         <div className="flex flex-col gap-[12px]">
           <div className="grid grid-cols-2 gap-[10px]">
             <label className="flex flex-col gap-[4px] text-[12px]">
-              <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Produto</span>
-              <select
-                value={cProdutoId}
-                onChange={(e) => setCProdutoId(e.target.value)}
-                className="h-[34px] rounded-[8px] px-[10px] text-[13px]"
-                style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
-              >
-                <option value="">Crédito avulso (genérico)</option>
-                {produtosCredito.map((p) => (
-                  <option key={p.id} value={p.id}>{p.nome}</option>
-                ))}
-              </select>
-              {produtoSel?.finalidade && (
-                <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{produtoSel.finalidade}</span>
-              )}
+              <span className="font-semibold" style={{ color: 'var(--text-label)' }}>{rotuloValor}</span>
+              <input value={cValor} onChange={(e) => setCValor(e.target.value)} placeholder="5.000,00" className="h-[34px] rounded-[8px] px-[10px] text-right text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
             </label>
             <label className="flex flex-col gap-[4px] text-[12px]">
               <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Finalidade (opcional)</span>
               <input value={cFinalidade} onChange={(e) => setCFinalidade(e.target.value)} placeholder="ex: manutenção do veículo" className="h-[34px] rounded-[8px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
-            </label>
-          </div>
-          <div className="grid grid-cols-2 gap-[10px]">
-            <label className="flex flex-col gap-[4px] text-[12px]">
-              <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Valor do crédito (R$)</span>
-              <input value={cValor} onChange={(e) => setCValor(e.target.value)} placeholder="5.000,00" className="h-[34px] rounded-[8px] px-[10px] text-right text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
-            </label>
-            <label className="flex flex-col gap-[4px] text-[12px]">
-              <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Entrada (R$, opcional)</span>
-              <input value={cEntrada} onChange={(e) => setCEntrada(e.target.value)} placeholder="0,00" className="h-[34px] rounded-[8px] px-[10px] text-right text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
             </label>
             <label className="flex flex-col gap-[4px] text-[12px]">
               <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Nº de parcelas</span>
@@ -532,7 +550,7 @@ export function TitularDetalhePage() {
             <label className="flex flex-col gap-[4px] text-[12px]">
               <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Periodicidade</span>
               {/* Herdada do contrato principal (decisão 07/09, padrão do acordo):
-                  o crédito cai nas MESMAS faturas — o operador não escolhe. */}
+                  o parcelamento cai nas MESMAS faturas — o operador não escolhe. */}
               <div className="flex h-[34px] items-center rounded-[8px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
                 {previa.data?.periodicidade ? previa.data.periodicidade.charAt(0).toUpperCase() + previa.data.periodicidade.slice(1) : '…'} · herdada das faturas
               </div>
@@ -568,15 +586,25 @@ export function TitularDetalhePage() {
               <span className="font-bold tabular-nums">{cNumParcelas}× {formatCurrency(cParcelaPrev)}</span>
             </div>
           )}
-          <button
-            disabled={creditoBusy || cValorCent <= 0 || cNumParcelas <= 0}
-            onClick={contratarCredito}
-            className="h-[38px] rounded-[9px] text-[13px] font-semibold disabled:opacity-50"
-            style={{ background: 'var(--accent)', color: '#fff' }}
-          >
-            {creditoBusy ? 'Enviando…' : 'Enviar para aprovação'}
-          </button>
+          <div className="flex items-center gap-[8px]">
+            <button
+              onClick={() => { setProdutoDefinido(false); setCProdutoId(''); }}
+              className="h-[38px] rounded-[9px] px-[14px] text-[13px] font-semibold"
+              style={{ background: 'var(--surface-input)' }}
+            >
+              ← Trocar produto
+            </button>
+            <button
+              disabled={creditoBusy || cValorCent <= 0 || cNumParcelas <= 0}
+              onClick={contratarProduto}
+              className="h-[38px] flex-1 rounded-[9px] text-[13px] font-semibold disabled:opacity-50"
+              style={{ background: 'var(--accent)', color: '#fff' }}
+            >
+              {creditoBusy ? 'Enviando…' : 'Enviar para aprovação'}
+            </button>
+          </div>
         </div>
+        )}
       </Modal>
 
       {/* Wizard de renegociação conta-cêntrica (Doc 2 §7.7) */}

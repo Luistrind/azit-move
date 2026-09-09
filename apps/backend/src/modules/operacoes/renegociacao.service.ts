@@ -280,11 +280,10 @@ export class RenegociacaoService implements OnModuleInit {
       },
     });
 
-    // Faturas VINCENDAS próximas (decisão Luís 2026-08-30): o operador PODE
-    // incluí-las no acordo (opt-in na tela, desmarcadas por padrão) — janela de
-    // 35 dias cobre "a próxima fatura" em qualquer periodicidade. Entram pelo
-    // nominal, sem mora. Divergência consciente com o RAP003 do doc V1.0
-    // (somente vencidas), registrada no doc 02 §7.7.
+    // Fatura VINCENDA: só a PRÓXIMA a vencer pode entrar (revisão 09/09 — a
+    // janela de 35 dias pegava ~5 faturas no ritmo semanal). Opt-in na tela,
+    // desmarcada por padrão; entra pelo nominal, sem mora. Divergência
+    // consciente com o RAP003 do doc V1.0, registrada no doc 02 §7.7.
     const contratoIds = conta.contratosCredito.map((c) => c.id);
     const proximas = await this.prisma.db.fatura.findMany({
       where: {
@@ -306,6 +305,7 @@ export class RenegociacaoService implements OnModuleInit {
     });
     const faturasProximas = proximas
       .filter((f) => f.parcelas.length > 0)
+      .slice(0, 1) // só a próxima fatura (doc 02 §7.7, 09/09)
       .map((f) => {
         const nominal = f.parcelas.reduce((s, p) => s + cent(p.valorNominal), 0);
         return {
@@ -323,7 +323,13 @@ export class RenegociacaoService implements OnModuleInit {
         };
       });
 
-    return { contaId, titularId: conta.titularId, contratos, faturas, faturasProximas, valorTotal, valorNominalTotal, encargosMoraTotal: valorTotal - valorNominalTotal, faturasVencidas };
+    // Acordos EM ABERTO da conta (doc 02 §7.7, 09/09): máximo 2 — a tela alerta
+    // a partir do 1º e o criarPorConta recusa o 3º.
+    const acordosAbertos = await this.prisma.db.acordo.count({
+      where: { contaId, status: { in: ['RASCUNHO', 'AGUARDANDO_ENTRADA', 'ATIVO'] } },
+    });
+
+    return { contaId, titularId: conta.titularId, contratos, faturas, faturasProximas, valorTotal, valorNominalTotal, encargosMoraTotal: valorTotal - valorNominalTotal, faturasVencidas, acordosAbertos };
   }
 
   // Propõe o acordo da conta → solicitação no motor de aprovação (sem gate de alçada
@@ -338,6 +344,14 @@ export class RenegociacaoService implements OnModuleInit {
       });
     }
     const eleg = await this.elegiveisConta(contaId);
+
+    // Máximo 2 acordos em aberto por conta (doc 02 §7.7, 09/09).
+    if (eleg.acordosAbertos >= 2) {
+      throw new UnprocessableEntityException({
+        erro: 'limite_acordos',
+        mensagem: `A conta já possui ${eleg.acordosAbertos} acordos em aberto — o limite são 2. Regularize (ou cancele) um acordo antes de propor outro.`,
+      });
+    }
 
     // Seleção por FATURA (doc V1.0 RAP005/006): todas as vencidas entram por
     // padrão; excluir exige justificativa auditável. A seleção fica congelada

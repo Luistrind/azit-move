@@ -96,8 +96,8 @@ export function RenegociacaoWizard({
       `• Novo plano: ${nParcelas} parcela${s} ${plural} de ${formatCurrency(valorParcela)}, somada${s} às suas próximas faturas`,
       '',
       entradaCent > 0
-        ? 'Se estiver de acordo, responda "DE ACORDO" aqui nesta conversa. Em seguida enviaremos a cobrança da entrada — o pagamento dela confirma e ativa o acordo.'
-        : 'Se estiver de acordo, responda "DE ACORDO" aqui nesta conversa para ativarmos o novo plano nas suas próximas faturas.',
+        ? 'Se estiver de acordo, responda "DE ACORDO" aqui nesta conversa para enviarmos a sua solicitação para aprovação. Aprovada, você recebe a cobrança da entrada — o pagamento dela confirma o acordo.'
+        : 'Se estiver de acordo, responda "DE ACORDO" aqui nesta conversa para enviarmos a sua solicitação para aprovação.',
     ].join('\n');
   }
 
@@ -165,6 +165,18 @@ export function RenegociacaoWizard({
                 </div>
               ) : (
                 <>
+                  {/* Máx 2 acordos em aberto por conta (doc 02 §7.7, 09/09) — alerta a partir do 1º. */}
+                  {(eleg.data.acordosAbertos ?? 0) >= 2 ? (
+                    <div className="rounded-[10px] p-[12px] text-[12.5px] font-semibold" style={{ background: '#fdecec', color: '#a12622' }}>
+                      ⛔ Este cliente já possui {eleg.data.acordosAbertos} acordos em aberto cobrindo faturas — o limite são 2.
+                      Regularize (ou cancele) um acordo antes de propor outro.
+                    </div>
+                  ) : (eleg.data.acordosAbertos ?? 0) >= 1 ? (
+                    <div className="rounded-[10px] p-[12px] text-[12.5px] font-semibold" style={{ background: '#fff7e6', color: '#8a5a00' }}>
+                      ⚠ Este cliente já possui {eleg.data.acordosAbertos} acordo em aberto cobrindo faturas — este será o 2º
+                      (e último permitido).
+                    </div>
+                  ) : null}
                   <p className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
                     A unidade da negociação é a <b>fatura vencida</b> — todas entram pré-selecionadas
                     (com os itens completos de todos os contratos). Desmarcar uma fatura exige
@@ -203,9 +215,10 @@ export function RenegociacaoWizard({
                   {proximas.length > 0 && (
                     <div className="flex flex-col gap-[8px]">
                       <p className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
-                        <b>Faturas a vencer</b> (opcional): você pode trazer as próximas faturas para
-                        dentro do acordo — elas entram pelo valor nominal, sem mora, aumentam a
-                        entrada mínima e antecipam a segurança do pagamento.
+                        <b>Próxima fatura a vencer</b> (opcional): você pode trazer a próxima fatura
+                        para dentro do acordo — ela entra pelo valor nominal, sem mora, aumenta a
+                        entrada mínima e antecipa a segurança do pagamento. Somente a próxima; as
+                        demais seguem o ciclo normal.
                       </p>
                       {proximas.map((f) => {
                         const incluida = vincendas.includes(f.faturaId);
@@ -357,7 +370,7 @@ export function RenegociacaoWizard({
             <button onClick={() => setStep(step - 1)} className="h-[36px] rounded-[9px] px-[16px] text-[13px] font-semibold" style={{ background: 'var(--surface-input)' }}>← Voltar</button>
           ) : <span />}
           {step === 0 && (
-            <button disabled={!eleg.data || total <= 0 || !justificativasOk} onClick={() => setStep(1)} className="h-[36px] rounded-[9px] px-[16px] text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--navy)', color: '#fff' }}>Estruturar proposta →</button>
+            <button disabled={!eleg.data || total <= 0 || !justificativasOk || (eleg.data.acordosAbertos ?? 0) >= 2} onClick={() => setStep(1)} className="h-[36px] rounded-[9px] px-[16px] text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--navy)', color: '#fff' }}>Estruturar proposta →</button>
           )}
           {step === 1 && (
             <button disabled={!propostaValida} onClick={() => setStep(2)} className="h-[36px] rounded-[9px] px-[16px] text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--navy)', color: '#fff' }}>Revisar →</button>

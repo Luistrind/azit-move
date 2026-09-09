@@ -80,6 +80,8 @@ export interface ElegivelConta {
   valorNominalTotal: number;
   encargosMoraTotal: number;
   faturasVencidas: number;
+  // Acordos em aberto da conta (rascunho/aguardando entrada/ativo) — máx 2.
+  acordosAbertos: number;
 }
 
 export interface SimulacaoQuitacao {
