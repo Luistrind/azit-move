@@ -193,13 +193,13 @@ export function ContratoDetalhePage() {
             <div className="flex items-start justify-between">
               <div>
                 <div className="text-[11px] font-semibold" style={{ color: 'var(--navy-text-meta)' }}>
-                  {c.numero} · {c.ativo.placa ?? 'sem placa'}
+                  {c.numero} · {c.ativo?.placa ?? 'sem placa'}
                 </div>
                 <div className="mt-[3px] font-display text-[23px] font-bold text-white">
                   {c.titular.nome}
                 </div>
                 <div className="mt-[2px] text-[12px]" style={{ color: 'var(--navy-text-body)' }}>
-                  {c.ativo.descricao} · origem {fmtData(c.dataAssinatura)}
+                  {c.ativo?.descricao ?? 'Reembolso Parcelado'} · origem {fmtData(c.dataAssinatura)}
                 </div>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-[6px]">
@@ -261,7 +261,7 @@ export function ContratoDetalhePage() {
               />
               <Metrica
                 label="Origem de capital"
-                valor={c.ativo.origemCapitalTipo ? ORIGEM_CAPITAL_LABEL[c.ativo.origemCapitalTipo] ?? '—' : '—'}
+                valor={c.ativo?.origemCapitalTipo ? ORIGEM_CAPITAL_LABEL[c.ativo.origemCapitalTipo] ?? '—' : '—'}
               />
             </div>
           </>

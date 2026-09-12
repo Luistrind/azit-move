@@ -40,7 +40,7 @@ export interface ContratoApi {
   id: string;
   numero: string;
   contaId: string;
-  ativoId: string;
+  ativoId: string | null; // null = contrato sem ativo (RP — doc 02 §19, 12/09)
   dataAssinatura: string;
   dataPrimeiraParcela: string;
   valorTotal: number;

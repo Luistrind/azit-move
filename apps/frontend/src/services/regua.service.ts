@@ -12,7 +12,7 @@ export interface ReguaItem {
   valorVencido: number;
   parcelasVencidas: number;
   titular: { nome: string; cpfCnpj: string };
-  ativo: { placa: string | null; modelo: string | null };
+  ativo: { placa: string | null; modelo: string | null } | null; // null = sem ativo (RP)
 }
 
 export const reguaService = {

@@ -196,7 +196,8 @@ export class CentroCustoService {
   // Crédito avulso como centro de custo PRÓPRIO (agregado): liberado × retornado.
   async creditoAvulso() {
     const contratos = await this.prisma.db.contratoCredito.findMany({
-      where: { modalidade: 'COMPRA_PARCELADA', ativo: { tipo: 'OUTRO' } },
+      // Sem ativo = RP novo (doc 02 §19, 12/09); ativo OUTRO = sintético legado.
+      where: { modalidade: 'COMPRA_PARCELADA', OR: [{ ativoId: null }, { ativo: { tipo: 'OUTRO' } }] },
       select: {
         id: true,
         numero: true,
@@ -212,16 +213,26 @@ export class CentroCustoService {
     const ids = contratos.map((c) => c.id);
     const { pagasPorContrato, abertasPorContrato } = await this.receitasPorContrato(ids);
 
+    // Contrato SEM ativo (RP — 12/09): o valor liberado é o PRINCIPAL do
+    // reembolso, que vive no payload da solicitação de aprovação.
+    const aprovacoesRp = await this.prisma.db.aprovacao.findMany({
+      where: { referenciaTipo: 'contrato_credito', referenciaId: { in: ids }, tipoOperacao: 'reembolso_parcelado' },
+      select: { referenciaId: true, payload: true, resumo: true },
+    });
+    const principalPorContrato = new Map(
+      aprovacoesRp.map((a) => [a.referenciaId, (a.payload as null | { valorPrincipal?: number })?.valorPrincipal ?? 0]),
+    );
+
     const linhas = contratos.map((c) => {
-      // Liberado ao cliente = valor do crédito (ativo sintético) − entrada.
-      const valorCredito = cent(c.ativo.valorVenda);
+      // Liberado ao cliente = valor do reembolso/crédito − entrada.
+      const valorCredito = c.ativo ? cent(c.ativo.valorVenda) : (principalPorContrato.get(c.id) ?? 0);
       const liberado = Math.max(0, valorCredito - cent(c.valorEntrada));
       const retornado = this.entradaPaga(c) + (pagasPorContrato.get(c.id) ?? 0);
       return {
         contratoId: c.id,
         numero: c.numero,
         titular: c.conta.titular.nome,
-        finalidade: c.ativo.descricao,
+        finalidade: c.ativo?.descricao ?? `Reembolso Parcelado — ${c.conta.titular.nome}`,
         status: c.status.toLowerCase(),
         liberado,
         retornado,

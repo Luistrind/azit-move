@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { mapearOrigemCapitalEnums } from '../origem-capital/origem-capital.mapper';
 import { CriarAtivoDto } from './dto/criar-ativo.dto';
 import { AtualizarAtivoDto } from './dto/atualizar-ativo.dto';
 import { ListarAtivosDto } from './dto/listar-ativos.dto';
@@ -66,12 +67,28 @@ export class AtivoService {
       },
       include: { estruturaJuridica: { select: { id: true, nome: true } } },
     });
+
+    // Cadastro UNIFICADO (doc 02 §19, 12/09): aporte informado junto → a Origem
+    // de Capital nasce aqui, vinculada à MESMA estrutura dona do ativo.
+    if (dto.aporte) {
+      await this.prisma.db.origemCapital.create({
+        data: {
+          ativoId: ativo.id,
+          estruturaId: dto.estruturaJuridicaId ?? null,
+          tipo: mapearOrigemCapitalEnums.tipoParaPrisma(dto.aporte.tipo),
+          valorAportado: valorAquisicaoParaPrisma(dto.aporte.valorAportado),
+          taxaRetorno: dto.aporte.taxaRetorno,
+          dataAporte: dto.aporte.dataAporte,
+        },
+      });
+    }
     return ativoParaApi(ativo);
   }
 
   async listar(filtros: ListarAtivosDto): Promise<ListaPaginada<AtivoApi>> {
     const where: Prisma.AtivoWhereInput = {};
     if (filtros.status) where.status = mapearAtivoEnums.statusParaPrisma(filtros.status);
+    if (filtros.tipo) where.tipo = filtros.tipo === 'veiculo' ? 'VEICULO' : 'OUTRO';
     if (filtros.placa) where.placa = { contains: filtros.placa, mode: 'insensitive' };
     if (filtros.chassi) where.chassi = { contains: filtros.chassi, mode: 'insensitive' };
 

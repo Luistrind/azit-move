@@ -97,7 +97,7 @@ export class NovacaoService implements OnModuleInit {
     // 2. Cria o contrato novo (mesmo titular/conta e ativo) reusando o núcleo.
     const novo = await this.contrato.criar({
       contaId: origem.contaId,
-      ativoId: origem.ativoId,
+      ativoId: origem.ativoId ?? undefined,
       numero: undefined,
       dataAssinatura: dto.dataAssinatura ?? new Date(),
       dataPrimeiraParcela: dto.dataPrimeiraParcela,

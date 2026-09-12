@@ -13,7 +13,7 @@ export interface ContratoListaItem {
   numeroParcelas: number;
   parcelasPagas: number;
   titular: { id: string; nome: string; cpfCnpj: string };
-  ativo: { placa: string | null; modelo: string | null; anoModelo: number | null };
+  ativo: { placa: string | null; modelo: string | null; anoModelo: number | null } | null; // null = sem ativo (RP)
 }
 
 export interface ListaContratos {
@@ -53,13 +53,14 @@ export interface ContratoDetalhe {
   transferenciaEfetivadaEm: string | null;
   motivoEncerramento: string | null;
   titular: { id: string; nome: string; cpfCnpj: string; whatsapp: string };
+  // null = contrato sem ativo (Reembolso Parcelado — doc 02 §19, 12/09).
   ativo: {
     placa: string | null;
     modelo: string | null;
     descricao: string;
     anoModelo: number | null;
     origemCapitalTipo: string | null;
-  };
+  } | null;
   resumo: {
     parcelasPagas: number;
     totalParcelas: number;

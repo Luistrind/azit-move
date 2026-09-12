@@ -55,39 +55,46 @@ export class ContratoService {
     });
     if (!conta) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Conta não encontrada' });
 
-    const ativo = await this.prisma.db.ativo.findFirst({
-      where: { id: dto.ativoId },
-      select: { id: true },
-    });
-    if (!ativo) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Ativo não encontrado' });
-
-    // Regra "1 ativo = 1 contrato ATIVO" (Doc 2 §4.4): bloqueia só se já houver um
-    // contrato NÃO-terminal. Contratos liquidados/quitados/cancelados liberam o ativo
-    // (ex: novação gera um contrato novo sobre o mesmo ativo).
-    // verificarEstoque=false para contratos APARTADOS (ex: seguro) sobre o mesmo
-    // ativo do financiamento — a regra "1 ativo = 1 contrato" vale para o financiamento.
-    const jaContratado = opts.verificarEstoque === false ? null : await this.prisma.db.contratoCredito.findFirst({
-      where: {
-        ativoId: dto.ativoId,
-        status: { not: 'ENCERRADO' }, // fase Encerrado libera o ativo (doc 02 §5.2)
-      },
-      select: { id: true },
-    });
-    if (jaContratado) {
-      throw new ConflictException({
-        erro: 'ativo_indisponivel',
-        mensagem: 'Ativo já vinculado a um contrato de crédito ativo',
+    // SEM ativo = produto sem lastro físico (Reembolso Parcelado — doc 02 §19,
+    // 12/09): obrigação da conta, capital da estrutura do produto. As regras de
+    // estoque e origem de capital só existem quando HÁ ativo.
+    if (dto.ativoId) {
+      const ativo = await this.prisma.db.ativo.findFirst({
+        where: { id: dto.ativoId },
+        select: { id: true },
       });
+      if (!ativo) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Ativo não encontrado' });
+
+      // Regra "1 ativo = 1 contrato ATIVO" (Doc 2 §4.4): bloqueia só se já houver um
+      // contrato NÃO-terminal. Contratos liquidados/quitados/cancelados liberam o ativo
+      // (ex: novação gera um contrato novo sobre o mesmo ativo).
+      // verificarEstoque=false para contratos APARTADOS (ex: seguro) sobre o mesmo
+      // ativo do financiamento — a regra "1 ativo = 1 contrato" vale para o financiamento.
+      const jaContratado = opts.verificarEstoque === false ? null : await this.prisma.db.contratoCredito.findFirst({
+        where: {
+          ativoId: dto.ativoId,
+          status: { not: 'ENCERRADO' }, // fase Encerrado libera o ativo (doc 02 §5.2)
+        },
+        select: { id: true },
+      });
+      if (jaContratado) {
+        throw new ConflictException({
+          erro: 'ativo_indisponivel',
+          mensagem: 'Ativo já vinculado a um contrato de crédito ativo',
+        });
+      }
     }
 
-    // Recebível exige a OrigemCapital do ativo. Só é obrigatória quando o cronograma
-    // é gerado agora; na originação nativa o cronograma nasce na ATIVAÇÃO (Decisão
-    // 2026-06-29), então a origem de capital é cobrada lá.
-    const origemCapital = await this.prisma.db.origemCapital.findFirst({
-      where: { ativoId: dto.ativoId },
-      select: { id: true },
-    });
-    if (comCronograma && !origemCapital) {
+    // Recebível de contrato COM ativo exige a OrigemCapital dele. Só é obrigatória
+    // quando o cronograma é gerado agora; na originação nativa o cronograma nasce
+    // na ATIVAÇÃO (Decisão 2026-06-29), então a origem de capital é cobrada lá.
+    const origemCapital = dto.ativoId
+      ? await this.prisma.db.origemCapital.findFirst({
+          where: { ativoId: dto.ativoId },
+          select: { id: true },
+        })
+      : null;
+    if (comCronograma && dto.ativoId && !origemCapital) {
       throw new UnprocessableEntityException({
         erro: 'origem_capital_ausente',
         mensagem: 'O ativo não possui origem de capital — necessária para gerar os recebíveis',
@@ -134,7 +141,7 @@ export class ContratoService {
         data: {
           numero,
           contaId: dto.contaId,
-          ativoId: dto.ativoId,
+          ativoId: dto.ativoId ?? null,
           dataAssinatura: dto.dataAssinatura,
           dataPrimeiraParcela: dto.dataPrimeiraParcela,
           valorTotal: reais(dto.valorTotal),
@@ -207,7 +214,7 @@ export class ContratoService {
           contratoId: criado.id,
           contaId: dto.contaId,
           itemFinanciamentoId: itemFinanciamento.id,
-          origemCapitalId: origemCapital!.id,
+          origemCapitalId: origemCapital?.id ?? null,
           cronograma,
           entradaParcelada: dto.entradaParcelada ?? false,
           valorEntrada: dto.valorEntrada,
@@ -230,7 +237,7 @@ export class ContratoService {
       contratoId: string;
       contaId: string;
       itemFinanciamentoId: string;
-      origemCapitalId: string;
+      origemCapitalId: string | null; // null = contrato sem ativo (RP — doc 02 §19, 12/09)
       cronograma: ReturnType<typeof gerarCronograma>;
       entradaParcelada: boolean;
       valorEntrada: number;
@@ -424,8 +431,12 @@ export class ContratoService {
     const item = contrato.itensContratados[0];
     if (!item) throw new UnprocessableEntityException({ erro: 'sem_item', mensagem: 'Contrato sem item de financiamento' });
 
-    const origemCapital = await this.prisma.db.origemCapital.findFirst({ where: { ativoId: contrato.ativoId }, select: { id: true } });
-    if (!origemCapital) {
+    // Contrato SEM ativo (Reembolso Parcelado — doc 02 §19, 12/09): recebíveis
+    // nascem sem origem de capital, com lastro na estrutura do produto.
+    const origemCapital = contrato.ativoId
+      ? await this.prisma.db.origemCapital.findFirst({ where: { ativoId: contrato.ativoId }, select: { id: true } })
+      : null;
+    if (contrato.ativoId && !origemCapital) {
       throw new UnprocessableEntityException({
         erro: 'origem_capital_ausente',
         mensagem: 'O ativo não possui origem de capital — necessária para gerar os recebíveis',
@@ -473,7 +484,7 @@ export class ContratoService {
         contratoId,
         contaId: contrato.contaId,
         itemFinanciamentoId: item.id,
-        origemCapitalId: origemCapital.id,
+        origemCapitalId: origemCapital?.id ?? null,
         cronograma,
         entradaParcelada: contrato.entradaParcelada,
         valorEntrada: this.cent(contrato.valorEntrada),
@@ -654,13 +665,16 @@ export class ContratoService {
       situacaoFinanceira,
       diasAtraso,
       titular: contrato.conta.titular,
-      ativo: {
-        placa: contrato.ativo.placa,
-        modelo: contrato.ativo.modelo,
-        descricao: contrato.ativo.descricao,
-        anoModelo: contrato.ativo.anoModelo,
-        origemCapitalTipo: contrato.ativo.origemCapital?.tipo ?? null,
-      },
+      // null = contrato sem ativo (RP — doc 02 §19, 12/09).
+      ativo: contrato.ativo
+        ? {
+            placa: contrato.ativo.placa,
+            modelo: contrato.ativo.modelo,
+            descricao: contrato.ativo.descricao,
+            anoModelo: contrato.ativo.anoModelo,
+            origemCapitalTipo: contrato.ativo.origemCapital?.tipo ?? null,
+          }
+        : null,
       resumo: {
         parcelasPagas,
         totalParcelas: contrato.numeroParcelas,
@@ -742,7 +756,9 @@ export class ContratoService {
     const agora = new Date();
     await this.prisma.db.contratoCredito.update({ where: { id }, data: { transferenciaEfetivadaEm: agora } });
     // Gatilho 9 (doc 02, 07/09): a reserva de domínio morreu — o ativo é TRANSFERIDO.
-    await this.prisma.db.ativo.update({ where: { id: contrato.ativoId }, data: { status: 'TRANSFERIDO' } });
+    if (contrato.ativoId) {
+      await this.prisma.db.ativo.update({ where: { id: contrato.ativoId }, data: { status: 'TRANSFERIDO' } });
+    }
     await this.prisma.db.logAuditoria.create({
       data: {
         usuarioId,

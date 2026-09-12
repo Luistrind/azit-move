@@ -9,6 +9,7 @@ import {
   NOME_CICLO,
   PARAMETROS_CONHECIDOS,
 } from '../services/catalogo.service';
+import { capitalService } from '../services/capital.service';
 import { usePodeRole, mensagemErro } from '../lib/permissoes';
 import { Modal } from '../components/Modal';
 import { toast } from '../components/Toast';
@@ -34,6 +35,8 @@ function ChipCiclo({ status }: { status: string }) {
 
 export function CatalogoPage() {
   const produtos = useQuery({ queryKey: ['catalogo'], queryFn: () => catalogoService.listar() });
+  // Estrutura jurídica dona do produto (doc 02 §19, 12/09) — base do capital.
+  const estruturas = useQuery({ queryKey: ['estruturas'], queryFn: () => capitalService.estruturas() });
   const [abertoId, setAbertoId] = useState<string | null>(null);
 
   return (
@@ -72,7 +75,22 @@ export function CatalogoPage() {
               </div>
               <div className="flex items-center gap-[8px]">
                 <label className="flex items-center gap-[5px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}
-                  title="Produto contratável avulso por cliente já ativo — alimenta o modal + Contratar crédito">
+                  title="Estrutura jurídica DONA do produto (doc 02 §19) — base do capital e do split. Vazio = herda a estrutura do veículo (Compra Parcelada).">
+                  Estrutura dona
+                  <select
+                    value={p.estruturaJuridica?.id ?? ''}
+                    onChange={(e) => { void catalogoService.atualizarCadastral(p.id, { estruturaJuridicaId: e.target.value || null }).then(() => produtos.refetch()); }}
+                    className="h-[28px] rounded-[7px] px-[6px] text-[11.5px]"
+                    style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
+                  >
+                    <option value="">herda do veículo</option>
+                    {(estruturas.data ?? []).map((e) => (
+                      <option key={e.id} value={e.id}>{e.nome}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex items-center gap-[5px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}
+                  title="Produto contratável avulso por cliente já ativo — alimenta o modal + Novo produto">
                   <input
                     type="checkbox"
                     checked={p.contratacaoAvulsa}

@@ -551,8 +551,11 @@ export class FormalizacaoService {
     }
     // Gate do dia zero (doc 02 §4-A.3, 2026-08-16): sem origem de capital no ativo,
     // o cronograma não nasce — melhor barrar AQUI, antes de existir dinheiro pago,
-    // do que falhar mudo na fila (caso real do contrato 2026080001).
-    const temOrigem = await this.prisma.db.origemCapital.count({ where: { ativoId: contrato.ativoId } });
+    // do que falhar mudo na fila (caso real do contrato 2026080001). Contrato sem
+    // ativo (RP — 12/09) dispensa: o lastro é a estrutura do produto.
+    const temOrigem = contrato.ativoId
+      ? await this.prisma.db.origemCapital.count({ where: { ativoId: contrato.ativoId } })
+      : 1;
     if (!temOrigem) {
       throw new UnprocessableEntityException({
         erro: 'origem_capital_ausente',

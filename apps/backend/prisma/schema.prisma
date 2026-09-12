@@ -892,7 +892,9 @@ model ContratoCredito {
   id                   String                @id @default(cuid())
   numero               String                @unique
   contaId              String
-  ativoId              String
+  // OPCIONAL desde 12/09 (doc 02 sec.19): Reembolso Parcelado e obrigacao da
+  // CONTA com capital da estrutura do produto — sem ativo sintetico.
+  ativoId              String?
   snapshotJson         Json? // fotografia congelada na formalização (fonte da geração documental)
   snapshotLockedAt     DateTime?
   dataAssinatura       DateTime
@@ -936,7 +938,7 @@ model ContratoCredito {
   propostaPacoteId     String? // contrato pertence ao pacote de uma proposta (carrinho)
 
   conta             Conta            @relation(fields: [contaId], references: [id])
-  ativo             Ativo            @relation(fields: [ativoId], references: [id])
+  ativo             Ativo?           @relation(fields: [ativoId], references: [id])
   itensContratados  ItemContratado[]
   parcelas          Parcela[]
   recebiveis        Recebivel[]
@@ -1108,7 +1110,9 @@ model Recebivel {
   id                   String          @id @default(cuid())
   contratoId           String
   parcelaId            String          @unique
-  origemCapitalId      String
+  // NULO desde 12/09 (doc 02 sec.19): recebivel sem lastro em aporte de ativo
+  // (Reembolso Parcelado) pertence a estrutura do produto.
+  origemCapitalId      String?
   dataPrevista         DateTime
   valorPrevisto        Decimal         @db.Decimal(12, 2)
   dataRealizada        DateTime?
@@ -1121,7 +1125,7 @@ model Recebivel {
 
   contrato      ContratoCredito @relation(fields: [contratoId], references: [id])
   parcela       Parcela         @relation(fields: [parcelaId], references: [id])
-  origemCapital OrigemCapital   @relation(fields: [origemCapitalId], references: [id])
+  origemCapital OrigemCapital?  @relation(fields: [origemCapitalId], references: [id])
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1699,6 +1703,7 @@ model EstruturaJuridica {
   investidores InvestidorEstrutura[]
   origensCapital OrigemCapital[]
   ativos       Ativo[] // TAG: ativos de que esta estrutura e dona (04/08)
+  produtos     ProdutoCatalogo[] // produtos de que esta estrutura e dona (12/09)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1793,9 +1798,15 @@ model ProdutoCatalogo {
   status        CicloProduto @default(RASCUNHO)
   descricao     String?
   // Doc 02 sec.17 (2026-08-16): produto comercial contratavel AVULSO por cliente
-  // ja ativo (ex.: Reembolso Parcelado) — alimenta o modal "+ Contratar credito".
+  // ja ativo (ex.: Reembolso Parcelado) — alimenta o modal "+ Novo produto".
   contratacaoAvulsa Boolean @default(false)
+  // Doc 02 sec.19 (2026-09-12): a estrutura juridica e a BASE de todo produto —
+  // dona do capital e trilho do split (produto → estrutura → entidade → conta).
+  // A Compra Parcelada herda a estrutura do veiculo (tag do ativo); os demais
+  // declaram a sua aqui.
+  estruturaJuridicaId String?
 
+  estruturaJuridica EstruturaJuridica? @relation(fields: [estruturaJuridicaId], references: [id])
   variantes VarianteProduto[]
   versoes   VersaoProduto[]
 

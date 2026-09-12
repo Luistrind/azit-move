@@ -54,6 +54,9 @@ export interface CriarAtivoBody {
   valorVenda?: number;
   pacoteOfertaId?: string;
   ofertaFixaId?: string | null;
+  // Cadastro unificado (doc 02 §19, 12/09): aporte nasce junto do ativo,
+  // vinculado à mesma estrutura dona.
+  aporte?: { tipo: string; valorAportado: number; taxaRetorno?: number; dataAporte: string };
 }
 
 export interface OrigemCapitalBody {
@@ -64,7 +67,7 @@ export interface OrigemCapitalBody {
 }
 
 export const ativoService = {
-  async listar(params: { status?: string; placa?: string; chassi?: string } = {}): Promise<{ total: number; data: Ativo[] }> {
+  async listar(params: { status?: string; placa?: string; chassi?: string; tipo?: 'veiculo' | 'outro' } = {}): Promise<{ total: number; data: Ativo[] }> {
     const { data } = await api.get('/api/v1/ativos', { params: { limit: 100, ...params } });
     return data;
   },

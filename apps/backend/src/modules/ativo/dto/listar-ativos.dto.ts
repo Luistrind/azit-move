@@ -5,6 +5,9 @@ export const listarAtivosSchema = z.object({
   status: z
     .enum(['disponivel', 'em_contrato', 'transferido', 'recuperado', 'sinistrado'])
     .optional(),
+  // Estoque/frota lista só veículos (08/09): o ativo SINTÉTICO do crédito avulso
+  // (tipo 'outro') é âncora de recebível, não item de estoque.
+  tipo: z.enum(['veiculo', 'outro']).optional(),
   placa: z.string().trim().min(1).optional(),
   chassi: z.string().trim().min(1).optional(),
   page: z.coerce.number().int().min(1).default(1),

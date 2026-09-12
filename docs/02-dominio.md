@@ -1413,6 +1413,28 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 >    exclusivo no futuro.
 > 7. **Atendimento = ORQUESTRADOR por fases** (ver §17, decisões da homologação).
 
+> **Decisão 2026-09-12 (Luís, homologação) — a Estrutura Jurídica é a base de todos os
+> produtos, e a Origem de Capital é o APORTE dela num ativo (não um conceito paralelo).**
+> Consequências de modelagem, confirmadas item a item:
+> 1. **`ProdutoCatalogo.estruturaJuridicaId`** — todo produto do Catálogo declara sua
+>    estrutura dona (Reembolso Parcelado → estrutura RP; Proteção → estrutura PV; a Compra
+>    Parcelada herda a estrutura dona do veículo, que já vem da tag do ativo). É o trilho
+>    natural do split futuro: produto → estrutura → entidade legal → conta bancária.
+> 2. **Reembolso Parcelado deixa de criar Ativo sintético e Origem de Capital fictícia.**
+>    `ContratoCredito.ativoId` passa a ser OPCIONAL: o RP é obrigação da CONTA (decisão
+>    03/08) com capital da estrutura do produto. A saída do dinheiro é o título de
+>    desembolso no Contas a Pagar (entidade da estrutura RP, valor = PRINCIPAL do reembolso,
+>    nunca o total com encargos); a volta são os recebíveis, que passam a aceitar
+>    `origemCapitalId` NULO (recebível sem lastro em aporte de ativo pertence à estrutura
+>    do produto). Origem de Capital volta a ser exclusiva de ATIVO REAL (veículo).
+> 3. **Cadastro de ativo unificado**: o operador escolhe a estrutura dona e informa os
+>    números do aporte (valor, taxa, data) num bloco só — a Origem de Capital nasce
+>    automaticamente vinculada à MESMA estrutura do ativo (`OrigemCapital.estruturaId`
+>    espelha `Ativo.estruturaJuridicaId` por construção; o tipo vem pré-derivado da
+>    estrutura e é editável). Fim do vínculo duplicado sincronizado à mão.
+> 4. Dados existentes são TESTE (sem contrato real em produção): sintéticos são removidos
+>    na migração. A visão do investidor por ativo será rediscutida depois (anotado).
+
 ---
 
 ## 20. Jornada do Atendimento — 13 passos do operador + Camada 1 do birô (2026-08-08)

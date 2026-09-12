@@ -225,7 +225,7 @@ export class RenegociacaoService implements OnModuleInit {
       contratos.push({
         contratoId: c.id,
         numero: c.numero,
-        descricao: c.ativo.descricao,
+        descricao: c.ativo?.descricao ?? 'Reembolso Parcelado', // sem ativo = RP (12/09)
         valor,
         valorNominal,
         encargosMora: valor - valorNominal,
@@ -597,7 +597,7 @@ export class RenegociacaoService implements OnModuleInit {
     const porContrato: {
       contratoId: string;
       atraso: number;
-      origemCapitalId: string;
+      origemCapitalId: string | null; // null = contrato sem ativo (RP — 12/09)
       faturaIds: string[];
     }[] = [];
     for (const c of contratos) {
@@ -606,15 +606,19 @@ export class RenegociacaoService implements OnModuleInit {
         select: { valorNominal: true, faturaId: true },
       });
       if (parcelas.length === 0) continue;
-      const origem = await this.prisma.db.origemCapital.findFirst({
-        where: { ativoId: c.ativoId },
-        select: { id: true },
-      });
-      if (!origem) return { resultado: 'origem_capital_ausente', contrato: c.numero };
+      // Contrato SEM ativo (RP — doc 02 §19, 12/09): recebíveis do acordo nascem
+      // sem origem de capital, com lastro na estrutura do produto.
+      const origem = c.ativoId
+        ? await this.prisma.db.origemCapital.findFirst({
+            where: { ativoId: c.ativoId },
+            select: { id: true },
+          })
+        : null;
+      if (c.ativoId && !origem) return { resultado: 'origem_capital_ausente', contrato: c.numero };
       porContrato.push({
         contratoId: c.id,
         atraso: parcelas.reduce((s, p) => s + cent(p.valorNominal), 0),
-        origemCapitalId: origem.id,
+        origemCapitalId: origem?.id ?? null,
         faturaIds: parcelas.map((p) => p.faturaId).filter((x): x is string => !!x),
       });
     }

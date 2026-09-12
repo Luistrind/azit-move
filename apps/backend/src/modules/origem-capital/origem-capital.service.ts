@@ -35,9 +35,18 @@ export class OrigemCapitalService {
       });
     }
 
+    // A origem ESPELHA a estrutura dona do ativo por construção (doc 02 §19,
+    // 12/09): a estrutura é a origem do capital — fim do vínculo duplicado
+    // sincronizado à mão.
+    const donoAtivo = await this.prisma.db.ativo.findFirst({
+      where: { id: ativoId },
+      select: { estruturaJuridicaId: true },
+    });
+
     const origem = await this.prisma.db.origemCapital.create({
       data: {
         ativoId,
+        estruturaId: donoAtivo?.estruturaJuridicaId ?? null,
         tipo: mapearOrigemCapitalEnums.tipoParaPrisma(dto.tipo),
         contratoInvestimentoId: dto.contratoInvestimentoId,
         valorAportado: valorAportadoParaPrisma(dto.valorAportado),

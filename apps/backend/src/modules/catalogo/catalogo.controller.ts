@@ -18,8 +18,11 @@ const cadastralSchema = z.object({
   finalidade: z.string().optional(),
   classificacao: z.string().optional(),
   descricao: z.string().optional(),
-  // Doc 02 §17 (2026-08-16): contratável avulso por cliente ativo (+ Contratar crédito).
+  // Doc 02 §17 (2026-08-16): contratável avulso por cliente ativo (+ Novo produto).
   contratacaoAvulsa: z.boolean().optional(),
+  // Doc 02 §19 (12/09): estrutura jurídica DONA do produto — base do capital e
+  // trilho do split. null = herda do ativo (caso da Compra Parcelada).
+  estruturaJuridicaId: z.string().min(1).nullable().optional(),
 });
 
 const criarProdutoSchema = cadastralSchema.extend({
@@ -70,7 +73,11 @@ export class CatalogoController {
   async listar() {
     const produtos = await this.prisma.db.produtoCatalogo.findMany({
       where: { deletedAt: null },
-      include: { variantes: { where: { deletedAt: null }, orderBy: { ordem: 'asc' } }, versoes: true },
+      include: {
+        variantes: { where: { deletedAt: null }, orderBy: { ordem: 'asc' } },
+        versoes: true,
+        estruturaJuridica: { select: { id: true, nome: true } },
+      },
       orderBy: { createdAt: 'asc' },
     });
     return produtos.map((p) => ({
@@ -81,6 +88,8 @@ export class CatalogoController {
       classificacao: p.classificacao,
       status: p.status,
       contratacaoAvulsa: p.contratacaoAvulsa,
+      // Estrutura dona (doc 02 §19, 12/09) — null = herda do ativo (Compra Parcelada).
+      estruturaJuridica: p.estruturaJuridica,
       variantes: p.variantes.map((v) => ({ id: v.id, chave: v.chave, nome: v.nome, status: v.status })),
       totalVersoes: p.versoes.length,
       versaoVigenteProduto: this.numeroVigente(p.versoes.filter((x) => !x.varianteId)),

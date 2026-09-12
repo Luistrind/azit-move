@@ -15,7 +15,9 @@ const itemRecorrenteSchema = z.object({
 
 export const criarContratoSchema = z.object({
   contaId: z.string().min(1, 'contaId é obrigatório'),
-  ativoId: z.string().min(1, 'ativoId é obrigatório'),
+  // Opcional desde 12/09 (doc 02 §19): Reembolso Parcelado é obrigação da conta
+  // sem ativo — capital da estrutura do produto.
+  ativoId: z.string().min(1).optional(),
   numero: z.string().trim().min(1).optional(), // gerado se ausente
   dataAssinatura: z.coerce.date(),
   dataPrimeiraParcela: z.coerce.date(),

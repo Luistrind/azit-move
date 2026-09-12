@@ -5,9 +5,10 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, StatusTituloPagar, StatusLotePagamento } from '@prisma/client';
-import { centavosParaReaisString } from '@azit/utils';
+import { centavosParaReaisString, formatCurrency } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
+import { NotificacaoService } from '../notificacao/notificacao.service';
 
 const reais = (c: number) => (c / 100).toFixed(2);
 const cent = (d: Prisma.Decimal | null | undefined): number =>
@@ -23,6 +24,7 @@ export class ContasPagarService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aprovacao: AprovacaoService,
+    private readonly notificacao: NotificacaoService,
   ) {}
 
   onModuleInit() {
@@ -855,11 +857,24 @@ export class ContasPagarService implements OnModuleInit {
 
   // Chamado pela efetivação do RP: cria o título de desembolso vinculado à
   // operação. Beneficiário nasce como placeholder e é definido pelo Financeiro.
-  async criarDesembolsoReembolso(contrato: { id: string; numero: string; valorCentavos: number; clienteNome: string; ativoId: string }, usuarioId?: string) {
+  async criarDesembolsoReembolso(contrato: { id: string; numero: string; valorCentavos: number; clienteNome: string; ativoId: string | null }, usuarioId?: string) {
     const entidade = await this.prisma.db.entidadeLegal.findFirst({ where: { unidadeNegocio: 'Reembolso Parcelado' } });
     const natureza = await this.prisma.db.naturezaFinanceira.findFirst({ where: { codigo: 'NF11' } });
     const centro = await this.prisma.db.centroCustoArea.findFirst({ where: { codigo: 'CC05' } });
-    if (!entidade || !natureza || !centro) return null; // fundação ausente — não trava o RP
+    if (!entidade || !natureza || !centro) {
+      // Fundação ausente não trava o RP, mas NUNCA em silêncio (correção 12/09
+      // — mesmo padrão da cobrança): o financeiro precisa criar o título à mão.
+      await this.notificacao
+        .emitir({
+          titulo: 'Desembolso do Reembolso Parcelado NÃO foi criado',
+          corpo: `Contrato ${contrato.numero} (${contrato.clienteNome}, ${formatCurrency(contrato.valorCentavos)}): falta fundação no contas a pagar (${[!entidade && 'entidade "Reembolso Parcelado"', !natureza && 'natureza NF11', !centro && 'centro CC05'].filter(Boolean).join(', ')}). Cadastre e crie o título manualmente.`,
+          rota: '/contas-a-pagar',
+          tipo: 'FALHA',
+          area: 'FINANCEIRO_ADMINISTRATIVO',
+        })
+        .catch(() => undefined);
+      return null;
+    }
     let beneficiario = await this.prisma.db.fornecedorFin.findFirst({ where: { cpfCnpj: '00000000000000' } });
     if (!beneficiario) {
       beneficiario = await this.prisma.db.fornecedorFin.create({

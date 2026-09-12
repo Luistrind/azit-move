@@ -43,10 +43,10 @@ function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem;
             {item.titular.nome}
           </div>
           <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-            {item.ativo.placa ?? '—'}
+            {item.ativo?.placa ?? '—'}
           </div>
           <div className="mb-[9px] text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-            {item.ativo.modelo ?? '—'} · {item.numero}
+            {item.ativo?.modelo ?? '—'} · {item.numero}
           </div>
         </div>
         {item.bloqueado && (
@@ -99,7 +99,7 @@ function CasoModal({ item, onClose, onRenegociar }: { item: ReguaItem; onClose: 
       <div className="flex flex-col gap-[10px]">
         <div className="flex flex-wrap items-center gap-[8px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
           <span className="rounded-full px-[10px] py-[2px] font-bold" style={{ background: '#fdeceb', color: '#c0392b' }}>{item.estagio} · {item.diasAtraso} dia(s) de atraso</span>
-          <span>{item.ativo.modelo ?? '—'} · {item.ativo.placa ?? 'sem placa'} · contrato {item.numero}</span>
+          <span>{item.ativo?.modelo ?? '—'} · {item.ativo?.placa ?? 'sem placa'} · contrato {item.numero}</span>
           {item.bloqueado && <span className="rounded-full px-[10px] py-[2px] font-bold" style={{ background: '#fdeceb', color: '#e0413c' }}>Veículo bloqueado</span>}
         </div>
 

@@ -31,6 +31,18 @@ export const criarAtivoSchema = z.object({
   pacoteOfertaId: z.string().trim().min(1).optional(),
   // oferta fixa desenhada (Doc 2 §4-A.3) — seletor no cadastro
   ofertaFixaId: z.string().trim().min(1).nullish(),
+  // Cadastro UNIFICADO (doc 02 §19, 12/09): a estrutura é a origem do capital —
+  // o operador informa os NÚMEROS do aporte junto do cadastro e a Origem de
+  // Capital nasce vinculada à mesma estrutura do ativo. Opcional (pode ser
+  // registrada depois pela tela do ativo, como antes).
+  aporte: z
+    .object({
+      tipo: z.enum(['capital_proprio', 'emprestimo', 'investidor_ativo', 'fundo']).default('capital_proprio'),
+      valorAportado: z.coerce.number().int().min(0),
+      taxaRetorno: z.coerce.number().min(0).optional(),
+      dataAporte: z.coerce.date(),
+    })
+    .optional(),
 }).superRefine((data, ctx) => {
   if (data.tipo !== 'outro' && !data.estruturaJuridicaId) {
     ctx.addIssue({

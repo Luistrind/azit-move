@@ -73,7 +73,7 @@ export class SinistroService {
 
     // Gatilho 11 (doc 02, 07/09): o bem sinistrou — a dívida não (Regra 3).
     const c = await this.prisma.db.contratoCredito.findFirst({ where: { id: contratoId }, select: { ativoId: true } });
-    if (c) await this.prisma.db.ativo.update({ where: { id: c.ativoId }, data: { status: 'SINISTRADO' } });
+    if (c?.ativoId) await this.prisma.db.ativo.update({ where: { id: c.ativoId }, data: { status: 'SINISTRADO' } });
     await cumprirAcordosSePagos(this.prisma.db, [contratoId]);
 
     const saldoRemanescente = abertas

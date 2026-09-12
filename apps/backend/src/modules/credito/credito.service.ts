@@ -6,8 +6,6 @@ import {
 } from '@nestjs/common';
 import { precificarCreditoAvulso, precificarReembolsoParcelado, centavosParaReaisString , formatCurrency} from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
-import { AtivoService } from '../ativo/ativo.service';
-import { OrigemCapitalService } from '../origem-capital/origem-capital.service';
 import { ContratoService } from '../contrato/contrato.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { AsaasService } from '../asaas/asaas.service';
@@ -21,17 +19,16 @@ import {
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 
-// Crédito avulso para cliente já ativo (Doc 2 §4.7-A) — "crédito de manutenção" é um
-// caso; o produto independe da finalidade. É um ContratoCredito COMPRA_PARCELADA,
-// ancorado num Ativo sintético (OUTRO) com OrigemCapital AZIT, na Conta existente do
-// titular. Nasce em RASCUNHO e passa pelo MOTOR DE APROVAÇÃO (§7.9-A): aprovado →
-// ativa (sem entrada) ou cobra a entrada (webhook ativa); reprovado → cancela.
+// Contratação avulsa para cliente já ativo (Doc 2 §4.7-A) — Reembolso Parcelado é o
+// caso principal. É um ContratoCredito COMPRA_PARCELADA SEM ativo (doc 02 §19,
+// 12/09): obrigação da CONTA, capital da ESTRUTURA do produto — sem Ativo sintético
+// nem OrigemCapital fictícia. Nasce em RASCUNHO e passa pelo MOTOR DE APROVAÇÃO
+// (§7.9-A): aprovado → ativa (sem entrada) ou cobra a entrada (webhook ativa) e gera
+// o título de desembolso no contas a pagar (valor = PRINCIPAL); reprovado → cancela.
 @Injectable()
 export class CreditoService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly ativo: AtivoService,
-    private readonly origem: OrigemCapitalService,
     private readonly contrato: ContratoService,
     private readonly aprovacao: AprovacaoService,
     private readonly asaas: AsaasService,
@@ -250,22 +247,12 @@ export class CreditoService implements OnModuleInit {
     }
     const ehReembolso = p.produto === 'reembolso_parcelado';
 
-    const ativo = await this.ativo.criar({
-      tipo: 'outro',
-      descricao: `${ehReembolso ? 'Reembolso Parcelado' : dto.descricao} — ${titular.nome}`,
-      valorVenda: dto.valor,
-    });
-    await this.origem.criar(ativo.id, {
-      tipo: 'capital_proprio',
-      valorAportado: p.valorFinanciado,
-      dataAporte: new Date(),
-      taxaRetorno: 0,
-    });
-
+    // SEM ativo sintético (doc 02 §19, 12/09): o RP é obrigação da CONTA com
+    // capital da ESTRUTURA do produto — nada de Ativo OUTRO nem OrigemCapital
+    // fictícia. O contrato nasce sem ativo; recebíveis sem origem de capital.
     const contrato = await this.contrato.criar(
       {
         contaId: conta.id,
-        ativoId: ativo.id,
         dataAssinatura: new Date(),
         dataPrimeiraParcela: new Date(Date.now() + this.passoDias(dto.periodicidade) * DIA_MS),
         valorTotal: p.totalAPagar,
@@ -297,6 +284,9 @@ export class CreditoService implements OnModuleInit {
       resumo: ehReembolso
         ? `Reembolso Parcelado — ${dto.descricao} — ${dto.numeroParcelas}× de ${formatCurrency(p.valorParcela)} (taxa inicial ${formatCurrency(p.taxaInicial)} financiada)`
         : `${dto.descricao} — ${dto.numeroParcelas}× de ${formatCurrency(p.valorParcela)}`,
+      // PRINCIPAL do reembolso (correção 12/09): é o valor que a Azit desembolsa
+      // — o título do contas a pagar usa este número, nunca o total com encargos.
+      payload: { valorPrincipal: dto.valor },
       solicitanteId,
     });
 
@@ -374,13 +364,16 @@ export class CreditoService implements OnModuleInit {
     });
     await this.contrato.ativarComCronograma(contrato.id);
     // Decisão 5 (03/08, RCPG029): Reembolso Parcelado gera o TÍTULO DE
-    // DESEMBOLSO no contas a pagar, vinculado à operação e ao recebível.
-    if (await this.ehReembolso(contrato.id)) {
+    // DESEMBOLSO no contas a pagar. Valor = PRINCIPAL do reembolso (correção
+    // 12/09 — saía o total com encargos), vindo do payload da solicitação.
+    const aprovacaoRp = await this.aprovacaoReembolso(contrato.id);
+    if (aprovacaoRp) {
+      const payload = aprovacaoRp.payload as null | { valorPrincipal?: number };
       await this.contasPagar.criarDesembolsoReembolso(
         {
           id: contrato.id,
           numero: contrato.numero,
-          valorCentavos: this.cent(contrato.valorTotal),
+          valorCentavos: payload?.valorPrincipal ?? this.cent(contrato.valorTotal),
           clienteNome: contrato.conta.titular.nome,
           ativoId: contrato.ativoId,
         },
@@ -390,7 +383,8 @@ export class CreditoService implements OnModuleInit {
     return `Crédito ${contrato.numero} aprovado e ativado — parcelas lançadas nas faturas do titular; desembolso encaminhado ao contas a pagar quando aplicável.`;
   }
 
-  // Reprovação (via motor): cancela o contrato e libera o ativo sintético.
+  // Reprovação (via motor): cancela o contrato (contratos legados com ativo
+  // sintético liberam o ativo; os novos nascem sem ativo — doc 02 §19, 12/09).
   async cancelar(contratoId: string, decisorId: string) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id: contratoId },
@@ -406,18 +400,21 @@ export class CreditoService implements OnModuleInit {
         aprovadoPor: decisorId,
       },
     });
-    await this.prisma.db.ativo.update({
-      where: { id: contrato.ativoId },
-      data: { status: 'DISPONIVEL' },
-    });
+    if (contrato.ativoId) {
+      await this.prisma.db.ativo.update({
+        where: { id: contrato.ativoId },
+        data: { status: 'DISPONIVEL' },
+      });
+    }
   }
 
-  // O contrato veio de uma solicitação de Reembolso Parcelado? (aprovação com esse tipo)
-  private async ehReembolso(contratoId: string): Promise<boolean> {
-    const a = await this.prisma.db.aprovacao.findFirst({
+  // Solicitação de Reembolso Parcelado deste contrato (com o payload — traz o
+  // valor PRINCIPAL para o título de desembolso).
+  private async aprovacaoReembolso(contratoId: string) {
+    return this.prisma.db.aprovacao.findFirst({
       where: { referenciaTipo: 'contrato_credito', referenciaId: contratoId, tipoOperacao: 'reembolso_parcelado' },
+      select: { payload: true },
     });
-    return !!a;
   }
 
   // Garante o cliente no Asaas (idempotente) — mesmo padrão da formalização.

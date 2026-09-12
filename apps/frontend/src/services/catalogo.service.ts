@@ -13,6 +13,9 @@ export interface ProdutoCatalogoResumo {
   classificacao: string | null;
   status: string;
   contratacaoAvulsa: boolean;
+  // Estrutura jurídica DONA do produto (doc 02 §19, 12/09) — null = herda do
+  // ativo (caso da Compra Parcelada).
+  estruturaJuridica: { id: string; nome: string } | null;
   variantes: { id: string; chave: string; nome: string; status: string }[];
   totalVersoes: number;
   versaoVigenteProduto: number | null;
@@ -73,7 +76,7 @@ export const catalogoService = {
     const { data } = await api.post<{ id: string; numero: number }>(`/api/v1/catalogo/${id}/versoes`, body);
     return data;
   },
-  async atualizarCadastral(id: string, body: { nome?: string; finalidade?: string; descricao?: string; contratacaoAvulsa?: boolean }) {
+  async atualizarCadastral(id: string, body: { nome?: string; finalidade?: string; descricao?: string; contratacaoAvulsa?: boolean; estruturaJuridicaId?: string | null }) {
     const { data } = await api.patch(`/api/v1/catalogo/${id}`, body);
     return data;
   },
