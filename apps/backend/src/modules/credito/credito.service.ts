@@ -1,10 +1,12 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   OnModuleInit,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { precificarCreditoAvulso, precificarReembolsoParcelado, centavosParaReaisString , formatCurrency} from '@azit/utils';
+import { Prisma } from '@prisma/client';
+import { precificarCreditoAvulso, precificarReembolsoParcelado, centavosParaReaisString, formatCurrency, renderTemplate, valorPorExtenso, numeroPorExtenso, dataPorExtenso } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { ContratoService } from '../contrato/contrato.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
@@ -12,6 +14,9 @@ import { AsaasService } from '../asaas/asaas.service';
 import { ParametrosService } from '../simulador/parametros.service';
 import { CatalogoFonteService, ParametrosCatalogoReembolso } from '../catalogo/catalogo-fonte.service';
 import { ContasPagarService } from '../contas-pagar/contas-pagar.service';
+import { AssinaturaService } from '../assinatura/assinatura.service';
+import { NotificacaoService } from '../notificacao/notificacao.service';
+import { TERMO_REEMBOLSO_TEMPLATE } from './templates/termo-reembolso.template';
 import {
   OriginarCreditoDto,
   SimularCreditoDto,
@@ -22,11 +27,14 @@ const DIA_MS = 24 * 60 * 60 * 1000;
 // Contratação avulsa para cliente já ativo (Doc 2 §4.7-A) — Reembolso Parcelado é o
 // caso principal. É um ContratoCredito COMPRA_PARCELADA SEM ativo (doc 02 §19,
 // 12/09): obrigação da CONTA, capital da ESTRUTURA do produto — sem Ativo sintético
-// nem OrigemCapital fictícia. Nasce em RASCUNHO e passa pelo MOTOR DE APROVAÇÃO
-// (§7.9-A): aprovado → ativa (sem entrada) ou cobra a entrada (webhook ativa) e gera
-// o título de desembolso no contas a pagar (valor = PRINCIPAL); reprovado → cancela.
+// nem OrigemCapital fictícia. Fluxo do RP (doc 02 §18.5, 13/09): RASCUNHO → motor
+// de aprovação → aprovado → TERMO enviado para assinatura (AGUARDANDO_ASSINATURA)
+// → assinado por todos → cronograma nas faturas + título de desembolso ao
+// FORNECEDOR (à vista, pelo principal); reprovado → cancela.
 @Injectable()
 export class CreditoService implements OnModuleInit {
+  private readonly logger = new Logger(CreditoService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly contrato: ContratoService,
@@ -35,6 +43,8 @@ export class CreditoService implements OnModuleInit {
     private readonly parametros: ParametrosService,
     private readonly catalogoFonte: CatalogoFonteService,
     private readonly contasPagar: ContasPagarService,
+    private readonly assinatura: AssinaturaService,
+    private readonly notificacao: NotificacaoService,
   ) {}
 
   onModuleInit() {
@@ -47,6 +57,8 @@ export class CreditoService implements OnModuleInit {
     this.aprovacao.registrarEfetivador('credito_avulso', efetivador);
     // F3: o Reembolso Parcelado usa o MESMO ciclo de efetivação, com alçada própria.
     this.aprovacao.registrarEfetivador('reembolso_parcelado', efetivador);
+    // Assinado por todos -> dia zero do RP (doc 02 sec.18.5, 13/09).
+    this.assinatura.registrarPosAssinatura((contratoId) => this.aoAssinarDocumento(contratoId));
   }
 
   // F3: valida o pedido contra as regras do produto do Catálogo. O limite de 30%
@@ -382,17 +394,64 @@ export class CreditoService implements OnModuleInit {
       return `Crédito ${contrato.numero} aprovado — cobrança da entrada gerada no Asaas.`;
     }
 
-    // Sem entrada: a aprovação é o "dia zero" (Doc 2 §4.7-A).
+    // Reembolso Parcelado (doc 02 §18.5, 13/09): aprovação NÃO ativa — gera o
+    // MINI CONTRATO e envia para assinatura digital. Cronograma e título só
+    // nascem quando TODOS assinam (handler pós-assinatura registrado abaixo).
+    const aprovacaoRp = await this.aprovacaoReembolso(contrato.id);
+    if (aprovacaoRp) {
+      const termo = await this.gerarTermoReembolso(contrato.id);
+      await this.prisma.db.contratoCredito.update({
+        where: { id: contrato.id },
+        data: {
+          aprovadoPor: decisorId,
+          dataAprovacao: new Date(),
+          status: 'AGUARDANDO_ASSINATURA',
+          snapshotJson: { documento: termo } as unknown as Prisma.InputJsonValue,
+        },
+      });
+      // Envio automático: a aprovação JÁ é a decisão de gastar o documento do
+      // plano. Falha da ZapSign não desfaz a aprovação — vira alerta e o
+      // operador reenvia pelo detalhe do contrato.
+      try {
+        await this.assinatura.enviar(contrato.id, decisorId);
+      } catch (e) {
+        this.logger.error(`Envio do termo do RP ${contrato.numero} falhou: ${(e as Error).message}`);
+        await this.notificacao
+          .emitir({
+            titulo: `Termo do Reembolso ${contrato.numero} NÃO foi enviado para assinatura`,
+            corpo: `${(e as Error).message}. Reenvie pelo detalhe do contrato.`,
+            rota: `/contratos/${contrato.id}`,
+            tipo: 'FALHA',
+            area: 'COMERCIAL',
+          })
+          .catch(() => undefined);
+      }
+      return `Reembolso ${contrato.numero} aprovado — termo enviado para assinatura digital; o cronograma e o pagamento ao fornecedor saem quando todos assinarem.`;
+    }
+
+    // Crédito avulso genérico sem entrada: a aprovação é o "dia zero" (Doc 2 §4.7-A).
     await this.prisma.db.contratoCredito.update({
       where: { id: contrato.id },
       data: { aprovadoPor: decisorId, dataAprovacao: new Date() },
     });
     await this.contrato.ativarComCronograma(contrato.id);
-    // Decisão 5 (03/08, RCPG029): Reembolso Parcelado gera o TÍTULO DE
-    // DESEMBOLSO no contas a pagar. Valor = PRINCIPAL do reembolso (correção
-    // 12/09 — saía o total com encargos), vindo do payload da solicitação.
-    const aprovacaoRp = await this.aprovacaoReembolso(contrato.id);
-    if (aprovacaoRp) {
+    return `Crédito ${contrato.numero} aprovado e ativado — parcelas lançadas nas faturas do titular.`;
+  }
+
+  // Assinado por todos → "dia zero" do RP: cronograma nas faturas + título de
+  // desembolso ao fornecedor (doc 02 §18.5, 13/09). Idempotente: o cronograma
+  // tem guard próprio e o título só nasce uma vez por contrato.
+  private async aoAssinarDocumento(contratoId: string): Promise<void> {
+    const contrato = await this.prisma.db.contratoCredito.findFirst({
+      where: { id: contratoId, status: 'AGUARDANDO_ASSINATURA' },
+      include: { conta: { include: { titular: { select: { nome: true } } } } },
+    });
+    if (!contrato) return; // não é um contrato aguardando assinatura (ou já ativado)
+    const aprovacaoRp = await this.aprovacaoReembolso(contratoId);
+    if (!aprovacaoRp) return; // contrato principal — o fluxo dele segue pela entrada
+    await this.contrato.ativarComCronograma(contratoId);
+    const jaTemTitulo = await this.prisma.db.tituloPagar.count({ where: { contratoCreditoId: contratoId, deletedAt: null } });
+    if (jaTemTitulo === 0) {
       const payload = aprovacaoRp.payload as null | { valorPrincipal?: number; fornecedorId?: string };
       await this.contasPagar.criarDesembolsoReembolso(
         {
@@ -401,14 +460,70 @@ export class CreditoService implements OnModuleInit {
           valorCentavos: payload?.valorPrincipal ?? this.cent(contrato.valorTotal),
           clienteNome: contrato.conta.titular.nome,
           ativoId: contrato.ativoId,
-          // Beneficiário real (doc 02 §18.5, 13/09): o fornecedor escolhido na
-          // contratação — o RP paga o fornecedor do cliente.
           fornecedorId: payload?.fornecedorId ?? null,
         },
-        decisorId,
+        undefined,
       );
     }
-    return `Crédito ${contrato.numero} aprovado e ativado — parcelas lançadas nas faturas do titular; desembolso encaminhado ao contas a pagar quando aplicável.`;
+    await this.notificacao
+      .emitir({
+        titulo: `Reembolso ${contrato.numero} assinado e ativado`,
+        corpo: 'Parcelas lançadas nas faturas do cliente; pagamento ao fornecedor criado no contas a pagar.',
+        rota: '/contas-a-pagar',
+        tipo: 'ASSINATURA',
+        area: 'FINANCEIRO_ADMINISTRATIVO',
+      })
+      .catch(() => undefined);
+  }
+
+  // Texto do mini contrato (placeholder funcional — Regra 12, jurídico valida).
+  private async gerarTermoReembolso(contratoId: string): Promise<string> {
+    const contrato = await this.prisma.db.contratoCredito.findFirst({
+      where: { id: contratoId },
+      include: {
+        conta: { include: { titular: { select: { nome: true, cpfCnpj: true, whatsapp: true } } } },
+        itensContratados: { where: { natureza: 'PARCELADO' }, take: 1, select: { descricao: true } },
+      },
+    });
+    if (!contrato) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Contrato não encontrado' });
+    const aprovacao = await this.aprovacaoReembolso(contratoId);
+    const payload = (aprovacao?.payload ?? {}) as { valorPrincipal?: number; fornecedorId?: string; fornecedorNome?: string };
+    const fornecedorDoc = payload.fornecedorId
+      ? (await this.prisma.db.fornecedorFin.findFirst({ where: { id: payload.fornecedorId }, select: { cpfCnpj: true } }))?.cpfCnpj
+      : undefined;
+    const rp = await this.catalogoFonte.reembolsoParcelado();
+    const params = await this.assinatura.obterParametros();
+    const t = contrato.conta.titular;
+    const principal = payload.valorPrincipal ?? this.cent(contrato.valorTotal);
+    const total = this.cent(contrato.valorTotal);
+    const parcela = this.cent(contrato.valorParcelaInicial);
+    const plural = { MENSAL: 'mensais', QUINZENAL: 'quinzenais', SEMANAL: 'semanais' }[contrato.periodicidade] ?? 'mensais';
+    const linhaTest = (nome?: string, cpf?: string) => (nome ? `${nome}\nCPF: ${cpf || '—'}` : 'Nome:\nCPF:');
+    return renderTemplate(TERMO_REEMBOLSO_TEMPLATE, {
+      numeroContrato: contrato.numero,
+      razaoCredora: 'Azit Move (entidade Reembolso Parcelado)',
+      nomeCliente: t.nome,
+      cpfCliente: t.cpfCnpj,
+      telefoneCliente: t.whatsapp ?? '—',
+      valorPrincipal: `R$ ${centavosParaReaisString(principal)}`,
+      valorPrincipalExtenso: valorPorExtenso(principal),
+      nomeFornecedor: payload.fornecedorNome ?? 'fornecedor indicado pelo cliente',
+      docFornecedor: fornecedorDoc ? `CPF/CNPJ ${fornecedorDoc}` : 'documento no cadastro de fornecedores',
+      finalidade: contrato.itensContratados[0]?.descricao ?? 'despesa indicada pelo cliente',
+      valorTotal: `R$ ${centavosParaReaisString(total)}`,
+      valorTotalExtenso: valorPorExtenso(total),
+      taxaInicial: `R$ ${centavosParaReaisString(rp ? Math.max(Math.round(principal * rp.taxaInicialPct), rp.taxaInicialMinima) : 0)}`,
+      encargoMensal: `${(((rp?.encargoMensal ?? 0.1999) * 100)).toFixed(2).replace('.', ',')}%`,
+      qtdeParcelas: contrato.numeroParcelas,
+      qtdeParcelasExtenso: numeroPorExtenso(contrato.numeroParcelas),
+      periodicidadePlural: plural,
+      valorParcela: `R$ ${centavosParaReaisString(parcela)}`,
+      valorParcelaExtenso: valorPorExtenso(parcela),
+      dataPrimeiraParcela: contrato.dataPrimeiraParcela.toLocaleDateString('pt-BR'),
+      dataAssinaturaLinha: `VITÓRIA/ES, ${dataPorExtenso(new Date())}.`,
+      testemunha1Linha: linhaTest(params.testemunha1Nome, params.testemunha1Cpf),
+      testemunha2Linha: linhaTest(params.testemunha2Nome, params.testemunha2Cpf),
+    });
   }
 
   // Reprovação (via motor): cancela o contrato (contratos legados com ativo

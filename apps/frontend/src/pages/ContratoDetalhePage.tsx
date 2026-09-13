@@ -16,6 +16,7 @@ import {
 import { usePodeRole, ROLE_OPERACAO, ROLE_REAJUSTE, mensagemErro } from '../lib/permissoes';
 import { reaisParaCentavos, numeroBR } from '../lib/valor';
 import { Metrica } from '../components/Metrica';
+import { BlocoAssinaturaDigital } from '../components/BlocoAssinaturaDigital';
 
 const ORIGEM_CAPITAL_LABEL: Record<string, string> = {
   CAPITAL_PROPRIO: 'Capital próprio',
@@ -36,6 +37,19 @@ export function ContratoDetalhePage() {
   const pode = usePodeRole();
   const podeOperar = pode(ROLE_OPERACAO);
   const podeReajustar = pode(ROLE_REAJUSTE);
+  // Assinatura do termo (RP — doc 02 §18.5, 13/09).
+  const [assinando, setAssinando] = useState(false);
+  async function runAssinatura(fn: () => Promise<unknown>) {
+    setAssinando(true);
+    try {
+      await fn();
+      await queryClient.invalidateQueries({ queryKey: ['contrato-detalhe'] });
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+    } finally {
+      setAssinando(false);
+    }
+  }
   const [tab, setTab] = useState<'cronograma' | 'extrato'>('cronograma');
   const [simulando, setSimulando] = useState(false);
   const [docOpen, setDocOpen] = useState(false);
@@ -271,6 +285,23 @@ export function ContratoDetalhePage() {
           </div>
         )}
       </div>
+
+      {/* Termo do Reembolso Parcelado aguardando assinatura (doc 02 §18.5, 13/09):
+          cronograma e pagamento ao fornecedor só nascem quando TODOS assinam. */}
+      {c && c.status === 'Aguardando assinatura' && (
+        <div className="rounded-card flex flex-col gap-[8px] p-[16px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div className="text-[13px] font-bold">Assinatura pendente</div>
+          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+            {c.ativo ? 'O contrato aguarda assinatura digital.' : 'O termo do Reembolso Parcelado aguarda assinatura — as parcelas só entram nas faturas e o pagamento ao fornecedor só é criado quando todos assinarem.'}
+          </div>
+          <BlocoAssinaturaDigital
+            contratoId={c.id}
+            ocupado={assinando}
+            run={runAssinatura}
+            titulo={c.ativo ? undefined : 'Termo do Reembolso Parcelado (ZapSign)'}
+          />
+        </div>
+      )}
 
       {/* Resumo financeiro + documento do contrato */}
       {c && (

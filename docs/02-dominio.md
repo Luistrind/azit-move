@@ -1391,6 +1391,15 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 >    placeholder "a definir"; (c) a ligação é de mão dupla: um título PODE ter origem num
 >    reembolso, mas todo reembolso NECESSARIAMENTE tem seu título no contas a pagar, vinculado
 >    ao cliente e ao contrato do RP — e o título mostra esse vínculo com rota para a ficha.
+>
+>    **Decisão 2026-09-13 (Luís) — o RP tem MINI CONTRATO assinado (diferente do acordo, que
+>    fecha com o "de acordo" no WhatsApp).** Fluxo completo: simulação → envio para aprovação
+>    (alçada) → **aprovado → termo gerado e enviado para ASSINATURA digital** (ZapSign, mesmo
+>    trilho do contrato principal: titular + testemunhas padrão + Azit; contrato fica
+>    `AGUARDANDO_ASSINATURA`) → **assinado por todos → cronograma nas faturas + título de
+>    desembolso no contas a pagar**. Nada de cronograma ou título antes da assinatura. O texto
+>    do termo é PLACEHOLDER FUNCIONAL (Regra 12) até o jurídico validar — marca as duas pontas:
+>    pagamento à vista ao fornecedor; cliente paga parcelado à Azit nas faturas.
 > 6. Aprovações usam o MOTOR EXISTENTE (tipos novos); segregação solicitante ≠ decisor cobre o
 >    conflito de interesse do Diretor. Estados do título/lote conforme Processo §3.5. Campos
 >    críticos congelam pós-aprovação; correção só por devolução/reabertura autorizada (RCPG021-022).

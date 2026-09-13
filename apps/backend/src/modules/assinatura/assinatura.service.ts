@@ -61,6 +61,15 @@ export interface ParametrosAssinaturaDto {
 export class AssinaturaService {
   private readonly logger = new Logger(AssinaturaService.name);
 
+  // Registry pós-assinatura (13/09 — mesmo padrão do motor de aprovação): outros
+  // módulos registram o que acontece quando um documento é assinado por TODOS
+  // (ex.: Reembolso Parcelado → cronograma + título), sem ciclo de dependência.
+  private readonly posAssinatura: ((contratoId: string) => Promise<void>)[] = [];
+
+  registrarPosAssinatura(handler: (contratoId: string) => Promise<void>) {
+    this.posAssinatura.push(handler);
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly zapSign: ZapSignService,
@@ -368,6 +377,15 @@ export class AssinaturaService {
         tipo: 'ASSINATURA',
         area: 'COMERCIAL',
       });
+      // Gatilhos registrados (13/09): ex. RP assinado → cronograma + título.
+      // Falha de um handler não engole o webhook — loga e segue.
+      for (const handler of this.posAssinatura) {
+        try {
+          await handler(d.contratoCreditoId);
+        } catch (e) {
+          this.logger.error(`Handler pós-assinatura falhou (contrato ${d.contrato.numero}): ${(e as Error).message}`);
+        }
+      }
     }
   }
 
