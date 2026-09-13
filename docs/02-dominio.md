@@ -996,6 +996,22 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 - O contrato origem vai para estado terminal de novação (preservado para auditoria); o contrato novo nasce com cronograma novo no D0
 - Passa pela estrutura de alçadas (operação mais sensível que o Acordo)
 
+> **Fonte normativa (registrada 13/09):** o **Produto Novação de Contrato V1.0** (Vicente,
+> 26/08/2026 — `docs/Produto Novacao de Contrato v1.0 - Azit Hub.pdf`) é a especificação
+> completa do produto: parâmetros NV001–NV019 (TP 2% mín. R$ 3.990 sobre o saldo-base;
+> entrada mínima operacional = max(1% do saldo novado; TP); taxa financeira 1,70% a.m. Price
+> com taxa equivalente por frequência; comissão R$ 799,96/mês; prazo máx. 60 meses; desconto
+> só via CONAC), invariantes RNV001–045, motor de liquidação por componente (vencidos com
+> mora; vincendos a valor presente pela taxa do produto de ORIGEM; comissão/proteção futuras
+> isentas), consolidação **N:1** (CP, RP, Acordo, Novação anterior), tratamento obrigatório
+> da Proteção (novo contrato apartado), ativos com **ativo principal definindo o novo credor
+> (entidade)**, garantias reconstituídas expressamente, cessão/liquidação interentidades,
+> **CONAC em 100%**, instrumento + assinatura eletrônica obrigatória, recebimento inicial
+> como evento financeiro de ativação e **ativação atômica** que marca as origens como
+> Novadas. Pendências PEND-NV-01..10 NÃO devem ser resolvidas por inferência. O esqueleto
+> implementado antes deste documento (proposta manual 1:1 sem motor) será substituído por
+> fases homologadas contra ele.
+
 ### 7.8 Tratamento de Sinistro
 - A dívida do cliente não é automaticamente perdoada em caso de sinistro, furto, roubo ou perda total
 - O cliente permanece responsável pelo saldo devedor
