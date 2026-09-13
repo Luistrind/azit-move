@@ -1011,6 +1011,18 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > Novadas. Pendências PEND-NV-01..10 NÃO devem ser resolvidas por inferência. O esqueleto
 > implementado antes deste documento (proposta manual 1:1 sem motor) será substituído por
 > fases homologadas contra ele.
+>
+> **Fonte das fórmulas:** `docs/Planilha Novacao de Contrato - Azit Move.xlsx` (extraída
+> célula a célula, 13/09) — abas: **Parâmetros** (NV001–019, ICVF/ICPF, mora 2%+1% a.m.
+> base 30); **Simulador** (memória de liquidação POR COMPONENTE com a taxa de desconto do
+> produto de ORIGEM — CP 1,60%, RP 1,50%, AP 4,99% a.m. —, desconto % ou valor rateado só
+> nos elegíveis, cadeia SO→+AA→SB→−D→SN→TP→E_min_op=max(1%×SN;TP)→AE=E−TP→SP→Price com
+> última parcela de ajuste residual, comissão/frequência, proteção nova por ativo
+> CVAR=FIPE×TXF, variação de exposição → exige análise de crédito, novo credor = dono do
+> ativo principal, resumo de liquidação interentidades); **Contrato** (termos para a minuta
+> + validações de ativação); **Cronograma Visão Adm** (grade de até 400 parcelas com
+> juros/amortização, fatura total por período e memória de liquidação antecipada por
+> parcela a VP pela NV010, comissão/proteção futuras isentas).
 
 ### 7.8 Tratamento de Sinistro
 - A dívida do cliente não é automaticamente perdoada em caso de sinistro, furto, roubo ou perda total
