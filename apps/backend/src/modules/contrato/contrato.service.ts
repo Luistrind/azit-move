@@ -164,11 +164,14 @@ export class ContratoService {
       });
 
       // Regra de estoque (Doc 2 §4.4): o ativo passa a EM_CONTRATO — sai do estoque
-      // disponível para novas simulações.
-      await tx.ativo.update({
-        where: { id: dto.ativoId },
-        data: { status: 'EM_CONTRATO' },
-      });
+      // disponível para novas simulações. Contrato sem ativo (RP — 12/09) não
+      // toca estoque.
+      if (dto.ativoId) {
+        await tx.ativo.update({
+          where: { id: dto.ativoId },
+          data: { status: 'EM_CONTRATO' },
+        });
+      }
 
       // Item âncora de financiamento (parcelado) — dono das parcelas do cronograma.
       const itemFinanciamento = await tx.itemContratado.create({

@@ -466,6 +466,9 @@ async function seedContratos() {
 // Matriz configurável: papel × tipoOperacao → limite (REAIS) ou ilimitado.
 const OPERACOES_ALCADA: { chave: string; nome: string }[] = [
   { chave: 'credito_avulso', nome: 'Crédito avulso / manutenção' },
+  // Alçada POR PRODUTO (decisão 13/07): o RP tem tipo próprio — faltava no
+  // seed (gap achado no E2E de banco limpo, 13/09).
+  { chave: 'reembolso_parcelado', nome: 'Reembolso Parcelado' },
   { chave: 'acordo', nome: 'Acordo (recuperação branda)' },
   { chave: 'novacao', nome: 'Novação (recuperação radical)' },
   { chave: 'reajuste', nome: 'Reajuste IPCA' },
@@ -488,6 +491,7 @@ const ALCADAS: {
   ]),
   // APROVADOR: tetos por operação.
   { papel: RoleUsuario.APROVADOR, tipoOperacao: 'credito_avulso', ...lim('5000') },
+  { papel: RoleUsuario.APROVADOR, tipoOperacao: 'reembolso_parcelado', ...lim('5000') },
   { papel: RoleUsuario.APROVADOR, tipoOperacao: 'acordo', ...lim('50000') },
   { papel: RoleUsuario.APROVADOR, tipoOperacao: 'novacao', ...lim('50000') },
   { papel: RoleUsuario.APROVADOR, tipoOperacao: 'reajuste', ...ILIM },
