@@ -303,8 +303,10 @@ export class CreditoService implements OnModuleInit {
       referenciaId: contrato.id,
       titularId,
       valorCentavos: p.totalAPagar,
+      // Duas pontas SEPARADAS no texto (correção Luís 13/09): o fornecedor
+      // recebe À VISTA; quem paga parcelado é o CLIENTE, à Azit.
       resumo: ehReembolso
-        ? `Reembolso Parcelado — ${dto.descricao} — pagar a ${fornecedor!.nome} — ${dto.numeroParcelas}× de ${formatCurrency(p.valorParcela)} (taxa inicial ${formatCurrency(p.taxaInicial)} financiada)`
+        ? `Reembolso Parcelado — ${dto.descricao} — pagamos ${formatCurrency(dto.valor)} à vista a ${fornecedor!.nome}; o cliente nos paga ${dto.numeroParcelas}× de ${formatCurrency(p.valorParcela)} (taxa inicial ${formatCurrency(p.taxaInicial)} financiada)`
         : `${dto.descricao} — ${dto.numeroParcelas}× de ${formatCurrency(p.valorParcela)}`,
       // PRINCIPAL do reembolso (correção 12/09): é o valor que a Azit desembolsa
       // — o título do contas a pagar usa este número, nunca o total com encargos.

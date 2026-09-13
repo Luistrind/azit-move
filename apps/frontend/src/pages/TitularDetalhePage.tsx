@@ -599,8 +599,9 @@ export function TitularDetalhePage() {
             <div className="flex flex-col gap-[8px] rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
               <div className="text-[12px] font-bold">Quem vamos pagar</div>
               <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
-                O reembolso é pago direto ao fornecedor do cliente (oficina, loja) — nunca ao cliente.
-                O pagamento entra no Contas a Pagar vinculado a este contrato.
+                Pagamos o fornecedor do cliente (oficina, loja) <b>à vista</b> — nunca o cliente.
+                Quem paga parcelado é o cliente, nas faturas dele. O pagamento ao fornecedor
+                entra no Contas a Pagar vinculado a este contrato.
               </div>
               <div className="flex flex-wrap items-center gap-[8px]">
                 <select

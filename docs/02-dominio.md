@@ -1382,7 +1382,9 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 >
 >    **Decisão 2026-09-13 (Luís) — o RP paga o FORNECEDOR do cliente, nunca o cliente.** O
 >    "reembolso" é, na prática, o pagamento direto do serviço/produto ao fornecedor indicado
->    pelo cliente (oficina, loja). Consequências: (a) o **fornecedor é escolhido na
+>    pelo cliente (oficina, loja). **O fornecedor recebe À VISTA (título único pelo
+>    principal); quem paga parcelado é o CLIENTE, à Azit, nas faturas dele** — as duas pontas
+>    nunca se misturam em texto de tela. Consequências: (a) o **fornecedor é escolhido na
 >    CONTRATAÇÃO** do RP (seletor no modal, com cadastro rápido inline — nome + CPF/CNPJ; o
 >    fornecedor nasce EM_CADASTRO e os dados bancários seguem a esteira normal do CAP antes
 >    do pagamento sair); (b) o título de desembolso nasce com o **beneficiário real** — fim do
