@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   financeiroService,
@@ -167,6 +168,7 @@ export function ContasPagarPage() {
 // ---------------------------------------------------------------------------
 
 function ListaTitulos({ titulos, carregando, onMudou }: { titulos: TituloPagarApi[]; carregando: boolean; onMudou: () => Promise<void> }) {
+  const navigate = useNavigate();
   const [acao, setAcao] = useState<null | { tipo: 'devolver' | 'bloquear' | 'cancelar' | 'reabrir' | 'pagar' | 'conciliar'; titulo: TituloPagarApi }>(null);
   const [ocupado, setOcupado] = useState(false);
 
@@ -199,6 +201,16 @@ function ListaTitulos({ titulos, carregando, onMudou }: { titulos: TituloPagarAp
                   <span className="rounded-full px-[8px] py-[1px] text-[10.5px] font-bold" style={{ background: '#fff3d6', color: '#8a5a00' }} title="Primeiro pagamento após alteração bancária — confira os dados">
                     Alteração bancária recente
                   </span>
+                )}
+                {t.origemReembolso && (
+                  <button
+                    onClick={() => navigate(`/titulares/${t.origemReembolso!.titularId}`)}
+                    className="rounded-full px-[8px] py-[1px] text-[10.5px] font-bold"
+                    style={{ background: '#eef4ff', color: '#2456c7' }}
+                    title={`Desembolso do Reembolso Parcelado — contrato ${t.origemReembolso.contratoNumero}. Clique para abrir a ficha do cliente.`}
+                  >
+                    Reembolso · {t.origemReembolso.titularNome} ↗
+                  </button>
                 )}
               </div>
               <div className="mt-[4px] text-[12.5px]" style={{ color: 'var(--text-muted)' }}>

@@ -23,6 +23,9 @@ export interface OriginarCreditoBody {
   numeroParcelas: number;
   valorEntrada: number; // centavos
   // Periodicidade é HERDADA das faturas no servidor (decisão 07/09) — não se envia.
+  // Fornecedor a pagar (doc 02 §18.5, 13/09): o RP paga o fornecedor do cliente
+  // — obrigatório quando o produto é Reembolso Parcelado.
+  fornecedorId?: string;
 }
 
 export const creditoService = {

@@ -7,6 +7,7 @@ import { faturaService, FaturaDetalhe } from '../services/fatura.service';
 import { diasAtrasoLocal, hojeLocalISO } from '../lib/datas';
 import { originacaoService } from '../services/originacao.service';
 import { creditoService } from '../services/credito.service';
+import { financeiroService } from '../services/financeiro.service';
 import { catalogoService } from '../services/catalogo.service';
 import { reguaService } from '../services/regua.service';
 import { reaisParaCentavos } from '../lib/valor';
@@ -68,6 +69,13 @@ export function TitularDetalhePage() {
   const [cFinalidade, setCFinalidade] = useState('');
   const [cValor, setCValor] = useState('');
   const [cParcelas, setCParcelas] = useState('12');
+  // Fornecedor a pagar (doc 02 §18.5, 13/09): o RP paga o FORNECEDOR do cliente
+  // — escolhido aqui, com cadastro rápido inline para não quebrar o atendimento.
+  const [fornecedorId, setFornecedorId] = useState('');
+  const [fornNovoAberto, setFornNovoAberto] = useState(false);
+  const [fornNome, setFornNome] = useState('');
+  const [fornDoc, setFornDoc] = useState('');
+  const [fornSalvando, setFornSalvando] = useState(false);
 
 
   // Fonte ÚNICA: produtos do CATÁLOGO com contratação avulsa (doc 02 §17,
@@ -85,7 +93,32 @@ export function TitularDetalhePage() {
   // Reembolso parcelado NÃO tem entrada (decisão 09/09) — o campo saiu da tela.
   const cParcelaPrev = cValorCent > 0 && cNumParcelas > 0 ? Math.round(cValorCent / cNumParcelas) : 0;
   // Rótulo sem a palavra "crédito" (decisão 09/09): reembolso é reembolso.
-  const rotuloValor = produtoSel?.nome.toLowerCase().includes('reembolso') ? 'Valor do reembolso (R$)' : 'Valor (R$)';
+  const ehReembolsoSel = produtoSel?.nome.toLowerCase().includes('reembolso') ?? false;
+  const rotuloValor = ehReembolsoSel ? 'Valor do reembolso (R$)' : 'Valor (R$)';
+  // Fornecedores do financeiro — só carrega quando o RP está em jogo.
+  const fornecedores = useQuery({
+    queryKey: ['fornecedores-fin'],
+    queryFn: () => financeiroService.fornecedores(),
+    enabled: creditoOpen && produtoDefinido && ehReembolsoSel,
+  });
+
+  async function cadastrarFornecedorRapido() {
+    if (!fornNome.trim() || !fornDoc.trim()) return;
+    setFornSalvando(true);
+    try {
+      const f = await financeiroService.criarFornecedor({ nome: fornNome.trim(), cpfCnpj: fornDoc.replace(/\D/g, '') });
+      await queryClient.invalidateQueries({ queryKey: ['fornecedores-fin'] });
+      setFornecedorId(f.id);
+      setFornNovoAberto(false);
+      setFornNome('');
+      setFornDoc('');
+      toast.sucesso('Fornecedor cadastrado — dados bancários podem ser completados depois em Fornecedores.');
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+    } finally {
+      setFornSalvando(false);
+    }
+  }
   // Prévia REAL no servidor (F3: se o Reembolso Parcelado está ativo no Catálogo,
   // vem com taxa inicial, encargo e limite de 30% da parcela principal).
   const previa = useQuery({
@@ -99,6 +132,8 @@ export function TitularDetalhePage() {
     setCreditoOpen(false);
     setProdutoDefinido(false);
     setCProdutoId('');
+    setFornecedorId('');
+    setFornNovoAberto(false);
   }
 
   async function contratarProduto() {
@@ -111,6 +146,7 @@ export function TitularDetalhePage() {
         valor: cValorCent,
         numeroParcelas: cNumParcelas,
         valorEntrada: 0,
+        fornecedorId: ehReembolsoSel ? fornecedorId : undefined,
       });
       fecharModalProduto();
       setCValor('');
@@ -556,6 +592,52 @@ export function TitularDetalhePage() {
               </div>
             </label>
           </div>
+
+          {/* Quem vamos pagar (doc 02 §18.5, 13/09): o reembolso paga o FORNECEDOR
+              do cliente, nunca o cliente — o título do contas a pagar nasce daqui. */}
+          {ehReembolsoSel && (
+            <div className="flex flex-col gap-[8px] rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+              <div className="text-[12px] font-bold">Quem vamos pagar</div>
+              <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+                O reembolso é pago direto ao fornecedor do cliente (oficina, loja) — nunca ao cliente.
+                O pagamento entra no Contas a Pagar vinculado a este contrato.
+              </div>
+              <div className="flex flex-wrap items-center gap-[8px]">
+                <select
+                  value={fornecedorId}
+                  onChange={(e) => setFornecedorId(e.target.value)}
+                  className="h-[34px] min-w-[240px] flex-1 rounded-[8px] px-[10px] text-[13px]"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                >
+                  <option value="">Selecione o fornecedor…</option>
+                  {(fornecedores.data ?? []).filter((f) => f.status !== 'BLOQUEADO').map((f) => (
+                    <option key={f.id} value={f.id}>{f.nome} · {f.cpfCnpj}</option>
+                  ))}
+                </select>
+                <button onClick={() => setFornNovoAberto((v) => !v)} className="h-[34px] rounded-[8px] px-[12px] text-[12px] font-semibold" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                  {fornNovoAberto ? 'Cancelar' : '+ Cadastrar fornecedor'}
+                </button>
+              </div>
+              {fornNovoAberto && (
+                <div className="flex flex-wrap items-end gap-[8px]">
+                  <label className="flex flex-1 flex-col gap-[3px] text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>
+                    Nome do fornecedor
+                    <input value={fornNome} onChange={(e) => setFornNome(e.target.value)} placeholder="ex: Oficina do Zé" className="h-[32px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
+                  </label>
+                  <label className="flex flex-col gap-[3px] text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>
+                    CPF/CNPJ
+                    <input value={fornDoc} onChange={(e) => setFornDoc(e.target.value)} placeholder="somente números" className="h-[32px] w-[160px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
+                  </label>
+                  <button disabled={fornSalvando || !fornNome.trim() || fornDoc.replace(/\D/g, '').length < 11} onClick={() => void cadastrarFornecedorRapido()} className="h-[32px] rounded-[8px] px-[12px] text-[12px] font-bold disabled:opacity-50" style={{ background: 'var(--navy)', color: '#fff' }}>
+                    {fornSalvando ? 'Salvando…' : 'Salvar e selecionar'}
+                  </button>
+                  <div className="w-full text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    Dados bancários podem ser completados depois, na tela Fornecedores — o pagamento só sai com eles aprovados.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {previa.data ? (
             <div className="flex flex-col gap-[6px] rounded-[10px] px-[12px] py-[10px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
               <div className="flex items-center justify-between">
@@ -595,12 +677,13 @@ export function TitularDetalhePage() {
               ← Trocar produto
             </button>
             <button
-              disabled={creditoBusy || cValorCent <= 0 || cNumParcelas <= 0}
+              disabled={creditoBusy || cValorCent <= 0 || cNumParcelas <= 0 || (ehReembolsoSel && !fornecedorId)}
               onClick={contratarProduto}
+              title={ehReembolsoSel && !fornecedorId ? 'Selecione o fornecedor a pagar para liberar o envio' : undefined}
               className="h-[38px] flex-1 rounded-[9px] text-[13px] font-semibold disabled:opacity-50"
               style={{ background: 'var(--accent)', color: '#fff' }}
             >
-              {creditoBusy ? 'Enviando…' : 'Enviar para aprovação'}
+              {creditoBusy ? 'Enviando…' : ehReembolsoSel && !fornecedorId ? 'Selecione o fornecedor a pagar' : 'Enviar para aprovação'}
             </button>
           </div>
         </div>

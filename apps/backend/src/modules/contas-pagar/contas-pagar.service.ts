@@ -421,7 +421,13 @@ export class ContasPagarService implements OnModuleInit {
   async listarTitulos(filtro?: { status?: StatusTituloPagar; entidadeId?: string }) {
     const ts = await this.prisma.db.tituloPagar.findMany({
       where: { deletedAt: null, ...(filtro?.status ? { status: filtro.status } : {}), ...(filtro?.entidadeId ? { entidadeId: filtro.entidadeId } : {}) },
-      include: { entidade: true, fornecedor: true, natureza: true, centro: true, pagamentos: { include: { conciliacao: true } }, documentos: { where: { ativo: true } } },
+      include: {
+        entidade: true, fornecedor: true, natureza: true, centro: true,
+        pagamentos: { include: { conciliacao: true } }, documentos: { where: { ativo: true } },
+        // Mão dupla do Reembolso Parcelado (doc 02 §18.5, 13/09): o título mostra
+        // de qual contrato/cliente veio, com rota para a ficha.
+        contratoCredito: { select: { numero: true, conta: { select: { titularId: true, titular: { select: { nome: true } } } } } },
+      },
       orderBy: { createdAt: 'desc' },
       take: 300,
     });
@@ -432,6 +438,7 @@ export class ContasPagarService implements OnModuleInit {
     id: string; descricao: string; valor: Prisma.Decimal; vencimento: Date; competencia: string | null;
     status: StatusTituloPagar; urgente: boolean; justificativaUrgencia: string | null; formaPagamento: string;
     responsavelEconomico: string; ativoId: string | null; contratoCreditoId: string | null; loteId: string | null;
+    contratoCredito?: { numero: string; conta: { titularId: string; titular: { nome: string } } } | null;
     dataProgramada: Date | null; motivoDevolucao: string | null; motivoBloqueio: string | null; createdAt: Date;
     entidade: { id: string; razaoSocial: string }; fornecedor: { id: string; nome: string; status: string; alertaProximoPagamento: boolean };
     natureza: { id: string; codigo: string; nome: string }; centro: { id: string; codigo: string; nome: string };
@@ -451,6 +458,10 @@ export class ContasPagarService implements OnModuleInit {
       responsavelEconomico: t.responsavelEconomico,
       ativoId: t.ativoId,
       contratoCreditoId: t.contratoCreditoId,
+      // Origem no Reembolso Parcelado (13/09): contrato + cliente, com rota.
+      origemReembolso: t.contratoCredito
+        ? { contratoNumero: t.contratoCredito.numero, titularId: t.contratoCredito.conta.titularId, titularNome: t.contratoCredito.conta.titular.nome }
+        : null,
       loteId: t.loteId,
       dataProgramada: t.dataProgramada,
       motivoDevolucao: t.motivoDevolucao,
@@ -857,7 +868,10 @@ export class ContasPagarService implements OnModuleInit {
 
   // Chamado pela efetivação do RP: cria o título de desembolso vinculado à
   // operação. Beneficiário nasce como placeholder e é definido pelo Financeiro.
-  async criarDesembolsoReembolso(contrato: { id: string; numero: string; valorCentavos: number; clienteNome: string; ativoId: string | null }, usuarioId?: string) {
+  async criarDesembolsoReembolso(
+    contrato: { id: string; numero: string; valorCentavos: number; clienteNome: string; ativoId: string | null; fornecedorId?: string | null },
+    usuarioId?: string,
+  ) {
     const entidade = await this.prisma.db.entidadeLegal.findFirst({ where: { unidadeNegocio: 'Reembolso Parcelado' } });
     const natureza = await this.prisma.db.naturezaFinanceira.findFirst({ where: { codigo: 'NF11' } });
     const centro = await this.prisma.db.centroCustoArea.findFirst({ where: { codigo: 'CC05' } });
@@ -875,7 +889,14 @@ export class ContasPagarService implements OnModuleInit {
         .catch(() => undefined);
       return null;
     }
-    let beneficiario = await this.prisma.db.fornecedorFin.findFirst({ where: { cpfCnpj: '00000000000000' } });
+    // Beneficiário REAL (doc 02 §18.5, 13/09): o fornecedor do cliente, escolhido
+    // na contratação do RP. O placeholder só sobrevive para contratos legados.
+    let beneficiario = contrato.fornecedorId
+      ? await this.prisma.db.fornecedorFin.findFirst({ where: { id: contrato.fornecedorId, deletedAt: null } })
+      : null;
+    if (!beneficiario) {
+      beneficiario = await this.prisma.db.fornecedorFin.findFirst({ where: { cpfCnpj: '00000000000000' } });
+    }
     if (!beneficiario) {
       beneficiario = await this.prisma.db.fornecedorFin.create({
         data: {

@@ -247,6 +247,28 @@ export class CreditoService implements OnModuleInit {
     }
     const ehReembolso = p.produto === 'reembolso_parcelado';
 
+    // Doc 02 §18.5 (13/09): o RP paga o FORNECEDOR do cliente, nunca o cliente
+    // — o beneficiário do desembolso é escolhido NA CONTRATAÇÃO.
+    let fornecedor: { id: string; nome: string } | null = null;
+    if (ehReembolso) {
+      if (!dto.fornecedorId) {
+        throw new UnprocessableEntityException({
+          erro: 'fornecedor_obrigatorio',
+          mensagem: 'O Reembolso Parcelado paga o fornecedor do cliente — selecione quem vamos pagar (ou cadastre o fornecedor)',
+        });
+      }
+      fornecedor = await this.prisma.db.fornecedorFin.findFirst({
+        where: { id: dto.fornecedorId, deletedAt: null, status: { not: 'BLOQUEADO' } },
+        select: { id: true, nome: true },
+      });
+      if (!fornecedor) {
+        throw new UnprocessableEntityException({
+          erro: 'fornecedor_invalido',
+          mensagem: 'Fornecedor não encontrado ou bloqueado — confira o cadastro em Fornecedores (financeiro)',
+        });
+      }
+    }
+
     // SEM ativo sintético (doc 02 §19, 12/09): o RP é obrigação da CONTA com
     // capital da ESTRUTURA do produto — nada de Ativo OUTRO nem OrigemCapital
     // fictícia. O contrato nasce sem ativo; recebíveis sem origem de capital.
@@ -282,11 +304,12 @@ export class CreditoService implements OnModuleInit {
       titularId,
       valorCentavos: p.totalAPagar,
       resumo: ehReembolso
-        ? `Reembolso Parcelado — ${dto.descricao} — ${dto.numeroParcelas}× de ${formatCurrency(p.valorParcela)} (taxa inicial ${formatCurrency(p.taxaInicial)} financiada)`
+        ? `Reembolso Parcelado — ${dto.descricao} — pagar a ${fornecedor!.nome} — ${dto.numeroParcelas}× de ${formatCurrency(p.valorParcela)} (taxa inicial ${formatCurrency(p.taxaInicial)} financiada)`
         : `${dto.descricao} — ${dto.numeroParcelas}× de ${formatCurrency(p.valorParcela)}`,
       // PRINCIPAL do reembolso (correção 12/09): é o valor que a Azit desembolsa
       // — o título do contas a pagar usa este número, nunca o total com encargos.
-      payload: { valorPrincipal: dto.valor },
+      // Fornecedor (13/09): beneficiário real do título de desembolso.
+      payload: { valorPrincipal: dto.valor, fornecedorId: fornecedor?.id, fornecedorNome: fornecedor?.nome },
       solicitanteId,
     });
 
@@ -368,7 +391,7 @@ export class CreditoService implements OnModuleInit {
     // 12/09 — saía o total com encargos), vindo do payload da solicitação.
     const aprovacaoRp = await this.aprovacaoReembolso(contrato.id);
     if (aprovacaoRp) {
-      const payload = aprovacaoRp.payload as null | { valorPrincipal?: number };
+      const payload = aprovacaoRp.payload as null | { valorPrincipal?: number; fornecedorId?: string };
       await this.contasPagar.criarDesembolsoReembolso(
         {
           id: contrato.id,
@@ -376,6 +399,9 @@ export class CreditoService implements OnModuleInit {
           valorCentavos: payload?.valorPrincipal ?? this.cent(contrato.valorTotal),
           clienteNome: contrato.conta.titular.nome,
           ativoId: contrato.ativoId,
+          // Beneficiário real (doc 02 §18.5, 13/09): o fornecedor escolhido na
+          // contratação — o RP paga o fornecedor do cliente.
+          fornecedorId: payload?.fornecedorId ?? null,
         },
         decisorId,
       );

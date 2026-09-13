@@ -8,6 +8,9 @@ export const originarCreditoSchema = z.object({
   numeroParcelas: z.coerce.number().int().min(1).max(120),
   valorEntrada: z.coerce.number().int().min(0).default(0), // centavos — opcional
   periodicidade: z.enum(['semanal', 'quinzenal', 'mensal']).default('mensal'),
+  // Doc 02 §18.5 (13/09): o RP paga o FORNECEDOR do cliente — obrigatório
+  // quando o produto é Reembolso Parcelado (o service valida).
+  fornecedorId: z.string().min(1).optional(),
 });
 export type OriginarCreditoDto = z.infer<typeof originarCreditoSchema>;
 

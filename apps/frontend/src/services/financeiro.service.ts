@@ -33,6 +33,9 @@ export interface TituloPagarApi {
   responsavelEconomico: string;
   ativoId: string | null;
   contratoCreditoId: string | null;
+  // Mão dupla do Reembolso Parcelado (doc 02 §18.5, 13/09): de qual contrato e
+  // cliente este desembolso veio — com rota para a ficha.
+  origemReembolso: { contratoNumero: string; titularId: string; titularNome: string } | null;
   loteId: string | null;
   dataProgramada: string | null;
   motivoDevolucao: string | null;

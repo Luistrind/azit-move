@@ -942,6 +942,7 @@ model ContratoCredito {
   itensContratados  ItemContratado[]
   parcelas          Parcela[]
   recebiveis        Recebivel[]
+  titulosPagar      TituloPagar[] // desembolso do RP (doc 02 sec.18.5, 13/09)
   acordos           Acordo[]
   reajustes         ReajusteIPCA[]
   vinculosPapel     VinculoPapel[]
@@ -2128,6 +2129,9 @@ model TituloPagar {
   natureza   NaturezaFinanceira @relation(fields: [naturezaId], references: [id])
   centro     CentroCustoArea    @relation(fields: [centroCustoAreaId], references: [id])
   lote       LotePagamento?     @relation(fields: [loteId], references: [id])
+  // Mao dupla do RP (doc 02 sec.18.5, 13/09): titulo PODE vir de um reembolso;
+  // todo reembolso TEM seu titulo — relacao formal, nao id solto.
+  contratoCredito ContratoCredito? @relation(fields: [contratoCreditoId], references: [id])
   documentos DocumentoTitulo[]
   pagamentos PagamentoTitulo[]
 

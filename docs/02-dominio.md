@@ -1379,6 +1379,16 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 >    (dimensão ativo/placa) e foi renomeada.
 > 5. **Desembolso do Reembolso Parcelado**: a efetivação do RP gera automaticamente o Título a
 >    Pagar de desembolso de produto, vinculado a operação/cliente/veículo/recebível (RCPG006/029).
+>
+>    **Decisão 2026-09-13 (Luís) — o RP paga o FORNECEDOR do cliente, nunca o cliente.** O
+>    "reembolso" é, na prática, o pagamento direto do serviço/produto ao fornecedor indicado
+>    pelo cliente (oficina, loja). Consequências: (a) o **fornecedor é escolhido na
+>    CONTRATAÇÃO** do RP (seletor no modal, com cadastro rápido inline — nome + CPF/CNPJ; o
+>    fornecedor nasce EM_CADASTRO e os dados bancários seguem a esteira normal do CAP antes
+>    do pagamento sair); (b) o título de desembolso nasce com o **beneficiário real** — fim do
+>    placeholder "a definir"; (c) a ligação é de mão dupla: um título PODE ter origem num
+>    reembolso, mas todo reembolso NECESSARIAMENTE tem seu título no contas a pagar, vinculado
+>    ao cliente e ao contrato do RP — e o título mostra esse vínculo com rota para a ficha.
 > 6. Aprovações usam o MOTOR EXISTENTE (tipos novos); segregação solicitante ≠ decisor cobre o
 >    conflito de interesse do Diretor. Estados do título/lote conforme Processo §3.5. Campos
 >    críticos congelam pós-aprovação; correção só por devolução/reabertura autorizada (RCPG021-022).
