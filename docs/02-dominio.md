@@ -1012,6 +1012,13 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > implementado antes deste documento (proposta manual 1:1 sem motor) será substituído por
 > fases homologadas contra ele.
 >
+> **Adaptações da Azit (13/09):** ver  — a unidade
+> da novação é a FATURA decomposta por produto; DOIS contratos novos assinados juntos
+> (veículo na estrutura dona do ativo; demais produtos na Azit Move) SEM cessão
+> interentidades; seguro não é novado (serviço continua, só o atrasado entra); comissão não
+> é componente de dívida do cliente; juros de acordos anteriores rateados em partes iguais
+> entre os produtos na decomposição.
+>
 > **Fonte das fórmulas:** `docs/Planilha Novacao de Contrato - Azit Move.xlsx` (extraída
 > célula a célula, 13/09) — abas: **Parâmetros** (NV001–019, ICVF/ICPF, mora 2%+1% a.m.
 > base 30); **Simulador** (memória de liquidação POR COMPONENTE com a taxa de desconto do
