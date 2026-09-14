@@ -309,6 +309,7 @@ export class NovacaoDecomposicaoService {
       frequencia?: FrequenciaNovacao;
       desconto?: number; // centavos — só comitê
       recebimentoInicial?: number; // centavos
+      trocaAtivoId?: string; // F3: troca de veículo (ativo disponível)
     },
   ) {
     const dec = await this.decomporConta(contaId);
@@ -320,6 +321,48 @@ export class NovacaoDecomposicaoService {
     }
     const params = await this.catalogoFonte.novacao();
     const frequencia = dto.frequencia ?? dec.frequenciaHerdada;
+
+    // Troca de veículo (F3 — A5, decisão Luís 13/09): o veículo novo deve
+    // estar DISPONÍVEL no Estoque; o ajuste vem dos valores de CADASTRO
+    // (valorVenda — referência FIPE do ativo): entra − sai. Nada informado
+    // livremente pelo operador.
+    let troca: null | {
+      ativoEntraId: string; entraDescricao: string; entraValor: number;
+      ativoSaiId: string; saiDescricao: string; saiValor: number; ajuste: number;
+    } = null;
+    if (dto.trocaAtivoId) {
+      const atual = dec.contratos.find((c) => c.temAtivo && c.status === 'ATIVO') ?? dec.contratos.find((c) => c.temAtivo);
+      const contratoAtual = atual
+        ? await this.prisma.db.contratoCredito.findFirst({
+            where: { id: atual.id },
+            select: { ativo: { select: { id: true, descricao: true, valorVenda: true } } },
+          })
+        : null;
+      if (!contratoAtual?.ativo) {
+        throw new UnprocessableEntityException({ erro: 'sem_veiculo_atual', mensagem: 'A conta não tem veículo vigente para trocar' });
+      }
+      const novo = await this.prisma.db.ativo.findFirst({
+        where: { id: dto.trocaAtivoId, deletedAt: null },
+        select: { id: true, descricao: true, status: true, valorVenda: true },
+      });
+      if (!novo) throw new UnprocessableEntityException({ erro: 'ativo_invalido', mensagem: 'Veículo da troca não encontrado' });
+      if (novo.status !== 'DISPONIVEL') {
+        throw new UnprocessableEntityException({ erro: 'ativo_indisponivel', mensagem: `O veículo da troca precisa estar DISPONÍVEL no estoque (está ${novo.status})` });
+      }
+      const entraValor = novo.valorVenda ? Math.round(Number(novo.valorVenda.toString()) * 100) : 0;
+      const saiValor = contratoAtual.ativo.valorVenda ? Math.round(Number(contratoAtual.ativo.valorVenda.toString()) * 100) : 0;
+      if (entraValor <= 0 || saiValor <= 0) {
+        throw new UnprocessableEntityException({
+          erro: 'valor_cadastro_ausente',
+          mensagem: 'A troca exige valor de cadastro (valor de venda/FIPE) preenchido nos DOIS veículos — complete o cadastro do ativo',
+        });
+      }
+      troca = {
+        ativoEntraId: novo.id, entraDescricao: novo.descricao, entraValor,
+        ativoSaiId: contratoAtual.ativo.id, saiDescricao: contratoAtual.ativo.descricao, saiValor,
+        ajuste: entraValor - saiValor,
+      };
+    }
     // Prazo em meses → parcelas pelo fator padrão do Catálogo (4,3452/2,1726).
     const numeroParcelas =
       dto.numeroParcelasVeiculo ??
@@ -333,6 +376,7 @@ export class NovacaoDecomposicaoService {
     const r = precificarNovacao({
       saldoVeiculo: dec.parteVeiculo.total,
       saldoDemais: dec.demaisProdutos.total,
+      ajusteTrocaVeiculo: troca?.ajuste ?? 0,
       desconto: dto.desconto ?? 0,
       recebimentoInicial: dto.recebimentoInicial ?? 0,
       numeroParcelasVeiculo: numeroParcelas,
@@ -355,6 +399,7 @@ export class NovacaoDecomposicaoService {
       frequencia,
       prazoMeses: dto.prazoMeses ?? null,
       numeroParcelasVeiculo: numeroParcelas,
+      troca,
       produtoAtivo: params.ativo,
       versaoParametros: params.versao,
       decomposicao: {

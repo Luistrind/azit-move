@@ -11,6 +11,9 @@ export const simularNovacaoSchema = z
     frequencia: z.enum(['semanal', 'quinzenal', 'mensal']).optional(), // default: herdada
     desconto: z.coerce.number().int().min(0).optional(),
     recebimentoInicial: z.coerce.number().int().min(0).optional(),
+    // Troca de veículo (F3 — A5): ativo DISPONÍVEL no estoque; ajuste pelo
+    // valor de cadastro (entra − sai).
+    trocaAtivoId: z.string().min(1).optional(),
   })
   .refine((d) => d.prazoMeses !== undefined || d.numeroParcelasVeiculo !== undefined, {
     message: 'Informe o prazo em meses (ou o número de parcelas)',
@@ -27,6 +30,7 @@ export const solicitarNovacaoSchema = z
     frequencia: z.enum(['semanal', 'quinzenal', 'mensal']).optional(),
     desconto: z.coerce.number().int().min(0).optional(),
     recebimentoInicial: z.coerce.number().int().min(0).optional(),
+    trocaAtivoId: z.string().min(1).optional(),
     observacao: z.string().trim().min(1).optional(),
   })
   .refine((d) => d.prazoMeses !== undefined || d.numeroParcelasVeiculo !== undefined, {

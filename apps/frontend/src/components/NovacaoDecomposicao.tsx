@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { formatCurrency, parcelasPorPrazoMeses } from '@azit/utils';
 import { operacoesService, ComponenteDecomposicao, SimulacaoNovacao } from '../services/operacoes.service';
+import { originacaoService } from '../services/originacao.service';
 import { reaisParaCentavos } from '../lib/valor';
 import { mensagemErro } from '../lib/permissoes';
 import { toast } from './Toast';
@@ -230,8 +231,15 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
   const [frequencia, setFrequencia] = useState<'semanal' | 'quinzenal' | 'mensal'>(frequenciaHerdada);
   const [recebimento, setRecebimento] = useState('');
   const [desconto, setDesconto] = useState('');
+  // Troca de veículo (F3 — A5): ativo DISPONÍVEL do estoque; ajuste pelo
+  // valor de cadastro (entra − sai), nunca informado livremente.
+  const [trocaAtivoId, setTrocaAtivoId] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const [sim, setSim] = useState<SimulacaoNovacao | null>(null);
+  const disponiveis = useQuery({
+    queryKey: ['ativos-disponiveis-novacao'],
+    queryFn: () => originacaoService.ativosDisponiveis(),
+  });
   // Proposta formal (F2): congela a simulação e vai à Central de Aprovações.
   const [observacao, setObservacao] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -249,6 +257,7 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
         frequencia,
         recebimentoInicial: reaisParaCentavos(recebimento) || undefined,
         desconto: reaisParaCentavos(desconto) || undefined,
+        trocaAtivoId: trocaAtivoId || undefined,
       });
       setSim(r);
     } catch (e) {
@@ -267,6 +276,7 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
         frequencia,
         recebimentoInicial: reaisParaCentavos(recebimento) || undefined,
         desconto: reaisParaCentavos(desconto) || undefined,
+        trocaAtivoId: trocaAtivoId || undefined,
         observacao: observacao.trim() || undefined,
       });
       setEnviada(true);
@@ -314,6 +324,17 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
           <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Desconto (R$) — exige comitê</span>
           <input value={desconto} onChange={(e) => setDesconto(e.target.value)} placeholder="0,00" className="h-[34px] w-[120px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
         </label>
+        <label className="flex flex-col gap-[4px]">
+          <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Trocar veículo (opcional) — estoque disponível</span>
+          <select value={trocaAtivoId} onChange={(e) => setTrocaAtivoId(e.target.value)} className="h-[34px] w-[280px] rounded-[8px] px-[8px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+            <option value="">Manter o veículo atual</option>
+            {disponiveis.data?.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.descricao}{a.placa ? ` · ${a.placa}` : ''}{a.valorVenda ? ` · ${formatCurrency(a.valorVenda)}` : ' · sem valor de cadastro'}
+              </option>
+            ))}
+          </select>
+        </label>
         <button onClick={simular} disabled={ocupado} className="h-[34px] rounded-[8px] px-[14px] text-[12.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>
           {ocupado ? 'Calculando…' : 'Simular'}
         </button>
@@ -340,8 +361,21 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
           <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2">
             <div className="rounded-[12px] p-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
               <div className="mb-[6px] text-[12px] font-bold">Cadeia do contrato do veículo</div>
+              {sim.troca && (
+                <div className="mb-[6px] rounded-[8px] px-[10px] py-[6px] text-[11.5px]" style={{ background: '#eaf1fb', color: 'var(--navy)' }}>
+                  🔁 Troca: sai <b>{sim.troca.saiDescricao}</b> ({formatCurrency(sim.troca.saiValor)}) → entra <b>{sim.troca.entraDescricao}</b> ({formatCurrency(sim.troca.entraValor)})
+                </div>
+              )}
               <div className="flex flex-col gap-[3px]">
-                <LinhaValor label="Saldo-base (parte do veículo)" valor={sim.saldoBase} />
+                {sim.troca ? (
+                  <>
+                    <LinhaValor label="Parte do veículo (decomposição)" valor={sim.decomposicao.parteVeiculo.total} />
+                    <LinhaValor label="Ajuste da troca (entra − sai)" valor={sim.troca.ajuste} />
+                    <LinhaValor label="Saldo-base (com a troca)" valor={sim.saldoBase} />
+                  </>
+                ) : (
+                  <LinhaValor label="Saldo-base (parte do veículo)" valor={sim.saldoBase} />
+                )}
                 {sim.saldoNovado !== sim.saldoBase && <LinhaValor label="Saldo novado (após desconto)" valor={sim.saldoNovado} />}
                 <LinhaValor label="Taxa inicial de processamento" valor={sim.taxaInicial} />
                 {sim.amortizacaoInicial > 0 && <LinhaValor label="Recebimento que amortiza" valor={sim.amortizacaoInicial} />}

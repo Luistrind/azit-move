@@ -29,7 +29,7 @@ taxa inicial de processamento de {{taxaInicial}}{{descontoLinha}}, a pagar em
 **{{parcelasVeiculo}} ({{parcelasVeiculoExtenso}}) parcelas {{periodicidadePlural}} de
 {{valorParcela}} ({{valorParcelaExtenso}})**, precedidas da fase do Contrato 2 conforme a
 cláusula de sequenciamento. Permanece a reserva de domínio sobre o veículo
-**{{descricaoVeiculo}}**.
+**{{descricaoVeiculo}}**.{{trocaLinha}}
 
 ## Contrato 2 — Termo de Regularização de Débitos (nº {{numeroContratoTermo}})
 

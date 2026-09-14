@@ -169,4 +169,12 @@ cronogramas na ordem descrita e nada fica pela metade.
   atômica (origens NOVADAS/encerradas ANTES dos cronogramas; Termo primeiro; item de
   antecipação na fatura de transição). E2E validado: fatura de transição fechando no
   valor periódico exato (59,50 do Termo + 72,80 de antecipação = 132,30).
-- F3: ativos, garantias e troca de veículo (A5).
+- **F3 — CONSTRUÍDA (14/09): troca de veículo (A5).** Na simulação/proposta, seletor de
+  veículo DISPONÍVEL no Estoque; ajuste = valor de cadastro do que entra − do que sai,
+  somado ao saldo-base (nunca informado livremente); os dois veículos precisam ter o
+  valor de cadastro preenchido (422 sem ele). Na aprovação, o Contrato 1 nasce com o
+  ativo NOVO (reservado EM_CONTRATO); na ativação atômica o antigo volta a DISPONÍVEL;
+  cancelamento/expiração libera o novo. O instrumento descreve a troca e o ajuste.
+  **Decisão provisória:** "valor de cadastro (FIPE)" = campo `valorVenda` do ativo (o
+  valor de cadastro que já precifica as vendas) — se o negócio quiser um campo FIPE
+  separado do valor de venda, criar campo próprio e trocar a referência.

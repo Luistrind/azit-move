@@ -211,15 +211,18 @@ export class NovacaoService implements OnModuleInit {
       false,
     );
 
-    // Contrato 1 — veículo: MESMO ativo do contrato de origem (que só encerra
-    // na ativação atômica) → verificarEstoque desligado, exceção legítima da
-    // regra "1 ativo = 1 contrato": este é o contrato SUBSTITUTO.
-    // valorEntrada = antecipação da fatura de transição (abate o saldo antes
-    // do cronograma começar — A6.3); saldoDevedor nasce líquido dela.
+    // Contrato 1 — veículo. SEM troca: MESMO ativo do contrato de origem (que
+    // só encerra na ativação atômica) → verificarEstoque desligado, exceção
+    // legítima da regra "1 ativo = 1 contrato": é o contrato SUBSTITUTO.
+    // COM troca (F3 — A5): o ativo NOVO do estoque, com verificação normal
+    // (criar marca EM_CONTRATO = reserva); o antigo volta ao estoque na
+    // ativação. valorEntrada = antecipação da fatura de transição (A6.3).
+    const troca = sim.troca ?? null;
+    const ativoC1 = troca?.ativoEntraId ?? origemVeiculo.ativoId;
     const c1 = await this.contrato.criar(
       {
         contaId: novacao.contaId,
-        ativoId: origemVeiculo.ativoId,
+        ativoId: ativoC1,
         dataAssinatura: hoje,
         dataPrimeiraParcela: new Date(hoje.getTime() + (sim.contrato2.totalParcelas + 1) * passo * DIA_MS),
         // Total do PLANO da fase do veículo + a antecipação (a "entrada",
@@ -235,7 +238,7 @@ export class NovacaoService implements OnModuleInit {
       },
       'AGUARDANDO_ASSINATURA',
       false,
-      { verificarEstoque: false },
+      { verificarEstoque: !!troca },
     );
 
     // Instrumento único (os dois contratos no mesmo ato) anexado ao contrato
@@ -243,7 +246,7 @@ export class NovacaoService implements OnModuleInit {
     const documento = await this.gerarInstrumento(novacao.id, {
       numeroContratoVeiculo: c1.numero,
       numeroContratoTermo: c2.numero,
-      descricaoVeiculo: origemVeiculo.ativo?.descricao ?? '—',
+      descricaoVeiculo: troca ? troca.entraDescricao : (origemVeiculo.ativo?.descricao ?? '—'),
       periodicidade,
     });
     await this.prisma.db.contratoCredito.update({
@@ -440,6 +443,16 @@ export class NovacaoService implements OnModuleInit {
       }
     }
 
+    // Etapa 3b — troca de veículo (F3): o veículo que SAI volta ao estoque
+    // (DISPONÍVEL); o novo já está EM_CONTRATO desde a criação do C1.
+    const trocaSnap = sim.troca ?? null;
+    if (trocaSnap) {
+      await this.prisma.db.ativo.updateMany({
+        where: { id: trocaSnap.ativoSaiId, status: 'EM_CONTRATO' },
+        data: { status: 'DISPONIVEL' },
+      });
+    }
+
     // Etapa 4 — commit do estado da novação.
     await this.prisma.db.novacao.update({
       where: { id: novacao.id },
@@ -499,11 +512,12 @@ export class NovacaoService implements OnModuleInit {
   }
 
   // Contratos novos ainda sem cronograma (novação não ativada) são encerrados
-  // por cancelamento — nunca chegaram a existir como obrigação.
+  // por cancelamento — nunca chegaram a existir como obrigação. Com TROCA de
+  // veículo, o ativo novo reservado volta a DISPONÍVEL.
   private async cancelarContratosNovos(novacaoId: string) {
     const novacao = await this.prisma.db.novacao.findFirst({
       where: { id: novacaoId },
-      select: { contratoVeiculoId: true, contratoTermoId: true },
+      select: { contratoVeiculoId: true, contratoTermoId: true, snapshotJson: true },
     });
     const ids = [novacao?.contratoVeiculoId, novacao?.contratoTermoId].filter((x): x is string => !!x);
     if (ids.length === 0) return;
@@ -511,6 +525,13 @@ export class NovacaoService implements OnModuleInit {
       where: { id: { in: ids }, status: 'AGUARDANDO_ASSINATURA' },
       data: { status: 'ENCERRADO', motivoEncerramento: 'CANCELAMENTO', dataEncerramento: new Date() },
     });
+    const troca = (novacao?.snapshotJson as unknown as SnapshotNovacao | null)?.simulacao?.troca;
+    if (troca?.ativoEntraId) {
+      await this.prisma.db.ativo.updateMany({
+        where: { id: troca.ativoEntraId, status: 'EM_CONTRATO' },
+        data: { status: 'DISPONIVEL' },
+      });
+    }
   }
 
   private rolarParaFuturo(data: Date, passoDias: number): Date {
@@ -550,6 +571,9 @@ export class NovacaoService implements OnModuleInit {
       descricaoVeiculo: ctx.descricaoVeiculo,
       saldoVeiculo: `R$ ${reais(sim.decomposicao.parteVeiculo.total)}`,
       saldoVeiculoExtenso: valorPorExtenso(sim.decomposicao.parteVeiculo.total),
+      trocaLinha: sim.troca
+        ? `\n\nA operação inclui TROCA DE VEÍCULO: sai o veículo ${sim.troca.saiDescricao} (valor de cadastro R$ ${reais(sim.troca.saiValor)}), devolvido à CREDORA, e entra o veículo ${sim.troca.entraDescricao} (valor de cadastro R$ ${reais(sim.troca.entraValor)}); o ajuste de R$ ${reais(Math.abs(sim.troca.ajuste))} ${sim.troca.ajuste >= 0 ? 'soma-se ao' : 'deduz-se do'} saldo-base.`
+        : '',
       taxaInicial: `R$ ${reais(sim.taxaInicial)}`,
       descontoLinha: desconto > 0 ? ` e deduzido o desconto de R$ ${reais(desconto)} aprovado pelo comitê` : '',
       parcelasVeiculo: sim.contrato1.totalParcelas,

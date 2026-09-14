@@ -121,6 +121,8 @@ export interface SimulacaoNovacao {
   frequencia: 'semanal' | 'quinzenal' | 'mensal';
   prazoMeses: number | null;
   numeroParcelasVeiculo: number;
+  // Troca de veículo (F3): ajuste pelos valores de cadastro (entra − sai).
+  troca: null | { ativoEntraId: string; entraDescricao: string; entraValor: number; ativoSaiId: string; saiDescricao: string; saiValor: number; ajuste: number };
   produtoAtivo: boolean;
   versaoParametros: number | null;
   decomposicao: {
@@ -229,7 +231,7 @@ export const operacoesService = {
   // Simulação da proposta de novação (A7 passos 3-4) — números do SERVIDOR.
   async simularNovacao(
     contaId: string,
-    body: { prazoMeses?: number; numeroParcelasVeiculo?: number; frequencia?: 'semanal' | 'quinzenal' | 'mensal'; desconto?: number; recebimentoInicial?: number },
+    body: { prazoMeses?: number; numeroParcelasVeiculo?: number; frequencia?: 'semanal' | 'quinzenal' | 'mensal'; desconto?: number; recebimentoInicial?: number; trocaAtivoId?: string },
   ): Promise<SimulacaoNovacao> {
     const { data } = await api.post(`/api/v1/contas/${contaId}/novacao/simular`, body);
     return data;
@@ -242,7 +244,7 @@ export const operacoesService = {
   },
   async solicitarNovacao(
     contaId: string,
-    body: { prazoMeses: number; frequencia?: 'semanal' | 'quinzenal' | 'mensal'; desconto?: number; recebimentoInicial?: number; observacao?: string },
+    body: { prazoMeses: number; frequencia?: 'semanal' | 'quinzenal' | 'mensal'; desconto?: number; recebimentoInicial?: number; trocaAtivoId?: string; observacao?: string },
   ): Promise<{ id: string; status: string; valorParcela: number }> {
     const { data } = await api.post(`/api/v1/contas/${contaId}/novacao`, body);
     return data;
