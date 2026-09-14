@@ -359,9 +359,14 @@ export function PropostaDetalhePage() {
               <span className="font-display text-[13px] font-bold">Documentos de embasamento</span>
               {podeParecer && ['pendente', 'em_analise'].includes(p.status) && (
                 <label className="h-[30px] cursor-pointer rounded-[8px] px-[12px] text-[12px] font-semibold leading-[30px]" style={btn('var(--navy)')}>
-                  + Anexar
-                  <input type="file" className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void anexarArquivo(p.titular.id, 'anexo_analise', f); e.target.value = ''; }} />
+                  + Anexar (vários de uma vez)
+                  <input type="file" multiple className="hidden"
+                    onChange={(e) => {
+                      const fs = Array.from(e.target.files ?? []);
+                      e.target.value = '';
+                      // Sequencial: um erro não descarta os já anexados (14/09).
+                      void (async () => { for (const f of fs) await anexarArquivo(p.titular.id, 'anexo_analise', f); })();
+                    }} />
                 </label>
               )}
             </div>

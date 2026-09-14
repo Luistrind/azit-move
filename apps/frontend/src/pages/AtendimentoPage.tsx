@@ -364,19 +364,27 @@ export function AtendimentoPage() {
   }
 
   async function anexar(tipo: string, file: File, descricao?: string) {
-    if (!proposta) return;
+    return anexarVarios(tipo, [file], descricao);
+  }
+
+  // Vários arquivos de uma vez (pedido Luís 14/09 — complementares/"outro"):
+  // sobe em sequência; um erro não descarta os que já entraram.
+  async function anexarVarios(tipo: string, files: File[], descricao?: string) {
+    if (!proposta || files.length === 0) return;
     setErro(null);
     setDocBusy(true);
     try {
-      const conteudo = await new Promise<string>((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res(String(r.result));
-        r.onerror = rej;
-        r.readAsDataURL(file);
-      });
-      const nomeArq = descricao?.trim() ? `${descricao.trim()} — ${file.name}` : file.name;
-      const p = await originacaoService.anexarDocumento(proposta.id, proposta.titular.id, tipo, { nome: nomeArq, conteudo });
-      setProposta(p);
+      for (const file of files) {
+        const conteudo = await new Promise<string>((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(String(r.result));
+          r.onerror = rej;
+          r.readAsDataURL(file);
+        });
+        const nomeArq = descricao?.trim() ? `${descricao.trim()} — ${file.name}` : file.name;
+        const p = await originacaoService.anexarDocumento(proposta.id, proposta.titular.id, tipo, { nome: nomeArq, conteudo });
+        setProposta(p);
+      }
       setDescComplementar('');
     } catch (e) {
       setErro(mensagemErro(e));
@@ -955,9 +963,9 @@ export function AtendimentoPage() {
               style={{ background: 'var(--surface-input)', border: '1.5px solid var(--border)' }}
             />
             <label className="block h-[46px] cursor-pointer rounded-[10px] text-center text-[14px] font-semibold leading-[46px]" style={{ background: 'var(--surface-input)', border: '1.5px solid var(--accent)', color: 'var(--navy)', opacity: docBusy ? 0.6 : 1 }}>
-              {docBusy ? 'Anexando…' : '+ Anexar documento'}
-              <input type="file" accept="image/*,.pdf" className="hidden" disabled={docBusy}
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) void anexar('outro', f, descComplementar); e.target.value = ''; }} />
+              {docBusy ? 'Anexando…' : '+ Anexar documentos (vários de uma vez)'}
+              <input type="file" accept="image/*,.pdf" multiple className="hidden" disabled={docBusy}
+                onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) void anexarVarios('outro', fs, descComplementar); e.target.value = ''; }} />
             </label>
           </div>
 
