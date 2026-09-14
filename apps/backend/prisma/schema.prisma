@@ -1444,6 +1444,7 @@ enum TipoConsultaExterna {
   SCORE_POSITIVO // partner-scorepositivo-individual-finance (Marketplace, paga)
   DISTRIBUICAO_PROCESSOS // lawsuits-distribution-data (Plataforma, franquia)
   PROCESSOS // processes detalhado (Plataforma, franquia)
+  KYC // kyc — PEP/sanções/óbito/consistência (Plataforma, franquia — 14/09)
 }
 
 enum SituacaoConsulta {
@@ -1530,6 +1531,11 @@ model AnaliseCadastro {
   motivoEncerramento         MotivoEncerramentoAnalise?
   codigoNaoAprovacao         String?
   aprovacaoId                String?
+  // Resumo do assistente de análise (IA — 14/09): relatório cadastral factual
+  // gerado pela API do Claude a partir das consultas + documentos anexados.
+  // {status: 'gerando'|'concluido'|'falha'|'nao_configurado', texto, modelo,
+  //  geradoEm, erro?} — APOIO ao analista; nunca decide nem transita status.
+  resumoIa                   Json?
 
   proposta        Proposta                @relation(fields: [propostaId], references: [id])
   parametroVersao VersaoParametrosAnalise @relation(fields: [parametroVersaoId], references: [id])

@@ -13,8 +13,19 @@ export interface CriterioAnalise {
   codigo?: string; valorObservado?: string; bloqueiaAprovacaoDireta: boolean;
   bloqueiaFormalizacao?: boolean; descricao: string;
 }
+// Resumo do assistente de análise (IA — 14/09): apoio ao analista.
+export interface ResumoIaAnalise {
+  status: 'gerando' | 'concluido' | 'falha' | 'nao_configurado';
+  texto?: string;
+  modelo?: string;
+  geradoEm?: string;
+  erro?: string;
+  insumos?: { consultas: number; documentos: number; documentosIgnorados: number };
+}
+
 export interface DossieAnalise {
   id: string; propostaId: string; status: string; politicaVersao: string;
+  resumoIa: ResumoIaAnalise | null;
   condutorPrincipalTitularId: string | null;
   parcelaMensalEquivalente: number; comprometimento: number | null;
   participantes: ParticipanteAnalise[];
@@ -80,9 +91,13 @@ export const analiseService = {
     const { data } = await api.post(`/api/v1/analises/${id}/consultar-biro-todas`, titularId ? { titularId } : {});
     return data;
   },
+  // (Re)gera o resumo do assistente (IA) — roda em fila; a tela acompanha.
+  async gerarResumoIa(id: string): Promise<void> {
+    await api.post(`/api/v1/analises/${id}/resumo-ia`, {});
+  },
   async consultarBiro(
     id: string,
-    tipo: 'score_quod' | 'restritivos' | 'boavista_score' | 'score_positivo' | 'distribuicao_processos' | 'processos',
+    tipo: 'score_quod' | 'restritivos' | 'boavista_score' | 'score_positivo' | 'distribuicao_processos' | 'processos' | 'kyc',
     titularId?: string,
   ): Promise<DossieAnalise> {
     const { data } = await api.post<DossieAnalise>(`/api/v1/analises/${id}/consultar-biro`, { tipo, titularId });

@@ -57,6 +57,7 @@ const CONSULTAS_2A_CAMADA = [
   { enumDb: 'SCORE_POSITIVO', label: 'Score Positivo', pago: true },
   { enumDb: 'DISTRIBUICAO_PROCESSOS', label: 'Distribuição de processos', pago: false },
   { enumDb: 'PROCESSOS', label: 'Processos judiciais', pago: false },
+  { enumDb: 'KYC', label: 'KYC (PEP/sanções)', pago: false },
 ] as const;
 
 // Espelha o critério do backend: CONCLUÍDA, dentro da validade e com os dados
@@ -151,7 +152,12 @@ function proximoPasso(d: DossieAnalise): string {
 export function AnalisePage() {
   const { id = '' } = useParams();
   const qc = useQueryClient();
-  const { data: d, refetch } = useQuery({ queryKey: ['analise', id], queryFn: () => analiseService.dossie(id) });
+  const { data: d, refetch } = useQuery({
+    queryKey: ['analise', id],
+    queryFn: () => analiseService.dossie(id),
+    // Resumo do assistente em geração → a tela acompanha sozinha (14/09).
+    refetchInterval: (q) => (q.state.data?.resumoIa?.status === 'gerando' ? 5000 : false),
+  });
   const [ocupado, setOcupado] = useState(false);
   // Visualização inline de documentos (imagem/PDF) sem baixar (08/09).
   const viewer = useDocumentoViewer();
@@ -186,6 +192,61 @@ export function AnalisePage() {
         <span className="rounded-[8px] border border-[var(--border)] px-[10px] py-[6px] text-[12px] font-bold">
           {rotuloStatus(d.status)}
         </span>
+      </div>
+
+      {/* Resumo do assistente (IA — 14/09): relatório cadastral automático a
+          partir das consultas + documentos. APOIO ao analista — a decisão e o
+          restante da tela seguem exatamente como antes. */}
+      <div className="rounded-[12px] p-[16px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="mb-[8px] flex flex-wrap items-center justify-between gap-[8px]">
+          <span className="font-display text-[13px] font-bold">
+            🤖 Resumo do assistente
+            {d.resumoIa?.status === 'concluido' && d.resumoIa.geradoEm && (
+              <span className="ml-[8px] text-[11px] font-normal" style={{ color: 'var(--text-muted)' }}>
+                gerado em {new Date(d.resumoIa.geradoEm).toLocaleString('pt-BR')} · {d.resumoIa.insumos?.consultas ?? 0} consulta(s) · {d.resumoIa.insumos?.documentos ?? 0} documento(s)
+              </span>
+            )}
+          </span>
+          {!final && d.resumoIa?.status !== 'gerando' && (
+            <button
+              className={btnS}
+              disabled={ocupado}
+              onClick={() => void acao(async () => { await analiseService.gerarResumoIa(d.id); return analiseService.dossie(d.id); }, 'Resumo em geração — a tela atualiza sozinha.')}
+            >
+              {d.resumoIa?.status === 'concluido' ? 'Atualizar resumo' : 'Gerar resumo'}
+            </button>
+          )}
+        </div>
+        {!d.resumoIa && (
+          <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
+            Nenhum resumo gerado ainda — clique em "Gerar resumo" (ele também nasce sozinho quando um cadastro novo chega à análise).
+          </div>
+        )}
+        {d.resumoIa?.status === 'gerando' && (
+          <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
+            ⏳ Gerando o relatório — o assistente está lendo as consultas e os documentos (pode levar alguns minutos; a tela atualiza sozinha).
+          </div>
+        )}
+        {d.resumoIa?.status === 'nao_configurado' && (
+          <div className="rounded-[8px] px-[12px] py-[8px] text-[12px]" style={{ background: '#fff8e6', border: '1px solid #f0dfae', color: '#8a6d1a' }}>
+            O assistente ainda não está configurado neste ambiente ({d.resumoIa.erro}).
+          </div>
+        )}
+        {d.resumoIa?.status === 'falha' && (
+          <div className="rounded-[8px] px-[12px] py-[8px] text-[12px]" style={{ background: '#fdeceb', border: '1px solid #f5c6c3', color: '#c0392b' }}>
+            A geração falhou: {d.resumoIa.erro} — use "Gerar resumo" para tentar de novo.
+          </div>
+        )}
+        {d.resumoIa?.status === 'concluido' && d.resumoIa.texto && (
+          <div className="whitespace-pre-wrap text-[13px] leading-[1.55]" style={{ color: 'var(--text-body)' }}>
+            {d.resumoIa.texto}
+          </div>
+        )}
+        {d.resumoIa?.status === 'concluido' && (
+          <div className="mt-[10px] text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            Relatório factual gerado por IA ({d.resumoIa.modelo}) — não é parecer nem recomendação; a decisão é sempre do analista. Confira os números nas consultas abaixo.
+          </div>
+        )}
       </div>
 
       {/* Stepper de etapas */}

@@ -9,6 +9,8 @@ export interface AppConfig {
   asaas: { apiUrl: string; apiKey: string; webhookSecret: string };
   pophub: { webhookSecret: string };
   zapi: { instanceId: string; token: string; clientToken: string };
+  // Assistente de análise (IA — 14/09): API do Claude (Anthropic).
+  anthropic: { apiKey: string; modelo: string };
 }
 
 export default (): AppConfig => ({
@@ -33,5 +35,9 @@ export default (): AppConfig => ({
     instanceId: process.env.ZAPI_INSTANCE_ID ?? '',
     token: process.env.ZAPI_TOKEN ?? '',
     clientToken: process.env.ZAPI_CLIENT_TOKEN ?? '',
+  },
+  anthropic: {
+    apiKey: process.env.ANTHROPIC_API_KEY ?? '',
+    modelo: process.env.ANTHROPIC_MODEL ?? 'claude-opus-5',
   },
 });

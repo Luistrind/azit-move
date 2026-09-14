@@ -168,6 +168,7 @@ export class AnaliseController {
             'score_positivo',
             'distribuicao_processos',
             'processos',
+            'kyc',
           ]),
           titularId: z.string().min(1).optional(),
         }),
@@ -180,12 +181,22 @@ export class AnaliseController {
         | 'boavista_score'
         | 'score_positivo'
         | 'distribuicao_processos'
-        | 'processos';
+        | 'processos'
+        | 'kyc';
       titularId?: string;
     },
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.analise.consultarBiroCamada2(id, dto, user.id);
+  }
+
+  // Resumo do assistente (IA — 14/09): (re)gera sob demanda do analista.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('analises/:id/resumo-ia')
+  @HttpCode(202)
+  async gerarResumoIa(@Param('id') id: string) {
+    await this.analise.dispararResumoIa(id);
+    return { enfileirado: true };
   }
 
   // Gatilho único (Luís 08/09): dispara TODAS as consultas da 2ª camada de uma

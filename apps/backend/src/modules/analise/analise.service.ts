@@ -12,10 +12,14 @@ import {
   ParticipanteAnaliseInput,
   ResultadoAnalise,
 } from '@azit/utils';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../../database/prisma.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { Camada1Service } from '../bureau/camada1.service';
 import { BigDataCorpService } from '../bureau/bigdatacorp.service';
+import { QUEUE_NAMES } from '../queues/queues.module';
+import { AssistenteAnaliseService, ResumoIa } from './assistente-analise.service';
 
 // ============================================================
 // Análise de Cadastro — Fase 1 (doc 02 §14; Requisitos v0.2).
@@ -51,7 +55,22 @@ export class AnaliseService implements OnModuleInit {
     private readonly aprovacao: AprovacaoService,
     private readonly camada1: Camada1Service,
     private readonly bigDataCorp: BigDataCorpService,
+    private readonly assistente: AssistenteAnaliseService,
+    @InjectQueue(QUEUE_NAMES.RESUMO_ANALISE) private readonly filaResumo: Queue,
   ) {}
+
+  // Enfileira a geração do resumo do assistente (IA — 14/09): marca 'gerando'
+  // na hora (a tela mostra o estado) e o worker chama a API do Claude. Nunca
+  // propaga erro — o resumo é apoio, jamais trava a esteira da análise.
+  async dispararResumoIa(analiseId: string) {
+    try {
+      await this.assistente.marcarGerando(analiseId);
+      await this.filaResumo.add('gerar', { analiseId }, { removeOnComplete: true, attempts: 2 });
+    } catch (e) {
+      // Redis fora do ar não pode derrubar a análise.
+      console.error(`dispararResumoIa(${analiseId}): ${(e as Error).message}`);
+    }
+  }
 
   // COCAD via motor de aprovação: aprovado → APROVADO_COCAD; reprovado → volta a
   // PARECER_EMITIDO (a NÃO aprovação é sempre ação humana própria — Política §18).
@@ -217,6 +236,11 @@ export class AnaliseService implements OnModuleInit {
         );
       }
     }
+
+    // Resumo do assistente (IA — 14/09): gera automaticamente ao ENVIAR o
+    // cadastro para análise, com o que já existe (camada 1 + documentos); o
+    // gatilho único de birôs regenera com as consultas completas.
+    await this.dispararResumoIa(analiseId);
   }
 
   // Repetir a consulta da Camada 1 NO BIRÔ, sob demanda do analista (caso do
@@ -279,7 +303,7 @@ export class AnaliseService implements OnModuleInit {
   // consome; a transcrição manual vira plano B.
   async consultarBiroCamada2(
     analiseId: string,
-    dto: { tipo: 'score_quod' | 'restritivos' | 'boavista_score' | 'score_positivo' | 'distribuicao_processos' | 'processos'; titularId?: string },
+    dto: { tipo: 'score_quod' | 'restritivos' | 'boavista_score' | 'score_positivo' | 'distribuicao_processos' | 'processos' | 'kyc'; titularId?: string },
     usuarioId?: string,
   ) {
     const a = await this.carregar(analiseId);
@@ -299,6 +323,7 @@ export class AnaliseService implements OnModuleInit {
       score_positivo: { fornecedor: 'Score Positivo (via BigDataCorp Marketplace)', chamar: (c) => this.bigDataCorp.scorePositivo(c) },
       distribuicao_processos: { fornecedor: 'BigDataCorp (Plataforma)', chamar: (c) => this.bigDataCorp.distribuicaoProcessos(c) },
       processos: { fornecedor: 'BigDataCorp (Plataforma)', chamar: (c) => this.bigDataCorp.processosDetalhados(c) },
+      kyc: { fornecedor: 'BigDataCorp (Plataforma)', chamar: (c) => this.bigDataCorp.kycCompliance(c) },
     };
     const adicional = ADICIONAIS[dto.tipo];
     if (adicional) {
@@ -410,13 +435,14 @@ export class AnaliseService implements OnModuleInit {
       : a.participantes.find((p) => p.papel === 'COMPRADOR_PRINCIPAL');
     if (!alvo) throw new UnprocessableEntityException({ erro: 'participante_invalido', mensagem: 'Participante não encontrado na análise' });
 
-    const TIPOS: { chave: 'score_quod' | 'restritivos' | 'boavista_score' | 'score_positivo' | 'distribuicao_processos' | 'processos'; enumDb: string }[] = [
+    const TIPOS: { chave: 'score_quod' | 'restritivos' | 'boavista_score' | 'score_positivo' | 'distribuicao_processos' | 'processos' | 'kyc'; enumDb: string }[] = [
       { chave: 'score_quod', enumDb: 'SCORE_QUOD' },
       { chave: 'restritivos', enumDb: 'RESTRITIVOS' },
       { chave: 'boavista_score', enumDb: 'BOAVISTA_SCORE' },
       { chave: 'score_positivo', enumDb: 'SCORE_POSITIVO' },
       { chave: 'distribuicao_processos', enumDb: 'DISTRIBUICAO_PROCESSOS' },
       { chave: 'processos', enumDb: 'PROCESSOS' },
+      { chave: 'kyc', enumDb: 'KYC' },
     ];
     const temDados = (enumDb: string, resultado: unknown): boolean => {
       const r = (resultado ?? {}) as Record<string, unknown>;
@@ -440,6 +466,8 @@ export class AnaliseService implements OnModuleInit {
       if (jaValida(t.enumDb)) continue;
       await this.consultarBiroCamada2(analiseId, { tipo: t.chave, titularId: alvo.titularId }, usuarioId);
     }
+    // Consultas completas → regenera o resumo do assistente com tudo (14/09).
+    await this.dispararResumoIa(analiseId);
     return this.dossie(analiseId);
   }
 
@@ -492,6 +520,8 @@ export class AnaliseService implements OnModuleInit {
       id: a.id,
       propostaId: a.propostaId,
       status: a.status,
+      // Resumo do assistente (IA — 14/09): apoio ao analista, nunca decisão.
+      resumoIa: (a.resumoIa as ResumoIa | null) ?? null,
       politicaVersao: a.parametroVersao.politicaVersao,
       condutorPrincipalTitularId: a.condutorPrincipalTitularId,
       parcelaMensalEquivalente: avaliacao.parcelaMensalEquivalente,
@@ -640,7 +670,7 @@ export class AnaliseService implements OnModuleInit {
     analiseId: string,
     dto: {
       titularId: string;
-      tipo: 'camada1' | 'score_quod' | 'restritivos' | 'boavista_score' | 'score_positivo' | 'distribuicao_processos' | 'processos';
+      tipo: 'camada1' | 'score_quod' | 'restritivos' | 'boavista_score' | 'score_positivo' | 'distribuicao_processos' | 'processos' | 'kyc';
       fornecedor: string;
       protocolo?: string;
       situacao: 'concluida' | 'falha';

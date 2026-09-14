@@ -60,6 +60,9 @@ services:
       ZAPSIGN_API_TOKEN: ${ZAPSIGN_API_TOKEN:-}
       ZAPSIGN_API_URL: ${ZAPSIGN_API_URL:-}
       ZAPSIGN_WEBHOOK_SECRET: ${ZAPSIGN_WEBHOOK_SECRET:-}
+      # Assistente de analise (IA - 14/09): API do Claude (Anthropic)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5}
     networks: [azit_internal, PopCarrosNet]
     deploy:
       replicas: 1

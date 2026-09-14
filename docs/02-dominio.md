@@ -1288,6 +1288,22 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 - **Falha/ausência de consulta não trava o fluxo**: bloqueia aprovação direta e eleva a alçada mínima ao COCAD, com registro (motivo, tentativas, responsável). Ausência nunca é interpretada como favorável.
 - **Complemento ≠ COCAD**: falta de informação gera pendência específica com prazo e retorno à etapa de origem; risco conhecido sobe de alçada.
 - **Ressalvas** são entidades com condição objetiva, prazo, evidência e validação — aprovação com ressalva não libera formalização; expiração volta ao COCAD (nunca vira não-aprovação automática).
+
+> **Assistente de análise (IA) — 14/09 (pedido do Luís).** Cada análise ganha um **RELATÓRIO
+> CADASTRAL RESUMIDO automático**, gerado pela API do Claude (`claude-opus-5`, chave
+> `ANTHROPIC_API_KEY`) a partir dos payloads BRUTOS das consultas de birô + dos documentos
+> anexados (CNH, demonstrativos Uber/99, extratos — lidos como PDF/imagem) + dados
+> cadastrais do sistema, com pesquisa na internet habilitada (verificação de processos em
+> fontes oficiais). O prompt é o do Luís, VERBATIM (`analise/prompt-assistente.ts`):
+> relatório factual e neutro (cadastro, renda bruta 3M, crédito por fonte, dívidas sem
+> dupla contagem, jurídico financeiro/patrimonial, criminal/policial com tratamento de
+> homônimos e duplicidade processual, KYC) — **nunca parecer, nunca recomendação; a
+> decisão é sempre do analista** e o restante da tela segue intacto. Gera automaticamente
+> ao enviar o cadastro para análise e regenera após o gatilho único de birôs; botão
+> "Gerar/Atualizar resumo" na tela; roda em fila (worker) com estados
+> gerando/concluído/falha/não-configurado (Regra 12: sem chave, aviso claro — nunca
+> buraco). Consulta **KYC** (PEP/sanções/óbito — dataset `kyc` da Plataforma, franquia)
+> entrou na 2ª camada e no gatilho único (7 consultas).
 - **Máquina de estados**: os 20 status oficiais da Política §25, um ativo por vez, transições com pré-condições e histórico. **Encerramentos classificados**: não aprovação ≠ desistência ≠ ausência de retorno ≠ expiração.
 - **Pacote mínimo** bloqueante para liberar a Contratos e Ativação (decisão válida, parecer + códigos, documentos, CNH do condutor, consultas válidas ou ausência decidida pelo COCAD, renda apurada, sem pendência, ressalvas cumpridas, garantidor aceito, versão da política, responsável).
 - **Parâmetros versionados** (mesma mecânica do simulador): limites, fatores, validades (consultas 30d, aprovação 10du), prazos e texto da autorização. Cada análise congela a versão aplicada.

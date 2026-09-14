@@ -297,6 +297,33 @@ export class BigDataCorpService {
     };
   }
 
+  // kyc (PLATAFORMA — dentro da franquia): PEP, sanções, indicação de óbito e
+  // consistência cadastral — insumo do tópico KYC do relatório do assistente
+  // (pedido do Luís 14/09). O payload bruto vai inteiro para o resumo/tela.
+  async kycCompliance(cpf: string): Promise<ConsultaAdicionalRetorno> {
+    if (!this.configurado) {
+      this.logger.warn('BigDataCorp SEM credenciais — KYC SIMULADO');
+      return { simulado: true, campos: { pep: false, sancoes: 0 }, resumo: 'sem indicação de PEP ou sanção (simulado)', protocolo: `sim_ky_${cpf.slice(-4)}`, statusApi: null };
+    }
+    const corpo = await this.consultar(cpf, 'kyc', URL_PESSOAS);
+    const r0 = (corpo.Result?.[0] ?? {}) as Record<string, unknown>;
+    const bloco = this.acharBloco(r0, ['KycData', 'Kyc', 'KYCData']) ?? this.acharBlocoComCampo(r0, 'IsCurrentlyPEP') ?? {};
+    const pep = typeof bloco.IsCurrentlyPEP === 'boolean' ? bloco.IsCurrentlyPEP : typeof bloco.PEPHistory !== 'undefined' ? Array.isArray(bloco.PEPHistory) && bloco.PEPHistory.length > 0 : null;
+    const sancoes =
+      this.numDe(bloco.TotalSanctions) ??
+      (Array.isArray(bloco.SanctionsHistory) ? bloco.SanctionsHistory.length : null) ??
+      (typeof bloco.IsCurrentlySanctioned === 'boolean' ? (bloco.IsCurrentlySanctioned ? 1 : 0) : null);
+    const ok = pep !== null || sancoes !== null;
+    return {
+      simulado: false,
+      campos: ok ? { ...(pep !== null ? { pep } : {}), ...(sancoes !== null ? { sancoes } : {}) } : {},
+      resumo: ok ? `PEP: ${pep === null ? 'não informado' : pep ? 'SIM' : 'não'} · sanções: ${sancoes ?? 'não informado'}` : null,
+      protocolo: corpo.QueryId ?? null,
+      statusApi: this.resumirStatus(corpo.Status),
+      bruto: { result: r0, status: corpo.Status ?? null },
+    };
+  }
+
   // processes detalhado (PLATAFORMA — dentro da franquia).
   async processosDetalhados(cpf: string): Promise<ConsultaAdicionalRetorno> {
     if (!this.configurado) {
