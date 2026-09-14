@@ -151,14 +151,20 @@ export class AssistenteAnaliseService {
             };
           };
           const parser = new PDFParse({ data: new Uint8Array(buffer) });
+          let textoCurto = true;
           try {
             const r = await parser.getText();
             const texto = (r.text ?? '').trim();
             if (texto.length >= 80) textoExtraido = texto.slice(0, 50_000);
+            // Texto CURTO é suspeito de boilerplate (caso real da CNH-e do
+            // Vinicius, 14/09: a camada de texto só tinha o aviso do Assinador
+            // Serpro — os DADOS estão na imagem). Abaixo do limiar, renderiza
+            // as páginas TAMBÉM e o dossiê entrega texto + imagem.
+            textoCurto = texto.length < 800;
           } catch (e) {
             this.logger.warn(`pdf-parse getText falhou em ${doc.arquivoRef}: ${(e as Error).message}`);
           }
-          if (!textoExtraido) {
+          if (textoCurto) {
             // Renderização independente da extração: uma falha não cala a outra.
             try {
               const shot = await parser.getScreenshot({ first: 2, scale: 2 });

@@ -120,6 +120,14 @@ export class McpAzitService {
               type: 'text',
               text: `===== ANEXO "${d.nome}" (PDF · tipo declarado: ${d.tipoDeclarado}) — texto extraído do documento =====\n${d.textoExtraido}\n===== fim do anexo "${d.nome}" =====`,
             });
+            // Texto curto + páginas renderizadas (CNH-e: os dados estão na
+            // imagem, o texto é só o boilerplate da assinatura digital).
+            for (const pagina of d.paginasImagem) {
+              content.push({ type: 'image', data: pagina, mimeType: 'image/png' });
+            }
+            if (d.paginasImagem.length > 0) {
+              content.push({ type: 'text', text: `(As ${d.paginasImagem.length} imagem(ns) acima são as páginas renderizadas do MESMO anexo "${d.nome}" — o texto extraído era curto e os dados podem estar na imagem.)` });
+            }
           } else if (d.paginasImagem.length > 0) {
             // PDF sem texto (CNH-e digitalizada): páginas renderizadas como
             // PNG no servidor — o claude.ai lê imagem normalmente.
