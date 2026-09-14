@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   originacaoService,
@@ -70,6 +70,7 @@ type Passo = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 'reprovada';
 
 export function AtendimentoPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [passo, setPasso] = useState<Passo>(1);
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -110,6 +111,37 @@ export function AtendimentoPage() {
   const [descComplementar, setDescComplementar] = useState('');
   const [rendaTexto, setRendaTexto] = useState('');
   const [parecerTexto, setParecerTexto] = useState('');
+
+  // Retomada de simulação pela LISTA (?simulacao=<id> — correção 14/09: a
+  // lista apontava para /originacao, rota que nunca existiu, e o router caía
+  // em "Unexpected Application Error! 404"). Restaura o contexto (lead ou
+  // titular do cliente) e abre direto no passo 3 (ofertas).
+  useEffect(() => {
+    const simId = searchParams.get('simulacao');
+    if (!simId) return;
+    (async () => {
+      try {
+        const s = await originacaoService.detalheSimulacao(simId);
+        setSimulacao(s);
+        setLeadId(s.leadId ?? null);
+        if (s.cliente) {
+          setNome(s.cliente.nome ?? '');
+          setCpf(s.cliente.cpf ?? '');
+          setTelefone(s.cliente.telefone ?? '');
+          if (s.cliente.titularId) {
+            const det = await titularService.detalhe(s.cliente.titularId);
+            setTitular(det.titular);
+            setTipoCliente('existente');
+          }
+        }
+        setPasso(3);
+      } catch (e) {
+        setErro(mensagemErro(e));
+      }
+    })();
+    // roda uma vez, na chegada com o parâmetro
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ativos = useQuery({
     queryKey: ['atendimento-ativos'],

@@ -38,7 +38,9 @@ export function SimulacoesPage() {
               const podeContinuar = !['convertida', 'cancelada', 'expirada'].includes(s.status);
               const ir = () => {
                 if (s.propostaId) navigate(`/propostas/${s.propostaId}`);
-                else if (podeContinuar) navigate(`/originacao?simulacao=${s.id}`);
+                // Retomada no funil (correção 14/09: apontava para /originacao,
+                // rota que nunca existiu — Application Error 404 do router).
+                else if (podeContinuar) navigate(`/atendimento?simulacao=${s.id}`);
               };
               return (
               <tr key={s.id}
