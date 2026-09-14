@@ -151,14 +151,23 @@ export class AssistenteAnaliseService {
             };
           };
           const parser = new PDFParse({ data: new Uint8Array(buffer) });
-          const r = await parser.getText();
-          const texto = (r.text ?? '').trim();
-          if (texto.length >= 80) {
-            textoExtraido = texto.slice(0, 50_000);
-          } else {
-            const shot = await parser.getScreenshot({ first: 2, scale: 2 });
-            for (const pg of shot.pages ?? []) {
-              if (pg?.data?.length) paginasImagem.push(Buffer.from(pg.data).toString('base64'));
+          try {
+            const r = await parser.getText();
+            const texto = (r.text ?? '').trim();
+            if (texto.length >= 80) textoExtraido = texto.slice(0, 50_000);
+          } catch (e) {
+            this.logger.warn(`pdf-parse getText falhou em ${doc.arquivoRef}: ${(e as Error).message}`);
+          }
+          if (!textoExtraido) {
+            // Renderização independente da extração: uma falha não cala a outra.
+            try {
+              const shot = await parser.getScreenshot({ first: 2, scale: 2 });
+              for (const pg of shot.pages ?? []) {
+                if (pg?.data?.length) paginasImagem.push(Buffer.from(pg.data).toString('base64'));
+              }
+              if (paginasImagem.length === 0) this.logger.warn(`pdf-parse getScreenshot sem páginas em ${doc.arquivoRef}`);
+            } catch (e) {
+              this.logger.warn(`pdf-parse getScreenshot falhou em ${doc.arquivoRef}: ${(e as Error).message}`);
             }
           }
           await parser.destroy?.();
