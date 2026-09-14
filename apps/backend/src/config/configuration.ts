@@ -11,6 +11,8 @@ export interface AppConfig {
   zapi: { instanceId: string; token: string; clientToken: string };
   // Assistente de análise (IA — 14/09): API do Claude (Anthropic).
   anthropic: { apiKey: string; modelo: string };
+  // Connector MCP do claude.ai (14/09): segredo da URL do endpoint.
+  mcp: { secret: string };
 }
 
 export default (): AppConfig => ({
@@ -40,4 +42,5 @@ export default (): AppConfig => ({
     apiKey: process.env.ANTHROPIC_API_KEY ?? '',
     modelo: process.env.ANTHROPIC_MODEL ?? 'claude-opus-5',
   },
+  mcp: { secret: process.env.MCP_SECRET ?? '' },
 });

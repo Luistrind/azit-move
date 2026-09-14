@@ -19,6 +19,6 @@ import { ResumoAnaliseProcessor } from './resumo-analise.processor';
   ],
   controllers: [AnaliseController],
   providers: [AnaliseService, AssistenteAnaliseService, ResumoAnaliseProcessor],
-  exports: [AnaliseService],
+  exports: [AnaliseService, AssistenteAnaliseService],
 })
 export class AnaliseModule {}

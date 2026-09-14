@@ -1306,6 +1306,19 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 > roda em fila (worker) com estados gerando/concluído/falha/não-configurado (Regra 12:
 > sem chave, aviso claro — nunca buraco). Consulta **KYC** (PEP/sanções/óbito — dataset
 > `kyc` da Plataforma, franquia) entrou na 2ª camada (7 consultas automáticas).
+>
+> **Connector MCP para o claude.ai (14/09, decisão Luís — custo coberto pela assinatura
+> Max dele):** endpoint `POST /api/v1/mcp/:secret` (Streamable HTTP stateless, SDK oficial
+> MCP) com 4 ferramentas: `listar_analises`, `obter_prompt_relatorio` (o mesmo prompt do
+> pipeline — fonte única), `obter_dossie_analise` (cadastro + payloads brutos + documentos
+> como imagem/PDF) e `salvar_relatorio_analise` (grava no `resumoIa`, modelo "claude.ai ·
+> connector MCP", auditado). Uso: connector custom no claude.ai do Luís + Project com
+> instrução curta → uma mensagem gera e salva o relatório na análise. Escopo mínimo:
+> leitura de análise + escrita do resumo, nada mais. Autenticação PROVISÓRIA por segredo
+> na URL (`MCP_SECRET`, ≥24 chars, tempo constante; sem env → 404) — marcada para evoluir
+> a OAuth se o connector ganhar mais usuários (Regra 12). Convive com o pipeline
+> automático da API: quem tiver `ANTHROPIC_API_KEY` gera sozinho; o MCP é a via de custo
+> zero/aprofundamento.
 - **Máquina de estados**: os 20 status oficiais da Política §25, um ativo por vez, transições com pré-condições e histórico. **Encerramentos classificados**: não aprovação ≠ desistência ≠ ausência de retorno ≠ expiração.
 - **Pacote mínimo** bloqueante para liberar a Contratos e Ativação (decisão válida, parecer + códigos, documentos, CNH do condutor, consultas válidas ou ausência decidida pelo COCAD, renda apurada, sem pendência, ressalvas cumpridas, garantidor aceito, versão da política, responsável).
 - **Parâmetros versionados** (mesma mecânica do simulador): limites, fatores, validades (consultas 30d, aprovação 10du), prazos e texto da autorização. Cada análise congela a versão aplicada.

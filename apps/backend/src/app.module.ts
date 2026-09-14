@@ -23,6 +23,7 @@ import { OperacoesModule } from './modules/operacoes/operacoes.module';
 import { OriginacaoModule } from './modules/originacao/originacao.module';
 import { FunilModule } from './modules/funil/funil.module';
 import { AnaliseModule } from './modules/analise/analise.module';
+import { McpModule } from './modules/mcp/mcp.module';
 import { CapitalModule } from './modules/capital/capital.module';
 import { UsuariosModule } from './modules/usuarios/usuarios.module';
 import { InicioModule } from './modules/inicio/inicio.module';
@@ -61,6 +62,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     OriginacaoModule,
     FunilModule,
     AnaliseModule,
+    McpModule,
     CapitalModule,
     UsuariosModule,
     InicioModule,

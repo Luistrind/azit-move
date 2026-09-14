@@ -21,6 +21,7 @@
     "@anthropic-ai/sdk": "^0.125.0",
     "@azit/types": "workspace:*",
     "@azit/utils": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@nestjs/bullmq": "^10.0.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^3.0.0",
