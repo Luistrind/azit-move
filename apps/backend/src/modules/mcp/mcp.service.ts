@@ -120,10 +120,17 @@ export class McpAzitService {
               type: 'text',
               text: `===== ANEXO "${d.nome}" (PDF · tipo declarado: ${d.tipoDeclarado}) — texto extraído do documento =====\n${d.textoExtraido}\n===== fim do anexo "${d.nome}" =====`,
             });
+          } else if (d.paginasImagem.length > 0) {
+            // PDF sem texto (CNH-e digitalizada): páginas renderizadas como
+            // PNG no servidor — o claude.ai lê imagem normalmente.
+            for (const pagina of d.paginasImagem) {
+              content.push({ type: 'image', data: pagina, mimeType: 'image/png' });
+            }
+            content.push({ type: 'text', text: `(As ${d.paginasImagem.length} imagem(ns) acima são as páginas do anexo "${d.nome}", PDF digitalizado, tipo declarado: ${d.tipoDeclarado}.)` });
           } else {
             content.push({
               type: 'text',
-              text: `⚠ ANEXO "${d.nome}" (PDF · tipo declarado: ${d.tipoDeclarado}): sem texto extraível (provável digitalização/imagem). NÃO foi possível ler o conteúdo — trate como documento não lido e sinalize no relatório.`,
+              text: `⚠ ANEXO "${d.nome}" (PDF · tipo declarado: ${d.tipoDeclarado}): sem texto extraível nem renderização possível. NÃO foi possível ler o conteúdo — trate como documento não lido e sinalize no relatório.`,
             });
           }
         }

@@ -79,7 +79,9 @@ export class AssistenteAnaliseService {
     // O connector MCP entrega esse texto (o claude.ai não processa PDF binário
     // vindo de tool result — causa da renda errada no caso real de 14/09);
     // a API continua recebendo o binário (lê PDF nativamente, com layout).
-    documentos: { nome: string; tipoDeclarado: string; media: string; base64: string; textoExtraido: string | null }[];
+    // paginasImagem: PDF SEM texto (CNH-e digitalizada — caso Vinicius 14/09)
+    // vira PNG das primeiras páginas, que o claude.ai lê como imagem.
+    documentos: { nome: string; tipoDeclarado: string; media: string; base64: string; textoExtraido: string | null; paginasImagem: string[] }[];
     documentosIgnorados: string[];
     totalConsultas: number;
   }> {
@@ -107,7 +109,7 @@ export class AssistenteAnaliseService {
     });
 
     let bytesDocs = 0;
-    const documentos: { nome: string; tipoDeclarado: string; media: string; base64: string; textoExtraido: string | null }[] = [];
+    const documentos: { nome: string; tipoDeclarado: string; media: string; base64: string; textoExtraido: string | null; paginasImagem: string[] }[] = [];
     const ignorados: string[] = [];
 
     // 1. Documentos anexados como binário (PDF/imagem), com guardas de tamanho.
@@ -131,25 +133,38 @@ export class AssistenteAnaliseService {
       }
       bytesDocs += buffer.length;
       // PDF digital (Uber/99/extrato): texto extraído no servidor. PDF
-      // escaneado (sem texto útil) fica null — o consumidor sinaliza.
+      // escaneado (CNH-e etc., sem texto útil): PNG das primeiras páginas —
+      // o claude.ai lê imagem de tool result, PDF binário não (casos 14/09).
       let textoExtraido: string | null = null;
+      const paginasImagem: string[] = [];
       if (media === 'application/pdf') {
         try {
           // pdf-parse v2 (API de classe).
           // eslint-disable-next-line @typescript-eslint/no-var-requires
           const { PDFParse } = require('pdf-parse') as {
-            PDFParse: new (opts: { data: Uint8Array }) => { getText(): Promise<{ text: string }>; destroy?: () => Promise<void> };
+            PDFParse: new (opts: { data: Uint8Array }) => {
+              getText(): Promise<{ text: string }>;
+              getScreenshot(opts?: { first?: number; scale?: number }): Promise<{ pages: { data: Uint8Array }[] }>;
+              destroy?: () => Promise<void>;
+            };
           };
           const parser = new PDFParse({ data: new Uint8Array(buffer) });
           const r = await parser.getText();
-          await parser.destroy?.();
           const texto = (r.text ?? '').trim();
-          if (texto.length >= 80) textoExtraido = texto.slice(0, 50_000);
+          if (texto.length >= 80) {
+            textoExtraido = texto.slice(0, 50_000);
+          } else {
+            const shot = await parser.getScreenshot({ first: 2, scale: 2 });
+            for (const pg of shot.pages ?? []) {
+              if (pg?.data?.length) paginasImagem.push(Buffer.from(pg.data).toString('base64'));
+            }
+          }
+          await parser.destroy?.();
         } catch (e) {
           this.logger.warn(`pdf-parse falhou em ${doc.arquivoRef}: ${(e as Error).message}`);
         }
       }
-      documentos.push({ nome: doc.arquivoRef, tipoDeclarado: doc.tipo, media, base64: buffer.toString('base64'), textoExtraido });
+      documentos.push({ nome: doc.arquivoRef, tipoDeclarado: doc.tipo, media, base64: buffer.toString('base64'), textoExtraido, paginasImagem });
     }
 
     // 2. Dados cadastrais estruturados do sistema.
