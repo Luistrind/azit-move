@@ -84,6 +84,46 @@ export interface ElegivelConta {
   acordosAbertos: number;
 }
 
+// F1 da Novação (doc adaptações A7 passos 1–2, 13/09): decomposição do saldo
+// da conta por produto — parte do veículo (Contrato 1) × demais produtos
+// (Contrato 2 — Termo de Regularização de Débitos). Centavos.
+export interface ComponenteDecomposicao {
+  origem: string;
+  produto: 'veiculo' | 'seguro' | 'reembolso' | 'outro';
+  situacao: 'vencido' | 'futuro';
+  dias: number;
+  valorNominal: number;
+  ajuste: number; // mora (+) ou desconto de valor presente (−)
+  valor: number;
+}
+
+export interface DecomposicaoNovacao {
+  contaId: string;
+  titularId: string;
+  titularNome: string;
+  dataBase: string;
+  contratos: { id: string; numero: string; descricao: string; temAtivo: boolean; status: string; taxaVpMensal: number }[];
+  parteVeiculo: { vencido: number; futuro: number; deAcordos: number; total: number };
+  demaisProdutos: {
+    porProduto: { produto: string; vencido: number; futuro: number; deAcordos: number; total: number }[];
+    total: number;
+  };
+  totalGeral: number;
+  memoria: {
+    componentes: ComponenteDecomposicao[];
+    acordos: {
+      acordoId: string;
+      status: string | null;
+      saldoAberto: number;
+      nominalCoberto: number;
+      encargosAcordo: number;
+      porProduto: { produto: string; dividaOriginal: number; saldo: number }[];
+      parcelasAbertas: ComponenteDecomposicao[];
+    }[];
+    ignorados: { origem: string; produto: string; motivo: string; valorNominal: number }[];
+  };
+}
+
 export interface SimulacaoQuitacao {
   fonte?: 'catalogo' | 'parametros';
   liquidacaoTotal?: boolean;
@@ -132,6 +172,11 @@ export const operacoesService = {
   },
   async simularEntrada(acordoId: string): Promise<void> {
     await api.post(`/api/v1/dev/simular-entrada-acordo/${acordoId}`);
+  },
+  // F1 da Novação: decomposição do saldo por produto (insumo da simulação).
+  async decomposicaoNovacao(contaId: string): Promise<DecomposicaoNovacao> {
+    const { data } = await api.get(`/api/v1/contas/${contaId}/novacao/decomposicao`);
+    return data;
   },
   // 6.6 — Novação (recuperação radical): liquida o contrato origem e gera um novo.
   async novacoes(): Promise<Novacao[]> {

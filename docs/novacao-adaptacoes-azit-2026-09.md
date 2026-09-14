@@ -34,7 +34,8 @@ A novação gera **dois contratos, assinados no mesmo ato (mesmo envelope)**:
   (investidor). O saldo apurado da parte do veículo **compõe o cálculo do novo contrato**,
   que nasce com a mesma estrutura de um contrato feito do zero. Isola a reserva de domínio,
   a garantia e o recebível do investidor.
-- **Contrato 2 — Regularização dos demais produtos** (nome de domínio a batizar — aberto).
+- **Contrato 2 — Termo de Regularização de Débitos** (nome provisório em uso desde 13/09;
+  batismo definitivo pendente com o jurídico).
   Credor: Azit Move. Reembolso parcelado + seguro vencido + parte não-veículo de
   renegociações anteriores. **Não é saldo de novação — é outra coisa**: instrumento separado
   da dívida com a Azit, sem garantia vinculada. A rastreabilidade por produto fica nos
@@ -143,6 +144,19 @@ cronogramas na ordem descrita e nada fica pela metade.
 
 ## Abertos
 
-- **Nome de domínio do Contrato 2** (vocabulário: um conceito = um nome).
+- **Nome de domínio do Contrato 2**: em uso o provisório "Termo de Regularização de
+  Débitos" (decisão Luís 13/09 — "deixo sua solução por enquanto"); batismo definitivo
+  com o jurídico (vocabulário: um conceito = um nome).
 - Forma jurídica da cláusula de inadimplência cruzada (Jurídico).
 - Pendências PEND-NV-01..10 do V1.0 no que ainda se aplicarem (não resolver por inferência).
+
+## Construção (fases)
+
+- **F1 — CONSTRUÍDA (13/09):** motor de decomposição do saldo por produto (A7 passos 1–2)
+  em `@azit/utils` (`novacao.ts`, testes unitários), montador no backend
+  (`novacao-decomposicao.service.ts`), endpoint `GET /contas/:id/novacao/decomposicao` e
+  prévia na ficha do titular (Contrato 1 × Contrato 2, memória de cálculo auditável).
+- F0/F2: produto `novacao` no Catálogo; simulação e proposta (taxa inicial de
+  processamento, desconto CONAC, Price 1,70%, sequenciamento A6), dois instrumentos
+  assinados juntos, recebimento inicial, ativação atômica.
+- F3: ativos, garantias e troca de veículo (A5).

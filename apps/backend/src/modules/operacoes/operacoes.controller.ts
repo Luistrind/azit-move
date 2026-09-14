@@ -18,6 +18,7 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { RenegociacaoService } from './renegociacao.service';
 import { NovacaoService } from './novacao.service';
+import { NovacaoDecomposicaoService } from './novacao-decomposicao.service';
 import { QuitacaoService } from './quitacao.service';
 import { SinistroService } from './sinistro.service';
 import { ReajusteService } from './reajuste.service';
@@ -38,6 +39,7 @@ export class OperacoesController {
   constructor(
     private readonly renegociacao: RenegociacaoService,
     private readonly novacao: NovacaoService,
+    private readonly novacaoDecomposicao: NovacaoDecomposicaoService,
     private readonly quitacao: QuitacaoService,
     private readonly sinistro: SinistroService,
     private readonly reajuste: ReajusteService,
@@ -100,6 +102,15 @@ export class OperacoesController {
   }
 
   // --- Novação (6.6) — recuperação radical ---
+
+  // F1 (doc adaptações A7 passos 1–2, 13/09): decomposição do saldo da conta
+  // por produto — parte do veículo (Contrato 1) × demais produtos (Contrato 2).
+  // Insumo da simulação; explode faturas em aberto e acordos via snapshots.
+  @Get('contas/:id/novacao/decomposicao')
+  decomposicaoNovacao(@Param('id') id: string) {
+    return this.novacaoDecomposicao.decomporConta(id);
+  }
+
   @Get('novacoes')
   novacoes() {
     return this.novacao.listar();

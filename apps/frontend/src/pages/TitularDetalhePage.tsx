@@ -16,6 +16,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { Modal } from '../components/Modal';
 import { BotaoVerRetorno } from '../components/RetornoBiro';
 import { RenegociacaoWizard } from '../components/RenegociacaoWizard';
+import { NovacaoDecomposicaoModal } from '../components/NovacaoDecomposicao';
 import { toast } from '../components/Toast';
 import { CONTRATO_STATUS_COLORS, SITUACAO_CONTRATO_COLORS, SITUACAO_CONTRATO_LABEL, FATURA_SITUACAO_COLORS, FATURA_SITUACAO_LABEL } from '../config/statusColors';
 import { Metrica, Campo } from '../components/Metrica';
@@ -55,6 +56,8 @@ export function TitularDetalhePage() {
   // Hub de ações do titular: contratar crédito, renegociar, desbloquear.
   const pode = usePodeRole();
   const [renegOpen, setRenegOpen] = useState(false);
+  // Novação F1 (doc adaptações 13/09): prévia da decomposição do saldo por produto.
+  const [novacaoOpen, setNovacaoOpen] = useState(false);
   const viewer = useDocumentoViewer(); // visualização inline de documentos (08/09)
   const [desbloqueando, setDesbloqueando] = useState(false);
 
@@ -261,6 +264,15 @@ export function TitularDetalhePage() {
               style={{ background: 'var(--accent)', color: '#fff' }}
             >
               Renegociar atraso
+            </button>
+          )}
+          {contaId && contratosCredito.length > 0 && (
+            <button
+              onClick={() => setNovacaoOpen(true)}
+              className="h-[32px] rounded-[9px] px-[14px] text-[12px] font-semibold"
+              style={{ background: 'var(--surface-input)', color: 'var(--text-body)', border: '1px solid var(--border)' }}
+            >
+              Novação (prévia do saldo)
             </button>
           )}
         </div>
@@ -694,6 +706,11 @@ export function TitularDetalhePage() {
       {/* Wizard de renegociação conta-cêntrica (Doc 2 §7.7) */}
       {renegOpen && contaId && (
         <RenegociacaoWizard contaId={contaId} titular={t.nome} onClose={() => { setRenegOpen(false); void recarregar(); }} />
+      )}
+
+      {/* Novação F1 (doc adaptações 13/09): decomposição do saldo por produto */}
+      {contaId && (
+        <NovacaoDecomposicaoModal contaId={contaId} open={novacaoOpen} onClose={() => setNovacaoOpen(false)} />
       )}
     </div>
   );

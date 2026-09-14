@@ -6,6 +6,7 @@ import { ContratoModule } from '../contrato/contrato.module';
 import { OperacoesController } from './operacoes.controller';
 import { RenegociacaoService } from './renegociacao.service';
 import { NovacaoService } from './novacao.service';
+import { NovacaoDecomposicaoService } from './novacao-decomposicao.service';
 import { QuitacaoService } from './quitacao.service';
 import { SinistroService } from './sinistro.service';
 import { ReajusteService } from './reajuste.service';
@@ -25,6 +26,7 @@ import { EfetivarAcordoProcessor } from './efetivar-acordo.processor';
   providers: [
     RenegociacaoService,
     NovacaoService,
+    NovacaoDecomposicaoService,
     QuitacaoService,
     SinistroService,
     ReajusteService,

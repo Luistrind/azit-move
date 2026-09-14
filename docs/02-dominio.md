@@ -1019,6 +1019,19 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > é componente de dívida do cliente; juros de acordos anteriores rateados em partes iguais
 > entre os produtos na decomposição.
 >
+> **Construção por fases (início 13/09, autorização Luís):** **F1 CONSTRUÍDA** — motor puro
+> de decomposição do saldo por produto em `@azit/utils` (`novacao.ts`: vencidos com multa
+> 2% + mora 1% a.m. pró-rata base 30; todo o futuro do veículo a valor presente pela taxa
+> do contrato de origem; seguro futuro fora; acordos explodidos pela composição coberta com
+> encargos em partes iguais, inclusive acordo sobre acordo), montador
+> (`novacao-decomposicao.service.ts`), endpoint `GET /contas/:id/novacao/decomposicao` e
+> prévia em tela na ficha do titular ("Novação (prévia do saldo)": Contrato 1 × Contrato 2
+> com memória de cálculo). O form manual de novação saiu da tela de Acordos (o backend
+> 1:1 antigo permanece até a F2 substituí-lo). **Nome provisório do Contrato 2:** "Termo de
+> Regularização de Débitos" (batismo definitivo pendente com o jurídico). Próximas fases:
+> F0/F2 (produto `novacao` no Catálogo; simulação/proposta, CONAC, dois instrumentos
+> assinados juntos, recebimento inicial, ativação atômica), F3 (ativos/garantias/troca).
+>
 > **Fonte das fórmulas:** `docs/Planilha Novacao de Contrato - Azit Move.xlsx` (extraída
 > célula a célula, 13/09) — abas: **Parâmetros** (NV001–019, ICVF/ICPF, mora 2%+1% a.m.
 > base 30); **Simulador** (memória de liquidação POR COMPONENTE com a taxa de desconto do
