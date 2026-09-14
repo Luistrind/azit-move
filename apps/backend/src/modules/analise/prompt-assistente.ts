@@ -11,6 +11,15 @@ export const PREAMBULO_INSUMOS = `Você receberá, nesta ordem:
 
 Payloads truncados terminam com "[TRUNCADO]". Produza o relatório no formato exigido abaixo, em português.`;
 
+// Correção de caso real (Lourenço, 14/09): mês atribuído pela data de emissão
+// e média contaminada por meses incompletos. Vale nos DOIS caminhos (pipeline
+// da API e connector MCP do claude.ai).
+export const REGRAS_DEMONSTRATIVOS = `REGRAS ADICIONAIS SOBRE OS DEMONSTRATIVOS DE RENDA:
+1. Atribua cada demonstrativo Uber/99 ao MÊS DO PERÍODO DE REFERÊNCIA impresso no documento (as datas das corridas/ganhos, ex.: "01/04–30/04"), NUNCA à data de emissão, de pagamento ou do repasse — demonstrativos costumam ser emitidos no mês seguinte ao período.
+2. Antes de somar, liste internamente cada demonstrativo com: plataforma, período impresso (dd/mm–dd/mm) e valor bruto. No relatório, ao citar os meses, use o mês do período.
+3. Só declare que dois arquivos são "cópias do mesmo demonstrativo" se período, plataforma E valores forem idênticos; nome de arquivo parecido não basta.
+4. Para a média, use os 3 meses mais recentes em que a renda esteja BEM documentada; um mês com documento de apenas uma plataforma e valor desproporcionalmente baixo em relação aos demais é candidato a "período parcial/incompleto" — nesse caso, informe a limitação e calcule a média também com os meses completos, deixando claro qual é qual.`;
+
 export const PROMPT_ASSISTENTE_ANALISE = `ATUE COMO ASSISTENTE DE ANÁLISE CADASTRAL E DE CRÉDITO DA AZIT MOVE.
 
 CONTEXTO

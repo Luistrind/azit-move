@@ -5,7 +5,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { PrismaService } from '../../database/prisma.service';
-import { PREAMBULO_INSUMOS, PROMPT_ASSISTENTE_ANALISE } from './prompt-assistente';
+import { PREAMBULO_INSUMOS, PROMPT_ASSISTENTE_ANALISE, REGRAS_DEMONSTRATIVOS } from './prompt-assistente';
 
 // Mesmo diretório onde a esteira grava os anexos (proposta.service).
 const UPLOADS_DIR = join(process.cwd(), 'uploads', 'documentos');
@@ -75,7 +75,11 @@ export class AssistenteAnaliseService {
     titularPrincipalNome: string | null;
     cadastroTexto: string;
     consultasTexto: string[];
-    documentos: { nome: string; tipoDeclarado: string; media: string; base64: string }[];
+    // textoExtraido: conteúdo textual do PDF extraído NO SERVIDOR (pdf-parse).
+    // O connector MCP entrega esse texto (o claude.ai não processa PDF binário
+    // vindo de tool result — causa da renda errada no caso real de 14/09);
+    // a API continua recebendo o binário (lê PDF nativamente, com layout).
+    documentos: { nome: string; tipoDeclarado: string; media: string; base64: string; textoExtraido: string | null }[];
     documentosIgnorados: string[];
     totalConsultas: number;
   }> {
@@ -103,7 +107,7 @@ export class AssistenteAnaliseService {
     });
 
     let bytesDocs = 0;
-    const documentos: { nome: string; tipoDeclarado: string; media: string; base64: string }[] = [];
+    const documentos: { nome: string; tipoDeclarado: string; media: string; base64: string; textoExtraido: string | null }[] = [];
     const ignorados: string[] = [];
 
     // 1. Documentos anexados como binário (PDF/imagem), com guardas de tamanho.
@@ -126,7 +130,26 @@ export class AssistenteAnaliseService {
         continue;
       }
       bytesDocs += buffer.length;
-      documentos.push({ nome: doc.arquivoRef, tipoDeclarado: doc.tipo, media, base64: buffer.toString('base64') });
+      // PDF digital (Uber/99/extrato): texto extraído no servidor. PDF
+      // escaneado (sem texto útil) fica null — o consumidor sinaliza.
+      let textoExtraido: string | null = null;
+      if (media === 'application/pdf') {
+        try {
+          // pdf-parse v2 (API de classe).
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { PDFParse } = require('pdf-parse') as {
+            PDFParse: new (opts: { data: Uint8Array }) => { getText(): Promise<{ text: string }>; destroy?: () => Promise<void> };
+          };
+          const parser = new PDFParse({ data: new Uint8Array(buffer) });
+          const r = await parser.getText();
+          await parser.destroy?.();
+          const texto = (r.text ?? '').trim();
+          if (texto.length >= 80) textoExtraido = texto.slice(0, 50_000);
+        } catch (e) {
+          this.logger.warn(`pdf-parse falhou em ${doc.arquivoRef}: ${(e as Error).message}`);
+        }
+      }
+      documentos.push({ nome: doc.arquivoRef, tipoDeclarado: doc.tipo, media, base64: buffer.toString('base64'), textoExtraido });
     }
 
     // 2. Dados cadastrais estruturados do sistema.
@@ -208,7 +231,7 @@ export class AssistenteAnaliseService {
         system: [
           {
             type: 'text',
-            text: `${PROMPT_ASSISTENTE_ANALISE}\n\n──────────────────────────────\n\n${PREAMBULO_INSUMOS}`,
+            text: `${PROMPT_ASSISTENTE_ANALISE}\n\n──────────────────────────────\n\n${REGRAS_DEMONSTRATIVOS}\n\n──────────────────────────────\n\n${PREAMBULO_INSUMOS}`,
             cache_control: { type: 'ephemeral' },
           },
         ],

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { PrismaService } from '../../database/prisma.service';
 import { AssistenteAnaliseService } from '../analise/assistente-analise.service';
-import { PROMPT_ASSISTENTE_ANALISE } from '../analise/prompt-assistente';
+import { PROMPT_ASSISTENTE_ANALISE, REGRAS_DEMONSTRATIVOS } from '../analise/prompt-assistente';
 
 // ============================================================
 // MCP — connector do Azit Hub para o claude.ai (decisão Luís 14/09):
@@ -74,7 +74,7 @@ export class McpAzitService {
         description:
           'Retorna o prompt oficial do RELATÓRIO CADASTRAL RESUMIDO da Azit Move (regras de renda bruta, crédito, jurídico, criminal, KYC e formato). Siga-o à risca ao gerar o relatório.',
       },
-      async () => ({ content: [{ type: 'text', text: PROMPT_ASSISTENTE_ANALISE }] }),
+      async () => ({ content: [{ type: 'text', text: `${PROMPT_ASSISTENTE_ANALISE}\n\n──────────────────────────────\n\n${REGRAS_DEMONSTRATIVOS}` }] }),
     );
 
     registrar(
@@ -113,11 +113,18 @@ export class McpAzitService {
           if (d.media.startsWith('image/')) {
             content.push({ type: 'image', data: d.base64, mimeType: d.media });
             content.push({ type: 'text', text: `(A imagem acima é o anexo "${d.nome}", tipo declarado: ${d.tipoDeclarado}.)` });
+          } else if (d.textoExtraido) {
+            // PDF digital: TEXTO extraído no servidor — o claude.ai não lê PDF
+            // binário de tool result (causa da renda errada no caso 14/09).
+            content.push({
+              type: 'text',
+              text: `===== ANEXO "${d.nome}" (PDF · tipo declarado: ${d.tipoDeclarado}) — texto extraído do documento =====\n${d.textoExtraido}\n===== fim do anexo "${d.nome}" =====`,
+            });
           } else {
-            // PDFs vão como resource embutido; se o cliente não processar o
-            // conteúdo, o relatório deve sinalizar "documento não lido".
-            content.push({ type: 'resource', resource: { uri: `azit://documento/${encodeURIComponent(d.nome)}`, mimeType: d.media, blob: d.base64 } });
-            content.push({ type: 'text', text: `(O arquivo acima é o anexo "${d.nome}", tipo declarado: ${d.tipoDeclarado}.)` });
+            content.push({
+              type: 'text',
+              text: `⚠ ANEXO "${d.nome}" (PDF · tipo declarado: ${d.tipoDeclarado}): sem texto extraível (provável digitalização/imagem). NÃO foi possível ler o conteúdo — trate como documento não lido e sinalize no relatório.`,
+            });
           }
         }
         if (insumos.documentosIgnorados.length) {
