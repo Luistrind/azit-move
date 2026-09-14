@@ -33,33 +33,86 @@ function LinhaValor({ label, valor, forte }: { label: string; valor: number; for
   );
 }
 
-function TabelaMemoria({ componentes }: { componentes: ComponenteDecomposicao[] }) {
+// Memória AGREGADA por produto × situação (correção 14/09: um contrato de 209
+// parcelas listava tudo e estourava o modal). O parcela-a-parcela abre sob
+// demanda, dentro de área com rolagem própria.
+function TabelaMemoria({ componentes, rotuloGrupo }: { componentes: ComponenteDecomposicao[]; rotuloGrupo?: string }) {
+  const [detalhe, setDetalhe] = useState(false);
   if (componentes.length === 0) return null;
+
+  const grupos = new Map<string, { rotulo: string; qtde: number; nominal: number; ajuste: number; valor: number }>();
+  for (const c of componentes) {
+    const chave = `${c.produto}|${c.situacao}`;
+    const g = grupos.get(chave) ?? {
+      rotulo: `${rotuloGrupo ?? PRODUTO_LABEL[c.produto] ?? c.produto} — ${c.situacao === 'vencido' ? 'vencidas (com mora)' : 'a vencer (valor presente)'}`,
+      qtde: 0, nominal: 0, ajuste: 0, valor: 0,
+    };
+    g.qtde += 1;
+    g.nominal += c.valorNominal;
+    g.ajuste += c.ajuste;
+    g.valor += c.valor;
+    grupos.set(chave, g);
+  }
+
+  const th = { color: 'var(--text-label)' } as const;
   return (
-    <table className="w-full text-[11.5px]">
-      <thead>
-        <tr style={{ color: 'var(--text-label)' }}>
-          <th className="py-[3px] text-left font-semibold">Origem</th>
-          <th className="text-left font-semibold">Situação</th>
-          <th className="text-right font-semibold">Nominal</th>
-          <th className="text-right font-semibold">Ajuste</th>
-          <th className="text-right font-semibold">Valor</th>
-        </tr>
-      </thead>
-      <tbody>
-        {componentes.map((c, i) => (
-          <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-            <td className="py-[4px] pr-[8px]">{c.origem}</td>
-            <td>{c.situacao === 'vencido' ? `vencida há ${c.dias}d` : `vence em ${c.dias}d`}</td>
-            <td className="text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(c.valorNominal)}</td>
-            <td className="text-right" style={{ fontVariantNumeric: 'tabular-nums', color: c.ajuste >= 0 ? '#c0392b' : '#1e8e5a' }}>
-              {c.ajuste >= 0 ? '+' : ''}{formatCurrency(c.ajuste)}
-            </td>
-            <td className="text-right font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(c.valor)}</td>
+    <div className="flex flex-col gap-[6px]">
+      <table className="w-full text-[11.5px]">
+        <thead>
+          <tr style={th}>
+            <th className="py-[3px] text-left font-semibold">Grupo</th>
+            <th className="text-right font-semibold">Parcelas</th>
+            <th className="text-right font-semibold">Nominal</th>
+            <th className="text-right font-semibold">Ajuste</th>
+            <th className="text-right font-semibold">Valor</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {[...grupos.values()].map((g, i) => (
+            <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+              <td className="py-[4px] pr-[8px]">{g.rotulo}</td>
+              <td className="text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>{g.qtde}</td>
+              <td className="text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(g.nominal)}</td>
+              <td className="text-right" style={{ fontVariantNumeric: 'tabular-nums', color: g.ajuste >= 0 ? '#c0392b' : '#1e8e5a' }}>
+                {g.ajuste >= 0 ? '+' : ''}{formatCurrency(g.ajuste)}
+              </td>
+              <td className="text-right font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(g.valor)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button onClick={() => setDetalhe((v) => !v)} className="self-start text-[11.5px] font-semibold" style={{ color: 'var(--accent)' }}>
+        {detalhe ? '▾ Ocultar parcela a parcela' : `▸ Ver parcela a parcela (${componentes.length})`}
+      </button>
+      {detalhe && (
+        <div className="rounded-[8px]" style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--border)' }}>
+          <table className="w-full text-[11.5px]">
+            <thead>
+              <tr style={th}>
+                <th className="py-[3px] pl-[8px] text-left font-semibold">Origem</th>
+                <th className="text-left font-semibold">Situação</th>
+                <th className="text-right font-semibold">Nominal</th>
+                <th className="text-right font-semibold">Ajuste</th>
+                <th className="pr-[8px] text-right font-semibold">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {componentes.map((c, i) => (
+                <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td className="py-[4px] pl-[8px] pr-[8px]">{c.origem}</td>
+                  <td>{c.situacao === 'vencido' ? `vencida há ${c.dias}d` : `vence em ${c.dias}d`}</td>
+                  <td className="text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(c.valorNominal)}</td>
+                  <td className="text-right" style={{ fontVariantNumeric: 'tabular-nums', color: c.ajuste >= 0 ? '#c0392b' : '#1e8e5a' }}>
+                    {c.ajuste >= 0 ? '+' : ''}{formatCurrency(c.ajuste)}
+                  </td>
+                  <td className="pr-[8px] text-right font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(c.valor)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -73,7 +126,7 @@ export function NovacaoDecomposicaoModal({ contaId, open, onClose }: { contaId: 
 
   const d = dec.data;
   return (
-    <Modal open={open} onClose={onClose} title="Novação — decomposição do saldo por produto">
+    <Modal open={open} onClose={onClose} largura={720} title="Novação — decomposição do saldo por produto">
       {dec.isLoading && <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Levantando o saldo da conta…</div>}
       {dec.isError && <div className="text-[12px]" style={{ color: '#c0392b' }}>Não foi possível levantar o saldo — tente de novo.</div>}
       {d && (
@@ -151,7 +204,7 @@ export function NovacaoDecomposicaoModal({ contaId, open, onClose }: { contaId: 
                         <LinhaValor key={p.produto} label={`${PRODUTO_LABEL[p.produto] ?? p.produto} — fatia do saldo`} valor={p.saldo} />
                       ))}
                     </div>
-                    <div className="mt-[6px]"><TabelaMemoria componentes={a.parcelasAbertas} /></div>
+                    <div className="mt-[6px]"><TabelaMemoria componentes={a.parcelasAbertas} rotuloGrupo="Parcelas do plano do acordo" /></div>
                   </div>
                 ))}
               </div>
