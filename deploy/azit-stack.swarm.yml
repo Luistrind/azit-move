@@ -65,6 +65,11 @@ services:
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5}
       # Connector MCP do claude.ai (14/09): segredo da URL (>=24 chars)
       MCP_SECRET: ${MCP_SECRET:-}
+    # Uploads PERSISTENTES (correção 14/09): documentos anexados (CNH,
+    # extratos, embasamento) eram gravados no filesystem do container e
+    # SUMIAM a cada deploy — caso real do Lourenço. Volume nomeado resolve.
+    volumes:
+      - azit_uploads:/app/apps/backend/uploads
     networks: [azit_internal, PopCarrosNet]
     deploy:
       replicas: 1
@@ -102,3 +107,4 @@ networks:
 volumes:
   azit_pgdata:
   azit_redisdata:
+  azit_uploads:
