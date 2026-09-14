@@ -354,7 +354,7 @@ export function AnalisePage() {
                       disabled={ocupado}
                       onClick={() => {
                         const linhas = pend.map((t) => `• ${t.label}${t.pago ? ' (paga)' : ' (franquia)'}`).join('\n');
-                        if (!window.confirm(`Consultar os birôs da 2ª camada agora?\n\nSerão disparadas:\n${linhas}\n\nAs pagas saem via Marketplace da BigDataCorp (fora da franquia). Consultas já válidas não são repetidas.`)) return;
+                        if (!window.confirm(`Repetir as consultas pendentes/falhas agora?\n\n${linhas}\n\nAs consultas disparam sozinhas no envio para análise — este botão é só para repetir o que ficou pendente. As pagas saem via Marketplace (fora da franquia); consultas já válidas não são repetidas.`)) return;
                         void acao(() => analiseService.consultarBiroTodas(d.id), 'Consultas de birô disparadas — resultados registrados abaixo.');
                       }}
                     >

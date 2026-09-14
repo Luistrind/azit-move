@@ -1298,12 +1298,14 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 > relatório factual e neutro (cadastro, renda bruta 3M, crédito por fonte, dívidas sem
 > dupla contagem, jurídico financeiro/patrimonial, criminal/policial com tratamento de
 > homônimos e duplicidade processual, KYC) — **nunca parecer, nunca recomendação; a
-> decisão é sempre do analista** e o restante da tela segue intacto. Gera automaticamente
-> ao enviar o cadastro para análise e regenera após o gatilho único de birôs; botão
-> "Gerar/Atualizar resumo" na tela; roda em fila (worker) com estados
-> gerando/concluído/falha/não-configurado (Regra 12: sem chave, aviso claro — nunca
-> buraco). Consulta **KYC** (PEP/sanções/óbito — dataset `kyc` da Plataforma, franquia)
-> entrou na 2ª camada e no gatilho único (7 consultas).
+> decisão é sempre do analista** e o restante da tela segue intacto. **Consultas da 2ª
+> camada AUTOMÁTICAS (decisão Luís 14/09, revisão do gatilho por botão):** ao enviar o
+> cadastro para análise, o worker dispara as 7 consultas sozinho (pulando as já válidas)
+> e o resumo nasce COMPLETO de uma só vez; o botão da tela virou fallback para repetir
+> pendências/falhas. Botão "Gerar/Atualizar resumo" também regenera só o relatório; tudo
+> roda em fila (worker) com estados gerando/concluído/falha/não-configurado (Regra 12:
+> sem chave, aviso claro — nunca buraco). Consulta **KYC** (PEP/sanções/óbito — dataset
+> `kyc` da Plataforma, franquia) entrou na 2ª camada (7 consultas automáticas).
 - **Máquina de estados**: os 20 status oficiais da Política §25, um ativo por vez, transições com pré-condições e histórico. **Encerramentos classificados**: não aprovação ≠ desistência ≠ ausência de retorno ≠ expiração.
 - **Pacote mínimo** bloqueante para liberar a Contratos e Ativação (decisão válida, parecer + códigos, documentos, CNH do condutor, consultas válidas ou ausência decidida pelo COCAD, renda apurada, sem pendência, ressalvas cumpridas, garantidor aceito, versão da política, responsável).
 - **Parâmetros versionados** (mesma mecânica do simulador): limites, fatores, validades (consultas 30d, aprovação 10du), prazos e texto da autorização. Cada análise congela a versão aplicada.

@@ -72,6 +72,19 @@ export class AnaliseService implements OnModuleInit {
     }
   }
 
+  // Consultas da 2ª camada AUTOMÁTICAS no envio para análise (decisão Luís
+  // 14/09: sem botão — o resumo do assistente nasce COMPLETO de uma vez).
+  // Roda no worker: são 7 chamadas de birô e o envio da proposta não espera.
+  // O job de consultas dispara o resumo ao final (consultarBiroCamada2Todas).
+  async dispararConsultasEResumo(analiseId: string) {
+    try {
+      await this.assistente.marcarGerando(analiseId);
+      await this.filaResumo.add('consultar', { analiseId }, { removeOnComplete: true, attempts: 2 });
+    } catch (e) {
+      console.error(`dispararConsultasEResumo(${analiseId}): ${(e as Error).message}`);
+    }
+  }
+
   // COCAD via motor de aprovação: aprovado → APROVADO_COCAD; reprovado → volta a
   // PARECER_EMITIDO (a NÃO aprovação é sempre ação humana própria — Política §18).
   onModuleInit() {
@@ -237,10 +250,10 @@ export class AnaliseService implements OnModuleInit {
       }
     }
 
-    // Resumo do assistente (IA — 14/09): gera automaticamente ao ENVIAR o
-    // cadastro para análise, com o que já existe (camada 1 + documentos); o
-    // gatilho único de birôs regenera com as consultas completas.
-    await this.dispararResumoIa(analiseId);
+    // Consultas da 2ª camada + resumo do assistente, AUTOMÁTICOS no envio
+    // (decisão Luís 14/09: sem botão — o worker roda as 7 consultas, pulando
+    // as já válidas, e o resumo nasce completo de uma só vez).
+    await this.dispararConsultasEResumo(analiseId);
   }
 
   // Repetir a consulta da Camada 1 NO BIRÔ, sob demanda do analista (caso do
@@ -728,7 +741,7 @@ export class AnaliseService implements OnModuleInit {
       });
     }
     // Consultas ADICIONAIS (08/09) mapeadas junto; são apoio — sem critério novo.
-    const MAPA_TIPO: Record<string, 'CAMADA1' | 'SCORE_QUOD' | 'RESTRITIVOS' | 'BOAVISTA_SCORE' | 'SCORE_POSITIVO' | 'DISTRIBUICAO_PROCESSOS' | 'PROCESSOS'> = {
+    const MAPA_TIPO: Record<string, 'CAMADA1' | 'SCORE_QUOD' | 'RESTRITIVOS' | 'BOAVISTA_SCORE' | 'SCORE_POSITIVO' | 'DISTRIBUICAO_PROCESSOS' | 'PROCESSOS' | 'KYC'> = {
       camada1: 'CAMADA1',
       score_quod: 'SCORE_QUOD',
       restritivos: 'RESTRITIVOS',
@@ -736,8 +749,14 @@ export class AnaliseService implements OnModuleInit {
       score_positivo: 'SCORE_POSITIVO',
       distribuicao_processos: 'DISTRIBUICAO_PROCESSOS',
       processos: 'PROCESSOS',
+      kyc: 'KYC',
     };
-    const tipo = MAPA_TIPO[dto.tipo] ?? 'RESTRITIVOS';
+    const tipo = MAPA_TIPO[dto.tipo];
+    if (!tipo) {
+      // Fallback silencioso p/ RESTRITIVOS mascarou o KYC gravado errado
+      // (pego no E2E 14/09) — tipo desconhecido agora é erro explícito.
+      throw new UnprocessableEntityException({ erro: 'tipo_invalido', mensagem: `Tipo de consulta desconhecido: ${dto.tipo}` });
+    }
     const tentativas =
       (await this.prisma.db.consultaExterna.count({ where: { analiseId, titularId: dto.titularId, tipo } })) + 1;
     await this.prisma.db.consultaExterna.create({
