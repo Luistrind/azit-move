@@ -94,6 +94,8 @@ export class AssistenteAnaliseService {
             valorEntrada: true,
             valorParcela: true,
             numeroParcelas: true,
+            frequencia: true,
+            prazoMeses: true,
             documentos: { select: { id: true, tipo: true, arquivoRef: true, titularId: true } },
           },
         },
@@ -184,10 +186,19 @@ export class AssistenteAnaliseService {
           rendaApuradaPeloAnalista: p.rendaApurada,
         };
       }),
-      proposta: {
+      // Oferta escolhida na simulação (comparativo oferta × renda — 14/09).
+      ofertaEscolhida: {
         valorEntrada: analise.proposta.valorEntrada,
         valorParcela: analise.proposta.valorParcela,
         numeroParcelas: analise.proposta.numeroParcelas,
+        frequencia: analise.proposta.frequencia ?? 'SEMANAL',
+        prazoMeses: analise.proposta.prazoMeses,
+        // Mensal equivalente (fatores da análise §14: semanal ×4,345; quinzenal ×2,17).
+        parcelaMensalEquivalente: (() => {
+          const parcela = Number(analise.proposta.valorParcela?.toString() ?? 0);
+          const f = analise.proposta.frequencia === 'MENSAL' ? 1 : analise.proposta.frequencia === 'QUINZENAL' ? 2.17 : 4.345;
+          return Math.round(parcela * f * 100) / 100;
+        })(),
       },
       documentosIgnoradosNaLeitura: ignorados,
     };

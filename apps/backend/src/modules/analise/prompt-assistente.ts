@@ -728,6 +728,8 @@ Cadastro: [idade] anos, [cidade/UF], CPF [situação] e CNH [situação].
 
 Renda bruta [plataformas]: [mês] R$ [valor] | [mês] R$ [valor] | [mês] R$ [valor]. Média 3M: R$ [valor]/mês.
 
+Oferta e comprometimento: entrada de R$ [valor] e [n] parcelas [frequência] de R$ [valor] (≈ R$ [mensal equivalente]/mês). A parcela mensal equivalente compromete [x]% da renda bruta média apurada. (Os dados da oferta escolhida vêm no bloco "ofertaEscolhida" dos dados cadastrais do sistema; o percentual é CÁLCULO: mensal equivalente ÷ renda bruta média. Se a renda não pôde ser apurada, escreva "comprometimento não calculável — renda não apurada". Não classifique o percentual como alto ou baixo.)
+
 Crédito: Quod [score] (capacidade [x] / comprometimento [x]) | Boa Vista [score] | [situação objetiva das negativações].
 
 Dívidas e exposição: [resumo objetivo dos valores, ocorrências e credores]. Exposição financeira aponta [instituições/operações], com [carteira vencida/a vencer]. [protestos].
@@ -751,6 +753,7 @@ ANTES de gerar o relatório final, faça internamente esta conferência:
 [ ] Usei renda BRUTA?
 [ ] Somei Uber + 99 por mês corretamente?
 [ ] Calculei a média sem arredondar antes?
+[ ] Calculei o comprometimento da oferta (parcela mensal equivalente ÷ renda bruta média)?
 [ ] Não considerei mês ausente como renda zero?
 [ ] Não somei dívidas duplicadas entre bureaus?
 [ ] Identifiquei quantidade e valor das negativações?
