@@ -67,6 +67,19 @@ export class WebhookController {
       await this.filaAcordo.add('entrada-vencida', { acordoId: ref.slice('acordo:'.length) });
       return { received: true };
     }
+    // "novacao:" = recebimento inicial da novação (F2, 14/09): pagamento
+    // dispara a ativação atômica; vencimento sem pagamento EXPIRA a proposta.
+    if (recebido && ref.startsWith('novacao:')) {
+      await this.filaAcordo.add('novacao-recebida', {
+        novacaoId: ref.slice('novacao:'.length),
+        paymentDate: pg.paymentDate ?? pg.dueDate ?? '',
+      });
+      return { received: true };
+    }
+    if (dto.event === 'PAYMENT_OVERDUE' && ref.startsWith('novacao:')) {
+      await this.filaAcordo.add('novacao-recebimento-vencido', { novacaoId: ref.slice('novacao:'.length) });
+      return { received: true };
+    }
     if (recebido && ref.startsWith('ativacao:')) {
       await this.filaAtivacao.add('ativar', {
         contratoId: ref.slice('ativacao:'.length),

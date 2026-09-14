@@ -13,15 +13,19 @@ const LABEL_STATUS: Record<string, string> = {
   aguardando_entrada: 'Aguardando entrada',
   ativo: 'Ativo',
   cumprido: 'Cumprido',
+  novado: 'Novado', // saldo absorvido por uma novação (F2, 14/09)
   cancelado: 'Cancelado',
   expirado: 'Expirado',
 };
 
-// Novação ≠ Acordo (Regra 5): rótulos próprios.
+// Novação ≠ Acordo (Regra 5): rótulos próprios. F2 (14/09): fluxo completo.
 const LABEL_STATUS_NOVACAO: Record<string, string> = {
   rascunho: 'Aguardando aprovação',
+  aguardando_assinatura: 'Aguardando assinatura',
+  aguardando_recebimento: 'Aguardando recebimento',
   ativo: 'Ativa',
   cancelado: 'Cancelada',
+  expirado: 'Expirada',
 };
 
 // Acompanhamento de acordos e novações. A CRIAÇÃO nasce da ficha do titular
@@ -43,6 +47,19 @@ export function AcordosPage() {
     await queryClient.invalidateQueries({ queryKey: ['novacoes'] });
     await queryClient.invalidateQueries({ queryKey: ['contratos'] });
     await queryClient.invalidateQueries({ queryKey: ['aprovacoes-contagem'] });
+  }
+
+  async function simularRecebimento(novacaoId: string) {
+    setOcupado(true);
+    try {
+      await operacoesService.simularRecebimentoNovacao(novacaoId);
+      await refetch();
+      toast.sucesso('Recebimento simulado — a ativação atômica roda no worker.');
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+    } finally {
+      setOcupado(false);
+    }
   }
 
   async function efetivar(acordoId: string) {
@@ -121,28 +138,53 @@ export function AcordosPage() {
         </table>
       </div>
 
-      {/* Lista de novações */}
+      {/* Lista de novações (F2 — conta-cêntrica: 2 contratos assinados juntos) */}
       <div className="rounded-card overflow-x-auto" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <div className="px-[18px] pt-[14px] font-display text-[13px] font-bold">Novações</div>
-        <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
+        <table className="w-full min-w-[760px] border-collapse text-[12.5px]">
           <thead>
             <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Contrato origem</th>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Contrato novo</th>
-              <th className="px-[18px] py-[12px] text-right font-semibold">Saldo liquidado</th>
+              <th className="px-[18px] py-[12px] text-left font-semibold">Cliente</th>
+              <th className="px-[18px] py-[12px] text-right font-semibold">Veículo (C1)</th>
+              <th className="px-[18px] py-[12px] text-right font-semibold">Termo (C2)</th>
+              <th className="px-[18px] py-[12px] text-right font-semibold">Parcela única</th>
+              <th className="px-[18px] py-[12px] text-left font-semibold">Contratos</th>
               <th className="px-[18px] py-[12px] text-left font-semibold">Status</th>
+              <th className="px-[18px] py-[12px] text-right font-semibold">Ação</th>
             </tr>
           </thead>
           <tbody>
             {novacoes.data?.length === 0 && (
-              <tr><td colSpan={4} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>Nenhuma novação ainda.</td></tr>
+              <tr><td colSpan={7} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>Nenhuma novação ainda — ela nasce da ficha do titular.</td></tr>
             )}
             {novacoes.data?.map((nv) => (
               <tr key={nv.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                <td className="px-[18px] py-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{nv.contratoOrigem}</td>
-                <td className="px-[18px] py-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{nv.contratoNovo}</td>
-                <td className="px-[18px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>{formatCurrency(nv.saldoLiquidado)}</td>
+                <td className="px-[18px] py-[12px]">
+                  <button onClick={() => nv.titularId && navigate(`/titulares/${nv.titularId}`)} className="font-semibold" style={{ color: 'var(--navy)' }}>
+                    {nv.titular}
+                  </button>
+                </td>
+                <td className="px-[18px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>{formatCurrency(nv.saldoVeiculo)}</td>
+                <td className="px-[18px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>{formatCurrency(nv.saldoDemais)}</td>
+                <td className="px-[18px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-body)' }}>{formatCurrency(nv.valorParcela)}</td>
+                <td className="px-[18px] py-[12px]">
+                  {nv.contratoVeiculo || nv.contratoTermo ? (
+                    <span className="flex flex-col gap-[2px]">
+                      {nv.contratoVeiculo && <button onClick={() => navigate(`/contratos/${nv.contratoVeiculo!.id}`)} className="text-left font-semibold" style={{ color: 'var(--navy)' }}>{nv.contratoVeiculo.numero} · veículo</button>}
+                      {nv.contratoTermo && <button onClick={() => navigate(`/contratos/${nv.contratoTermo!.id}`)} className="text-left font-semibold" style={{ color: 'var(--navy)' }}>{nv.contratoTermo.numero} · termo</button>}
+                    </span>
+                  ) : (
+                    <span style={{ color: 'var(--text-muted)' }}>— na aprovação —</span>
+                  )}
+                </td>
                 <td className="px-[18px] py-[12px]"><StatusBadge label={LABEL_STATUS_NOVACAO[nv.status] ?? nv.status} colors={NOVACAO_STATUS_COLORS} /></td>
+                <td className="px-[18px] py-[12px] text-right">
+                  {nv.status === 'aguardando_recebimento' && podeNovar && import.meta.env.DEV && (
+                    <button onClick={() => simularRecebimento(nv.id)} disabled={ocupado} className="rounded-[7px] px-[12px] py-[5px] text-[11.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>
+                      Simular recebimento (dev)
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

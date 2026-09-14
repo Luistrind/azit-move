@@ -162,6 +162,11 @@ cronogramas na ordem descrita e nada fica pela metade.
   veículo com taxa inicial e recebimento opcional; Contrato 2 amortizado PRIMEIRO à
   mesma parcela; fatura de transição com antecipação; veículo congelado na fase do C2);
   `POST /contas/:id/novacao/simular` + bloco "Simular proposta" no modal da prévia.
-- F2: proposta formal → CONAC → dois instrumentos assinados juntos → recebimento
-  inicial → ativação atômica (extinção das obrigações de origem + dois cronogramas).
+- **F2 — CONSTRUÍDA (14/09):** contratação completa — proposta (snapshot congelado; exige
+  produto ATIVO) → CONAC (motor de aprovação, 2 aprovações) → dois contratos em
+  Aguardando assinatura + instrumento único na ZapSign (placeholder do jurídico) →
+  recebimento inicial via Asaas com prazo de ativação (vencido = expirada) → ativação
+  atômica (origens NOVADAS/encerradas ANTES dos cronogramas; Termo primeiro; item de
+  antecipação na fatura de transição). E2E validado: fatura de transição fechando no
+  valor periódico exato (59,50 do Termo + 72,80 de antecipação = 132,30).
 - F3: ativos, garantias e troca de veículo (A5).

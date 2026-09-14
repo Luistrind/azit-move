@@ -15,6 +15,7 @@ export const PARCELA_STATUS_COLORS: Record<string, StatusColor> = {
   'Paga em atraso': { bg: '#eafaf1', fg: '#1f9d5b' },
   'Paga antecipada': { bg: '#eafaf1', fg: '#1f9d5b' },
   Renegociada: { bg: '#efeaff', fg: '#6b4fd6' },
+  Novada: { bg: '#efeaff', fg: '#6b4fd6' }, // obrigação extinta por novação (F2, 14/09)
   'Em acordo': { bg: '#eef4ff', fg: '#2456c7' }, // parcela coberta (Vocabulário 07/09)
   Cancelada: { bg: '#fdeceb', fg: '#e0413c' },
   Estornada: { bg: '#fdeceb', fg: '#e0413c' },
@@ -56,6 +57,7 @@ export const ACORDO_STATUS_COLORS: Record<string, StatusColor> = {
   'Aguardando entrada': { bg: '#fef6e9', fg: '#c98a0a' },
   Ativo: { bg: '#eafaf1', fg: '#1f9d5b' },
   Cumprido: { bg: '#eafaf1', fg: '#1f9d5b' },
+  Novado: { bg: '#efeaff', fg: '#6b4fd6' },
   Cancelado: { bg: '#fdeceb', fg: '#e0413c' },
   Expirado: { bg: '#fdeceb', fg: '#e0413c' },
 };
@@ -63,8 +65,11 @@ export const ACORDO_STATUS_COLORS: Record<string, StatusColor> = {
 // Novação é mecanismo DISTINTO do acordo (Regra 5) — mapa próprio.
 export const NOVACAO_STATUS_COLORS: Record<string, StatusColor> = {
   'Aguardando aprovação': { bg: '#f1f4f8', fg: '#8694a4' },
+  'Aguardando assinatura': { bg: '#f1f4f8', fg: '#8694a4' },
+  'Aguardando recebimento': { bg: '#fef6e9', fg: '#c98a0a' },
   Ativa: { bg: '#eafaf1', fg: '#1f9d5b' },
   Cancelada: { bg: '#fdeceb', fg: '#e0413c' },
+  Expirada: { bg: '#fdeceb', fg: '#e0413c' },
 };
 
 // Status de Ativo (estoque, Bloco 7) — Doc 2 §4.4.
@@ -112,6 +117,7 @@ export const FATURA_SITUACAO_COLORS: Record<string, StatusColor> = {
   paga: { bg: '#eafaf1', fg: '#1f9d5b' },
   paga_em_atraso: { bg: '#eafaf1', fg: '#1f9d5b' },
   renegociada: { bg: '#efeaff', fg: '#6b4fd6' },
+  novada: { bg: '#efeaff', fg: '#6b4fd6' },
 };
 export const FATURA_SITUACAO_LABEL: Record<string, string> = {
   em_aberto: 'Em aberto',
@@ -120,6 +126,7 @@ export const FATURA_SITUACAO_LABEL: Record<string, string> = {
   paga: 'Paga',
   paga_em_atraso: 'Paga (em atraso)',
   renegociada: 'Renegociada',
+  novada: 'Novada',
 };
 
 // Contas a Pagar (RF-15/18) — chaves = valores do enum StatusTituloPagar.

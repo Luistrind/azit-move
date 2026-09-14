@@ -6,4 +6,5 @@ export enum StatusFatura {
   PAGA           = 'Paga',
   PAGA_EM_ATRASO = 'Paga em atraso',
   RENEGOCIADA    = 'Renegociada',
+  NOVADA         = 'Novada',
 }

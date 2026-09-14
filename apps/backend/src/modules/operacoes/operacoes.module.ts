@@ -3,6 +3,7 @@ import { CatalogoModule } from '../catalogo/catalogo.module';
 import { BullModule } from '@nestjs/bullmq';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { ContratoModule } from '../contrato/contrato.module';
+import { AssinaturaModule } from '../assinatura/assinatura.module';
 import { OperacoesController } from './operacoes.controller';
 import { RenegociacaoService } from './renegociacao.service';
 import { NovacaoService } from './novacao.service';
@@ -15,8 +16,9 @@ import { EfetivarAcordoProcessor } from './efetivar-acordo.processor';
 // Bloco 6 — operações sobre contratos: renegociação (novação), quitação
 // antecipada, sinistro. AsaasService e AlcadaService vêm de módulos globais.
 @Module({
-  imports: [CatalogoModule, 
+  imports: [CatalogoModule,
     ContratoModule,
+    AssinaturaModule,
     BullModule.registerQueue(
       { name: QUEUE_NAMES.EFETIVAR_ACORDO },
       { name: QUEUE_NAMES.NOTIFICAR_CLIENTE },

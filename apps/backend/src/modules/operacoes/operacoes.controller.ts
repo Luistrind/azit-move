@@ -22,7 +22,7 @@ import { NovacaoDecomposicaoService } from './novacao-decomposicao.service';
 import { QuitacaoService } from './quitacao.service';
 import { SinistroService } from './sinistro.service';
 import { ReajusteService } from './reajuste.service';
-import { novacaoSchema, NovacaoBody, simularNovacaoSchema, SimularNovacaoBody } from './dto/novacao.dto';
+import { simularNovacaoSchema, SimularNovacaoBody, solicitarNovacaoSchema, SolicitarNovacaoBody } from './dto/novacao.dto';
 import {
   criarRenegociacaoSchema,
   CriarRenegociacaoBody,
@@ -127,16 +127,28 @@ export class OperacoesController {
     return this.novacao.listar();
   }
 
-  // Propõe a novação — a execução acontece na aprovação (motor §7.9-A, 2 aprovações).
+  // Propõe a novação CONTA-cêntrica (F2, 14/09): snapshot congela decomposição
+  // + simulação; aprovação (CONAC) → 2 contratos + instrumento → assinatura →
+  // recebimento inicial (se houver) → ativação atômica.
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
-  @Post('contratos/:id/novacao')
+  @Post('contas/:id/novacao')
   @HttpCode(201)
   novar(
     @Param('id') id: string,
-    @Body(new ZodValidationPipe(novacaoSchema)) dto: NovacaoBody,
+    @Body(new ZodValidationPipe(solicitarNovacaoSchema)) dto: SolicitarNovacaoBody,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.novacao.solicitar(id, dto, user.id);
+  }
+
+  // Dev: simula o pagamento do recebimento inicial (enfileira como o webhook).
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
+  @UseGuards(DevOnlyGuard)
+  @Post('dev/simular-recebimento-novacao/:novacaoId')
+  @HttpCode(202)
+  async simularRecebimentoNovacao(@Param('novacaoId') novacaoId: string) {
+    await this.filaAcordo.add('novacao-recebida', { novacaoId, paymentDate: dataHojeBrasil() });
+    return { enfileirado: true, novacaoId };
   }
 
   // --- Quitação antecipada (6.7) ---

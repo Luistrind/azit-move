@@ -1043,8 +1043,31 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > resto + antecipação do veículo até a parcela padrão, saldo do veículo CONGELADO (sem
 > juros) na fase do C2. `POST /contas/:id/novacao/simular` + bloco "Simular proposta" no
 > modal da prévia (parcela única, cadeia do veículo, sequência das faturas, exceções).
-> Próxima fase: F2 (proposta → CONAC → dois instrumentos assinados juntos → recebimento
-> inicial → ativação atômica), F3 (ativos/garantias/troca).
+>
+> **F2 CONSTRUÍDA (14/09) — fluxo completo de contratação:** modelo `Novacao` reformulado
+> para CONTA-cêntrico (N contratos de origem extintos → contrato do veículo + Termo de
+> Regularização de Débitos; migração 20260914130000). Fluxo: proposta pela tela (snapshot
+> congela decomposição+simulação; exige produto ATIVO no Catálogo — a chave de virada;
+> máx. 1 novação em aberto por conta) → motor de aprovação tipo `novacao` (CONAC = trilha
+> com 2 aprovações e segregação) → aprovada: os DOIS contratos nascem em Aguardando
+> assinatura SEM cronograma (veículo com o MESMO ativo — exceção legítima à regra 1-ativo-
+> 1-contrato: é o substituto; "entrada" do veículo = antecipação da transição; ambos com
+> total do PLANO do motor — nunca o saldo a VP, senão a última parcela sai negativa — e
+> taxa 1,70% gravada como taxa de origem) + INSTRUMENTO ÚNICO (template placeholder Regra
+> 12, os dois contratos no mesmo ato, anexado ao contrato do veículo) enviado à ZapSign →
+> assinado por todos (registry pós-assinatura): recebimento inicial via Asaas
+> (`novacao:<id>`, vencimento no prazo de ativação; vencido → EXPIRADA e contratos novos
+> cancelados) ou ativação direta quando não há → **ATIVAÇÃO ATÔMICA**: transação única
+> extingue as origens (parcelas/faturas → NOVADAS, recebíveis → RENEGOCIADO, acordos
+> ativos → NOVADOS, contratos → ENCERRADOS por NOVACAO vinculados à novação) ANTES dos
+> cronogramas (para as parcelas novas não consolidarem nas faturas velhas); depois Termo
+> primeiro, veículo após a transição, e o item de ANTECIPAÇÃO na última fatura do Termo
+> completa o valor periódico padrão. Atomicidade operacional = transação de extinção +
+> etapas idempotentes com retry de fila e alerta FALHA (nada fica pela metade em silêncio).
+> Estados novos: parcela/fatura NOVADA, acordo NOVADO, novação AGUARDANDO_ASSINATURA/
+> AGUARDANDO_RECEBIMENTO/EXPIRADO. Telas: envio à aprovação no modal da prévia; lista de
+> novações (Acordos e novações) com os dois contratos e ação dev de recebimento.
+> Próxima fase: F3 (troca de veículo por valor FIPE + garantias — A5).
 >
 > **Fonte das fórmulas:** `docs/Planilha Novacao de Contrato - Azit Move.xlsx` (extraída
 > célula a célula, 13/09) — abas: **Parâmetros** (NV001–019, ICVF/ICPF, mora 2%+1% a.m.

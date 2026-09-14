@@ -202,7 +202,8 @@ export class TitularService {
       // Acordo é CONTA-cêntrico (contratoId só no legado) — contar por contrato
       // mostrava 0 com acordo ativo (caso real 17/08).
       conta ? this.prisma.db.acordo.count({ where: { OR: [{ contaId: conta.id }, { contratoId: { in: ids } }] } }) : 0,
-      ids.length ? this.prisma.db.novacao.count({ where: { contratoOrigemId: { in: ids } } }) : 0,
+      // Novação é CONTA-cêntrica desde 14/09 (F2) — conta pela conta.
+      conta ? this.prisma.db.novacao.count({ where: { contaId: conta.id, deletedAt: null } }) : 0,
     ]);
     const cent = (d: Prisma.Decimal | null | undefined) => (d ? reaisParaCentavos(d.toString()) : 0);
     const saldoPorContrato = new Map(saldosContrato.map((g) => [g.contratoId, g._sum.valorNominal]));

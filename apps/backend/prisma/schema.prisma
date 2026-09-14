@@ -183,6 +183,7 @@ enum StatusParcela {
   PAGA_EM_ATRASO
   PAGA_ANTECIPADA
   RENEGOCIADA
+  NOVADA // obrigação extinta pela ativação atômica de uma novação (14/09)
   CANCELADA
   ESTORNADA
   SUSPENSA
@@ -196,6 +197,7 @@ enum StatusFatura {
   PAGA
   PAGA_EM_ATRASO
   RENEGOCIADA
+  NOVADA // fatura extinta pela ativação atômica de uma novação (14/09)
 }
 
 enum TipoItemFatura {
@@ -226,6 +228,7 @@ enum StatusAcordo {
   AGUARDANDO_ENTRADA // aprovado; cobrança da entrada gerada, aguardando pagamento
   ATIVO
   CUMPRIDO // todas as parcelas do plano pagas (Vocabulário 07/09 — acordo se cumpre, não se quita)
+  NOVADO // saldo do plano absorvido por uma novação (ativação atômica — 14/09)
   CANCELADO
   EXPIRADO // entrada venceu sem pagamento — recálculo obrigatório (doc 02 §7.7, 2026-08-18)
 }
@@ -245,9 +248,12 @@ enum DecisaoAprovacao {
 }
 
 enum StatusNovacao {
-  RASCUNHO
-  ATIVO
+  RASCUNHO // proposta criada, aguardando aprovação (motor §7.9-A / CONAC)
+  AGUARDANDO_ASSINATURA // aprovada; dois contratos criados, instrumento na ZapSign
+  AGUARDANDO_RECEBIMENTO // assinada; cobrança do recebimento inicial gerada
+  ATIVO // ativação atômica concluída (origens extintas + dois cronogramas)
   CANCELADO
+  EXPIRADO // recebimento inicial venceu sem pagamento (prazo de ativação)
 }
 
 enum StatusReajuste {
@@ -395,6 +401,7 @@ model Conta {
   contratosInvestimento ContratoInvestimento[]
   faturas               Fatura[]
   acordos               Acordo[]
+  novacoes              Novacao[]
   lancamentos           LancamentoConta[]
 
   createdAt DateTime  @default(now())
@@ -936,6 +943,7 @@ model ContratoCredito {
   motivoEncerramento   MotivoEncerramento?
   asaasSubscriptionId  String?
   propostaPacoteId     String? // contrato pertence ao pacote de uma proposta (carrinho)
+  novacaoOrigemId      String? // novação que EXTINGUIU este contrato (14/09)
 
   conta             Conta            @relation(fields: [contaId], references: [id])
   ativo             Ativo?           @relation(fields: [ativoId], references: [id])
@@ -950,8 +958,11 @@ model ContratoCredito {
   propostaOrigem    Proposta?        @relation("PropostaContrato")
   propostaPacote    Proposta?        @relation("PacoteProposta", fields: [propostaPacoteId], references: [id])
   documentoAssinatura DocumentoAssinatura? // ZapSign F1 (doc 02 sec.21)
-  novacaoComoOrigem Novacao?         @relation("NovacaoOrigem")
-  novacaoComoNovo   Novacao?         @relation("NovacaoNovo")
+  // Novação conta-cêntrica (14/09): contrato EXTINTO por uma novação aponta
+  // para ela; os contratos NOVOS são referenciados pela novação (veículo/termo).
+  novacaoOrigem     Novacao?         @relation("NovacaoOrigens", fields: [novacaoOrigemId], references: [id])
+  novacaoComoVeiculo Novacao?        @relation("NovacaoVeiculo")
+  novacaoComoTermo  Novacao?         @relation("NovacaoTermo")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1232,24 +1243,45 @@ model AprovacaoDecisao {
 }
 
 // Novação: recuperação RADICAL. Liquida o contrato inteiro e gera um novo.
+// Novação CONTA-cêntrica (F2 — doc adaptações 13/09, A2/A6/A7): extingue as
+// obrigações de origem da conta inteira e gera DOIS contratos assinados juntos
+// no mesmo ato — o do veículo (Contrato 1, estrutura dona do ativo) e o Termo
+// de Regularização de Débitos (Contrato 2, Azit; pago PRIMEIRO, mesma parcela).
+// snapshotJson congela a decomposição (F1) + simulação (A7 passos 3-4) da
+// proposta aprovada. Fluxo: RASCUNHO → aprovação (motor §7.9-A) →
+// AGUARDANDO_ASSINATURA (contratos criados + instrumento na ZapSign) →
+// assinada → AGUARDANDO_RECEBIMENTO (se houver recebimento inicial) → ATIVO
+// (ativação ATÔMICA). Reformulada 14/09 (era 1:1 contrato→contrato).
 model Novacao {
-  id               String        @id @default(cuid())
-  contratoOrigemId String        @unique
-  contratoNovoId   String        @unique
-  operadorId       String
-  dataEfetivacao   DateTime?
-  saldoLiquidado   Decimal       @db.Decimal(12, 2)
-  status           StatusNovacao @default(RASCUNHO)
-  observacao       String?
+  id                       String        @id @default(cuid())
+  contaId                  String
+  operadorId               String
+  status                   StatusNovacao @default(RASCUNHO)
+  snapshotJson             Json?
+  saldoVeiculo             Decimal       @db.Decimal(12, 2) // parte do veículo (Contrato 1)
+  saldoDemais              Decimal       @db.Decimal(12, 2) // demais produtos (Contrato 2)
+  valorParcela             Decimal       @db.Decimal(12, 2) // parcela única do relacionamento
+  recebimentoInicial       Decimal       @default(0) @db.Decimal(12, 2)
+  asaasChargeIdRecebimento String?
+  contratoVeiculoId        String?       @unique
+  contratoTermoId          String?       @unique
+  dataAssinatura           DateTime?
+  dataAtivacao             DateTime?
+  observacao               String?
 
-  contratoOrigem ContratoCredito @relation("NovacaoOrigem", fields: [contratoOrigemId], references: [id])
-  contratoNovo   ContratoCredito @relation("NovacaoNovo", fields: [contratoNovoId], references: [id])
-  operador       Usuario         @relation("NovacaoOperador", fields: [operadorId], references: [id])
+  conta           Conta             @relation(fields: [contaId], references: [id])
+  operador        Usuario           @relation("NovacaoOperador", fields: [operadorId], references: [id])
+  contratoVeiculo ContratoCredito?  @relation("NovacaoVeiculo", fields: [contratoVeiculoId], references: [id])
+  contratoTermo   ContratoCredito?  @relation("NovacaoTermo", fields: [contratoTermoId], references: [id])
+  // Contratos de origem EXTINTOS por esta novação (marcados na ativação atômica).
+  contratosOrigem ContratoCredito[] @relation("NovacaoOrigens")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  @@index([contaId])
+  @@index([status])
   @@index([operadorId])
   @@map("novacoes")
 }

@@ -15,13 +15,21 @@ export interface Acordo {
   dataEfetivacao: string | null;
 }
 
+// Novação CONTA-cêntrica (F2, 14/09): dois contratos novos assinados juntos.
 export interface Novacao {
   id: string;
   status: string;
-  contratoOrigem: string;
-  contratoNovo: string;
-  saldoLiquidado: number;
-  dataEfetivacao: string | null;
+  titularId: string;
+  titular: string;
+  saldoVeiculo: number;
+  saldoDemais: number;
+  valorParcela: number;
+  recebimentoInicial: number;
+  contratoVeiculo: { id: string; numero: string } | null;
+  contratoTermo: { id: string; numero: string } | null;
+  dataAssinatura: string | null;
+  dataAtivacao: string | null;
+  criadaEm: string;
 }
 
 export interface ParcelaElegivel {
@@ -226,23 +234,21 @@ export const operacoesService = {
     const { data } = await api.post(`/api/v1/contas/${contaId}/novacao/simular`, body);
     return data;
   },
-  // 6.6 — Novação (recuperação radical): liquida o contrato origem e gera um novo.
+  // 6.6 — Novação conta-cêntrica (F2): proposta formal → aprovação → 2
+  // contratos assinados juntos → recebimento inicial → ativação atômica.
   async novacoes(): Promise<Novacao[]> {
     const { data } = await api.get<Novacao[]>('/api/v1/novacoes');
     return data;
   },
-  async novar(
-    contratoId: string,
-    body: {
-      dataPrimeiraParcela: string;
-      valorTotal: number;
-      numeroParcelas: number;
-      valorParcelaInicial: number;
-      periodicidade: 'semanal' | 'quinzenal' | 'mensal';
-    },
-  ): Promise<{ id: string; contratoOrigem: string; contratoNovo: string; saldoLiquidado: number }> {
-    const { data } = await api.post(`/api/v1/contratos/${contratoId}/novacao`, body);
+  async solicitarNovacao(
+    contaId: string,
+    body: { prazoMeses: number; frequencia?: 'semanal' | 'quinzenal' | 'mensal'; desconto?: number; recebimentoInicial?: number; observacao?: string },
+  ): Promise<{ id: string; status: string; valorParcela: number }> {
+    const { data } = await api.post(`/api/v1/contas/${contaId}/novacao`, body);
     return data;
+  },
+  async simularRecebimentoNovacao(novacaoId: string): Promise<void> {
+    await api.post(`/api/v1/dev/simular-recebimento-novacao/${novacaoId}`);
   },
   async simularQuitacao(contratoId: string): Promise<SimulacaoQuitacao> {
     const { data } = await api.post(`/api/v1/contratos/${contratoId}/quitacao/simular`, {});

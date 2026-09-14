@@ -3,21 +3,34 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { RenegociacaoService } from './renegociacao.service';
+import { NovacaoService } from './novacao.service';
 
 // 6.4 — Efetivação da renegociação ao receber a entrada (Gatilho 6). Webhook
 // nunca síncrono: roda no worker. Job 'entrada-vencida' expira a proposta cuja
-// entrada venceu sem pagamento (doc 02 §7.7, 2026-08-18).
+// entrada venceu sem pagamento (doc 02 §7.7, 2026-08-18). Desde 14/09 a fila
+// também carrega o recebimento inicial da NOVAÇÃO (ativação atômica/expiração).
 @Processor(QUEUE_NAMES.EFETIVAR_ACORDO)
 export class EfetivarAcordoProcessor extends WorkerHost {
   private readonly logger = new Logger(EfetivarAcordoProcessor.name);
-  constructor(private readonly renegociacao: RenegociacaoService) {
+  constructor(
+    private readonly renegociacao: RenegociacaoService,
+    private readonly novacao: NovacaoService,
+  ) {
     super();
   }
-  async process(job: Job<{ acordoId: string; paymentDate?: string }>) {
-    if (job.name === 'entrada-vencida') {
-      return this.renegociacao.expirarPorEntradaVencida(job.data.acordoId);
+  async process(job: Job<{ acordoId?: string; novacaoId?: string; paymentDate?: string }>) {
+    if (job.name === 'novacao-recebida') {
+      const r = await this.novacao.ativar(job.data.novacaoId!, job.data.paymentDate ?? '');
+      this.logger.log(`ativar novação ${job.data.novacaoId}: ${r.resultado}`);
+      return r;
     }
-    const r = await this.renegociacao.efetivar(job.data.acordoId, job.data.paymentDate ?? '');
+    if (job.name === 'novacao-recebimento-vencido') {
+      return this.novacao.expirarPorRecebimentoVencido(job.data.novacaoId!);
+    }
+    if (job.name === 'entrada-vencida') {
+      return this.renegociacao.expirarPorEntradaVencida(job.data.acordoId!);
+    }
+    const r = await this.renegociacao.efetivar(job.data.acordoId!, job.data.paymentDate ?? '');
     this.logger.log(`efetivar acordo ${job.data.acordoId}: ${r.resultado}`);
     return r;
   }

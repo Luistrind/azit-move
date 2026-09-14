@@ -232,6 +232,10 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
   const [desconto, setDesconto] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const [sim, setSim] = useState<SimulacaoNovacao | null>(null);
+  // Proposta formal (F2): congela a simulação e vai à Central de Aprovações.
+  const [observacao, setObservacao] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [enviada, setEnviada] = useState(false);
 
   const meses = parseInt(prazoMeses || '0', 10);
   const parcelasPrevistas = meses > 0 ? parcelasPorPrazoMeses(meses, frequencia) : 0;
@@ -251,6 +255,26 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
       toast.erro(mensagemErro(e));
     } finally {
       setOcupado(false);
+    }
+  }
+
+  async function enviarParaAprovacao() {
+    if (!sim || enviando) return;
+    setEnviando(true);
+    try {
+      await operacoesService.solicitarNovacao(contaId, {
+        prazoMeses: meses,
+        frequencia,
+        recebimentoInicial: reaisParaCentavos(recebimento) || undefined,
+        desconto: reaisParaCentavos(desconto) || undefined,
+        observacao: observacao.trim() || undefined,
+      });
+      setEnviada(true);
+      toast.sucesso('Novação enviada para a Central de Aprovações (CONAC — operação sensível, exige 2 aprovações). Aprovada, os dois contratos vão juntos para assinatura.');
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+    } finally {
+      setEnviando(false);
     }
   }
 
@@ -356,9 +380,36 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
 
           <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
             Taxa financeira de {(Math.pow(1 + sim.taxaPeriodo, 30 / (sim.frequencia === 'semanal' ? 7 : sim.frequencia === 'quinzenal' ? 14 : 30)) * 100 - 100).toFixed(2).replace('.', ',')}% ao mês
-            (equivalente por {FREQ_LABEL[sim.frequencia].toLowerCase()}) · parâmetros {sim.produtoAtivo ? `da versão ${sim.versaoParametros} do Catálogo` : 'padrão do produto (V1.0)'} ·
-            proposta, aprovação (CONAC), assinatura dos dois contratos e ativação vêm na próxima fase.
+            (equivalente por {FREQ_LABEL[sim.frequencia].toLowerCase()}) · parâmetros {sim.produtoAtivo ? `da versão ${sim.versaoParametros} do Catálogo` : 'padrão do produto (V1.0)'}
           </div>
+
+          {/* Proposta formal (F2): números do servidor congelados no snapshot. */}
+          {enviada ? (
+            <div className="rounded-[10px] px-[14px] py-[10px] text-[12.5px] font-semibold" style={{ background: '#eafaf1', color: '#1f9d5b' }}>
+              ✓ Proposta enviada para a Central de Aprovações — acompanhe em Aprovações e na tela de Acordos e novações.
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-end gap-[10px] rounded-[12px] p-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+              <label className="flex min-w-[240px] flex-1 flex-col gap-[4px]">
+                <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Observação (opcional)</span>
+                <input value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Contexto para o comitê…" className="h-[34px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
+              </label>
+              <button
+                onClick={enviarParaAprovacao}
+                disabled={enviando || !sim.produtoAtivo}
+                title={sim.produtoAtivo ? undefined : 'Ative o produto Novação no Catálogo para contratar'}
+                className="h-[36px] rounded-[9px] px-[16px] text-[12.5px] font-semibold disabled:opacity-50"
+                style={{ background: 'var(--navy)', color: '#fff' }}
+              >
+                {enviando ? 'Enviando…' : 'Enviar para aprovação'}
+              </button>
+              {!sim.produtoAtivo && (
+                <div className="w-full text-[11.5px]" style={{ color: '#8a6d1a' }}>
+                  A contratação exige o produto Novação ATIVO no Catálogo — a simulação acima usa os parâmetros padrão.
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
