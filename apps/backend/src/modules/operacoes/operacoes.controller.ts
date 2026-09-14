@@ -22,7 +22,7 @@ import { NovacaoDecomposicaoService } from './novacao-decomposicao.service';
 import { QuitacaoService } from './quitacao.service';
 import { SinistroService } from './sinistro.service';
 import { ReajusteService } from './reajuste.service';
-import { novacaoSchema, NovacaoBody } from './dto/novacao.dto';
+import { novacaoSchema, NovacaoBody, simularNovacaoSchema, SimularNovacaoBody } from './dto/novacao.dto';
 import {
   criarRenegociacaoSchema,
   CriarRenegociacaoBody,
@@ -109,6 +109,17 @@ export class OperacoesController {
   @Get('contas/:id/novacao/decomposicao')
   decomposicaoNovacao(@Param('id') id: string) {
     return this.novacaoDecomposicao.decomporConta(id);
+  }
+
+  // Simulação da proposta (A7 passos 3-4): parcela única do relacionamento,
+  // fase do Contrato 2 primeiro + fatura de transição + fase do veículo.
+  @Post('contas/:id/novacao/simular')
+  @HttpCode(200)
+  simularNovacao(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(simularNovacaoSchema)) dto: SimularNovacaoBody,
+  ) {
+    return this.novacaoDecomposicao.simular(id, dto);
   }
 
   @Get('novacoes')

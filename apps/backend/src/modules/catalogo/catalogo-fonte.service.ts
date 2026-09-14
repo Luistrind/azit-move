@@ -211,6 +211,40 @@ export class CatalogoFonteService {
     };
   }
 
+  // Parâmetros da NOVAÇÃO (F0 — doc adaptações 13/09 + NV001-019 do V1.0).
+  // Como a Proteção, devolve MESMO em Rascunho (a simulação interna precisa
+  // rodar — Regra 12); `ativo` diz se o produto pode ser CONTRATADO (F2 exige).
+  // Produto ausente no banco: defaults do V1.0 com versão null (placeholder).
+  async novacao(): Promise<{
+    ativo: boolean;
+    versao: number | null;
+    taxaMensal: number; // NV010 — fração a.m.
+    taxaInicialPct: number; // fração sobre o saldo-base
+    taxaInicialMinima: number; // centavos
+    entradaMinimaPct: number; // fração sobre o saldo novado
+    prazoMaximoMeses: number;
+    prazoAtivacaoDias: number; // assinatura → ativação (recebimento inicial)
+  }> {
+    const produto = await this.prisma.db.produtoCatalogo.findFirst({
+      where: { chave: 'novacao', deletedAt: null },
+      include: { versoes: true },
+    });
+    const vigente = produto?.versoes
+      .filter((x) => !x.varianteId && !x.vigenteAte)
+      .sort((a, b) => b.numero - a.numero)[0];
+    const p = (vigente?.parametros ?? {}) as Parametros;
+    return {
+      ativo: produto?.status === 'ATIVO',
+      versao: vigente?.numero ?? null,
+      taxaMensal: num(p.taxaFinanceiraMensal, 0.017),
+      taxaInicialPct: num(p.taxaInicialProcessamento, 0.02),
+      taxaInicialMinima: num(p.taxaMinimaProcessamento, 399000),
+      entradaMinimaPct: num(p.percentualEntradaMinima, 0.01),
+      prazoMaximoMeses: num(p.prazoMaximoMeses, 60),
+      prazoAtivacaoDias: num(p.prazoAtivacaoDias, 5),
+    };
+  }
+
   // Parâmetros do Reembolso Parcelado (F3), ou null se o produto não está ATIVO.
   async reembolsoParcelado(): Promise<ParametrosCatalogoReembolso | null> {
     const produto = await this.prisma.db.produtoCatalogo.findFirst({

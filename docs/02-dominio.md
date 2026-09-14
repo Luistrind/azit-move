@@ -1028,9 +1028,23 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > prévia em tela na ficha do titular ("Novação (prévia do saldo)": Contrato 1 × Contrato 2
 > com memória de cálculo). O form manual de novação saiu da tela de Acordos (o backend
 > 1:1 antigo permanece até a F2 substituí-lo). **Nome provisório do Contrato 2:** "Termo de
-> Regularização de Débitos" (batismo definitivo pendente com o jurídico). Próximas fases:
-> F0/F2 (produto `novacao` no Catálogo; simulação/proposta, CONAC, dois instrumentos
-> assinados juntos, recebimento inicial, ativação atômica), F3 (ativos/garantias/troca).
+> Regularização de Débitos" (batismo definitivo pendente com o jurídico).
+>
+> **F0 + simulação CONSTRUÍDAS (14/09):** produto `novacao` no Catálogo (Rascunho; versão 1
+> com taxaFinanceiraMensal 0,017, taxaInicialProcessamento 0,02, taxaMinimaProcessamento
+> R$ 3.990, percentualEntradaMinima 0,01, prazoMaximoMeses 60, prazoAtivacaoDias 5) —
+> `catalogoFonte.novacao()` devolve MESMO em Rascunho (Regra 12: a simulação interna roda
+> com defaults do V1.0 e sinaliza exceção; a CONTRATAÇÃO na F2 exigirá ATIVO). Motor
+> `precificarNovacao` em `@azit/utils` (A7 passos 3–4): cadeia saldo-base → desconto
+> (exceção de comitê) → taxa inicial max(2%; R$ 3.990) uma vez, apropriada primeiro no
+> recebimento inicial (mínimo operacional max(1% do saldo novado; taxa)) → Price 1,70%
+> a.m. equivalente por frequência com PMT arredondado para CIMA (ajuste residual sempre
+> na última); **Contrato 2 amortizado PRIMEIRO à mesma parcela**, fatura de transição =
+> resto + antecipação do veículo até a parcela padrão, saldo do veículo CONGELADO (sem
+> juros) na fase do C2. `POST /contas/:id/novacao/simular` + bloco "Simular proposta" no
+> modal da prévia (parcela única, cadeia do veículo, sequência das faturas, exceções).
+> Próxima fase: F2 (proposta → CONAC → dois instrumentos assinados juntos → recebimento
+> inicial → ativação atômica), F3 (ativos/garantias/troca).
 >
 > **Fonte das fórmulas:** `docs/Planilha Novacao de Contrato - Azit Move.xlsx` (extraída
 > célula a célula, 13/09) — abas: **Parâmetros** (NV001–019, ICVF/ICPF, mora 2%+1% a.m.

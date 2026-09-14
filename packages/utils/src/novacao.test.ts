@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   decomporSaldoNovacao,
+  precificarNovacao,
   ratearProporcional,
   reconstituirDividaAcordo,
   valorarComponenteNovacao,
@@ -211,5 +212,124 @@ describe('decomporSaldoNovacao', () => {
         ],
       }),
     ).toThrow(/acordo referenciado/);
+  });
+});
+
+describe('precificarNovacao (A7 passos 3-4)', () => {
+  // Overrides zerados isolam a aritmética; os defaults reais (1,70%, TP
+  // max(2%; 3.990)) são testados em separado.
+  const semTaxas = { taxaMensal: 0, taxaInicialPct: 0, taxaInicialMinima: 0 };
+
+  it('sem juros e sem demais produtos: divisão simples com ajuste na última', () => {
+    const r = precificarNovacao({
+      saldoVeiculo: 120000, saldoDemais: 0, numeroParcelasVeiculo: 12, frequencia: 'semanal', ...semTaxas,
+    });
+    expect(r.valorParcela).toBe(10000);
+    expect(r.contrato2.totalParcelas).toBe(0);
+    expect(r.contrato1.totalParcelas).toBe(12);
+    expect(r.contrato1.valorUltima).toBe(10000);
+    expect(r.totalAPagar).toBe(120000);
+  });
+
+  it('taxa inicial de processamento: max(2% do saldo-base; R$ 3.990), financiada sem recebimento', () => {
+    const r = precificarNovacao({
+      saldoVeiculo: 1000000, saldoDemais: 0, numeroParcelasVeiculo: 24, frequencia: 'mensal', taxaMensal: 0,
+    });
+    // 2% de 10.000,00 = 200,00 < 3.990,00 → mínima vale; sem recebimento, financiada inteira.
+    expect(r.taxaInicial).toBe(399000);
+    expect(r.tpFinanciada).toBe(399000);
+    expect(r.saldoAParcelarVeiculo).toBe(1399000);
+  });
+
+  it('taxa inicial percentual vence a mínima em saldos altos', () => {
+    const r = precificarNovacao({
+      saldoVeiculo: 30000000, saldoDemais: 0, numeroParcelasVeiculo: 48, frequencia: 'mensal', taxaMensal: 0,
+    });
+    expect(r.taxaInicial).toBe(600000); // 2% de 300.000,00
+  });
+
+  it('recebimento inicial: taxa apropriada primeiro, sobra amortiza; mínimo = max(1% SN; TP)', () => {
+    const r = precificarNovacao({
+      saldoVeiculo: 1000000, saldoDemais: 0, numeroParcelasVeiculo: 24, frequencia: 'mensal',
+      taxaMensal: 0, recebimentoInicial: 500000,
+    });
+    expect(r.entradaMinima).toBe(399000); // max(1%×10.000 = 100,00; TP 3.990,00)
+    expect(r.tpFinanciada).toBe(0);
+    expect(r.amortizacaoInicial).toBe(101000);
+    expect(r.saldoAParcelarVeiculo).toBe(899000);
+    expect(r.excecoes).toHaveLength(0);
+  });
+
+  it('recebimento abaixo do mínimo operacional vira exceção, não bloqueio', () => {
+    const r = precificarNovacao({
+      saldoVeiculo: 1000000, saldoDemais: 0, numeroParcelasVeiculo: 24, frequencia: 'mensal',
+      taxaMensal: 0, recebimentoInicial: 100000,
+    });
+    expect(r.excecoes.some((e) => e.includes('mínimo operacional'))).toBe(true);
+  });
+
+  it('desconto reduz o saldo novado e marca a exceção do comitê', () => {
+    const r = precificarNovacao({
+      saldoVeiculo: 1000000, saldoDemais: 0, desconto: 100000, numeroParcelasVeiculo: 24,
+      frequencia: 'mensal', ...semTaxas,
+    });
+    expect(r.saldoBase).toBe(1000000); // TP incide sobre o saldo-base, não o novado
+    expect(r.saldoNovado).toBe(900000);
+    expect(r.excecoes.some((e) => e.includes('comitê'))).toBe(true);
+  });
+
+  it('Contrato 2 primeiro: mesma parcela, fatura de transição com antecipação do veículo', () => {
+    const r = precificarNovacao({
+      saldoVeiculo: 120000, saldoDemais: 25000, numeroParcelasVeiculo: 12, frequencia: 'semanal', ...semTaxas,
+    });
+    expect(r.valorParcela).toBe(10000);
+    // C2 25000 a 100,00: 2 cheias + última 50,00; transição completa com 50,00 do veículo.
+    expect(r.contrato2.parcelasCheias).toBe(2);
+    expect(r.contrato2.valorUltima).toBe(5000);
+    expect(r.contrato2.antecipacaoTransicao).toBe(5000);
+    // Veículo: 120000 − 5000 antecipados = 115000 → 11 cheias + última 50,00.
+    expect(r.contrato1.saldo).toBe(115000);
+    expect(r.contrato1.totalParcelas).toBe(12);
+    expect(r.contrato1.valorUltima).toBe(5000);
+    // Cliente paga o mesmo valor periódico em TODAS as faturas menos a última.
+    expect(r.totalAPagar).toBe(25000 + 5000 + 115000);
+    expect(r.totalParcelasRelacionamento).toBe(15);
+  });
+
+  it('com a taxa real de 1,70% a.m.: Price fecha (n1 parcelas, última ~ parcela padrão)', () => {
+    const r = precificarNovacao({
+      saldoVeiculo: 1200000, saldoDemais: 0, numeroParcelasVeiculo: 12, frequencia: 'mensal',
+      taxaInicialPct: 0, taxaInicialMinima: 0,
+    });
+    // PMT Price(12.000; 1,7%; 12) ≈ 1.113,79 — a amortização a parcela fixa
+    // deve devolver exatamente 12 parcelas com última ≈ PMT (deriva de centavos).
+    expect(r.taxaPeriodo).toBeCloseTo(0.017, 10);
+    expect(r.contrato1.totalParcelas).toBe(12);
+    expect(Math.abs(r.contrato1.valorUltima - r.valorParcela)).toBeLessThan(50);
+  });
+
+  it('equivalência por frequência: taxa semanal = (1,017)^(7/30) − 1', () => {
+    const r = precificarNovacao({
+      saldoVeiculo: 100000, saldoDemais: 0, numeroParcelasVeiculo: 4, frequencia: 'semanal',
+      taxaInicialPct: 0, taxaInicialMinima: 0,
+    });
+    expect(r.taxaPeriodo).toBeCloseTo(Math.pow(1.017, 7 / 30) - 1, 12);
+  });
+
+  it('prazo total acima de 60 meses vira exceção', () => {
+    const r = precificarNovacao({
+      saldoVeiculo: 100000, saldoDemais: 0, numeroParcelasVeiculo: 280, frequencia: 'semanal', ...semTaxas,
+    });
+    expect(r.excecoes.some((e) => e.includes('60 meses'))).toBe(true);
+  });
+
+  it('parcela que não amortiza o Contrato 2 é erro explícito', () => {
+    expect(() =>
+      precificarNovacao({
+        // parcela do veículo minúscula × saldo demais alto a 1,7% → juros > parcela
+        saldoVeiculo: 10000, saldoDemais: 10000000, numeroParcelasVeiculo: 1, frequencia: 'mensal',
+        taxaInicialPct: 0, taxaInicialMinima: 0,
+      }),
+    ).toThrow(/não amortiza/);
   });
 });

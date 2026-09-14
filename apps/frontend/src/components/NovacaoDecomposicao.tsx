@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { formatCurrency } from '@azit/utils';
-import { operacoesService, ComponenteDecomposicao } from '../services/operacoes.service';
+import { operacoesService, ComponenteDecomposicao, SimulacaoNovacao } from '../services/operacoes.service';
+import { reaisParaCentavos } from '../lib/valor';
+import { mensagemErro } from '../lib/permissoes';
+import { toast } from './Toast';
 import { Modal } from './Modal';
 
 // ============================================================
@@ -155,12 +158,140 @@ export function NovacaoDecomposicaoModal({ contaId, open, onClose }: { contaId: 
             )}
           </div>
 
-          <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
-            Esta é a base de cálculo da novação (F1). A simulação da proposta — taxa inicial de
-            processamento, desconto de comitê, parcelas e sequenciamento dos dois contratos — vem em seguida.
-          </div>
+          {/* Simulação da proposta (A7 passos 3-4): parcela única, Contrato 2
+              primeiro, fatura de transição, depois o veículo. */}
+          <BlocoSimulacao contaId={contaId} frequenciaHerdada={d.frequenciaHerdada} />
         </div>
       )}
     </Modal>
+  );
+}
+
+const FREQ_LABEL = { semanal: 'Semanal', quinzenal: 'Quinzenal', mensal: 'Mensal' } as const;
+
+function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequenciaHerdada: 'semanal' | 'quinzenal' | 'mensal' }) {
+  const [aberto, setAberto] = useState(false);
+  const [parcelas, setParcelas] = useState('104');
+  const [frequencia, setFrequencia] = useState<'semanal' | 'quinzenal' | 'mensal'>(frequenciaHerdada);
+  const [recebimento, setRecebimento] = useState('');
+  const [desconto, setDesconto] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+  const [sim, setSim] = useState<SimulacaoNovacao | null>(null);
+
+  async function simular() {
+    const n = parseInt(parcelas || '0', 10);
+    if (!n || n < 1) return;
+    setOcupado(true);
+    try {
+      const r = await operacoesService.simularNovacao(contaId, {
+        numeroParcelasVeiculo: n,
+        frequencia,
+        recebimentoInicial: reaisParaCentavos(recebimento) || undefined,
+        desconto: reaisParaCentavos(desconto) || undefined,
+      });
+      setSim(r);
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  if (!aberto) {
+    return (
+      <button
+        onClick={() => setAberto(true)}
+        className="h-[36px] rounded-[9px] text-[12.5px] font-semibold"
+        style={{ background: 'var(--accent)', color: '#fff' }}
+      >
+        Simular proposta de novação
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-[12px] p-[14px]" style={{ border: '1px solid var(--border)' }}>
+      <div className="mb-[10px] font-display text-[12.5px] font-bold">Simulação da proposta</div>
+      <div className="flex flex-wrap items-end gap-[12px]">
+        <label className="flex flex-col gap-[4px]">
+          <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Parcelas do veículo</span>
+          <input value={parcelas} onChange={(e) => setParcelas(e.target.value)} className="h-[34px] w-[90px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+        </label>
+        <label className="flex flex-col gap-[4px]">
+          <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Frequência</span>
+          <select value={frequencia} onChange={(e) => setFrequencia(e.target.value as typeof frequencia)} className="h-[34px] w-[110px] rounded-[8px] px-[8px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+            {(['semanal', 'quinzenal', 'mensal'] as const).map((f) => (
+              <option key={f} value={f}>{FREQ_LABEL[f]}{f === frequenciaHerdada ? ' (atual)' : ''}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-[4px]">
+          <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Recebimento inicial (R$) — opcional</span>
+          <input value={recebimento} onChange={(e) => setRecebimento(e.target.value)} placeholder="0,00" className="h-[34px] w-[130px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+        </label>
+        <label className="flex flex-col gap-[4px]">
+          <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Desconto (R$) — exige comitê</span>
+          <input value={desconto} onChange={(e) => setDesconto(e.target.value)} placeholder="0,00" className="h-[34px] w-[120px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+        </label>
+        <button onClick={simular} disabled={ocupado} className="h-[34px] rounded-[8px] px-[14px] text-[12.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>
+          {ocupado ? 'Calculando…' : 'Simular'}
+        </button>
+      </div>
+
+      {sim && (
+        <div className="mt-[14px] flex flex-col gap-[12px]">
+          {sim.excecoes.length > 0 && (
+            <div className="rounded-[10px] px-[12px] py-[8px] text-[11.5px]" style={{ background: '#fff8e6', border: '1px solid #f0dfae', color: '#8a6d1a' }}>
+              {sim.excecoes.map((e, i) => <div key={i}>⚠ {e}</div>)}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between rounded-[10px] px-[14px] py-[10px]" style={{ background: 'var(--navy)', color: '#fff' }}>
+            <span className="text-[12.5px] font-semibold">Parcela única do relacionamento ({FREQ_LABEL[sim.frequencia].toLowerCase()})</span>
+            <span className="font-display text-[15px] font-bold" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(sim.valorParcela)}</span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2">
+            <div className="rounded-[12px] p-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+              <div className="mb-[6px] text-[12px] font-bold">Cadeia do contrato do veículo</div>
+              <div className="flex flex-col gap-[3px]">
+                <LinhaValor label="Saldo-base (parte do veículo)" valor={sim.saldoBase} />
+                {sim.saldoNovado !== sim.saldoBase && <LinhaValor label="Saldo novado (após desconto)" valor={sim.saldoNovado} />}
+                <LinhaValor label="Taxa inicial de processamento" valor={sim.taxaInicial} />
+                {sim.amortizacaoInicial > 0 && <LinhaValor label="Recebimento que amortiza" valor={sim.amortizacaoInicial} />}
+                {sim.tpFinanciada > 0 && <LinhaValor label="Taxa financiada nas parcelas" valor={sim.tpFinanciada} />}
+                <div className="my-[3px]" style={{ borderTop: '1px solid var(--border)' }} />
+                <LinhaValor label="Saldo a parcelar do veículo" valor={sim.saldoAParcelarVeiculo} forte />
+              </div>
+            </div>
+            <div className="rounded-[12px] p-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+              <div className="mb-[6px] text-[12px] font-bold">Sequência das faturas</div>
+              <div className="flex flex-col gap-[4px] text-[12px]">
+                {sim.contrato2.totalParcelas > 0 ? (
+                  <>
+                    <div>1º — <b>Termo de Regularização de Débitos</b>: {sim.contrato2.parcelasCheias}× {formatCurrency(sim.valorParcela)}</div>
+                    <div>2º — <b>Fatura de transição</b>: {formatCurrency(sim.contrato2.valorUltima)} do Termo + {formatCurrency(sim.contrato2.antecipacaoTransicao)} antecipados do veículo</div>
+                    <div>3º — <b>Veículo</b>: {sim.contrato1.parcelasCheias}× {formatCurrency(sim.valorParcela)}{sim.contrato1.valorUltima > 0 && sim.contrato1.valorUltima !== sim.valorParcela ? ` + última de ${formatCurrency(sim.contrato1.valorUltima)}` : sim.contrato1.valorUltima > 0 ? ' + última' : ''}</div>
+                    <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+                      Durante a fase do Termo, o saldo do veículo fica congelado (sem juros; repasses e comissões suspensos).
+                    </div>
+                  </>
+                ) : (
+                  <div>Sem dívida fora do veículo — só o contrato do veículo: {sim.contrato1.parcelasCheias}× {formatCurrency(sim.valorParcela)}{sim.contrato1.valorUltima > 0 && sim.contrato1.valorUltima !== sim.valorParcela ? ` + última de ${formatCurrency(sim.contrato1.valorUltima)}` : ''}</div>
+                )}
+                <div className="my-[3px]" style={{ borderTop: '1px solid var(--border)' }} />
+                <LinhaValor label={`Total do relacionamento (${sim.totalParcelasRelacionamento} parcelas)`} valor={sim.totalAPagar} forte />
+              </div>
+            </div>
+          </div>
+
+          <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+            Taxa financeira de {(Math.pow(1 + sim.taxaPeriodo, 30 / (sim.frequencia === 'semanal' ? 7 : sim.frequencia === 'quinzenal' ? 14 : 30)) * 100 - 100).toFixed(2).replace('.', ',')}% ao mês
+            (equivalente por {FREQ_LABEL[sim.frequencia].toLowerCase()}) · parâmetros {sim.produtoAtivo ? `da versão ${sim.versaoParametros} do Catálogo` : 'padrão do produto (V1.0)'} ·
+            proposta, aprovação (CONAC), assinatura dos dois contratos e ativação vêm na próxima fase.
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

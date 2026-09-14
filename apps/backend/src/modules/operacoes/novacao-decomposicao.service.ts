@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
   AcordoNovacao,
@@ -6,7 +6,9 @@ import {
   ComposicaoCoberta,
   decomporSaldoNovacao,
   diasAtrasoCalendario,
+  FrequenciaNovacao,
   inicioHojeBrasilUTC,
+  precificarNovacao,
   ProdutoNovacao,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
@@ -87,6 +89,7 @@ export class NovacaoDecomposicaoService {
             numero: true,
             ativoId: true,
             status: true,
+            periodicidade: true,
             taxaMultaAtraso: true,
             taxaJurosAtraso: true,
             taxaDescontoQuitacao: true,
@@ -265,6 +268,12 @@ export class NovacaoDecomposicaoService {
     // --- 4. Motor puro (regra A7 — testado contra a planilha em @azit/utils).
     const resultado = decomporSaldoNovacao({ componentes, acordos });
 
+    // Frequência herdada do contrato do veículo (mesma regra do acordo §7.7):
+    // a novação mantém o ritmo das faturas por padrão; o operador pode trocar.
+    const principal = contratos.find((c) => c.ativoId && c.status === 'ATIVO') ?? contratos[0];
+    const frequenciaHerdada: FrequenciaNovacao =
+      principal?.periodicidade === 'MENSAL' ? 'mensal' : principal?.periodicidade === 'QUINZENAL' ? 'quinzenal' : 'semanal';
+
     // Rótulo dos acordos para a memória em tela (o motor só conhece ids).
     const statusAcordo = new Map(acordosDb.map((a) => [a.id, a.status.toLowerCase()]));
     return {
@@ -272,6 +281,7 @@ export class NovacaoDecomposicaoService {
       titularId: conta.titularId,
       titularNome: conta.titular.nome,
       dataBase: hoje.toISOString(),
+      frequenciaHerdada,
       contratos: contratos.map((c) => ({
         id: c.id,
         numero: c.numero,
@@ -285,6 +295,62 @@ export class NovacaoDecomposicaoService {
         ...resultado.memoria,
         acordos: resultado.memoria.acordos.map((a) => ({ ...a, status: statusAcordo.get(a.acordoId) ?? null })),
       },
+    };
+  }
+
+  // Simulação da proposta (A7 passos 3-4): decomposição (F1) + precificação
+  // com os parâmetros do produto `novacao` no Catálogo (defaults do V1.0 em
+  // Rascunho — Regra 12; a CONTRATAÇÃO na F2 exigirá o produto ATIVO).
+  async simular(
+    contaId: string,
+    dto: {
+      numeroParcelasVeiculo: number;
+      frequencia?: FrequenciaNovacao;
+      desconto?: number; // centavos — só comitê
+      recebimentoInicial?: number; // centavos
+    },
+  ) {
+    const dec = await this.decomporConta(contaId);
+    if (dec.parteVeiculo.total <= 0) {
+      throw new UnprocessableEntityException({
+        erro: 'sem_saldo_veiculo',
+        mensagem: 'A conta não tem saldo de veículo a novar — a novação parte do contrato do veículo',
+      });
+    }
+    const params = await this.catalogoFonte.novacao();
+    const frequencia = dto.frequencia ?? dec.frequenciaHerdada;
+    const r = precificarNovacao({
+      saldoVeiculo: dec.parteVeiculo.total,
+      saldoDemais: dec.demaisProdutos.total,
+      desconto: dto.desconto ?? 0,
+      recebimentoInicial: dto.recebimentoInicial ?? 0,
+      numeroParcelasVeiculo: dto.numeroParcelasVeiculo,
+      frequencia,
+      taxaMensal: params.taxaMensal,
+      taxaInicialPct: params.taxaInicialPct,
+      taxaInicialMinima: params.taxaInicialMinima,
+      entradaMinimaPct: params.entradaMinimaPct,
+      prazoMaximoMeses: params.prazoMaximoMeses,
+    });
+    const excecoes = [...r.excecoes];
+    if (!params.ativo) {
+      excecoes.push('produto Novação ainda não está ATIVO no Catálogo — simulação com os parâmetros padrão (a contratação exigirá ativação)');
+    }
+    return {
+      contaId,
+      titularId: dec.titularId,
+      titularNome: dec.titularNome,
+      dataBase: dec.dataBase,
+      frequencia,
+      produtoAtivo: params.ativo,
+      versaoParametros: params.versao,
+      decomposicao: {
+        parteVeiculo: dec.parteVeiculo,
+        demaisProdutos: dec.demaisProdutos,
+        totalGeral: dec.totalGeral,
+      },
+      ...r,
+      excecoes,
     };
   }
 }

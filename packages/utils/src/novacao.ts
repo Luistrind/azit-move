@@ -1,6 +1,9 @@
 import { calcularEncargoAtraso } from './calculations';
 import { valorPresenteMensal } from './precificacao';
 
+const DIAS_FREQUENCIA = { semanal: 7, quinzenal: 14, mensal: 30 } as const;
+export type FrequenciaNovacao = keyof typeof DIAS_FREQUENCIA;
+
 // ============================================================
 // NOVAÇÃO — F1: decomposição do saldo por produto (A7 passos 1–2 do doc
 // docs/novacao-adaptacoes-azit-2026-09.md, decisões Luís 13/09/2026).
@@ -287,5 +290,155 @@ export function decomporSaldoNovacao(input: {
     demaisProdutos: { porProduto, total: totalDemais },
     totalGeral: veiculo.total + totalDemais,
     memoria: { componentes, acordos: acordosExplodidos, ignorados },
+  };
+}
+
+// ============================================================
+// NOVAÇÃO — precificação da proposta (A7 passos 3–4; NV001–019 do V1.0).
+//
+// Contrato 1 (veículo): saldo-base = parte do veículo + ajuste da troca (FIPE
+// entra − sai); desconto SÓ do comitê → saldo novado; taxa inicial de
+// processamento = max(2% × saldo-base; R$ 3.990), UMA vez na operação, alocada
+// aqui; recebimento inicial (opcional — novação não costuma ter): mínimo =
+// max(1% × saldo novado; taxa inicial), taxa apropriada primeiro, sobra
+// amortiza; o restante vai à Price 1,70% a.m. com taxa equivalente por
+// frequência ((1+i)^(dias/30) − 1), ajuste residual na última parcela.
+//
+// Contrato 2 (Termo de Regularização de Débitos) é pago PRIMEIRO (A6): o
+// saldo dos demais produtos é amortizado à MESMA parcela do veículo e à mesma
+// taxa; a última parcela dele (resto < parcela) forma a FATURA DE TRANSIÇÃO,
+// completada com uma antecipação do veículo até o valor periódico padrão — a
+// antecipação abate o saldo do veículo ANTES do cronograma dele começar.
+// Durante a fase do Contrato 2 o saldo do veículo NÃO rende juros (congelado;
+// repasses do investidor e comissões da Azit idem — fora deste motor).
+// ============================================================
+
+export interface ParametrosPrecificacaoNovacao {
+  saldoVeiculo: number; // centavos — parteVeiculo.total da decomposição (F1)
+  saldoDemais: number; // centavos — demaisProdutos.total da decomposição (F1)
+  ajusteTrocaVeiculo?: number; // centavos (FIPE do que entra − do que sai; F3)
+  desconto?: number; // centavos — SÓ com aprovação do comitê
+  recebimentoInicial?: number; // centavos (0 = sem recebimento inicial)
+  numeroParcelasVeiculo: number; // prazo escolhido para o contrato do veículo
+  frequencia: FrequenciaNovacao;
+  taxaMensal?: number; // NV010 — fração a.m. (default 0,017)
+  taxaInicialPct?: number; // fração sobre o saldo-base (default 0,02)
+  taxaInicialMinima?: number; // centavos (default R$ 3.990)
+  entradaMinimaPct?: number; // fração sobre o saldo novado (default 0,01)
+  prazoMaximoMeses?: number; // NV — default 60
+}
+
+export interface FaseContrato {
+  saldo: number; // centavos — o que a fase amortiza
+  parcelasCheias: number; // parcelas no valor periódico padrão
+  valorUltima: number; // última parcela (ajuste residual; <= parcela padrão)
+  totalParcelas: number; // parcelasCheias + (valorUltima > 0 ? 1 : 0)
+}
+
+export interface ResultadoPrecificacaoNovacao {
+  saldoBase: number;
+  saldoNovado: number;
+  taxaInicial: number;
+  entradaMinima: number; // mínimo operacional quando HÁ recebimento inicial
+  tpFinanciada: number; // parte da taxa inicial não coberta pelo recebimento
+  amortizacaoInicial: number; // o que do recebimento inicial abate o saldo
+  saldoAParcelarVeiculo: number; // SP antes da antecipação da transição
+  taxaPeriodo: number; // fração por período
+  valorParcela: number; // o valor periódico único que o cliente sente
+  contrato2: FaseContrato & { antecipacaoTransicao: number };
+  contrato1: FaseContrato; // já líquido da antecipação da transição
+  totalParcelasRelacionamento: number;
+  totalAPagar: number; // recebimento inicial + todas as faturas
+  excecoes: string[];
+}
+
+// Amortiza `saldo` a parcela fixa `pmt` com juros `i` por período: quantas
+// parcelas cheias cabem e qual o resíduo da última (com os juros do período).
+function amortizarAParcelaFixa(saldo: number, pmt: number, i: number): FaseContrato {
+  if (saldo <= 0) return { saldo: 0, parcelasCheias: 0, valorUltima: 0, totalParcelas: 0 };
+  let s = saldo;
+  let cheias = 0;
+  // 1040 períodos ≈ 20 anos semanais: acima disso a parcela não amortiza.
+  while (cheias < 1040) {
+    const comJuros = Math.round(s * (1 + i));
+    if (comJuros <= pmt) {
+      return { saldo, parcelasCheias: cheias, valorUltima: comJuros, totalParcelas: cheias + (comJuros > 0 ? 1 : 0) };
+    }
+    s = comJuros - pmt;
+    cheias += 1;
+  }
+  throw new Error('Novação: a parcela não amortiza o saldo (juros do período maiores que a parcela)');
+}
+
+export function precificarNovacao(p: ParametrosPrecificacaoNovacao): ResultadoPrecificacaoNovacao {
+  const n1 = p.numeroParcelasVeiculo;
+  if (!Number.isInteger(n1) || n1 < 1) {
+    throw new Error('numeroParcelasVeiculo deve ser inteiro >= 1');
+  }
+  const taxaMensal = p.taxaMensal ?? 0.017;
+  const taxaInicialPct = p.taxaInicialPct ?? 0.02;
+  const taxaInicialMinima = p.taxaInicialMinima ?? 399000;
+  const entradaMinimaPct = p.entradaMinimaPct ?? 0.01;
+  const prazoMaximoMeses = p.prazoMaximoMeses ?? 60;
+  const desconto = p.desconto ?? 0;
+  const recebimento = p.recebimentoInicial ?? 0;
+  const excecoes: string[] = [];
+
+  // Passo 3 — cadeia do contrato do veículo.
+  const saldoBase = p.saldoVeiculo + (p.ajusteTrocaVeiculo ?? 0);
+  if (saldoBase <= 0) throw new Error('Novação: saldo-base do veículo deve ser positivo');
+  if (desconto > 0) excecoes.push('desconto aplicado — exige aprovação do comitê (CONAC)');
+  const saldoNovado = saldoBase - Math.min(desconto, saldoBase);
+  const taxaInicial = Math.max(Math.round(saldoBase * taxaInicialPct), taxaInicialMinima);
+  const entradaMinima = Math.max(Math.round(saldoNovado * entradaMinimaPct), taxaInicial);
+  if (recebimento > 0 && recebimento < entradaMinima) {
+    excecoes.push('recebimento inicial abaixo do mínimo operacional (max(1% do saldo novado; taxa inicial))');
+  }
+  const tpCoberta = Math.min(taxaInicial, recebimento);
+  const tpFinanciada = taxaInicial - tpCoberta;
+  const amortizacaoInicial = Math.max(0, recebimento - taxaInicial);
+  const sp = saldoNovado - amortizacaoInicial + tpFinanciada;
+
+  const dias = DIAS_FREQUENCIA[p.frequencia];
+  const i = Math.pow(1 + taxaMensal, dias / 30) - 1;
+  const pmt = i === 0 ? sp / n1 : (sp * (i * Math.pow(1 + i, n1))) / (Math.pow(1 + i, n1) - 1);
+  // Para CIMA: com o PMT arredondado para baixo sobraria um resíduo de centavos
+  // além da parcela n1 — o ajuste residual fica sempre NA última, para menos.
+  const valorParcela = Math.ceil(pmt);
+
+  // Passo 4 — Contrato 2 primeiro, à mesma parcela e mesma taxa.
+  const fase2 = amortizarAParcelaFixa(p.saldoDemais, valorParcela, i);
+  const antecipacaoTransicao = fase2.totalParcelas > 0 ? Math.max(0, valorParcela - fase2.valorUltima) : 0;
+
+  // Contrato do veículo: saldo CONGELADO na fase do Contrato 2 (não rende
+  // juros), abatido pela antecipação da transição, e só então amortizado.
+  const saldoVeiculoLiquido = Math.max(0, sp - antecipacaoTransicao);
+  const fase1 = amortizarAParcelaFixa(saldoVeiculoLiquido, valorParcela, i);
+
+  const totalParcelas = fase2.totalParcelas + fase1.totalParcelas;
+  const maxParcelas = Math.floor((prazoMaximoMeses * 30) / dias);
+  if (totalParcelas > maxParcelas) {
+    excecoes.push(`prazo total de ${totalParcelas} parcelas excede o máximo de ${prazoMaximoMeses} meses (${maxParcelas} parcelas ${p.frequencia}s)`);
+  }
+  const somaFase = (f: FaseContrato) => f.parcelasCheias * valorParcela + f.valorUltima;
+  // A transição cobra a parcela padrão inteira (resto do C2 + antecipação).
+  const totalAPagar =
+    recebimento + somaFase(fase2) + antecipacaoTransicao + somaFase(fase1);
+
+  return {
+    saldoBase,
+    saldoNovado,
+    taxaInicial,
+    entradaMinima,
+    tpFinanciada,
+    amortizacaoInicial,
+    saldoAParcelarVeiculo: sp,
+    taxaPeriodo: i,
+    valorParcela,
+    contrato2: { ...fase2, antecipacaoTransicao },
+    contrato1: fase1,
+    totalParcelasRelacionamento: totalParcelas,
+    totalAPagar,
+    excecoes,
   };
 }

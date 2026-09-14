@@ -156,7 +156,12 @@ cronogramas na ordem descrita e nada fica pela metade.
   em `@azit/utils` (`novacao.ts`, testes unitários), montador no backend
   (`novacao-decomposicao.service.ts`), endpoint `GET /contas/:id/novacao/decomposicao` e
   prévia na ficha do titular (Contrato 1 × Contrato 2, memória de cálculo auditável).
-- F0/F2: produto `novacao` no Catálogo; simulação e proposta (taxa inicial de
-  processamento, desconto CONAC, Price 1,70%, sequenciamento A6), dois instrumentos
-  assinados juntos, recebimento inicial, ativação atômica.
+- **F0 + SIMULAÇÃO — CONSTRUÍDAS (14/09):** produto `novacao` no Catálogo (Rascunho,
+  versão 1 com os parâmetros NV; leitura funciona em Rascunho com exceção sinalizada —
+  contratação exigirá ATIVO) e motor `precificarNovacao` (A7 passos 3–4: cadeia do
+  veículo com taxa inicial e recebimento opcional; Contrato 2 amortizado PRIMEIRO à
+  mesma parcela; fatura de transição com antecipação; veículo congelado na fase do C2);
+  `POST /contas/:id/novacao/simular` + bloco "Simular proposta" no modal da prévia.
+- F2: proposta formal → CONAC → dois instrumentos assinados juntos → recebimento
+  inicial → ativação atômica (extinção das obrigações de origem + dois cronogramas).
 - F3: ativos, garantias e troca de veículo (A5).
