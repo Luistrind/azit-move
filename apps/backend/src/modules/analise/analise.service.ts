@@ -349,7 +349,21 @@ export class AnaliseService implements OnModuleInit {
           situacao: 'falha', motivoFalha: `Birô indisponível: ${(e as Error).message}`,
         }, usuarioId);
       }
-      const ok = Object.keys(r.campos).length > 0;
+      // Payload com dados NUNCA é falha (caso Boa Vista do Lourenço, 14/09:
+      // o birô devolveu score/ocorrências mas o mapeamento de campos não
+      // reconheceu — registrava "falha" com a consulta paga e válida). Campos
+      // não mapeados = concluída com nota; o retorno bruto fica na trilha.
+      const brutoTemDados = (() => {
+        const b = r.bruto as { result?: unknown } | null | undefined;
+        if (!b || typeof b !== 'object') return false;
+        const res = (b as { result?: unknown }).result;
+        return !!res && typeof res === 'object' && Object.keys(res as object).length > 0;
+      })();
+      const ok = Object.keys(r.campos).length > 0 || brutoTemDados;
+      const notaMapeamento =
+        Object.keys(r.campos).length === 0 && brutoTemDados
+          ? 'Dados presentes no retorno bruto — campos estruturados não mapeados (calibrar parser); consulte o payload'
+          : undefined;
       return this.registrarConsulta(analiseId, {
         titularId: alvo.titularId,
         tipo: dto.tipo,
@@ -364,7 +378,7 @@ export class AnaliseService implements OnModuleInit {
         resultado: {
           ...r.campos,
           simulado: r.simulado,
-          ...(r.resumo ? { resumo: r.resumo } : {}),
+          ...(r.resumo ? { resumo: r.resumo } : notaMapeamento ? { resumo: notaMapeamento } : {}),
           statusApi: r.statusApi,
           bruto: r.bruto,
         },
