@@ -4,6 +4,19 @@ import { valorPresenteMensal } from './precificacao';
 const DIAS_FREQUENCIA = { semanal: 7, quinzenal: 14, mensal: 30 } as const;
 export type FrequenciaNovacao = keyof typeof DIAS_FREQUENCIA;
 
+// Fatores de PRAZO padrão da casa (reunião 04/07 + Catálogo, decisão 02/08):
+// número de parcelas por mês de prazo. FONTE ÚNICA — o FATORES_CATALOGO do
+// backend importa daqui; nunca converter meses↔parcelas por dias corridos
+// (60×30/7 = 257 cortava um contrato real de 260 semanais = 60 meses).
+export const FATOR_PRAZO_SEMANAL = 4.3452;
+export const FATOR_PRAZO_QUINZENAL = 2.1726;
+
+/** Converte prazo em meses para número de parcelas na frequência (fator padrão). */
+export function parcelasPorPrazoMeses(prazoMeses: number, frequencia: FrequenciaNovacao): number {
+  const fator = frequencia === 'mensal' ? 1 : frequencia === 'quinzenal' ? FATOR_PRAZO_QUINZENAL : FATOR_PRAZO_SEMANAL;
+  return Math.round(prazoMeses * fator);
+}
+
 // ============================================================
 // NOVAÇÃO — F1: decomposição do saldo por produto (A7 passos 1–2 do doc
 // docs/novacao-adaptacoes-azit-2026-09.md, decisões Luís 13/09/2026).
@@ -416,7 +429,8 @@ export function precificarNovacao(p: ParametrosPrecificacaoNovacao): ResultadoPr
   const fase1 = amortizarAParcelaFixa(saldoVeiculoLiquido, valorParcela, i);
 
   const totalParcelas = fase2.totalParcelas + fase1.totalParcelas;
-  const maxParcelas = Math.floor((prazoMaximoMeses * 30) / dias);
+  // Teto pela conversão de PRAZO padrão (4,3452 semanas/mês; 2,1726 quinzenas).
+  const maxParcelas = parcelasPorPrazoMeses(prazoMaximoMeses, p.frequencia);
   if (totalParcelas > maxParcelas) {
     excecoes.push(`prazo total de ${totalParcelas} parcelas excede o máximo de ${prazoMaximoMeses} meses (${maxParcelas} parcelas ${p.frequencia}s)`);
   }

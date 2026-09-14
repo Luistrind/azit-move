@@ -333,3 +333,24 @@ describe('precificarNovacao (A7 passos 3-4)', () => {
     ).toThrow(/não amortiza/);
   });
 });
+
+describe('conversão de prazo (fator padrão 4,3452/2,1726 — correção 14/09)', () => {
+  it('60 meses = 261 parcelas semanais; 260 NÃO excede o teto', () => {
+    const r = precificarNovacao({
+      saldoVeiculo: 10000000, saldoDemais: 0, numeroParcelasVeiculo: 260, frequencia: 'semanal',
+      taxaInicialPct: 0, taxaInicialMinima: 0,
+    });
+    // Caso real (14/09): 260 semanais = 60 meses pelo fator da casa — a conta
+    // por dias corridos (60×30/7 = 257) marcava exceção indevida.
+    expect(r.excecoes).toHaveLength(0);
+    expect(r.contrato1.totalParcelas).toBe(260);
+  });
+
+  it('262 parcelas semanais excede 60 meses', () => {
+    const r = precificarNovacao({
+      saldoVeiculo: 10000000, saldoDemais: 0, numeroParcelasVeiculo: 262, frequencia: 'semanal',
+      taxaInicialPct: 0, taxaInicialMinima: 0,
+    });
+    expect(r.excecoes.some((e) => e.includes('60 meses'))).toBe(true);
+  });
+});

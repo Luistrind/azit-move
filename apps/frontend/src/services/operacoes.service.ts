@@ -111,6 +111,8 @@ export interface SimulacaoNovacao {
   titularNome: string;
   dataBase: string;
   frequencia: 'semanal' | 'quinzenal' | 'mensal';
+  prazoMeses: number | null;
+  numeroParcelasVeiculo: number;
   produtoAtivo: boolean;
   versaoParametros: number | null;
   decomposicao: {
@@ -219,7 +221,7 @@ export const operacoesService = {
   // Simulação da proposta de novação (A7 passos 3-4) — números do SERVIDOR.
   async simularNovacao(
     contaId: string,
-    body: { numeroParcelasVeiculo: number; frequencia?: 'semanal' | 'quinzenal' | 'mensal'; desconto?: number; recebimentoInicial?: number },
+    body: { prazoMeses?: number; numeroParcelasVeiculo?: number; frequencia?: 'semanal' | 'quinzenal' | 'mensal'; desconto?: number; recebimentoInicial?: number },
   ): Promise<SimulacaoNovacao> {
     const { data } = await api.post(`/api/v1/contas/${contaId}/novacao/simular`, body);
     return data;

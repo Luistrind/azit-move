@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { formatCurrency } from '@azit/utils';
+import { formatCurrency, parcelasPorPrazoMeses } from '@azit/utils';
 import { operacoesService, ComponenteDecomposicao, SimulacaoNovacao } from '../services/operacoes.service';
 import { reaisParaCentavos } from '../lib/valor';
 import { mensagemErro } from '../lib/permissoes';
@@ -224,20 +224,24 @@ const FREQ_LABEL = { semanal: 'Semanal', quinzenal: 'Quinzenal', mensal: 'Mensal
 
 function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequenciaHerdada: 'semanal' | 'quinzenal' | 'mensal' }) {
   const [aberto, setAberto] = useState(false);
-  const [parcelas, setParcelas] = useState('104');
+  // Prazo em MESES, como na simulação da originação — a frequência dita o
+  // nº de parcelas pelo fator padrão 4,3452/2,1726 (correção 14/09).
+  const [prazoMeses, setPrazoMeses] = useState('24');
   const [frequencia, setFrequencia] = useState<'semanal' | 'quinzenal' | 'mensal'>(frequenciaHerdada);
   const [recebimento, setRecebimento] = useState('');
   const [desconto, setDesconto] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const [sim, setSim] = useState<SimulacaoNovacao | null>(null);
 
+  const meses = parseInt(prazoMeses || '0', 10);
+  const parcelasPrevistas = meses > 0 ? parcelasPorPrazoMeses(meses, frequencia) : 0;
+
   async function simular() {
-    const n = parseInt(parcelas || '0', 10);
-    if (!n || n < 1) return;
+    if (!meses || meses < 1) return;
     setOcupado(true);
     try {
       const r = await operacoesService.simularNovacao(contaId, {
-        numeroParcelasVeiculo: n,
+        prazoMeses: meses,
         frequencia,
         recebimentoInicial: reaisParaCentavos(recebimento) || undefined,
         desconto: reaisParaCentavos(desconto) || undefined,
@@ -267,8 +271,8 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
       <div className="mb-[10px] font-display text-[12.5px] font-bold">Simulação da proposta</div>
       <div className="flex flex-wrap items-end gap-[12px]">
         <label className="flex flex-col gap-[4px]">
-          <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Parcelas do veículo</span>
-          <input value={parcelas} onChange={(e) => setParcelas(e.target.value)} className="h-[34px] w-[90px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+          <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Prazo (meses)</span>
+          <input value={prazoMeses} onChange={(e) => setPrazoMeses(e.target.value)} className="h-[34px] w-[90px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
         </label>
         <label className="flex flex-col gap-[4px]">
           <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Frequência</span>
@@ -290,6 +294,11 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
           {ocupado ? 'Calculando…' : 'Simular'}
         </button>
       </div>
+      {parcelasPrevistas > 0 && (
+        <div className="mt-[6px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+          {meses} meses na frequência {FREQ_LABEL[frequencia].toLowerCase()} = <b>{parcelasPrevistas} parcelas</b> do contrato do veículo
+        </div>
+      )}
 
       {sim && (
         <div className="mt-[14px] flex flex-col gap-[12px]">

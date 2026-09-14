@@ -304,7 +304,8 @@ export class NovacaoDecomposicaoService {
   async simular(
     contaId: string,
     dto: {
-      numeroParcelasVeiculo: number;
+      prazoMeses?: number; // preferencial — a frequência dita as parcelas
+      numeroParcelasVeiculo?: number; // alternativa direta
       frequencia?: FrequenciaNovacao;
       desconto?: number; // centavos — só comitê
       recebimentoInicial?: number; // centavos
@@ -319,12 +320,22 @@ export class NovacaoDecomposicaoService {
     }
     const params = await this.catalogoFonte.novacao();
     const frequencia = dto.frequencia ?? dec.frequenciaHerdada;
+    // Prazo em meses → parcelas pelo fator padrão do Catálogo (4,3452/2,1726).
+    const numeroParcelas =
+      dto.numeroParcelasVeiculo ??
+      this.catalogoFonte.maxParcelasReembolso(dto.prazoMeses ?? 0, frequencia);
+    if (numeroParcelas < 1) {
+      throw new UnprocessableEntityException({
+        erro: 'validacao',
+        mensagem: 'Informe o prazo em meses do contrato do veículo',
+      });
+    }
     const r = precificarNovacao({
       saldoVeiculo: dec.parteVeiculo.total,
       saldoDemais: dec.demaisProdutos.total,
       desconto: dto.desconto ?? 0,
       recebimentoInicial: dto.recebimentoInicial ?? 0,
-      numeroParcelasVeiculo: dto.numeroParcelasVeiculo,
+      numeroParcelasVeiculo: numeroParcelas,
       frequencia,
       taxaMensal: params.taxaMensal,
       taxaInicialPct: params.taxaInicialPct,
@@ -342,6 +353,8 @@ export class NovacaoDecomposicaoService {
       titularNome: dec.titularNome,
       dataBase: dec.dataBase,
       frequencia,
+      prazoMeses: dto.prazoMeses ?? null,
+      numeroParcelasVeiculo: numeroParcelas,
       produtoAtivo: params.ativo,
       versaoParametros: params.versao,
       decomposicao: {

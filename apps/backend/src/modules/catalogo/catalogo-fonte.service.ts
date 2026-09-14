@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { FATOR_PRAZO_QUINZENAL, FATOR_PRAZO_SEMANAL } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 
 // F2 — o Catálogo como FONTE do simulador (doc 02 §17). A chave de virada é o
@@ -7,12 +8,13 @@ import { PrismaService } from '../../database/prisma.service';
 // segue no motor legado (VersaoParametrosSimulacao). Dinheiro em CENTAVOS.
 
 // Fatores do Catálogo (decisão 02/08: "seguir o documento"):
-// índice de conversão de VALOR (parcela exibida) e de PRAZO (nº de parcelas).
+// índice de conversão de VALOR (parcela exibida) e de PRAZO (nº de parcelas —
+// fonte única em @azit/utils desde 14/09: motores puros usam o mesmo fator).
 export const FATORES_CATALOGO = {
   precificacaoSemanal: 4,
   precificacaoQuinzenal: 2,
-  contratoSemanal: 4.3452,
-  contratoQuinzenal: 2.1726,
+  contratoSemanal: FATOR_PRAZO_SEMANAL,
+  contratoQuinzenal: FATOR_PRAZO_QUINZENAL,
 } as const;
 
 export interface OfertaPadraoCatalogo {
