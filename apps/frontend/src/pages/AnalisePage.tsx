@@ -319,6 +319,19 @@ export function AnalisePage() {
                 >
                   Baixar
                 </button>
+                {!final && (
+                  <button
+                    className="font-semibold"
+                    style={{ color: '#c0392b' }}
+                    disabled={ocupado}
+                    onClick={() => {
+                      if (!window.confirm(`Remover o documento "${doc.nome}"? Use para trocar um anexo enviado por engano.`)) return;
+                      void acao(async () => { await originacaoService.removerDocumento(d.propostaId, doc.id); return analiseService.dossie(d.id); }, 'Documento removido — anexe o correto pela proposta.');
+                    }}
+                  >
+                    Remover
+                  </button>
+                )}
               </span>
             </div>
           ))

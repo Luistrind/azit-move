@@ -167,6 +167,16 @@ export class FunilController {
     return this.proposta.anexarDocumento(id, dto);
   }
 
+  // Remove documento anexado por engano (fase de anexo — pedido 14/09).
+  @Delete('propostas/:id/documentos/:docId')
+  removerDocumento(
+    @Param('id') id: string,
+    @Param('docId') docId: string,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.proposta.removerDocumento(id, docId, user.id);
+  }
+
   // Download do arquivo anexado.
   @Get('propostas/documentos/:docId/download')
   async baixarDocumento(@Param('docId') docId: string): Promise<StreamableFile> {

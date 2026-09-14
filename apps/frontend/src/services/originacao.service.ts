@@ -214,6 +214,11 @@ export const originacaoService = {
     });
     return data;
   },
+  // Remove documento anexado por engano (fase de anexo — 14/09).
+  async removerDocumento(propostaId: string, docId: string): Promise<PropostaDetalhe> {
+    const { data } = await api.delete(`/api/v1/propostas/${propostaId}/documentos/${docId}`);
+    return data;
+  },
   async baixarDocumento(docId: string, nome: string): Promise<void> {
     const resp = await api.get(`/api/v1/propostas/documentos/${docId}/download`, { responseType: 'blob' });
     const url = URL.createObjectURL(resp.data as Blob);

@@ -450,6 +450,39 @@ export class PropostaService {
     return this.detalhe(propostaId);
   }
 
+  // Remove um documento anexado por engano (pedido Luís 14/09): permitido
+  // enquanto a proposta não está CONVERTIDA (fase de anexo/análise); o
+  // registro sai com o arquivo, e a remoção fica auditada.
+  async removerDocumento(propostaId: string, docId: string, usuarioId?: string) {
+    const doc = await this.prisma.db.documentoProposta.findFirst({
+      where: { id: docId, propostaId },
+      include: { proposta: { select: { status: true } } },
+    });
+    if (!doc) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Documento não encontrado nesta proposta' });
+    if (doc.proposta.status === 'CONVERTIDA') {
+      throw new UnprocessableEntityException({
+        erro: 'estado_invalido',
+        mensagem: 'Proposta já convertida — documentos fazem parte da trilha e não podem ser removidos',
+      });
+    }
+    await this.prisma.db.documentoProposta.delete({ where: { id: doc.id } });
+    try {
+      await fs.unlink(join(UPLOADS_DIR, doc.id));
+    } catch {
+      // Arquivo pode não existir (uploads antigos pré-volume) — o registro já saiu.
+    }
+    await this.prisma.db.logAuditoria.create({
+      data: {
+        usuarioId,
+        acao: 'documento_proposta_removido',
+        entidade: 'proposta',
+        entidadeId: propostaId,
+        depois: { docId: doc.id, tipo: doc.tipo, arquivoRef: doc.arquivoRef },
+      },
+    });
+    return this.detalhe(propostaId);
+  }
+
   // Lê o arquivo salvo de um documento (para download).
   async arquivoDocumento(docId: string): Promise<{ nome: string; buffer: Buffer }> {
     const doc = await this.prisma.db.documentoProposta.findFirst({ where: { id: docId } });

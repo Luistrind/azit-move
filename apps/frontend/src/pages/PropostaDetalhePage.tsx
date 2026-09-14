@@ -377,7 +377,15 @@ export function PropostaDetalhePage() {
                 {anexos.map((d) => (
                   <div key={d.id} className="flex items-center justify-between rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
                     <span>{d.arquivoRef}</span>
+                    <span className="flex items-center gap-[10px]">
                     <button onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--navy)' }}>baixar</button>
+                    {podeParecer && ['pendente', 'em_analise'].includes(p.status) && (
+                      <button
+                        onClick={() => { if (window.confirm('Remover este anexo?')) void run(() => originacaoService.removerDocumento(p.id, d.id)); }}
+                        className="font-semibold" style={{ color: '#c0392b' }}
+                      >remover</button>
+                    )}
+                    </span>
                   </div>
                 ))}
               </div>

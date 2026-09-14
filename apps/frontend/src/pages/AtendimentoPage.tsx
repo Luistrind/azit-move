@@ -393,6 +393,22 @@ export function AtendimentoPage() {
     }
   }
 
+  // Remove documento anexado por engano (14/09) — libera re-anexar o certo.
+  async function removerDoc(docId: string) {
+    if (!proposta) return;
+    if (!window.confirm('Remover este documento anexado?')) return;
+    setErro(null);
+    setDocBusy(true);
+    try {
+      const p = await originacaoService.removerDocumento(proposta.id, docId);
+      setProposta(p);
+    } catch (e) {
+      setErro(mensagemErro(e));
+    } finally {
+      setDocBusy(false);
+    }
+  }
+
   async function enviarParaAnalise() {
     if (!proposta) return;
     setErro(null);
@@ -934,8 +950,13 @@ export function AtendimentoPage() {
           <div className="rounded-[14px] p-[14px]" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)' }}>
             <div className="mb-[4px] text-[14.5px] font-bold">CNH válida (obrigatória)</div>
             {proposta.documentos.some((d) => d.tipo === 'cnh') ? (
-              <div className="text-[13.5px]" style={{ color: '#1c7a3d' }}>
-                ✓ Anexada: {proposta.documentos.filter((d) => d.tipo === 'cnh').map((d) => d.arquivoRef).join(', ')}
+              <div className="flex flex-col gap-[4px]">
+                {proposta.documentos.filter((d) => d.tipo === 'cnh').map((d) => (
+                  <div key={d.id} className="flex items-center justify-between text-[13.5px]" style={{ color: '#1c7a3d' }}>
+                    <span>✓ Anexada: {d.arquivoRef}</span>
+                    <button onClick={() => void removerDoc(d.id)} disabled={docBusy} className="text-[12px] font-semibold" style={{ color: '#c0392b' }}>remover</button>
+                  </div>
+                ))}
               </div>
             ) : (
               <label className="block h-[48px] cursor-pointer rounded-[10px] text-center text-[14px] font-bold leading-[48px]" style={{ background: 'var(--navy)', color: '#fff', opacity: docBusy ? 0.6 : 1 }}>
@@ -953,7 +974,10 @@ export function AtendimentoPage() {
               contrato com locadora…
             </div>
             {proposta.documentos.filter((d) => d.tipo !== 'cnh').map((d) => (
-              <div key={d.id} className="mb-[4px] text-[13px]" style={{ color: 'var(--text-muted)' }}>✓ {d.arquivoRef}</div>
+              <div key={d.id} className="mb-[4px] flex items-center justify-between text-[13px]" style={{ color: 'var(--text-muted)' }}>
+                <span>✓ {d.arquivoRef}</span>
+                <button onClick={() => void removerDoc(d.id)} disabled={docBusy} className="text-[12px] font-semibold" style={{ color: '#c0392b' }}>remover</button>
+              </div>
             ))}
             <input
               value={descComplementar}
