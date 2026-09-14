@@ -331,9 +331,16 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
               <div className="flex flex-col gap-[4px] text-[12px]">
                 {sim.contrato2.totalParcelas > 0 ? (
                   <>
-                    <div>1º — <b>Termo de Regularização de Débitos</b>: {sim.contrato2.parcelasCheias}× {formatCurrency(sim.valorParcela)}</div>
-                    <div>2º — <b>Fatura de transição</b>: {formatCurrency(sim.contrato2.valorUltima)} do Termo + {formatCurrency(sim.contrato2.antecipacaoTransicao)} antecipados do veículo</div>
-                    <div>3º — <b>Veículo</b>: {sim.contrato1.parcelasCheias}× {formatCurrency(sim.valorParcela)}{sim.contrato1.valorUltima > 0 && sim.contrato1.valorUltima !== sim.valorParcela ? ` + última de ${formatCurrency(sim.contrato1.valorUltima)}` : sim.contrato1.valorUltima > 0 ? ' + última' : ''}</div>
+                    {/* Termo menor que uma parcela: resolve-se INTEIRO na fatura
+                        de transição — não mostrar "0×" (feedback Luís 14/09). */}
+                    {sim.contrato2.parcelasCheias > 0 && (
+                      <div>1º — <b>Termo de Regularização de Débitos</b>: {sim.contrato2.parcelasCheias}× {formatCurrency(sim.valorParcela)}</div>
+                    )}
+                    <div>
+                      {sim.contrato2.parcelasCheias > 0 ? '2º' : '1º'} — <b>Fatura de transição</b>: {formatCurrency(sim.contrato2.valorUltima)}
+                      {sim.contrato2.parcelasCheias > 0 ? ' do Termo' : ' do Termo de Regularização de Débitos (resolve-se inteiro aqui)'} + {formatCurrency(sim.contrato2.antecipacaoTransicao)} antecipados do veículo
+                    </div>
+                    <div>{sim.contrato2.parcelasCheias > 0 ? '3º' : '2º'} — <b>Veículo</b>: {sim.contrato1.parcelasCheias}× {formatCurrency(sim.valorParcela)}{sim.contrato1.valorUltima > 0 && sim.contrato1.valorUltima !== sim.valorParcela ? ` + última de ${formatCurrency(sim.contrato1.valorUltima)}` : sim.contrato1.valorUltima > 0 ? ' + última' : ''}</div>
                     <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
                       Durante a fase do Termo, o saldo do veículo fica congelado (sem juros; repasses e comissões suspensos).
                     </div>
