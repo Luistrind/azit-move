@@ -236,6 +236,15 @@ export class AssistenteAnaliseService {
     };
   }
 
+  // Lê UM documento da análise (connector MCP, 14/09: o claude.ai trunca tool
+  // results grandes — o dossiê virou visão geral e cada documento é puxado
+  // individualmente). `nome` é o arquivoRef exato listado no dossiê.
+  async lerDocumento(analiseId: string, nome: string) {
+    const insumos = await this.coletarInsumos(analiseId);
+    if (!insumos) return null;
+    return insumos.documentos.find((d) => d.nome === nome) ?? null;
+  }
+
   // Executado pelo worker da fila RESUMO_ANALISE.
   async gerar(analiseId: string): Promise<{ resultado: string }> {
     const apiKey = this.config.get<string>('anthropic.apiKey');

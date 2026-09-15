@@ -77,12 +77,16 @@ export class McpAzitService {
       async () => ({ content: [{ type: 'text', text: `${PROMPT_ASSISTENTE_ANALISE}\n\n──────────────────────────────\n\n${REGRAS_DEMONSTRATIVOS}` }] }),
     );
 
+    // O claude.ai TRUNCA tool results grandes (caso real 14/09: payloads de
+    // processos + CNH renderizada estouraram e derrubaram os demonstrativos).
+    // O dossiê é uma VISÃO GERAL leve; consulta bruta e documento saem UM POR
+    // CHAMADA pelas duas ferramentas seguintes.
     registrar(
       'obter_dossie_analise',
       {
-        title: 'Obter o dossiê de uma análise',
+        title: 'Obter o dossiê de uma análise (visão geral)',
         description:
-          'Retorna os insumos completos de uma análise: dados cadastrais, payload BRUTO de cada consulta de birô e os documentos anexados (CNH, demonstrativos, extratos) como arquivos. Informe o analiseId (de listar_analises) ou um trecho do nome do titular.',
+          'Visão geral de uma análise: dados cadastrais + oferta escolhida, RESUMO de cada consulta de birô e o ÍNDICE dos documentos anexados. NÃO traz os payloads brutos nem o conteúdo dos arquivos — puxe cada um com obter_consulta_bruta e obter_documento (uma chamada por item, para não estourar o limite de resposta). Informe o analiseId (de listar_analises) ou um trecho do nome do titular.',
         inputSchema: {
           analiseId: z.string().min(1).optional().describe('id da análise'),
           nomeTitular: z.string().min(3).optional().describe('trecho do nome do comprador principal, se não tiver o id'),
@@ -105,45 +109,99 @@ export class McpAzitService {
         if (!insumos) {
           return { content: [{ type: 'text', text: `Análise ${id} não encontrada.` }], isError: true };
         }
-        const content: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string } | { type: 'resource'; resource: { uri: string; mimeType: string; blob: string } })[] = [
-          { type: 'text', text: `DOSSIÊ DA ANÁLISE ${insumos.analiseId} (titular: ${insumos.titularPrincipalNome ?? '—'})\n\n${insumos.cadastroTexto}` },
-          ...insumos.consultasTexto.map((t) => ({ type: 'text' as const, text: t })),
-        ];
-        for (const d of insumos.documentos) {
-          if (d.media.startsWith('image/')) {
-            content.push({ type: 'image', data: d.base64, mimeType: d.media });
-            content.push({ type: 'text', text: `(A imagem acima é o anexo "${d.nome}", tipo declarado: ${d.tipoDeclarado}.)` });
-          } else if (d.textoExtraido) {
-            // PDF digital: TEXTO extraído no servidor — o claude.ai não lê PDF
-            // binário de tool result (causa da renda errada no caso 14/09).
-            content.push({
+        const consultas = await this.prisma.db.consultaExterna.findMany({
+          where: { analiseId: id },
+          orderBy: { dataConsulta: 'asc' },
+          select: { tipo: true, fornecedor: true, dataConsulta: true, situacao: true, motivoFalha: true, resultado: true },
+        });
+        const resumoConsultas = consultas.map((c) => {
+          const r = (c.resultado ?? {}) as Record<string, unknown>;
+          const campos = Object.entries(r)
+            .filter(([k, v]) => k !== 'bruto' && v !== null && typeof v !== 'object')
+            .map(([k, v]) => `${k}=${String(v).slice(0, 120)}`)
+            .join(' · ');
+          const tamBruto = JSON.stringify((r as { bruto?: unknown }).bruto ?? null)?.length ?? 0;
+          return `• ${c.tipo} · ${c.fornecedor} · ${c.dataConsulta.toISOString().slice(0, 10)} · ${c.situacao}${c.motivoFalha ? ` · falha: ${c.motivoFalha}` : ''}\n  ${campos || 'sem campos mapeados'}\n  payload bruto: ${tamBruto > 2 ? `${tamBruto} chars — use obter_consulta_bruta("${c.tipo}")` : 'vazio'}`;
+        });
+        const indiceDocs = insumos.documentos.map(
+          (d) =>
+            `• "${d.nome}" (${d.tipoDeclarado} · ${d.media}) — ${d.textoExtraido ? `texto de ${d.textoExtraido.length} chars` : 'sem texto'}${d.paginasImagem.length ? ` + ${d.paginasImagem.length} página(s) renderizada(s)` : ''} — use obter_documento("${d.nome}")`,
+        );
+        return {
+          content: [
+            {
               type: 'text',
-              text: `===== ANEXO "${d.nome}" (PDF · tipo declarado: ${d.tipoDeclarado}) — texto extraído do documento =====\n${d.textoExtraido}\n===== fim do anexo "${d.nome}" =====`,
-            });
-            // Texto curto + páginas renderizadas (CNH-e: os dados estão na
-            // imagem, o texto é só o boilerplate da assinatura digital).
-            for (const pagina of d.paginasImagem) {
-              content.push({ type: 'image', data: pagina, mimeType: 'image/png' });
-            }
-            if (d.paginasImagem.length > 0) {
-              content.push({ type: 'text', text: `(As ${d.paginasImagem.length} imagem(ns) acima são as páginas renderizadas do MESMO anexo "${d.nome}" — o texto extraído era curto e os dados podem estar na imagem.)` });
-            }
-          } else if (d.paginasImagem.length > 0) {
-            // PDF sem texto (CNH-e digitalizada): páginas renderizadas como
-            // PNG no servidor — o claude.ai lê imagem normalmente.
-            for (const pagina of d.paginasImagem) {
-              content.push({ type: 'image', data: pagina, mimeType: 'image/png' });
-            }
-            content.push({ type: 'text', text: `(As ${d.paginasImagem.length} imagem(ns) acima são as páginas do anexo "${d.nome}", PDF digitalizado, tipo declarado: ${d.tipoDeclarado}.)` });
-          } else {
-            content.push({
+              text:
+                `DOSSIÊ DA ANÁLISE ${insumos.analiseId} (titular: ${insumos.titularPrincipalNome ?? '—'})\n\n${insumos.cadastroTexto}\n\n` +
+                `CONSULTAS DE BIRÔ (resumo — puxe o payload integral de cada uma com obter_consulta_bruta):\n${resumoConsultas.join('\n')}\n\n` +
+                `DOCUMENTOS ANEXADOS (índice — leia cada um com obter_documento):\n${indiceDocs.join('\n')}` +
+                (insumos.documentosIgnorados.length ? `\n\nDocumentos NÃO lidos automaticamente: ${insumos.documentosIgnorados.join('; ')}` : '') +
+                `\n\nIMPORTANTE: para o relatório, leia TODOS os documentos (um obter_documento por vez) e os payloads brutos relevantes (um obter_consulta_bruta por vez).`,
+            },
+          ],
+        };
+      },
+    );
+
+    registrar(
+      'obter_consulta_bruta',
+      {
+        title: 'Obter o payload bruto de UMA consulta',
+        description:
+          'Retorna o payload BRUTO integral de uma consulta de birô da análise (uma por chamada). Use o tipo exatamente como listado no dossiê (ex.: CAMADA1, SCORE_QUOD, RESTRITIVOS, BOAVISTA_SCORE, SCORE_POSITIVO, DISTRIBUICAO_PROCESSOS, PROCESSOS, KYC).',
+        inputSchema: {
+          analiseId: z.string().min(1).describe('id da análise'),
+          tipo: z.string().min(2).describe('tipo da consulta, como no dossiê'),
+        },
+      },
+      async ({ analiseId, tipo }: { analiseId: string; tipo: string }) => {
+        const c = await this.prisma.db.consultaExterna.findFirst({
+          where: { analiseId, tipo: tipo.toUpperCase() as never },
+          orderBy: { dataConsulta: 'desc' },
+        });
+        if (!c) return { content: [{ type: 'text', text: `Consulta ${tipo} não encontrada na análise ${analiseId}.` }], isError: true };
+        let corpo = JSON.stringify(c.resultado ?? {}, null, 0);
+        if (corpo.length > 100_000) corpo = corpo.slice(0, 100_000) + ' [TRUNCADO]';
+        return {
+          content: [
+            {
               type: 'text',
-              text: `⚠ ANEXO "${d.nome}" (PDF · tipo declarado: ${d.tipoDeclarado}): sem texto extraível nem renderização possível. NÃO foi possível ler o conteúdo — trate como documento não lido e sinalize no relatório.`,
-            });
+              text: `CONSULTA ${c.tipo} · ${c.fornecedor} · ${c.dataConsulta.toISOString().slice(0, 10)} · ${c.situacao}${c.motivoFalha ? ` · falha: ${c.motivoFalha}` : ''}\n${corpo}`,
+            },
+          ],
+        };
+      },
+    );
+
+    registrar(
+      'obter_documento',
+      {
+        title: 'Obter o conteúdo de UM documento anexado',
+        description:
+          'Retorna o conteúdo de um documento anexado da análise (um por chamada): texto extraído do PDF e/ou as páginas renderizadas como imagem (CNH-e, digitalizados). Use o nome exatamente como listado no índice do dossiê.',
+        inputSchema: {
+          analiseId: z.string().min(1).describe('id da análise'),
+          nome: z.string().min(1).describe('nome do arquivo, como no índice do dossiê'),
+        },
+      },
+      async ({ analiseId, nome }: { analiseId: string; nome: string }) => {
+        const d = await this.assistente.lerDocumento(analiseId, nome);
+        if (!d) return { content: [{ type: 'text', text: `Documento "${nome}" não encontrado na análise ${analiseId} — confira o nome exato no dossiê.` }], isError: true };
+        const content: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[] = [];
+        if (d.media.startsWith('image/')) {
+          content.push({ type: 'image', data: d.base64, mimeType: d.media });
+          content.push({ type: 'text', text: `(A imagem acima é o anexo "${d.nome}", tipo declarado: ${d.tipoDeclarado}.)` });
+        } else {
+          if (d.textoExtraido) {
+            content.push({ type: 'text', text: `===== ANEXO "${d.nome}" (PDF · ${d.tipoDeclarado}) — texto extraído =====\n${d.textoExtraido}\n===== fim =====` });
           }
-        }
-        if (insumos.documentosIgnorados.length) {
-          content.push({ type: 'text', text: `Documentos NÃO lidos automaticamente: ${insumos.documentosIgnorados.join('; ')}` });
+          for (const pagina of d.paginasImagem) content.push({ type: 'image', data: pagina, mimeType: 'image/png' });
+          if (d.paginasImagem.length > 0) {
+            content.push({ type: 'text', text: `(${d.paginasImagem.length} página(s) renderizada(s) do anexo "${d.nome}"${d.textoExtraido ? ' — o texto extraído era curto; os dados podem estar na imagem' : ''}.)` });
+          }
+          if (!d.textoExtraido && d.paginasImagem.length === 0) {
+            content.push({ type: 'text', text: `⚠ ANEXO "${d.nome}": sem texto extraível nem renderização possível — trate como documento não lido e sinalize no relatório.` });
+          }
         }
         return { content };
       },
