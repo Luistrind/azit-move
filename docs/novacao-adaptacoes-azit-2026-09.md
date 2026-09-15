@@ -87,6 +87,14 @@ do veículo, a comissão segue embutida na precificação, como em qualquer cont
 >    cronograma do veículo.
 > 4. **Parcela única real:** o valor periódico exibido, assinado e cobrado é
 >    financeira + comissão + proteção — constante do início ao fim (A6.1).
+>
+> **VALIDADO pelo Vicente (15/09):** liquidação da CP na novação separa Bem × Comissão —
+> bem vencido atualizado (2% + 1% a.m. pró-rata) + comissão vencida atualizada + VP do bem
+> vincendo pela taxa do contrato original; **comissão vincenda = R$ 0 (isenta — o contrato
+> de Novação gera comissão nova)**. Remunerações da Azit no contrato novado: TP
+> (max(2%; R$ 3.990), 100% Azit) + comissão recorrente (R$ 799,96/mês convertida à
+> frequência, todo o prazo, 100% Azit, **fora do principal sujeito a juros**). Pontos de
+> interpretação registrados abaixo em "Abertos".
 
 ## A5. Troca de veículo: valor vem do CADASTRO (tabela FIPE), não é informado livre
 
@@ -177,6 +185,16 @@ cronogramas na ordem descrita e nada fica pela metade.
 - **Nome de domínio do Contrato 2**: em uso o provisório "Termo de Regularização de
   Débitos" (decisão Luís 13/09 — "deixo sua solução por enquanto"); batismo definitivo
   com o jurídico (vocabulário: um conceito = um nome).
+- **CR na fase do Termo (interpretação a confirmar com o Vicente):** hoje o cliente paga a
+  parcela única idêntica desde a 1ª fatura, e o valor da CR na fase do Termo atua como
+  amortização extra do próprio Termo (A4.3, coerente com A6.4 "comissões congeladas") — o
+  Termo quita mais rápido e o total do cliente fica levemente menor. Alternativa: CR como
+  receita também na fase do Termo (Termo alonga, total sobe). Economicamente ambos são
+  100% Azit (o Termo é credor Azit); é escolha de apropriação + efeito no cliente.
+- **Recebimento inicial obrigatório?** Vicente descreve a TP "cobrada dentro do
+  recebimento inicial"; hoje o recebimento é OPCIONAL — sem ele a TP é financiada nas
+  parcelas (exceção sinalizada ao comitê). Confirmar se a novação deve EXIGIR recebimento
+  inicial mínimo ≥ TP.
 - Forma jurídica da cláusula de inadimplência cruzada (Jurídico).
 - Pendências PEND-NV-01..10 do V1.0 no que ainda se aplicarem (não resolver por inferência).
 
