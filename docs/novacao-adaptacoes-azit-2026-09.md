@@ -185,12 +185,12 @@ cronogramas na ordem descrita e nada fica pela metade.
 - **Nome de domínio do Contrato 2**: em uso o provisório "Termo de Regularização de
   Débitos" (decisão Luís 13/09 — "deixo sua solução por enquanto"); batismo definitivo
   com o jurídico (vocabulário: um conceito = um nome).
-- **CR na fase do Termo (interpretação a confirmar com o Vicente):** hoje o cliente paga a
-  parcela única idêntica desde a 1ª fatura, e o valor da CR na fase do Termo atua como
-  amortização extra do próprio Termo (A4.3, coerente com A6.4 "comissões congeladas") — o
-  Termo quita mais rápido e o total do cliente fica levemente menor. Alternativa: CR como
-  receita também na fase do Termo (Termo alonga, total sobe). Economicamente ambos são
-  100% Azit (o Termo é credor Azit); é escolha de apropriação + efeito no cliente.
+- ~~CR na fase do Termo~~ **DECIDIDO (Luís, 15/09):** contratos SEM origem em novação
+  seguem a regra do Vicente como descrita; contratos COM origem em novação seguem o
+  desenho da F4 — **prioridade de apropriação: 1º as primeiras faturas abatem o Termo (o
+  "atraso do contrato anterior"), depois a TR (parte financeira), depois a CR, depois os
+  demais componentes.** Ou seja, na fase do Termo o valor da CR atua como amortização
+  extra do próprio Termo (A4.3); a CR como receita começa com o cronograma do veículo.
 - **Recebimento inicial obrigatório?** Vicente descreve a TP "cobrada dentro do
   recebimento inicial"; hoje o recebimento é OPCIONAL — sem ele a TP é financiada nas
   parcelas (exceção sinalizada ao comitê). Confirmar se a novação deve EXIGIR recebimento
