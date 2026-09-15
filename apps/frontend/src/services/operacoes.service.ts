@@ -138,9 +138,13 @@ export interface SimulacaoNovacao {
   amortizacaoInicial: number;
   saldoAParcelarVeiculo: number;
   taxaPeriodo: number;
-  valorParcela: number;
-  contrato2: FaseNovacao & { antecipacaoTransicao: number };
-  contrato1: FaseNovacao;
+  valorParcela: number; // componente FINANCEIRO (Price)
+  // F4 (A3/A4, 15/09): parcela composta — o valor real assinado/cobrado.
+  comissaoPorPeriodo: number;
+  protecaoPorPeriodo: number;
+  valorParcelaTotal: number;
+  contrato2: FaseNovacao & { antecipacaoTransicao: number; totalComposto: number };
+  contrato1: FaseNovacao & { totalComposto: number };
   totalParcelasRelacionamento: number;
   totalAPagar: number;
   excecoes: string[];

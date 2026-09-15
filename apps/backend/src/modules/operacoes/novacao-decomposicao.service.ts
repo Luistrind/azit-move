@@ -51,18 +51,54 @@ export class NovacaoDecomposicaoService {
     private readonly catalogoFonte: CatalogoFonteService,
   ) {}
 
-  // Taxa mensal de origem por contrato (mesma hierarquia da quitação §7.4).
+  // Taxa mensal de origem + comissão recorrente POR PARCELA congelada, por
+  // contrato (mesma hierarquia da quitação §7.4 — parametroVersao da simulação
+  // que originou; CR por parcela = comissaoRecorrente ÷ fator de precificação).
   private async taxaOrigemPorContrato(
-    contratos: { id: string; ativoId: string | null; taxaDescontoQuitacao: Prisma.Decimal | null }[],
-  ): Promise<Map<string, number>> {
-    const taxas = new Map<string, number>();
+    contratos: {
+      id: string;
+      ativoId: string | null;
+      periodicidade: 'SEMANAL' | 'QUINZENAL' | 'MENSAL';
+      taxaDescontoQuitacao: Prisma.Decimal | null;
+      catalogoVersaoRef: string | null;
+    }[],
+  ): Promise<Map<string, { taxa: number; crPorParcela: number }>> {
+    const infos = new Map<string, { taxa: number; crPorParcela: number }>();
     let taxaReembolsoCatalogo: number | null | undefined;
     for (const c of contratos) {
+      // Contrato NOVADO (ref {nv:1, crP, taxaM}): taxa e CR congeladas na
+      // própria ref — uma SEGUNDA novação/decomposição exclui a CR dele igual.
+      if (c.catalogoVersaoRef) {
+        try {
+          const ref = JSON.parse(c.catalogoVersaoRef) as { nv?: number; crP?: number; taxaM?: number };
+          if (ref.nv) {
+            infos.set(c.id, {
+              taxa: ref.taxaM ?? frac(c.taxaDescontoQuitacao),
+              crPorParcela: Math.max(0, Math.round(ref.crP ?? 0)),
+            });
+            continue;
+          }
+        } catch { /* ref de outro formato → hierarquia normal */ }
+      }
       const proposta = await this.prisma.db.proposta.findFirst({
         where: { OR: [{ contratoGeradoId: c.id }, { contratosPacote: { some: { id: c.id } } }] },
-        select: { simulacao: { select: { parametroVersao: { select: { taxaMensal: true } } } } },
+        select: {
+          simulacao: {
+            select: {
+              parametroVersao: {
+                select: {
+                  taxaMensal: true,
+                  comissaoRecorrente: true,
+                  fatorPrecificacaoSemanal: true,
+                  fatorPrecificacaoQuinzenal: true,
+                },
+              },
+            },
+          },
+        },
       });
-      let taxa = frac(proposta?.simulacao?.parametroVersao?.taxaMensal);
+      const versao = proposta?.simulacao?.parametroVersao ?? null;
+      let taxa = frac(versao?.taxaMensal);
       if (taxa <= 0) taxa = frac(c.taxaDescontoQuitacao);
       if (taxa <= 0 && !c.ativoId) {
         // RP sem versão congelada: encargo mensal do produto reembolso.
@@ -71,9 +107,21 @@ export class NovacaoDecomposicaoService {
         }
         taxa = taxaReembolsoCatalogo ?? 0;
       }
-      taxas.set(c.id, taxa);
+      // CR embutida por parcela (A4.1) — só contratos nascidos da simulação;
+      // legado sem versão: 0 (sem decomposição de CR, mesmo caminho da quitação).
+      let crPorParcela = 0;
+      if (versao) {
+        const fator =
+          c.periodicidade === 'SEMANAL'
+            ? frac(versao.fatorPrecificacaoSemanal)
+            : c.periodicidade === 'QUINZENAL'
+              ? frac(versao.fatorPrecificacaoQuinzenal)
+              : 1;
+        crPorParcela = fator > 0 ? Math.round(cent(versao.comissaoRecorrente) / fator) : 0;
+      }
+      infos.set(c.id, { taxa, crPorParcela });
     }
-    return taxas;
+    return infos;
   }
 
   async decomporConta(contaId: string) {
@@ -93,6 +141,7 @@ export class NovacaoDecomposicaoService {
             taxaMultaAtraso: true,
             taxaJurosAtraso: true,
             taxaDescontoQuitacao: true,
+            catalogoVersaoRef: true,
             ativo: { select: { descricao: true } },
           },
         },
@@ -104,7 +153,7 @@ export class NovacaoDecomposicaoService {
     const hoje = inicioHojeBrasilUTC();
     const contratos = conta.contratosCredito;
     const porContrato = new Map(contratos.map((c) => [c.id, c]));
-    const taxas = await this.taxaOrigemPorContrato(contratos);
+    const infoOrigem = await this.taxaOrigemPorContrato(contratos);
 
     // --- 1. Parcelas EM ABERTO de todos os contratos da conta, com item de
     // origem e composição discriminada da fatura (PRINCIPAL × SERVICO).
@@ -145,7 +194,7 @@ export class NovacaoDecomposicaoService {
         dias,
         taxaMultaPercent: frac(c.taxaMultaAtraso),
         taxaJurosMensalPercent: frac(c.taxaJurosAtraso),
-        taxaVpMensal: taxas.get(p.contratoId) ?? 0,
+        taxaVpMensal: infoOrigem.get(p.contratoId)?.taxa ?? 0,
       };
 
       if (p.itemContratado.origem === 'ACORDO' && p.itemContratado.acordoOrigemId) {
@@ -168,6 +217,8 @@ export class NovacaoDecomposicaoService {
         produto: 'veiculo',
         origem: `Parcela ${p.display} · ${c.ativo?.descricao ?? c.numero}`,
         valorNominal: nominal - protecao,
+        // A4.1: a CR embutida (congelada na origem) sai do FUTURO no motor.
+        comissaoEmbutida: infoOrigem.get(p.contratoId)?.crPorParcela ?? 0,
       });
       if (protecao > 0) {
         componentes.push({ ...base, produto: 'seguro', origem: `Proteção embutida · ${p.display}`, valorNominal: protecao });
@@ -288,7 +339,7 @@ export class NovacaoDecomposicaoService {
         descricao: c.ativo?.descricao ?? 'Reembolso Parcelado',
         temAtivo: !!c.ativoId,
         status: c.status,
-        taxaVpMensal: taxas.get(c.id) ?? 0,
+        taxaVpMensal: infoOrigem.get(c.id)?.taxa ?? 0,
       })),
       ...resultado,
       memoria: {
@@ -322,6 +373,18 @@ export class NovacaoDecomposicaoService {
     const params = await this.catalogoFonte.novacao();
     const frequencia = dto.frequencia ?? dec.frequenciaHerdada;
 
+    // Contrato/veículo vigente — base da proteção (A3) e da troca (F3).
+    const atual = dec.contratos.find((c) => c.temAtivo && c.status === 'ATIVO') ?? dec.contratos.find((c) => c.temAtivo);
+    const contratoAtual = atual
+      ? await this.prisma.db.contratoCredito.findFirst({
+          where: { id: atual.id },
+          select: {
+            catalogoVersaoRef: true,
+            ativo: { select: { id: true, descricao: true, valorVenda: true } },
+          },
+        })
+      : null;
+
     // Troca de veículo (F3 — A5, decisão Luís 13/09): o veículo novo deve
     // estar DISPONÍVEL no Estoque; o ajuste vem dos valores de CADASTRO
     // (valorVenda — referência FIPE do ativo): entra − sai. Nada informado
@@ -331,13 +394,6 @@ export class NovacaoDecomposicaoService {
       ativoSaiId: string; saiDescricao: string; saiValor: number; ajuste: number;
     } = null;
     if (dto.trocaAtivoId) {
-      const atual = dec.contratos.find((c) => c.temAtivo && c.status === 'ATIVO') ?? dec.contratos.find((c) => c.temAtivo);
-      const contratoAtual = atual
-        ? await this.prisma.db.contratoCredito.findFirst({
-            where: { id: atual.id },
-            select: { ativo: { select: { id: true, descricao: true, valorVenda: true } } },
-          })
-        : null;
       if (!contratoAtual?.ativo) {
         throw new UnprocessableEntityException({ erro: 'sem_veiculo_atual', mensagem: 'A conta não tem veículo vigente para trocar' });
       }
@@ -373,6 +429,34 @@ export class NovacaoDecomposicaoService {
         mensagem: 'Informe o prazo em meses do contrato do veículo',
       });
     }
+
+    // Parcela composta (F4 — A3/A4, decisão Luís 15/09):
+    // CR da novação por período = mensal ÷ fator de VALOR (4/2/1, como a venda);
+    // proteção Essencial calculada do produto PV sobre o veículo PÓS-novação
+    // (na troca, o que ENTRA), congelada aqui (semanal exata) para o contrato.
+    const fatorValor = frequencia === 'semanal' ? 4 : frequencia === 'quinzenal' ? 2 : 1;
+    const comissaoPorPeriodo = Math.max(0, Math.round(params.comissaoRecorrenteMensal / fatorValor));
+    const avisos: string[] = [];
+    let protecaoSemanalExata = 0;
+    {
+      const baseProtecao = troca ? troca.entraValor : (contratoAtual?.ativo?.valorVenda ? Math.round(Number(contratoAtual.ativo.valorVenda.toString()) * 100) : 0);
+      // Variante da CP congelada no contrato de origem dá a categoria do ativo.
+      let variante = 'carro';
+      try {
+        const ref = contratoAtual?.catalogoVersaoRef ? (JSON.parse(contratoAtual.catalogoVersaoRef) as { variante?: string }) : null;
+        if (ref?.variante) variante = ref.variante;
+      } catch { /* ref ilegível → variante padrão */ }
+      const protS = baseProtecao > 0 ? await this.catalogoFonte.protecaoEssencialSemanalExata(variante, baseProtecao) : null;
+      if (protS === null || protS <= 0) {
+        avisos.push('proteção não calculada (produto Proteção Veicular indisponível ou valor de cadastro do veículo ausente) — parcela SEM proteção');
+      } else {
+        protecaoSemanalExata = protS;
+      }
+    }
+    const protecaoPorPeriodo = Math.round(
+      this.catalogoFonte.protecaoPorPeriodoExata(protecaoSemanalExata, frequencia),
+    );
+
     const r = precificarNovacao({
       saldoVeiculo: dec.parteVeiculo.total,
       saldoDemais: dec.demaisProdutos.total,
@@ -386,8 +470,10 @@ export class NovacaoDecomposicaoService {
       taxaInicialMinima: params.taxaInicialMinima,
       entradaMinimaPct: params.entradaMinimaPct,
       prazoMaximoMeses: params.prazoMaximoMeses,
+      comissaoPorPeriodo,
+      protecaoPorPeriodo,
     });
-    const excecoes = [...r.excecoes];
+    const excecoes = [...avisos, ...r.excecoes];
     if (!params.ativo) {
       excecoes.push('produto Novação ainda não está ATIVO no Catálogo — simulação com os parâmetros padrão (a contratação exigirá ativação)');
     }
@@ -402,6 +488,8 @@ export class NovacaoDecomposicaoService {
       troca,
       produtoAtivo: params.ativo,
       versaoParametros: params.versao,
+      // Congelados para a contratação (F2 grava na ref dos contratos novos).
+      protecaoSemanalExata,
       decomposicao: {
         parteVeiculo: dec.parteVeiculo,
         demaisProdutos: dec.demaisProdutos,

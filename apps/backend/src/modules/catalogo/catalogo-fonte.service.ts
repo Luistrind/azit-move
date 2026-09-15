@@ -226,6 +226,7 @@ export class CatalogoFonteService {
     entradaMinimaPct: number; // fração sobre o saldo novado
     prazoMaximoMeses: number;
     prazoAtivacaoDias: number; // assinatura → ativação (recebimento inicial)
+    comissaoRecorrenteMensal: number; // centavos — A4.2 (15/09): CR da novação
   }> {
     const produto = await this.prisma.db.produtoCatalogo.findFirst({
       where: { chave: 'novacao', deletedAt: null },
@@ -235,6 +236,19 @@ export class CatalogoFonteService {
       .filter((x) => !x.varianteId && !x.vigenteAte)
       .sort((a, b) => b.numero - a.numero)[0];
     const p = (vigente?.parametros ?? {}) as Parametros;
+    // CR da novação (A4.2, decisão Luís 15/09 — "novação também remunera
+    // administração"): parâmetro próprio; sem ele, HERDA a CR vigente da venda
+    // (VersaoParametrosSimulacao) — mesma remuneração de administração da casa.
+    let crMensal = num(p.comissaoRecorrenteMensal, -1);
+    if (crMensal < 0) {
+      const vendaVigente = await this.prisma.db.versaoParametrosSimulacao.findFirst({
+        orderBy: { vigenteDesde: 'desc' },
+        select: { comissaoRecorrente: true },
+      });
+      crMensal = vendaVigente
+        ? Math.round(Number(vendaVigente.comissaoRecorrente.toString()) * 100)
+        : 79996;
+    }
     return {
       ativo: produto?.status === 'ATIVO',
       versao: vigente?.numero ?? null,
@@ -244,6 +258,7 @@ export class CatalogoFonteService {
       entradaMinimaPct: num(p.percentualEntradaMinima, 0.01),
       prazoMaximoMeses: num(p.prazoMaximoMeses, 60),
       prazoAtivacaoDias: num(p.prazoAtivacaoDias, 5),
+      comissaoRecorrenteMensal: crMensal,
     };
   }
 

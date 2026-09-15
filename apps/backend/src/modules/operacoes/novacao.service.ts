@@ -125,7 +125,9 @@ export class NovacaoService implements OnModuleInit {
         operadorId,
         saldoVeiculo: reais(sim.decomposicao.parteVeiculo.total),
         saldoDemais: reais(sim.decomposicao.demaisProdutos.total),
-        valorParcela: reais(sim.valorParcela),
+        // F4: a parcela registrada é a COMPOSTA (financeira + CR + proteção) —
+        // o valor real que o cliente assina e paga (A4.4).
+        valorParcela: reais(sim.valorParcelaTotal ?? sim.valorParcela),
         recebimentoInicial: reais(dto.recebimentoInicial ?? 0),
         observacao: dto.observacao,
         snapshotJson: snapshot as unknown as Prisma.InputJsonValue,
@@ -139,12 +141,12 @@ export class NovacaoService implements OnModuleInit {
       referenciaId: novacao.id,
       titularId: sim.titularId,
       valorCentavos: sim.decomposicao.totalGeral,
-      resumo: `Novação da conta — ${formatCurrency(sim.decomposicao.totalGeral)} reorganizados em 2 contratos · parcela única ${formatCurrency(sim.valorParcela)} (${sim.frequencia}) · Termo ${sim.contrato2.totalParcelas}p + veículo ${sim.contrato1.totalParcelas}p${excecoes}`,
+      resumo: `Novação da conta — ${formatCurrency(sim.decomposicao.totalGeral)} reorganizados em 2 contratos · parcela única ${formatCurrency(sim.valorParcelaTotal ?? sim.valorParcela)} (${sim.frequencia}) · Termo ${sim.contrato2.totalParcelas}p + veículo ${sim.contrato1.totalParcelas}p${excecoes}`,
       payload: { excecoes: sim.excecoes },
       solicitanteId: operadorId,
     });
 
-    return { id: novacao.id, status: 'aguardando_aprovacao', valorParcela: sim.valorParcela };
+    return { id: novacao.id, status: 'aguardando_aprovacao', valorParcela: sim.valorParcelaTotal ?? sim.valorParcela };
   }
 
   // ---------------------------------------------------------------
@@ -185,9 +187,29 @@ export class NovacaoService implements OnModuleInit {
     // embutidos) — nunca o saldo a valor presente: o cronograma distribui
     // valores NOMINAIS e a última parcela ficava negativa (mesmo bug do
     // acordo em 31/08, pego no E2E da F2 em 14/09).
-    const somaFase2 = sim.contrato2.parcelasCheias * sim.valorParcela + sim.contrato2.valorUltima;
-    const somaFase1 = sim.contrato1.parcelasCheias * sim.valorParcela + sim.contrato1.valorUltima;
+    // F4 (15/09): parcela COMPOSTA (financeira + CR + proteção). Snapshots
+    // anteriores à F4 não têm os campos novos — caem no comportamento antigo.
+    const cr = sim.comissaoPorPeriodo ?? 0;
+    const parcelaTotal = sim.valorParcelaTotal ?? sim.valorParcela;
+    const somaFase2 =
+      sim.contrato2.totalComposto ??
+      sim.contrato2.parcelasCheias * sim.valorParcela + sim.contrato2.valorUltima;
+    const somaFase1 =
+      sim.contrato1.totalComposto ??
+      sim.contrato1.parcelasCheias * sim.valorParcela + sim.contrato1.valorUltima;
     const paramsNovacao = await this.catalogoFonte.novacao();
+    // Discriminação por componente CONGELADA na ref dos contratos novos (A4.2):
+    // protS (semanal exata) alimenta o cronograma (principal × proteção na
+    // fatura) e crP a quitação antecipada; dcr = taxa de desconto da CR na
+    // antecipação, herdada dos parâmetros vigentes da venda.
+    const vendaVigente = await this.prisma.db.versaoParametrosSimulacao.findFirst({
+      orderBy: { vigenteDesde: 'desc' },
+      select: { taxaDescontoAntecipacaoCR: true },
+    });
+    const dcr = vendaVigente ? Number(vendaVigente.taxaDescontoAntecipacaoCR.toString()) : 0.2;
+    const protS = sim.protecaoSemanalExata ?? 0;
+    const refNovacao = (crPeriodo: number) =>
+      JSON.stringify({ nv: 1, protS, crP: crPeriodo, dcr, taxaM: paramsNovacao.taxaMensal });
 
     // Contrato 2 — Termo (pago PRIMEIRO; sem ativo, credor Azit). Datas são
     // estimativas: a ativação atômica recalcula antes de gerar os cronogramas.
@@ -199,7 +221,7 @@ export class NovacaoService implements OnModuleInit {
         valorTotal: somaFase2,
         valorEntrada: 0,
         numeroParcelas: Math.max(1, sim.contrato2.totalParcelas),
-        valorParcelaInicial: sim.valorParcela,
+        valorParcelaInicial: parcelaTotal,
         periodicidade: sim.frequencia,
         modalidade: 'compra_parcelada',
         descricaoFinanciamento: 'Termo de Regularização de Débitos (novação)',
@@ -210,6 +232,12 @@ export class NovacaoService implements OnModuleInit {
       'AGUARDANDO_ASSINATURA',
       false,
     );
+    // Fase do Termo: proteção nas faturas desde a 1ª (A3); a CR do período é
+    // amortização extra do próprio Termo (A4.3) — por isso crP = 0 na ref.
+    await this.prisma.db.contratoCredito.update({
+      where: { id: c2.id },
+      data: { catalogoVersaoRef: refNovacao(0) },
+    });
 
     // Contrato 1 — veículo. SEM troca: MESMO ativo do contrato de origem (que
     // só encerra na ativação atômica) → verificarEstoque desligado, exceção
@@ -230,7 +258,7 @@ export class NovacaoService implements OnModuleInit {
         valorTotal: somaFase1 + sim.contrato2.antecipacaoTransicao,
         valorEntrada: sim.contrato2.antecipacaoTransicao,
         numeroParcelas: Math.max(1, sim.contrato1.totalParcelas),
-        valorParcelaInicial: sim.valorParcela,
+        valorParcelaInicial: parcelaTotal,
         periodicidade: sim.frequencia,
         descricaoFinanciamento: 'Novação do veículo',
         credor: credorVeiculo,
@@ -240,6 +268,12 @@ export class NovacaoService implements OnModuleInit {
       false,
       { verificarEstoque: !!troca },
     );
+    // Veículo: proteção discriminada na fatura + CR do período na ref (A4.2) —
+    // a quitação antecipada do contrato novado desconta CR × principal como na venda.
+    await this.prisma.db.contratoCredito.update({
+      where: { id: c1.id },
+      data: { catalogoVersaoRef: refNovacao(cr) },
+    });
 
     // Instrumento único (os dois contratos no mesmo ato) anexado ao contrato
     // do veículo — a assinatura dele destrava a operação inteira.
@@ -582,8 +616,10 @@ export class NovacaoService implements OnModuleInit {
       saldoDemaisExtenso: valorPorExtenso(sim.decomposicao.demaisProdutos.total),
       parcelasTermo: Math.max(1, sim.contrato2.totalParcelas),
       periodicidadePlural: plural,
-      valorParcela: `R$ ${reais(sim.valorParcela)}`,
-      valorParcelaExtenso: valorPorExtenso(sim.valorParcela),
+      // F4 (A4.4): o instrumento declara a parcela COMPOSTA — o valor
+      // apresentado é o valor cobrado (financeira + comissão + proteção).
+      valorParcela: `R$ ${reais(sim.valorParcelaTotal ?? sim.valorParcela)}`,
+      valorParcelaExtenso: valorPorExtenso(sim.valorParcelaTotal ?? sim.valorParcela),
       antecipacaoTransicao: `R$ ${reais(sim.contrato2.antecipacaoTransicao)}`,
       recebimentoLinha:
         recebimento > 0

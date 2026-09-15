@@ -77,10 +77,26 @@ export class QuitacaoService {
       }
     }
 
+    // Contrato NOVADO (F4 novação, 15/09): a ref congelada é própria
+    // ({nv:1, protS, crP, dcr, taxaM}) — discrimina CR × principal como a
+    // venda (CR desconta a dcr; principal — proteção inclusa — à taxa da
+    // novação). compraParceladaPorRef devolve null para ela (sem variante).
+    let refNv: { nv?: number; crP?: number; dcr?: number; taxaM?: number } | null = null;
+    if (!cat && contrato.catalogoVersaoRef) {
+      try {
+        const parsed = JSON.parse(contrato.catalogoVersaoRef) as { nv?: number; crP?: number; dcr?: number; taxaM?: number };
+        if (parsed.nv) refNv = parsed;
+      } catch { /* ref de outro formato */ }
+    }
+
     let taxaCR: number;
     let taxaPS: number;
     let crPorParcela: number; // centavos — componente CR embutido em cada parcela
-    if (versao) {
+    if (refNv) {
+      taxaCR = refNv.dcr ?? 0.2;
+      taxaPS = refNv.taxaM ?? frac(contrato.taxaDescontoQuitacao);
+      crPorParcela = Math.max(0, Math.round(refNv.crP ?? 0));
+    } else if (versao) {
       taxaCR = frac(versao.taxaDescontoAntecipacaoCR);
       taxaPS = frac(versao.taxaMensal); // TR
       const fator =

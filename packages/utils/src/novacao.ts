@@ -58,6 +58,13 @@ export interface ComponenteNovacao {
   contratoId?: string;
   faturaId?: string;
   valorNominal: number; // centavos
+  /**
+   * Comissão recorrente embutida no nominal (congelada na versão de origem).
+   * FUTURO: excluída da base (A4.1, 15/09 — não é dívida do cliente; o contrato
+   * novado contrata comissão própria), auditada em `ignorados`. VENCIDO: permanece
+   * (dívida consumada).
+   */
+  comissaoEmbutida?: number; // centavos
   situacao: 'vencido' | 'futuro';
   /** Dias de atraso (vencido) ou até o vencimento (futuro). */
   dias: number;
@@ -197,7 +204,22 @@ export function decomporSaldoNovacao(input: {
       });
       continue;
     }
-    const { valor, ajuste } = valorarComponenteNovacao(c);
+    // A4.1 (15/09) — comissão recorrente embutida no FUTURO não é dívida do
+    // cliente: sai do nominal antes do valor presente (o contrato novado
+    // contrata comissão própria). Vencido permanece cheio (dívida consumada).
+    let nominal = c.valorNominal;
+    const crEmbutida = Math.min(Math.max(0, c.comissaoEmbutida ?? 0), nominal);
+    if (c.situacao === 'futuro' && crEmbutida > 0) {
+      nominal -= crEmbutida;
+      ignorados.push({
+        origem: `Comissão embutida · ${c.origem}`,
+        produto: c.produto,
+        motivo: 'comissão futura não é dívida do cliente (A4.1) — o contrato novado contrata comissão própria',
+        valorNominal: crEmbutida,
+      });
+      if (nominal <= 0) continue;
+    }
+    const { valor, ajuste } = valorarComponenteNovacao({ ...c, valorNominal: nominal });
     componentes.push({
       origem: c.origem,
       produto: c.produto,
@@ -205,7 +227,7 @@ export function decomporSaldoNovacao(input: {
       faturaId: c.faturaId,
       situacao: c.situacao,
       dias: c.dias,
-      valorNominal: c.valorNominal,
+      valorNominal: nominal,
       ajuste,
       valor,
     });
@@ -339,6 +361,14 @@ export interface ParametrosPrecificacaoNovacao {
   taxaInicialMinima?: number; // centavos (default R$ 3.990)
   entradaMinimaPct?: number; // fração sobre o saldo novado (default 0,01)
   prazoMaximoMeses?: number; // NV — default 60
+  /**
+   * A4.2 (15/09): comissão recorrente da novação POR PERÍODO (centavos —
+   * mensal do produto ÷ fator de valor 4/2/1), somada por cima da parcela
+   * financeira. Na fase do Termo vira amortização extra (A4.3/A6.4).
+   */
+  comissaoPorPeriodo?: number;
+  /** A3 (15/09): proteção veicular POR PERÍODO (centavos), em todas as faturas. */
+  protecaoPorPeriodo?: number;
 }
 
 export interface FaseContrato {
@@ -357,9 +387,14 @@ export interface ResultadoPrecificacaoNovacao {
   amortizacaoInicial: number; // o que do recebimento inicial abate o saldo
   saldoAParcelarVeiculo: number; // SP antes da antecipação da transição
   taxaPeriodo: number; // fração por período
-  valorParcela: number; // o valor periódico único que o cliente sente
-  contrato2: FaseContrato & { antecipacaoTransicao: number };
-  contrato1: FaseContrato; // já líquido da antecipação da transição
+  valorParcela: number; // componente FINANCEIRO do período (Price)
+  comissaoPorPeriodo: number; // A4.2 — receita de administração por período
+  protecaoPorPeriodo: number; // A3 — proteção veicular por período
+  /** O valor periódico ÚNICO que o cliente sente/assina/paga (fin + CR + prot). */
+  valorParcelaTotal: number;
+  /** totalComposto = soma NOMINAL das parcelas da fase (com CR e proteção). */
+  contrato2: FaseContrato & { antecipacaoTransicao: number; totalComposto: number };
+  contrato1: FaseContrato & { totalComposto: number }; // líquido da antecipação
   totalParcelasRelacionamento: number;
   totalAPagar: number; // recebimento inicial + todas as faturas
   excecoes: string[];
@@ -418,10 +453,18 @@ export function precificarNovacao(p: ParametrosPrecificacaoNovacao): ResultadoPr
   // Para CIMA: com o PMT arredondado para baixo sobraria um resíduo de centavos
   // além da parcela n1 — o ajuste residual fica sempre NA última, para menos.
   const valorParcela = Math.ceil(pmt);
+  const cr = Math.max(0, p.comissaoPorPeriodo ?? 0);
+  const prot = Math.max(0, p.protecaoPorPeriodo ?? 0);
+  // A parcela ÚNICA do relacionamento (A4.4): financeira + comissão + proteção.
+  const valorParcelaTotal = valorParcela + cr + prot;
 
-  // Passo 4 — Contrato 2 primeiro, à mesma parcela e mesma taxa.
-  const fase2 = amortizarAParcelaFixa(p.saldoDemais, valorParcela, i);
-  const antecipacaoTransicao = fase2.totalParcelas > 0 ? Math.max(0, valorParcela - fase2.valorUltima) : 0;
+  // Passo 4 — Contrato 2 primeiro, à mesma parcela única. Na fase do Termo a
+  // comissão NÃO é receita (A6.4): o valor dela amortiza o próprio Termo
+  // (A4.3) — por isso a força de amortização é (financeira + CR); a proteção
+  // corre por cima em todas as faturas (A3).
+  const pmtTermo = valorParcela + cr;
+  const fase2 = amortizarAParcelaFixa(p.saldoDemais, pmtTermo, i);
+  const antecipacaoTransicao = fase2.totalParcelas > 0 ? Math.max(0, pmtTermo - fase2.valorUltima) : 0;
 
   // Contrato do veículo: saldo CONGELADO na fase do Contrato 2 (não rende
   // juros), abatido pela antecipação da transição, e só então amortizado.
@@ -434,10 +477,15 @@ export function precificarNovacao(p: ParametrosPrecificacaoNovacao): ResultadoPr
   if (totalParcelas > maxParcelas) {
     excecoes.push(`prazo total de ${totalParcelas} parcelas excede o máximo de ${prazoMaximoMeses} meses (${maxParcelas} parcelas ${p.frequencia}s)`);
   }
-  const somaFase = (f: FaseContrato) => f.parcelasCheias * valorParcela + f.valorUltima;
-  // A transição cobra a parcela padrão inteira (resto do C2 + antecipação).
-  const totalAPagar =
-    recebimento + somaFase(fase2) + antecipacaoTransicao + somaFase(fase1);
+  // Soma NOMINAL das parcelas de cada fase, já compostas (CR + proteção):
+  // Termo: parcelas cheias = pmtTermo + prot; última = resto + prot.
+  // Veículo: parcelas cheias = financeira + cr + prot; última = resto + cr + prot.
+  const totalComposto2 =
+    fase2.parcelasCheias * (pmtTermo + prot) + (fase2.valorUltima > 0 ? fase2.valorUltima + prot : 0);
+  const totalComposto1 =
+    fase1.parcelasCheias * valorParcelaTotal + (fase1.valorUltima > 0 ? fase1.valorUltima + cr + prot : 0);
+  // A transição cobra a parcela única inteira (resto do C2 + antecipação + prot).
+  const totalAPagar = recebimento + totalComposto2 + antecipacaoTransicao + totalComposto1;
 
   return {
     saldoBase,
@@ -449,8 +497,11 @@ export function precificarNovacao(p: ParametrosPrecificacaoNovacao): ResultadoPr
     saldoAParcelarVeiculo: sp,
     taxaPeriodo: i,
     valorParcela,
-    contrato2: { ...fase2, antecipacaoTransicao },
-    contrato1: fase1,
+    comissaoPorPeriodo: cr,
+    protecaoPorPeriodo: prot,
+    valorParcelaTotal,
+    contrato2: { ...fase2, antecipacaoTransicao, totalComposto: totalComposto2 },
+    contrato1: { ...fase1, totalComposto: totalComposto1 },
     totalParcelasRelacionamento: totalParcelas,
     totalAPagar,
     excecoes,

@@ -53,12 +53,40 @@ entra (no Contrato 2). Contribuições futuras nunca entram em saldo, e **não �
 novo contrato de proteção** — o existente continua. Troca de veículo segue a regra do
 produto Proteção (nova adesão para o ativo novo).
 
+> **Materialização (decisão Luís 15/09):** como a estrutura antiga da proteção vivia
+> embutida nas parcelas do contrato extinto, o Contrato 1 novado **nasce com a proteção
+> embutida na parcela**, no mesmo mecanismo da venda (valor calculado do produto Proteção
+> Veicular sobre o veículo pós-novação — na troca, o veículo que ENTRA — congelado na
+> referência do contrato e discriminado na fatura como item de serviço). A proteção é
+> cobrada em **todas as faturas do relacionamento desde a primeira**, inclusive na fase do
+> Termo — a cobertura não tem buraco. Não existe contrato de seguro à parte: a cláusula
+> vai no instrumento, e **o valor de parcela apresentado/assinado é o valor real cobrado**.
+
 ## A4. Comissão não é componente de dívida do cliente
 
 A comissão é **interna à precificação da parcela** (split Azit ↔ investidor; decisão 04/07:
 CI/CR não viram item de contrato). O cliente deve a **parcela cheia** e nunca vê comissão.
 O componente "comissão" do V1.0 não se aplica na decomposição do saldo. No contrato novado
 do veículo, a comissão segue embutida na precificação, como em qualquer contrato novo.
+
+> **Refinamento (decisão Luís 15/09 — "novação também remunera administração; é um
+> contrato novo, o histórico só calcula a base"):**
+> 1. **Na base (histórico):** as parcelas futuras do contrato de origem entram pelo
+>    componente **bem** — a comissão recorrente embutida (congelada na versão de
+>    parâmetros da origem) é EXCLUÍDA do valor presente, auditada na memória. Vencidos
+>    entram cheios (dívida consumada). Sem isso o cliente pagaria comissão duas vezes.
+> 2. **No contrato novo:** a novação contrata **comissão recorrente própria**, paramétrica
+>    do produto Novação no Catálogo (`comissaoRecorrenteMensal`, padrão herdado da venda),
+>    somada por cima da parcela financeira pelo fator de valor (÷4 semanal, ÷2 quinzenal)
+>    e embutida no nominal — com **discriminação por componente congelada na referência do
+>    contrato** (quitação antecipada, breakdown investidor × Azit).
+> 3. **Fase do Termo:** coerente com A6.4 (comissões da Azit congeladas na fase do
+>    Contrato 2), a comissão do período **não é receita durante o Termo** — o cliente paga
+>    a mesma parcela única, e o valor da comissão atua como **amortização extra do próprio
+>    Termo** (acelera a quitação do passado). A receita de administração começa com o
+>    cronograma do veículo.
+> 4. **Parcela única real:** o valor periódico exibido, assinado e cobrado é
+>    financeira + comissão + proteção — constante do início ao fim (A6.1).
 
 ## A5. Troca de veículo: valor vem do CADASTRO (tabela FIPE), não é informado livre
 
@@ -131,9 +159,11 @@ saldo do veículo). O cronograma do veículo começa em seguida. **Durante a fas
 veículo não rende juros nesse período.
 
 **Passo 5 — A fatura do cliente.**
-Em cada período, a fatura carrega: a parcela vigente **mais** a contribuição do seguro
-(contrato que continua) **mais** eventuais acessórios. O cliente vê um valor periódico
-estável do começo ao fim.
+Em cada período, a fatura carrega a **parcela única do relacionamento**: componente
+financeiro **mais** a comissão recorrente da novação (receita de administração — na fase
+do Termo vira amortização extra, A4.3) **mais** a proteção veicular (embutida no nominal e
+discriminada como item de serviço, desde a primeira fatura). O cliente vê um valor
+periódico estável do começo ao fim — e o valor apresentado é o valor cobrado.
 
 **Passo 6 — Governança e ativação.**
 Toda novação passa pelo comitê (CONAC); aumento de exposição exige análise de crédito antes;
@@ -178,3 +208,17 @@ cronogramas na ordem descrita e nada fica pela metade.
   **Decisão provisória:** "valor de cadastro (FIPE)" = campo `valorVenda` do ativo (o
   valor de cadastro que já precifica as vendas) — se o negócio quiser um campo FIPE
   separado do valor de venda, criar campo próprio e trocar a referência.
+- **F4 — parcela composta (A3/A4 refinadas, decisão Luís 15/09).** Corrige três
+  divergências da implementação contra o doc, achadas na validação em homologação
+  (comparação Mobi→Polo × venda nova do Polo): (a) a comissão recorrente embutida nas
+  parcelas FUTURAS do contrato de origem entrava na base a valor presente — passou a ser
+  excluída (A4.1, auditada na memória como "comissão futura não é dívida"); (b) o
+  contrato novado nascia sem comissão própria — o produto Novação ganhou
+  `comissaoRecorrenteMensal` paramétrica (padrão da venda) somada por cima da parcela
+  (A4.2), congelada com discriminação por componente na referência do contrato
+  (quitação antecipada do contrato novado discrimina CR × principal); (c) a proteção
+  morria na ativação (o contrato antigo encerrava e o C1 nascia sem ela) — o C1 nasce
+  com a proteção embutida calculada do produto PV sobre o veículo pós-novação, cobrada
+  em TODAS as faturas desde a primeira, fase do Termo incluída (A3). Na fase do Termo a
+  comissão vira amortização extra do próprio Termo (A4.3 — coerente com A6.4). A parcela
+  única exibida/assinada/cobrada = financeira + comissão + proteção.

@@ -133,6 +133,24 @@ describe('decomporSaldoNovacao', () => {
     expect(r.memoria.ignorados[0].valorNominal).toBe(3000);
   });
 
+  it('comissão embutida sai do FUTURO (A4.1) e fica auditada; vencido permanece cheio', () => {
+    const r = decomporSaldoNovacao({
+      componentes: [
+        // Vencido: nominal cheio (com CR) + mora — dívida consumada.
+        { origem: 'Parcela 1/10', produto: 'veiculo', situacao: 'vencido', dias: 30, valorNominal: 10000, comissaoEmbutida: 2000 },
+        // Futuro: CR de 2.000 sai ANTES do VP → 8000/(1.016) = 7874.
+        { origem: 'Parcela 2/10', produto: 'veiculo', situacao: 'futuro', dias: 30, valorNominal: 10000, comissaoEmbutida: 2000, taxaVpMensal: 0.016 },
+      ],
+      acordos: [],
+    });
+    expect(r.parteVeiculo.vencido).toBe(10300); // 10000 + 2% + 1%
+    expect(r.parteVeiculo.futuro).toBe(7874);
+    const cr = r.memoria.ignorados.find((i) => i.motivo.includes('A4.1'));
+    expect(cr?.valorNominal).toBe(2000);
+    expect(cr?.origem).toContain('Parcela 2/10');
+    expect(r.memoria.ignorados).toHaveLength(1); // só o futuro — o vencido não audita
+  });
+
   it('acordo explode: saldo aberto rateado pela dívida reconstituída por produto', () => {
     const r = decomporSaldoNovacao({
       componentes: [],
@@ -294,6 +312,41 @@ describe('precificarNovacao (A7 passos 3-4)', () => {
     // Cliente paga o mesmo valor periódico em TODAS as faturas menos a última.
     expect(r.totalAPagar).toBe(25000 + 5000 + 115000);
     expect(r.totalParcelasRelacionamento).toBe(15);
+  });
+
+  it('parcela composta (F4): CR e proteção somam por cima; Termo amortiza com a CR (A4.3)', () => {
+    const r = precificarNovacao({
+      saldoVeiculo: 120000, saldoDemais: 25000, numeroParcelasVeiculo: 12, frequencia: 'semanal',
+      comissaoPorPeriodo: 2000, protecaoPorPeriodo: 800, ...semTaxas,
+    });
+    expect(r.valorParcela).toBe(10000);
+    expect(r.valorParcelaTotal).toBe(12800); // 100,00 + 20,00 + 8,00
+    // Termo amortizado a (financeira + CR) = 120,00: 25000 → 2 cheias + resto 10,00.
+    expect(r.contrato2.parcelasCheias).toBe(2);
+    expect(r.contrato2.valorUltima).toBe(1000);
+    expect(r.contrato2.antecipacaoTransicao).toBe(11000); // completa até 120,00
+    // Termo composto: 2×(120+8) + (10+8) = 274,00.
+    expect(r.contrato2.totalComposto).toBe(2 * 12800 + 1800);
+    // Veículo: 120000 − 11000 antecipados = 109000 → 10 cheias + última 90,00.
+    expect(r.contrato1.saldo).toBe(109000);
+    expect(r.contrato1.parcelasCheias).toBe(10);
+    expect(r.contrato1.valorUltima).toBe(9000);
+    // Veículo composto: 10×128,00 + (90+20+8) = 1.397,80.
+    expect(r.contrato1.totalComposto).toBe(10 * 12800 + 11800);
+    // Total = termo composto + antecipação + veículo composto.
+    expect(r.totalAPagar).toBe(r.contrato2.totalComposto + 11000 + r.contrato1.totalComposto);
+    // Fatura de transição fecha na parcela única: resto + antecipação + proteção.
+    expect(1000 + 11000 + 800).toBe(r.valorParcelaTotal);
+  });
+
+  it('sem CR e sem proteção: comportamento anterior intacto (defaults 0)', () => {
+    const r = precificarNovacao({
+      saldoVeiculo: 120000, saldoDemais: 25000, numeroParcelasVeiculo: 12, frequencia: 'semanal', ...semTaxas,
+    });
+    expect(r.valorParcelaTotal).toBe(r.valorParcela);
+    expect(r.contrato2.totalComposto).toBe(25000);
+    expect(r.contrato1.totalComposto).toBe(115000);
+    expect(r.totalAPagar).toBe(145000);
   });
 
   it('com a taxa real de 1,70% a.m.: Price fecha (n1 parcelas, última ~ parcela padrão)', () => {

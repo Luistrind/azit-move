@@ -353,9 +353,19 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
             </div>
           )}
 
-          <div className="flex items-center justify-between rounded-[10px] px-[14px] py-[10px]" style={{ background: 'var(--navy)', color: '#fff' }}>
-            <span className="text-[12.5px] font-semibold">Parcela única do relacionamento ({FREQ_LABEL[sim.frequencia].toLowerCase()})</span>
-            <span className="font-display text-[15px] font-bold" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(sim.valorParcela)}</span>
+          <div className="rounded-[10px] px-[14px] py-[10px]" style={{ background: 'var(--navy)', color: '#fff' }}>
+            <div className="flex items-center justify-between">
+              <span className="text-[12.5px] font-semibold">Parcela única do relacionamento ({FREQ_LABEL[sim.frequencia].toLowerCase()})</span>
+              <span className="font-display text-[15px] font-bold" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(sim.valorParcelaTotal ?? sim.valorParcela)}</span>
+            </div>
+            {/* F4 (A4.4): o valor apresentado é o valor cobrado — composição visível. */}
+            {(sim.comissaoPorPeriodo > 0 || sim.protecaoPorPeriodo > 0) && (
+              <div className="mt-[4px] text-[11px]" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                {formatCurrency(sim.valorParcela)} financeira
+                {sim.comissaoPorPeriodo > 0 ? ` + ${formatCurrency(sim.comissaoPorPeriodo)} comissão recorrente` : ''}
+                {sim.protecaoPorPeriodo > 0 ? ` + ${formatCurrency(sim.protecaoPorPeriodo)} proteção veicular` : ''}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2">
@@ -392,19 +402,19 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
                     {/* Termo menor que uma parcela: resolve-se INTEIRO na fatura
                         de transição — não mostrar "0×" (feedback Luís 14/09). */}
                     {sim.contrato2.parcelasCheias > 0 && (
-                      <div>1º — <b>Termo de Regularização de Débitos</b>: {sim.contrato2.parcelasCheias}× {formatCurrency(sim.valorParcela)}</div>
+                      <div>1º — <b>Termo de Regularização de Débitos</b>: {sim.contrato2.parcelasCheias}× {formatCurrency(sim.valorParcelaTotal ?? sim.valorParcela)}</div>
                     )}
                     <div>
                       {sim.contrato2.parcelasCheias > 0 ? '2º' : '1º'} — <b>Fatura de transição</b>: {formatCurrency(sim.contrato2.valorUltima)}
-                      {sim.contrato2.parcelasCheias > 0 ? ' do Termo' : ' do Termo de Regularização de Débitos (resolve-se inteiro aqui)'} + {formatCurrency(sim.contrato2.antecipacaoTransicao)} antecipados do veículo
+                      {sim.contrato2.parcelasCheias > 0 ? ' do Termo' : ' do Termo de Regularização de Débitos (resolve-se inteiro aqui)'} + {formatCurrency(sim.contrato2.antecipacaoTransicao)} antecipados do veículo{(sim.protecaoPorPeriodo ?? 0) > 0 ? ` + ${formatCurrency(sim.protecaoPorPeriodo)} de proteção` : ''}
                     </div>
-                    <div>{sim.contrato2.parcelasCheias > 0 ? '3º' : '2º'} — <b>Veículo</b>: {sim.contrato1.parcelasCheias}× {formatCurrency(sim.valorParcela)}{sim.contrato1.valorUltima > 0 && sim.contrato1.valorUltima !== sim.valorParcela ? ` + última de ${formatCurrency(sim.contrato1.valorUltima)}` : sim.contrato1.valorUltima > 0 ? ' + última' : ''}</div>
+                    <div>{sim.contrato2.parcelasCheias > 0 ? '3º' : '2º'} — <b>Veículo</b>: {sim.contrato1.parcelasCheias}× {formatCurrency(sim.valorParcelaTotal ?? sim.valorParcela)}{sim.contrato1.valorUltima > 0 && sim.contrato1.valorUltima !== sim.valorParcela ? ` + última de ${formatCurrency(sim.contrato1.valorUltima + (sim.comissaoPorPeriodo ?? 0) + (sim.protecaoPorPeriodo ?? 0))}` : sim.contrato1.valorUltima > 0 ? ' + última' : ''}</div>
                     <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
-                      Durante a fase do Termo, o saldo do veículo fica congelado (sem juros; repasses e comissões suspensos).
+                      Durante a fase do Termo, o saldo do veículo fica congelado (sem juros e sem comissão — o valor da comissão amortiza o próprio Termo); a proteção é cobrada desde a 1ª fatura.
                     </div>
                   </>
                 ) : (
-                  <div>Sem dívida fora do veículo — só o contrato do veículo: {sim.contrato1.parcelasCheias}× {formatCurrency(sim.valorParcela)}{sim.contrato1.valorUltima > 0 && sim.contrato1.valorUltima !== sim.valorParcela ? ` + última de ${formatCurrency(sim.contrato1.valorUltima)}` : ''}</div>
+                  <div>Sem dívida fora do veículo — só o contrato do veículo: {sim.contrato1.parcelasCheias}× {formatCurrency(sim.valorParcelaTotal ?? sim.valorParcela)}{sim.contrato1.valorUltima > 0 && sim.contrato1.valorUltima !== sim.valorParcela ? ` + última de ${formatCurrency(sim.contrato1.valorUltima + (sim.comissaoPorPeriodo ?? 0) + (sim.protecaoPorPeriodo ?? 0))}` : ''}</div>
                 )}
                 <div className="my-[3px]" style={{ borderTop: '1px solid var(--border)' }} />
                 <LinhaValor label={`Total do relacionamento (${sim.totalParcelasRelacionamento} parcelas)`} valor={sim.totalAPagar} forte />
