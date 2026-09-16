@@ -38,7 +38,12 @@ export class WebhookController {
     @Body(new ZodValidationPipe(webhookAsaasSchema)) dto: WebhookAsaasDto,
   ) {
     const segredo = this.config.get<string>('asaas.webhookSecret');
-    // Em dev/simulado (sem segredo configurado) não exigimos o header.
+    // PRODUÇÃO EXIGE o segredo (auditoria 15/09, P0-1): sem ele o webhook
+    // aceitaria payload anônimo — pagamento forjado. Em dev/simulado (fora de
+    // produção, sem segredo configurado) não exigimos o header.
+    if (!segredo && this.config.get<string>('nodeEnv') === 'production') {
+      throw new UnauthorizedException({ erro: 'webhook_sem_segredo', mensagem: 'ASAAS_WEBHOOK_SECRET não configurado — webhook recusado em produção' });
+    }
     if (segredo && token !== segredo) {
       throw new UnauthorizedException({ erro: 'assinatura_invalida' });
     }
@@ -85,6 +90,15 @@ export class WebhookController {
         contratoId: ref.slice('ativacao:'.length),
         paymentDate: pg.paymentDate ?? pg.dueDate ?? '',
       });
+      return { received: true };
+    }
+    // Entrada do contrato venceu sem pagamento (auditoria 15/09, P0-3): antes
+    // caía no else final e virava job de fatura com id inválido, que morria em
+    // retry — o contrato ficava mudo em AGUARDANDO_PAGAMENTO_INICIAL. Agora a
+    // carteira é alertada para reemitir ou cancelar (a expiração automática do
+    // estado é decisão de domínio pendente — Bloco B da auditoria).
+    if (dto.event === 'PAYMENT_OVERDUE' && ref.startsWith('ativacao:')) {
+      await this.filaAtivacao.add('entrada-vencida', { contratoId: ref.slice('ativacao:'.length) });
       return { received: true };
     }
 

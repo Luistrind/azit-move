@@ -1,5 +1,4 @@
 import {
-  Body,
   Controller,
   Get,
   HttpCode,
@@ -12,7 +11,6 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ContratoService } from './contrato.service';
-import { criarContratoSchema, CriarContratoDto } from './dto/criar-contrato.dto';
 import {
   listarContratosSchema,
   ListarContratosDto,
@@ -22,12 +20,10 @@ import {
 export class ContratoController {
   constructor(private readonly contratoService: ContratoService) {}
 
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
-  @Post()
-  @HttpCode(201)
-  criar(@Body(new ZodValidationPipe(criarContratoSchema)) dto: CriarContratoDto) {
-    return this.contratoService.criar(dto);
-  }
+  // POST /contratos REMOVIDO (auditoria 15/09, P0-4): criava contrato FORA da
+  // esteira de crédito (sem análise, alçada ou catálogo congelado) e nenhuma
+  // tela o usava. Contrato nasce pela formalização do funil, pelos produtos
+  // adicionais (crédito/RP) ou pela novação — todos via ContratoService.criar.
 
   @Get()
   listar(

@@ -14,6 +14,16 @@ nenhum resíduo da novação 1:1 antiga; renegociação já 100% conta-cêntrica
 
 ## P0 — Segurança e integridade (corrigir antes de dado real)
 
+> **BLOCO A EXECUTADO (15/09, mesmo dia):** itens 1–6 corrigidos. 1: webhooks
+> recusam em produção sem segredo configurado. 2: seed aditivo (upsert), chaves
+> órfãs `despesa`/`venda` removidas do seed. 3: `ativacao:` + PAYMENT_OVERDUE
+> alerta a carteira (expiração automática fica para o Bloco B). 4 e 5: rotas
+> removidas. 6: crons de fechamento e régua passaram a ENFILEIRAR (retry do
+> worker + jobId diário deduplica réplicas). Pós-deploy, CONFERIR no VPS a
+> presença dos segredos: `grep -c ASAAS_WEBHOOK_SECRET /opt/azit/stack.env` e
+> `grep -c ZAPSIGN_WEBHOOK_SECRET /opt/azit/stack.env` (ambos devem ser ≥1 e
+> com valor não vazio — sem imprimir o valor).
+
 1. **Webhooks aceitam payload anônimo se o segredo não estiver configurado.**
    `cobranca/webhook.controller.ts:42` e `assinatura/assinatura.controller.ts:77` usam
    `if (segredo && …)` — sem segredo, qualquer POST é aceito. `ZAPSIGN_WEBHOOK_SECRET` é

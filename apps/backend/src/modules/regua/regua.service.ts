@@ -30,6 +30,8 @@ export class ReguaService {
     private readonly fatura: FaturaService,
     @InjectQueue(QUEUE_NAMES.NOTIFICAR_CLIENTE)
     private readonly filaNotificar: Queue,
+    @InjectQueue(QUEUE_NAMES.REGUA_STEP)
+    private readonly filaRegua: Queue,
   ) {}
 
   private hojeUTC(): Date {
@@ -89,10 +91,16 @@ export class ReguaService {
 
   // Job agendado: varre a régua diariamente (madrugada). Em dev o operador também
   // pode disparar via /dev/varrer-regua.
+  // ENFILEIRA em vez de rodar in-process (auditoria 15/09, P0-6): o worker da
+  // fila REGUA_STEP tem retry/backoff, e o jobId diário deduplica entre réplicas.
   @Cron(CronExpression.EVERY_DAY_AT_4AM)
   async cronRegua(): Promise<void> {
-    await this.rodar();
-    this.logger.log('[cron] régua varrida');
+    await this.filaRegua.add(
+      'rodar',
+      {},
+      { jobId: `regua-${new Date().toISOString().slice(0, 10)}`, removeOnComplete: true, removeOnFail: 50 },
+    );
+    this.logger.log('[cron] varredura da régua enfileirada');
   }
 
   // 5.1 + 5.3 — Varre faturas vencidas (marca inadimplência) e dispara as ações

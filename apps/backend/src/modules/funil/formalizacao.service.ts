@@ -683,6 +683,26 @@ export class FormalizacaoService {
     return { contratoId: contrato.id, numero: contrato.numero, status: 'ativo', cronogramaGerado: true, contratosAtivados: pacote.length };
   }
 
+  // Entrada do contrato VENCIDA sem pagamento (auditoria 15/09, P0-3): alerta a
+  // carteira com a ação na ficha — reemitir a cobrança ou tratar o caso. A
+  // expiração automática do contrato é decisão de domínio pendente (Bloco B).
+  async alertarEntradaVencida(contratoId: string) {
+    const contrato = await this.prisma.db.contratoCredito.findFirst({
+      where: { id: contratoId, status: 'AGUARDANDO_PAGAMENTO_INICIAL' },
+      select: { id: true, numero: true, conta: { select: { titular: { select: { nome: true } } } } },
+    });
+    if (!contrato) return { resultado: 'ignorado' }; // já ativado/cancelado
+    await this.notificacao.emitir({
+      titulo: `Entrada do contrato ${contrato.numero} VENCEU sem pagamento`,
+      corpo: `${contrato.conta.titular.nome} não pagou a entrada no prazo — o contrato segue aguardando. Reemita a cobrança ou trate o caso com o cliente.`,
+      rota: `/contratos/${contrato.id}`,
+      tipo: 'COBRANCA',
+      area: 'CARTEIRA_COBRANCA',
+    });
+    this.logger.warn(`Entrada do contrato ${contrato.numero} vencida sem pagamento — carteira alertada.`);
+    return { resultado: 'alertado' };
+  }
+
   // Materialização da entrada paga (doc 02 §4-A.3, revisão 2026-08-30): o
   // dinheiro que entrou no Asaas vira LANÇAMENTO da conta (não fatura sintética
   // — solução rejeitada em homologação). Idempotente: sem entrada ou já

@@ -74,6 +74,11 @@ export class AssinaturaController {
     @Body() payload: Record<string, unknown>,
   ) {
     const esperado = process.env.ZAPSIGN_WEBHOOK_SECRET;
+    // PRODUÇÃO EXIGE o segredo (auditoria 15/09, P0-1): sem ele, qualquer um
+    // que conheça a URL marcaria contratos como assinados (dispara ativações).
+    if (!esperado && (process.env.NODE_ENV ?? 'development') === 'production') {
+      throw new UnauthorizedException({ erro: 'webhook_sem_segredo', mensagem: 'ZAPSIGN_WEBHOOK_SECRET não configurado — webhook recusado em produção' });
+    }
     if (esperado && segredo !== esperado) {
       throw new UnauthorizedException({ erro: 'nao_autorizado', mensagem: 'Segredo do webhook inválido' });
     }

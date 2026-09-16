@@ -8,7 +8,6 @@ import {
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { Public } from '../../common/decorators/public.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
 import {
   CurrentUser,
   UsuarioAutenticado,
@@ -16,7 +15,6 @@ import {
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { loginSchema, LoginDto } from './dto/login.dto';
 import { refreshSchema, RefreshDto } from './dto/refresh.dto';
-import { RoleUsuario } from '@prisma/client';
 
 @Controller('auth')
 export class AuthController {
@@ -53,10 +51,6 @@ export class AuthController {
     return user;
   }
 
-  // Rota protegida por role — usada para validar o RolesGuard (item 1.5).
-  @Roles(RoleUsuario.ADMIN)
-  @Get('admin-check')
-  adminCheck(@CurrentUser() user: UsuarioAutenticado) {
-    return { ok: true, mensagem: 'Acesso de ADMIN concedido', userId: user.id };
-  }
+  // GET /auth/admin-check REMOVIDO (auditoria 15/09, P0-5): era andaime de
+  // teste do RolesGuard (item 1.5) e ficou vivo em produção.
 }

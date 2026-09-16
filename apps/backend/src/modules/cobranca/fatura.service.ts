@@ -32,16 +32,24 @@ export class FaturaService {
     private readonly notificacao: NotificacaoService,
     @InjectQueue(QUEUE_NAMES.GERAR_COBRANCA_ASAAS)
     private readonly filaCobranca: Queue,
+    @InjectQueue(QUEUE_NAMES.FECHAR_FATURA)
+    private readonly filaFechamento: Queue,
   ) {}
 
   // 4.2 — Fechamento D-5: fatura ABERTA cujo dataFechamento chegou fecha e
   // dispara a geração de cobrança no Asaas.
   // Job agendado: fecha as faturas que atingiram o D-5 (diário, madrugada). Em dev
   // o operador também pode disparar via /dev/fechar-faturas.
+  // ENFILEIRA em vez de rodar in-process (auditoria 15/09, P0-6): o worker da
+  // fila tem retry/backoff, e o jobId diário deduplica entre réplicas da API.
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async cronFecharFaturas(): Promise<void> {
-    const { fechadas } = await this.fechar();
-    if (fechadas) this.logger.log(`[cron] D-5: ${fechadas} fatura(s) fechada(s) → cobrança Asaas`);
+    await this.filaFechamento.add(
+      'fechar',
+      {},
+      { jobId: `fechar-${new Date().toISOString().slice(0, 10)}`, removeOnComplete: true, removeOnFail: 50 },
+    );
+    this.logger.log('[cron] D-5: fechamento de faturas enfileirado');
   }
 
   async fechar(referencia: Date = new Date()): Promise<{ fechadas: number }> {

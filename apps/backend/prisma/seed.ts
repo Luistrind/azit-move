@@ -472,8 +472,9 @@ const OPERACOES_ALCADA: { chave: string; nome: string }[] = [
   { chave: 'acordo', nome: 'Acordo (recuperação branda)' },
   { chave: 'novacao', nome: 'Novação (recuperação radical)' },
   { chave: 'reajuste', nome: 'Reajuste IPCA' },
-  { chave: 'despesa', nome: 'Financiamento de despesa' },
-  { chave: 'venda', nome: 'Venda de produto' },
+  // 'despesa' e 'venda' REMOVIDOS (auditoria 15/09, P0-2): nenhum código cria
+  // aprovação com esses tipos — as chaves reais são as de contas a pagar
+  // (despesa_contas_pagar etc.), semeadas por migração.
 ];
 
 const ILIM = { limiteMaximo: '0', ilimitado: true };
@@ -495,12 +496,9 @@ const ALCADAS: {
   { papel: RoleUsuario.APROVADOR, tipoOperacao: 'acordo', ...lim('50000') },
   { papel: RoleUsuario.APROVADOR, tipoOperacao: 'novacao', ...lim('50000') },
   { papel: RoleUsuario.APROVADOR, tipoOperacao: 'reajuste', ...ILIM },
-  { papel: RoleUsuario.APROVADOR, tipoOperacao: 'despesa', ...lim('50000') },
-  { papel: RoleUsuario.APROVADOR, tipoOperacao: 'venda', ...lim('50000') },
   // OPERADOR: origina, aprova pouco (crédito avulso = 0 → não aprova, só origina).
   { papel: RoleUsuario.OPERADOR, tipoOperacao: 'credito_avulso', ...lim('0') },
   { papel: RoleUsuario.OPERADOR, tipoOperacao: 'acordo', ...lim('20000') },
-  { papel: RoleUsuario.OPERADOR, tipoOperacao: 'despesa', ...lim('5000') },
 ];
 
 async function seedAlcadas() {
@@ -511,10 +509,15 @@ async function seedAlcadas() {
       create: { chave: o.chave, nome: o.nome },
     });
   }
-  await prisma.alcada.deleteMany({});
+  // ADITIVO, nunca deleteMany (auditoria 15/09, P0-2): o seed destruía a matriz
+  // inteira — inclusive as alçadas de COCAD e contas a pagar semeadas por
+  // MIGRAÇÃO — e as aprovações desses tipos ficavam indecidíveis para sempre
+  // (fora_da_alcada). Upsert por (papel, tipoOperacao) preserva o que existe.
   for (const a of ALCADAS) {
-    await prisma.alcada.create({
-      data: {
+    await prisma.alcada.upsert({
+      where: { papel_tipoOperacao: { papel: a.papel, tipoOperacao: a.tipoOperacao } },
+      update: { limiteMaximo: a.limiteMaximo, ilimitado: a.ilimitado },
+      create: {
         papel: a.papel,
         tipoOperacao: a.tipoOperacao,
         limiteMaximo: a.limiteMaximo,
@@ -523,7 +526,7 @@ async function seedAlcadas() {
     });
   }
   console.log(
-    `   Alçadas: ${OPERACOES_ALCADA.length} operações + ${ALCADAS.length} regras (por papel)`,
+    `   Alçadas: ${OPERACOES_ALCADA.length} operações + ${ALCADAS.length} regras (upsert aditivo)`,
   );
 }
 

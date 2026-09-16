@@ -18,6 +18,12 @@ export class AtivacaoProcessor extends WorkerHost {
     super();
   }
   async process(job: Job<{ contratoId: string; paymentDate?: string }>) {
+    // Entrada VENCIDA sem pagamento (auditoria 15/09, P0-3): alerta a carteira
+    // — reemissão/cancelamento são ação manual até a expiração automática do
+    // estado entrar (decisão de domínio, Bloco B da auditoria).
+    if (job.name === 'entrada-vencida') {
+      return this.formalizacao.alertarEntradaVencida(job.data.contratoId);
+    }
     const r = await this.formalizacao.ativarPacotePorPagamento(job.data.contratoId, job.data.paymentDate);
     this.logger.log(`ativacao ${job.data.contratoId}: ${r.contratosAtivados} contrato(s) ativado(s)`);
     return r;
