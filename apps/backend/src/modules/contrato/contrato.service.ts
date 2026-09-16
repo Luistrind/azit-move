@@ -421,6 +421,35 @@ export class ContratoService {
     }
   }
 
+  // Produto ADICIONAL numa conta que JÁ fatura herda o DIA do ciclo (correção
+  // 15/09 — caso real Arthur, RP 2026090003): a 1ª parcela cai NA data da
+  // próxima fatura ABERTA futura da conta (mesma regra do acordo, doc 02 §7.7),
+  // nunca em "hoje + passo". Sem isso a parcela nascia fora do dia das faturas:
+  // o consolidador a cobrava na fatura do ciclo SEGUINTE e a parcela "vencia"
+  // com a fatura dela ainda em aberto (status contraditórios, régua/mora errados).
+  // Opt-in dos fluxos de produto adicional (crédito avulso/RP) — a originação
+  // nativa preserva a data PARAMETRIZADA e a novação estagia as datas dela.
+  async alinharAoCicloDaConta(contratoId: string): Promise<void> {
+    const contrato = await this.prisma.db.contratoCredito.findFirst({
+      where: { id: contratoId },
+      select: { contaId: true },
+    });
+    if (!contrato) return;
+    // Cronograma já gerado: a data é histórica — não mexe (idempotência).
+    const jaTem = await this.prisma.db.parcela.count({ where: { contratoId } });
+    if (jaTem > 0) return;
+    const proximaFatura = await this.prisma.db.fatura.findFirst({
+      where: { contaId: contrato.contaId, status: 'ABERTA', dataVencimento: { gt: new Date() } },
+      orderBy: { dataVencimento: 'asc' },
+      select: { dataVencimento: true },
+    });
+    if (!proximaFatura) return; // conta sem ciclo aberto — mantém a data original
+    await this.prisma.db.contratoCredito.update({
+      where: { id: contratoId },
+      data: { dataPrimeiraParcela: proximaFatura.dataVencimento },
+    });
+  }
+
   // "Dia zero" — gera o cronograma e ATIVA o contrato (chamado no pagamento da
   // entrada na originação nativa).
   async ativarComCronograma(contratoId: string): Promise<void> {

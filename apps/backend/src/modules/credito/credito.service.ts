@@ -434,6 +434,8 @@ export class CreditoService implements OnModuleInit {
       where: { id: contrato.id },
       data: { aprovadoPor: decisorId, dataAprovacao: new Date() },
     });
+    // Produto adicional herda o dia do ciclo da conta (correção 15/09).
+    await this.contrato.alinharAoCicloDaConta(contrato.id);
     await this.contrato.ativarComCronograma(contrato.id);
     return `Crédito ${contrato.numero} aprovado e ativado — parcelas lançadas nas faturas do titular.`;
   }
@@ -449,6 +451,9 @@ export class CreditoService implements OnModuleInit {
     if (!contrato) return; // não é um contrato aguardando assinatura (ou já ativado)
     const aprovacaoRp = await this.aprovacaoReembolso(contratoId);
     if (!aprovacaoRp) return; // contrato principal — o fluxo dele segue pela entrada
+    // Produto adicional herda o dia do ciclo da conta (correção 15/09 — caso
+    // Arthur: RP vencia às terças com faturas de segunda).
+    await this.contrato.alinharAoCicloDaConta(contratoId);
     await this.contrato.ativarComCronograma(contratoId);
     const jaTemTitulo = await this.prisma.db.tituloPagar.count({ where: { contratoCreditoId: contratoId, deletedAt: null } });
     if (jaTemTitulo === 0) {

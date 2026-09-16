@@ -658,6 +658,15 @@ export class FormalizacaoService {
           select: { id: true, numero: true },
         })
       : [{ id: contrato.id, numero: contrato.numero }];
+    // Crédito avulso COM entrada (sem proposta) é produto ADICIONAL de conta
+    // que já fatura → herda o dia do ciclo (correção 15/09). A originação
+    // nativa (tem proposta) preserva a data PARAMETRIZADA na formalização.
+    const temProposta = await this.prisma.db.proposta.count({
+      where: { OR: [{ contratoGeradoId: contrato.id }, { contratosPacote: { some: { id: contrato.id } } }] },
+    });
+    if (temProposta === 0) {
+      await this.contrato.alinharAoCicloDaConta(contrato.id);
+    }
     for (const c of pacote) {
       await this.contrato.ativarComCronograma(c.id);
     }
