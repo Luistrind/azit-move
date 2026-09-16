@@ -110,7 +110,7 @@ export function IntegracoesPage() {
       </span>
       {simulado && <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={{ background: '#eef4ff', color: '#2456c7' }}>SIMULADO — sem credencial</span>}
       <span className="rounded-full px-[10px] py-[2px] text-[11px]" style={{ background: 'var(--surface-input)', color: 'var(--text-muted)' }}>
-        fonte: {fonte === 'banco' ? 'esta tela' : 'variável de ambiente'}
+        {fonte === 'banco' ? 'cadastrada no sistema' : 'herdada do servidor'}
       </span>
     </span>
   );
@@ -120,9 +120,10 @@ export function IntegracoesPage() {
   return (
     <div className="flex flex-col gap-[14px] p-[24px]">
       <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
-        Credenciais dos provedores externos, sem SSH e sem redeploy. Os valores são <b>write-only</b>:
-        depois de salvos, a tela mostra apenas o final. Salvar aqui tem precedência sobre a variável
-        de ambiente do servidor. Toda alteração é auditada.
+        Credenciais dos provedores externos, sem SSH e sem redeploy. As chaves já configuradas no
+        servidor são <b>adotadas automaticamente</b> aqui — não é preciso procurá-las em lugar nenhum.
+        Os valores são <b>write-only</b>: a tela mostra apenas o final de cada chave. Salvar aqui vale
+        em segundos e tem precedência sobre o ambiente. Toda alteração é auditada.
       </p>
 
       <div className={card} style={cardStyle}>
@@ -173,23 +174,9 @@ export function IntegracoesPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-[10px]">
-        <button className={btnP} style={{ background: 'var(--navy)', color: '#fff', opacity: ocupado ? 0.6 : 1 }} disabled={ocupado} onClick={() => void salvar()}>
-          Salvar integrações
-        </button>
-        <button className={btnP} style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', opacity: ocupado ? 0.6 : 1 }} disabled={ocupado}
-          title="Copia para a central as credenciais que hoje só existem no .env do servidor — sem exibir os valores. Só preenche o que estiver vazio aqui."
-          onClick={() => { void (async () => {
-            setOcupado(true);
-            try {
-              const r = await integracoesService.importarEnv();
-              toast.sucesso(r.mensagem);
-              await qc.invalidateQueries({ queryKey: ['integracoes'] });
-            } catch (e) { toast.erro(mensagemErro(e)); } finally { setOcupado(false); }
-          })(); }}>
-          Importar do servidor (.env)
-        </button>
-      </div>
+      <button className={`${btnP} self-start`} style={{ background: 'var(--navy)', color: '#fff', opacity: ocupado ? 0.6 : 1 }} disabled={ocupado} onClick={() => void salvar()}>
+        Salvar integrações
+      </button>
     </div>
   );
 }

@@ -39,8 +39,4 @@ export const integracoesService = {
     const { data } = await api.post('/api/v1/integracoes/asaas/testar');
     return data;
   },
-  async importarEnv(): Promise<{ importados: string[]; mensagem: string }> {
-    const { data } = await api.post('/api/v1/integracoes/importar-env', {});
-    return data;
-  },
 };

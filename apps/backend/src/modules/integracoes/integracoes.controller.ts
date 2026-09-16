@@ -39,11 +39,7 @@ export class IntegracoesController {
     return this.service.testarAsaas();
   }
 
-  // Um clique: traz para a central o que hoje só existe no .env do servidor
-  // (só preenche campo vazio; nunca sobrescreve o que foi salvo pela tela).
-  @Post('importar-env')
-  @HttpCode(200)
-  importarEnv(@CurrentUser() user: UsuarioAutenticado) {
-    return this.service.importarDoAmbiente(user.id);
-  }
+  // Sem endpoint de importação: as credenciais do ambiente são adotadas
+  // AUTOMATICAMENTE no boot (IntegracoesService.adotarDoAmbiente) — a tela já
+  // abre com os tokens cadastrados e ativos.
 }

@@ -66,7 +66,16 @@ export class IntegracoesService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    await this.recarregar().catch((e) => this.logger.error(`integracoes: carga inicial falhou: ${(e as Error).message}`));
+    try {
+      await this.recarregar();
+      // Bootstrap (decisão Luís 15/09): o sistema já sobe com as credenciais
+      // do ambiente CADASTRADAS e ativas na central — o operador nunca precisa
+      // caçar chave em arquivo nem importar à mão. Só preenche o que estiver
+      // vazio no banco; o que foi salvo pela tela manda sempre.
+      await this.adotarDoAmbiente();
+    } catch (e) {
+      this.logger.error(`integracoes: carga inicial falhou: ${(e as Error).message}`);
+    }
   }
 
   private async recarregar(): Promise<void> {
@@ -214,11 +223,11 @@ export class IntegracoesService implements OnModuleInit {
     return this.status();
   }
 
-  // Importa para o BANCO as credenciais que hoje só existem no ambiente
-  // (.env/stack.env) — um clique e o operador nunca mais precisa caçar chave
-  // em arquivo ou no painel do provedor. Só preenche campo VAZIO no banco
-  // (nunca sobrescreve o que foi salvo pela tela); valores jamais expostos.
-  async importarDoAmbiente(usuarioId?: string) {
+  // Adoção automática no boot: traz para a central o que existe no ambiente
+  // (.env / stack.env) — assim a tela já nasce com os tokens certos
+  // cadastrados e ativos. Só preenche campo VAZIO no banco (o que foi salvo
+  // pela tela nunca é sobrescrito); valores jamais expostos ou logados.
+  async adotarDoAmbiente(usuarioId?: string) {
     const atual = this.linha ?? ((await this.prisma.db.parametroIntegracao.findFirst()) as Linha | null);
     const dto: Parameters<IntegracoesService['atualizar']>[0] = {};
     const importados: string[] = [];
@@ -249,12 +258,10 @@ export class IntegracoesService implements OnModuleInit {
       importados.push('ZapSign: segredo do webhook');
     }
 
-    if (importados.length === 0) {
-      return { importados, status: this.status(), mensagem: 'Nada a importar — o ambiente não tem credencial que o banco já não tenha.' };
-    }
-    const status = await this.atualizar(dto, usuarioId);
-    this.logger.warn(`Integrações importadas do ambiente: ${importados.join(' · ')}`);
-    return { importados, status, mensagem: `Importado do ambiente: ${importados.join(' · ')}.` };
+    if (importados.length === 0) return { importados };
+    await this.atualizar(dto, usuarioId);
+    this.logger.log(`Integrações: credenciais do ambiente adotadas na central (${importados.join(' · ')})`);
+    return { importados };
   }
 
   // Testa a credencial EFETIVA do Asaas com uma leitura inócua.

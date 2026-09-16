@@ -1730,14 +1730,18 @@ troca próxima da credencial do Asaas de sandbox para produção.
 1. **Write-only**: a API nunca devolve um segredo salvo — só o status mascarado
    ("configurada · final ····abcd"). Toda alteração vai ao log de auditoria com o valor
    mascarado.
-2. **Precedência banco > env**: o que for salvo na tela governa; a variável de ambiente
+2. **Adoção automática no boot** (decisão Luís 16/09): as credenciais que existem no
+   ambiente são cadastradas sozinhas na central quando o campo está vazio no banco — a tela
+   já abre com os tokens certos ativos, sem o operador procurar chave em arquivo nem
+   importar à mão. O que foi salvo pela tela nunca é sobrescrito.
+3. **Precedência banco > env**: o que for salvo na tela governa; a variável de ambiente
    do servidor vira fallback (deploys existentes continuam funcionando sem mexer em nada).
    Por provedor: com a credencial do banco presente, o AMBIENTE escolhido na tela define a
    URL (sandbox/produção); sem ela, vale o conjunto do env. Segredo de webhook cai no
    fallback campo a campo.
-3. **Sem redeploy**: os serviços leem um snapshot com TTL de 60s, invalidado na hora ao
+4. **Sem redeploy**: os serviços leem um snapshot com TTL de 60s, invalidado na hora ao
    salvar — a troca de credencial vale em segundos.
-4. **Testar conexão** (Asaas): leitura inócua com a credencial efetiva, validando chave ×
+5. **Testar conexão** (Asaas): leitura inócua com a credencial efetiva, validando chave ×
    ambiente antes de qualquer cobrança real.
-5. Webhooks continuam exigindo segredo em produção (auditoria 15/09, P0-1) — o segredo
+6. Webhooks continuam exigindo segredo em produção (auditoria 15/09, P0-1) — o segredo
    passa a poder ser definido pela tela, espelhado no painel do provedor.
