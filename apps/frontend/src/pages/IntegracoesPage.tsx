@@ -173,9 +173,23 @@ export function IntegracoesPage() {
         </div>
       </div>
 
-      <button className={`${btnP} self-start`} style={{ background: 'var(--navy)', color: '#fff', opacity: ocupado ? 0.6 : 1 }} disabled={ocupado} onClick={() => void salvar()}>
-        Salvar integrações
-      </button>
+      <div className="flex items-center gap-[10px]">
+        <button className={btnP} style={{ background: 'var(--navy)', color: '#fff', opacity: ocupado ? 0.6 : 1 }} disabled={ocupado} onClick={() => void salvar()}>
+          Salvar integrações
+        </button>
+        <button className={btnP} style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', opacity: ocupado ? 0.6 : 1 }} disabled={ocupado}
+          title="Copia para a central as credenciais que hoje só existem no .env do servidor — sem exibir os valores. Só preenche o que estiver vazio aqui."
+          onClick={() => { void (async () => {
+            setOcupado(true);
+            try {
+              const r = await integracoesService.importarEnv();
+              toast.sucesso(r.mensagem);
+              await qc.invalidateQueries({ queryKey: ['integracoes'] });
+            } catch (e) { toast.erro(mensagemErro(e)); } finally { setOcupado(false); }
+          })(); }}>
+          Importar do servidor (.env)
+        </button>
+      </div>
     </div>
   );
 }

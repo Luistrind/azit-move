@@ -214,6 +214,49 @@ export class IntegracoesService implements OnModuleInit {
     return this.status();
   }
 
+  // Importa para o BANCO as credenciais que hoje só existem no ambiente
+  // (.env/stack.env) — um clique e o operador nunca mais precisa caçar chave
+  // em arquivo ou no painel do provedor. Só preenche campo VAZIO no banco
+  // (nunca sobrescreve o que foi salvo pela tela); valores jamais expostos.
+  async importarDoAmbiente(usuarioId?: string) {
+    const atual = this.linha ?? ((await this.prisma.db.parametroIntegracao.findFirst()) as Linha | null);
+    const dto: Parameters<IntegracoesService['atualizar']>[0] = {};
+    const importados: string[] = [];
+
+    const envAsaasKey = this.config.get<string>('asaas.apiKey') ?? '';
+    const envAsaasUrl = this.config.get<string>('asaas.apiUrl') ?? '';
+    const envAsaasSecret = this.config.get<string>('asaas.webhookSecret') ?? '';
+    if (!atual?.asaasApiKey && envAsaasKey) {
+      dto.asaasApiKey = envAsaasKey;
+      dto.asaasAmbiente = envAsaasUrl && !envAsaasUrl.includes('sandbox') ? 'producao' : 'sandbox';
+      importados.push('Asaas: API key (+ambiente)');
+    }
+    if (!atual?.asaasWebhookSecret && envAsaasSecret) {
+      dto.asaasWebhookSecret = envAsaasSecret;
+      importados.push('Asaas: segredo do webhook');
+    }
+
+    const envZsToken = process.env.ZAPSIGN_API_TOKEN ?? '';
+    const envZsUrl = process.env.ZAPSIGN_API_URL ?? '';
+    const envZsSecret = process.env.ZAPSIGN_WEBHOOK_SECRET ?? '';
+    if (!atual?.zapsignApiToken && envZsToken) {
+      dto.zapsignApiToken = envZsToken;
+      dto.zapsignAmbiente = envZsUrl && !envZsUrl.includes('sandbox') ? 'producao' : 'sandbox';
+      importados.push('ZapSign: API token (+ambiente)');
+    }
+    if (!atual?.zapsignWebhookSecret && envZsSecret) {
+      dto.zapsignWebhookSecret = envZsSecret;
+      importados.push('ZapSign: segredo do webhook');
+    }
+
+    if (importados.length === 0) {
+      return { importados, status: this.status(), mensagem: 'Nada a importar — o ambiente não tem credencial que o banco já não tenha.' };
+    }
+    const status = await this.atualizar(dto, usuarioId);
+    this.logger.warn(`Integrações importadas do ambiente: ${importados.join(' · ')}`);
+    return { importados, status, mensagem: `Importado do ambiente: ${importados.join(' · ')}.` };
+  }
+
   // Testa a credencial EFETIVA do Asaas com uma leitura inócua.
   async testarAsaas() {
     const a = this.asaas();
