@@ -30,6 +30,7 @@ import { AlcadasPage } from './pages/AlcadasPage';
 import { SimuladorConfigPage } from './pages/SimuladorConfigPage';
 import { UsuariosPage } from './pages/UsuariosPage';
 import { CentroCustoPage } from './pages/CentroCustoPage';
+import { IntegracoesPage } from './pages/IntegracoesPage';
 
 // Rotas client-side — Doc 4 §5.1. /login é pública; o restante é protegido pela sessão.
 export const router = createBrowserRouter([
@@ -156,6 +157,10 @@ export const router = createBrowserRouter([
       {
         path: 'configuracoes/usuarios',
         element: <UsuariosPage />,
+      },
+      {
+        path: 'configuracoes/integracoes',
+        element: <IntegracoesPage />,
       },
       // Catch-all (auditoria 15/09, Bloco D): URL desconhecida não pode cair
       // no erro cru do React Router (já aconteceu com /originacao) — mostra

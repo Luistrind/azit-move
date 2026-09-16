@@ -851,6 +851,26 @@ model ParametroAssinatura {
   @@map("parametros_assinatura")
 }
 
+// Central de credenciais de integracao (decisao Luis 15/09): segredos
+// configuraveis pela TELA Configuracoes > Integracoes (ADMIN/DIRETOR),
+// gravados write-only (a API nunca devolve o valor, so status mascarado).
+// Precedencia: BANCO > variavel de ambiente (o env vira fallback) — trocar a
+// credencial (ex.: Asaas sandbox -> producao) passa a valer sem redeploy.
+model ParametroIntegracao {
+  id                   String  @id @default(cuid())
+  asaasAmbiente        String  @default("sandbox") // sandbox | producao
+  asaasApiKey          String?
+  asaasWebhookSecret   String?
+  zapsignAmbiente      String  @default("sandbox") // sandbox | producao
+  zapsignApiToken      String?
+  zapsignWebhookSecret String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("parametros_integracao")
+}
+
 // Notificacao ao operador (doc 02 sec.20 passo 13): marcos do pos-contrato
 // (assinado / cobranca gerada / entrada paga) aparecem no sino do topo.
 // Notificações do sino (doc 02 §16.1, decisão 2026-09-07): destinatário por

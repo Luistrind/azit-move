@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { centavosParaReaisString } from '@azit/utils';
+import { IntegracoesService } from '../integracoes/integracoes.service';
 
 // Cliente Asaas (Doc 7 item 4.3). "Asaas executa, Azit controla" (Regra nº 1):
 // toda lógica é nossa; o Asaas só cria/recebe cobranças.
@@ -20,18 +20,21 @@ export interface CobrancaAsaas {
 export class AsaasService {
   private readonly logger = new Logger(AsaasService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  // Credencial EFETIVA via central de integrações (decisão 15/09): banco >
+  // env, trocável pela tela sem redeploy — inclusive sandbox → produção.
+  constructor(private readonly integracoes: IntegracoesService) {}
 
   get simulado(): boolean {
-    return !this.config.get<string>('asaas.apiKey');
+    return !this.integracoes.asaas().apiKey;
   }
 
   private async call<T>(path: string, body: unknown): Promise<T> {
-    const resp = await fetch(`${this.config.get('asaas.apiUrl')}${path}`, {
+    const cred = this.integracoes.asaas();
+    const resp = await fetch(`${cred.apiUrl}${path}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        access_token: this.config.get<string>('asaas.apiKey') ?? '',
+        access_token: cred.apiKey,
       },
       body: JSON.stringify(body),
     });
@@ -51,9 +54,10 @@ export class AsaasService {
       return true;
     }
     try {
-      const resp = await fetch(`${this.config.get('asaas.apiUrl')}/payments/${chargeId}`, {
+      const cred = this.integracoes.asaas();
+      const resp = await fetch(`${cred.apiUrl}/payments/${chargeId}`, {
         method: 'DELETE',
-        headers: { access_token: this.config.get<string>('asaas.apiKey') ?? '' },
+        headers: { access_token: cred.apiKey },
       });
       if (!resp.ok) {
         const txt = await resp.text().catch(() => '');

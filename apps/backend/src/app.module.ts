@@ -12,6 +12,7 @@ import { AtivoModule } from './modules/ativo/ativo.module';
 import { OrigemCapitalModule } from './modules/origem-capital/origem-capital.module';
 import { ContratoModule } from './modules/contrato/contrato.module';
 import { AsaasModule } from './modules/asaas/asaas.module';
+import { IntegracoesModule } from './modules/integracoes/integracoes.module';
 import { CobrancaModule } from './modules/cobranca/cobranca.module';
 import { ReguaModule } from './modules/regua/regua.module';
 import { AlcadaModule } from './modules/alcada/alcada.module';
@@ -50,6 +51,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     AtivoModule,
     OrigemCapitalModule,
     ContratoModule,
+    IntegracoesModule,
     AsaasModule,
     CobrancaModule,
     ReguaModule,

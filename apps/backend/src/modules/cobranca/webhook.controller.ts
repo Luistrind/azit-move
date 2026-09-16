@@ -13,11 +13,13 @@ import { Public } from '../../common/decorators/public.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { webhookAsaasSchema, WebhookAsaasDto } from './dto/webhook-asaas.dto';
+import { IntegracoesService } from '../integracoes/integracoes.service';
 
 @Controller('webhooks')
 export class WebhookController {
   constructor(
     private readonly config: ConfigService,
+    private readonly integracoes: IntegracoesService,
     @InjectQueue(QUEUE_NAMES.PAGAMENTO_RECEBIDO)
     private readonly filaRecebido: Queue,
     @InjectQueue(QUEUE_NAMES.PAGAMENTO_VENCIDO)
@@ -37,7 +39,9 @@ export class WebhookController {
     @Headers('asaas-access-token') token: string | undefined,
     @Body(new ZodValidationPipe(webhookAsaasSchema)) dto: WebhookAsaasDto,
   ) {
-    const segredo = this.config.get<string>('asaas.webhookSecret');
+    // Segredo EFETIVO da central de integrações (banco > env — configurável
+    // pela tela Configurações > Integrações, decisão 15/09).
+    const segredo = this.integracoes.asaas().webhookSecret;
     // PRODUÇÃO EXIGE o segredo (auditoria 15/09, P0-1): sem ele o webhook
     // aceitaria payload anônimo — pagamento forjado. Em dev/simulado (fora de
     // produção, sem segredo configurado) não exigimos o header.

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { IntegracoesService } from '../../modules/integracoes/integracoes.service';
 
 // Provider ZapSign (doc 02 §21 — F1). "ZapSign executa, Azit controla": este
 // serviço só conversa com a API; decisão e estado vivem no AssinaturaService.
@@ -31,18 +32,24 @@ export interface DocumentoCriado {
   signatarios: SignatarioCriado[];
 }
 
-const URL_SANDBOX = 'https://sandbox.api.zapsign.com.br/api/v1';
-
 @Injectable()
 export class ZapSignService {
   private readonly logger = new Logger(ZapSignService.name);
 
+  // Credencial EFETIVA via central de integrações (decisão 15/09): banco >
+  // env, trocável pela tela Configurações > Integrações sem redeploy.
+  constructor(private readonly integracoes: IntegracoesService) {}
+
   get configurado(): boolean {
-    return !!process.env.ZAPSIGN_API_TOKEN;
+    return !!this.integracoes.zapsign().apiToken;
   }
 
   private get baseUrl(): string {
-    return process.env.ZAPSIGN_API_URL || URL_SANDBOX;
+    return this.integracoes.zapsign().apiUrl;
+  }
+
+  private get apiToken(): string {
+    return this.integracoes.zapsign().apiToken;
   }
 
   // Cria o documento a partir do TEXTO do motor de templates (markdown_text —
@@ -59,7 +66,7 @@ export class ZapSignService {
     const resp = await fetch(`${this.baseUrl}/docs/`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.ZAPSIGN_API_TOKEN}`,
+        Authorization: `Bearer ${this.apiToken}`,
         'content-type': 'application/json',
       },
       body: JSON.stringify({
@@ -119,7 +126,7 @@ export class ZapSignService {
   async detalharDocumento(docToken: string): Promise<{ status: string; signedFileUrl: string | null }> {
     if (!this.configurado) return { status: 'signed', signedFileUrl: null };
     const resp = await fetch(`${this.baseUrl}/docs/${docToken}/`, {
-      headers: { Authorization: `Bearer ${process.env.ZAPSIGN_API_TOKEN}` },
+      headers: { Authorization: `Bearer ${this.apiToken}` },
     });
     if (!resp.ok) throw new Error(`ZapSign respondeu HTTP ${resp.status}`);
     const doc = (await resp.json()) as { status: string; signed_file: string | null };

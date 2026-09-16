@@ -19,12 +19,14 @@ import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current
 import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { AssinaturaService, ParametrosAssinaturaDto } from './assinatura.service';
+import { IntegracoesService } from '../integracoes/integracoes.service';
 
 // Assinatura digital ZapSign F1 (doc 02 §21).
 @Controller()
 export class AssinaturaController {
   constructor(
     private readonly service: AssinaturaService,
+    private readonly integracoes: IntegracoesService,
     @InjectQueue(QUEUE_NAMES.ASSINATURA_EVENTO) private readonly fila: Queue,
   ) {}
 
@@ -73,7 +75,9 @@ export class AssinaturaController {
     @Headers('x-azit-webhook-secret') segredo: string | undefined,
     @Body() payload: Record<string, unknown>,
   ) {
-    const esperado = process.env.ZAPSIGN_WEBHOOK_SECRET;
+    // Segredo EFETIVO da central de integrações (banco > env — tela
+    // Configurações > Integrações, decisão 15/09).
+    const esperado = this.integracoes.zapsign().webhookSecret;
     // PRODUÇÃO EXIGE o segredo (auditoria 15/09, P0-1): sem ele, qualquer um
     // que conheça a URL marcaria contratos como assinados (dispara ativações).
     if (!esperado && (process.env.NODE_ENV ?? 'development') === 'production') {
