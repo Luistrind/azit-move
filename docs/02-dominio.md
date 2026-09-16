@@ -1700,3 +1700,23 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 
 *Documento vivo — atualizar a cada decisão validada.*
 *Versão 2.0 — 2026-06-27 — expansão de escopo: originação absorvida do PopHub, distinção Acordo/Novação, telas do operador, refinamentos da reunião de 26/06 com Vicente.*
+
+### 21.1 Validade do contrato não efetivado (decisão Luís, 2026-09-15 — Bloco B da auditoria)
+
+Contrato em **Aguardando assinatura** ou **Aguardando pagamento inicial** ainda não é
+obrigação — e não pode ficar pendurado para sempre com o veículo preso em EM_CONTRATO
+(beco sem saída apontado na auditoria de 15/09).
+
+1. **Prazo de validade**: parametrizável em Configuração > Assinatura digital
+   (`validadeDias`, padrão **7 dias**). Âncora: envio do instrumento (fase de assinatura)
+   ou conclusão da assinatura (fase de pagamento da entrada).
+2. **Expiração automática** (job diário): vencido o prazo, o contrato é cancelado
+   (ENCERRADO por CANCELAMENTO), o pacote inteiro junto (assinaram juntos), o veículo
+   volta a DISPONÍVEL, o documento de assinatura é cancelado e **a proposta volta a ser
+   reformalizável** (status EM_FORMALIZACAO, contrato desvinculado). Cada expiração gera
+   notificação — nunca expira mudo.
+3. **Cancelamento manual**: sempre disponível no detalhe do contrato (mesma rotina).
+4. **Novação**: cancelar/expirar o instrumento desmonta a OPERAÇÃO (par de contratos +
+   devolução do ativo da troca) — fluxo dedicado registrado pelo módulo de novação.
+5. **Dinheiro depois do cancelamento**: entrada paga após o cancelamento NUNCA reativa o
+   contrato — vira alerta para a carteira tratar devolução/reformalização.

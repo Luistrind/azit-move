@@ -841,6 +841,9 @@ model ParametroAssinatura {
   testemunha2Cpf          String  @default("")
   testemunha2Whatsapp     String  @default("")
   envioAutomaticoWhatsapp Boolean @default(true)
+  // Bloco B da auditoria (decisão Luís 15/09): instrumento não assinado (ou
+  // entrada não paga) além deste prazo EXPIRA o contrato e libera o veículo.
+  validadeDias            Int     @default(7)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

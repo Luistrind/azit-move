@@ -652,9 +652,26 @@ export class FormalizacaoService {
       },
     });
     if (!contrato) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Contrato não encontrado' });
+    // Contrato CANCELADO nunca reativa (Bloco B, 15/09): se a entrada de um
+    // contrato expirado/cancelado for paga depois, o dinheiro NÃO gera
+    // cronograma — vira alerta para a carteira tratar a devolução.
+    const atual = await this.prisma.db.contratoCredito.findFirst({
+      where: { id: contrato.id },
+      select: { status: true },
+    });
+    if (atual?.status === 'ENCERRADO') {
+      await this.notificacao.emitir({
+        titulo: `Pagamento recebido de contrato CANCELADO (${contrato.numero})`,
+        corpo: 'A entrada foi paga após o cancelamento/expiração do contrato — trate a devolução ou a reformalização com o cliente.',
+        rota: `/contratos/${contrato.id}`,
+        tipo: 'DINHEIRO',
+        area: 'CARTEIRA_COBRANCA',
+      });
+      return { contratoId: contrato.id, numero: contrato.numero, status: 'cancelado', cronogramaGerado: false, contratosAtivados: 0 };
+    }
     const pacote = contrato.propostaPacoteId
       ? await this.prisma.db.contratoCredito.findMany({
-          where: { propostaPacoteId: contrato.propostaPacoteId },
+          where: { propostaPacoteId: contrato.propostaPacoteId, status: { not: 'ENCERRADO' } },
           select: { id: true, numero: true },
         })
       : [{ id: contrato.id, numero: contrato.numero }];

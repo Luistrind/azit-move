@@ -78,7 +78,42 @@ export class PropostaService {
     private readonly camada1: Camada1Service,
     private readonly analise: AnaliseService,
     private readonly catalogoFonte: CatalogoFonteService,
-  ) {}
+  ) {
+    // Bloco B da auditoria (15/09, P1-8): a exceção "fora de parâmetro" não
+    // tinha efetivador — aprovar já funcionava (o gate da formalização lê o
+    // status), mas a REPROVAÇÃO era muda: ninguém ficava sabendo e a proposta
+    // seguia bloqueada sem explicação. Agora as duas decisões notificam.
+    this.aprovacao.registrarEfetivador('condicao_fora_parametro', {
+      aprovada: async (a) => {
+        await this.notificarDecisaoForaParametro(a.referenciaId, true);
+        return 'Exceção aprovada — a proposta pode ser formalizada.';
+      },
+      reprovada: async (a) => {
+        await this.notificarDecisaoForaParametro(a.referenciaId, false);
+      },
+    });
+  }
+
+  private async notificarDecisaoForaParametro(propostaId: string, aprovada: boolean) {
+    const p = await this.prisma.db.proposta.findFirst({
+      where: { id: propostaId },
+      select: { id: true, titular: { select: { nome: true } } },
+    });
+    if (!p) return;
+    await this.prisma.db.notificacao.create({
+      data: {
+        titulo: aprovada
+          ? `Condição fora de parâmetro APROVADA — ${p.titular?.nome ?? 'proposta'}`
+          : `Condição fora de parâmetro NEGADA — ${p.titular?.nome ?? 'proposta'}`,
+        corpo: aprovada
+          ? 'A exceção foi aprovada pela alçada: a proposta está liberada para formalização.'
+          : 'A exceção foi negada: ajuste as condições da proposta aos parâmetros (ou reapresente com nova justificativa).',
+        rota: `/propostas/${p.id}`,
+        tipo: 'APROVACAO',
+        area: 'COMERCIAL',
+      },
+    }).catch(() => undefined);
+  }
 
   async criar(dto: CriarPropostaDto) {
     const simulacao = await this.prisma.db.simulacao.findFirst({

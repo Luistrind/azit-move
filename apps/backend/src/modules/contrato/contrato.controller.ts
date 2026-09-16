@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -24,6 +25,21 @@ export class ContratoController {
   // esteira de crédito (sem análise, alçada ou catálogo congelado) e nenhuma
   // tela o usava. Contrato nasce pela formalização do funil, pelos produtos
   // adicionais (crédito/RP) ou pela novação — todos via ContratoService.criar.
+
+  // Bloco B (decisão Luís 15/09): cancelamento MANUAL de contrato não
+  // efetivado (aguardando assinatura/pagamento inicial) — libera o veículo e
+  // devolve a proposta para reformalização. Novação cai no desmonte próprio.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR, RoleUsuario.OPERADOR)
+  @Post(':id/cancelar')
+  @HttpCode(200)
+  cancelar(
+    @Param('id') id: string,
+    @Body() body: { motivo?: string } | undefined,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    const motivo = (body?.motivo ?? '').trim() || 'Cancelado pelo operador';
+    return this.contratoService.cancelarNaoEfetivado(id, motivo, user.id);
+  }
 
   @Get()
   listar(

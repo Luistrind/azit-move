@@ -124,4 +124,9 @@ export const contratoService = {
   async simularPagamento(id: string): Promise<void> {
     await api.post(`/api/v1/dev/simular-pagamento/${id}`);
   },
+  // Bloco B (15/09): cancela contrato não efetivado (aguardando assinatura/
+  // entrada) — libera o veículo; a proposta volta a ser reformalizável.
+  async cancelarNaoEfetivado(id: string, motivo?: string): Promise<void> {
+    await api.post(`/api/v1/contratos/${id}/cancelar`, { motivo });
+  },
 };

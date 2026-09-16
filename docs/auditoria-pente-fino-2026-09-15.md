@@ -61,6 +61,15 @@ nenhum resíduo da novação 1:1 antiga; renegociação já 100% conta-cêntrica
 
 ## P1 — Becos sem saída operacionais
 
+> **BLOCO B EXECUTADO (15/09):** itens 7, 8 e 9 corrigidos + expiração da entrada (par do
+> P0-3). Decisão registrada no doc 02 §21.1: validade parametrizável (padrão 7 dias) na
+> Configuração > Assinatura digital; expiração automática diária cancela contrato/pacote,
+> libera o veículo e devolve a proposta para reformalização (com notificação); botão
+> "Cancelar contrato" no detalhe; novação desmonta o par + troca; pagamento recebido após
+> cancelamento nunca reativa (alerta de devolução). Pendências/ressalvas com prazo vencido
+> viram EXPIRADA (cron diário + notificação por análise). condicao_fora_parametro ganhou
+> efetivador: aprovação e reprovação notificam o comercial.
+
 7. **`AGUARDANDO_ASSINATURA` não tem saída** (venda, RP, e os DOIS contratos da novação):
    sem expiração, sem cancelamento, sem reenvio com prazo — `credito.service.ts:541` só
    cancela RASCUNHO; a recusa na ZapSign não altera o contrato

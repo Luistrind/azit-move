@@ -5,6 +5,7 @@ import {
   BadRequestException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   Prisma,
   StatusParcela as StatusParcelaPrisma,
@@ -41,6 +42,139 @@ const reais = (centavos: number) => centavosParaReaisString(centavos);
 @Injectable()
 export class ContratoService {
   constructor(private readonly prisma: PrismaService) {}
+
+  // ---------------------------------------------------------------
+  // Cancelamento de contrato NÃO EFETIVADO (Bloco B da auditoria — decisão
+  // Luís 15/09): contrato em AGUARDANDO_ASSINATURA / AGUARDANDO_PAGAMENTO_
+  // INICIAL nunca virou obrigação — pode ser cancelado (manual ou por
+  // expiração de prazo), liberando o veículo. Fluxos com desmonte próprio
+  // (novação: cancela o PAR de contratos e devolve o ativo da troca) se
+  // registram aqui e têm precedência.
+  private cancelamentosDedicados: ((contratoId: string, motivo: string) => Promise<boolean>)[] = [];
+  registrarCancelamentoDedicado(handler: (contratoId: string, motivo: string) => Promise<boolean>) {
+    this.cancelamentosDedicados.push(handler);
+  }
+
+  async cancelarNaoEfetivado(contratoId: string, motivo: string, usuarioId?: string) {
+    const contrato = await this.prisma.db.contratoCredito.findFirst({
+      where: { id: contratoId },
+      select: { id: true, numero: true, status: true, ativoId: true, propostaPacoteId: true, contaId: true },
+    });
+    if (!contrato) throw this.naoEncontrado();
+    if (!['AGUARDANDO_ASSINATURA', 'AGUARDANDO_PAGAMENTO_INICIAL'].includes(contrato.status)) {
+      throw new UnprocessableEntityException({
+        erro: 'estado_invalido',
+        mensagem: `Só contratos aguardando assinatura ou pagamento inicial podem ser cancelados (está ${contrato.status}) — contrato ATIVO encerra por quitação, sinistro ou novação`,
+      });
+    }
+    for (const h of this.cancelamentosDedicados) {
+      if (await h(contratoId, motivo)) return { resultado: 'cancelado', numero: contrato.numero };
+    }
+
+    // Pacote da proposta (âncora + apartados) cancela JUNTO — assinaram juntos.
+    const doPacote = contrato.propostaPacoteId
+      ? await this.prisma.db.contratoCredito.findMany({
+          where: {
+            propostaPacoteId: contrato.propostaPacoteId,
+            status: { in: ['AGUARDANDO_ASSINATURA', 'AGUARDANDO_PAGAMENTO_INICIAL'] },
+          },
+          select: { id: true, ativoId: true },
+        })
+      : [{ id: contrato.id, ativoId: contrato.ativoId }];
+    const ids = doPacote.map((c) => c.id);
+    const ativoIds = doPacote.map((c) => c.ativoId).filter((x): x is string => !!x);
+
+    await this.prisma.db.$transaction(async (tx) => {
+      await tx.contratoCredito.updateMany({
+        where: { id: { in: ids } },
+        data: { status: 'ENCERRADO', motivoEncerramento: 'CANCELAMENTO', dataEncerramento: new Date() },
+      });
+      if (ativoIds.length) {
+        await tx.ativo.updateMany({
+          where: { id: { in: ativoIds }, status: 'EM_CONTRATO' },
+          data: { status: 'DISPONIVEL' },
+        });
+      }
+      await tx.documentoAssinatura.updateMany({
+        where: { contratoCreditoId: { in: ids }, status: { in: ['enviado', 'parcialmente_assinado'] } },
+        data: { status: 'cancelado' },
+      });
+      // Proposta volta a ser reformalizável (o guard exige contratoGeradoId
+      // vazio e status APROVADA/EM_FORMALIZACAO) — o negócio não morre com o
+      // documento: reformaliza e reenvia para assinatura.
+      await tx.proposta.updateMany({
+        where: { contratoGeradoId: contrato.id },
+        data: { contratoGeradoId: null, status: 'EM_FORMALIZACAO' },
+      });
+      await tx.logAuditoria.create({
+        data: {
+          usuarioId,
+          acao: 'contrato_cancelado_nao_efetivado',
+          entidade: 'contrato_credito',
+          entidadeId: contrato.id,
+          depois: { motivo, contratos: ids, ativosLiberados: ativoIds } as Prisma.InputJsonValue,
+        },
+      });
+    });
+    return { resultado: 'cancelado', numero: contrato.numero, contratosCancelados: ids.length };
+  }
+
+  // Expiração automática (Bloco B — decisão Luís 15/09: prazo padrão 7 dias,
+  // parametrizável em Configuração > Assinatura digital): instrumento não
+  // assinado ou entrada não paga além do prazo cancela o contrato e libera o
+  // veículo. Cada caso vira notificação — nunca expira mudo.
+  @Cron(CronExpression.EVERY_DAY_AT_5AM)
+  async cronExpirarNaoEfetivados(): Promise<void> {
+    const { expirados } = await this.expirarNaoEfetivados();
+    if (expirados) console.log(`[cron] validade: ${expirados} contrato(s) expirados por prazo`);
+  }
+
+  async expirarNaoEfetivados(): Promise<{ expirados: number }> {
+    const params = await this.prisma.db.parametroAssinatura.findFirst({ select: { validadeDias: true } });
+    const prazoDias = Math.max(1, params?.validadeDias ?? 7);
+    const limite = new Date(Date.now() - prazoDias * 24 * 60 * 60 * 1000);
+
+    const candidatos = await this.prisma.db.contratoCredito.findMany({
+      where: { status: { in: ['AGUARDANDO_ASSINATURA', 'AGUARDANDO_PAGAMENTO_INICIAL'] } },
+      select: {
+        id: true,
+        numero: true,
+        status: true,
+        createdAt: true,
+        conta: { select: { titular: { select: { nome: true } } } },
+        documentoAssinatura: { select: { enviadoEm: true, concluidoEm: true } },
+      },
+    });
+    let expirados = 0;
+    for (const c of candidatos) {
+      // Âncora do prazo: envio do instrumento (assinatura) / conclusão da
+      // assinatura (pagamento inicial); sem documento, a criação do contrato.
+      const ancora =
+        c.status === 'AGUARDANDO_ASSINATURA'
+          ? (c.documentoAssinatura?.enviadoEm ?? c.createdAt)
+          : (c.documentoAssinatura?.concluidoEm ?? c.createdAt);
+      if (ancora >= limite) continue;
+      try {
+        await this.cancelarNaoEfetivado(
+          c.id,
+          `Expirado automaticamente: ${c.status === 'AGUARDANDO_ASSINATURA' ? 'instrumento não assinado' : 'entrada não paga'} em ${prazoDias} dias`,
+        );
+        await this.prisma.db.notificacao.create({
+          data: {
+            titulo: `Contrato ${c.numero} EXPIROU sem ${c.status === 'AGUARDANDO_ASSINATURA' ? 'assinatura' : 'pagamento da entrada'}`,
+            corpo: `${c.conta.titular.nome} não concluiu em ${prazoDias} dias — contrato cancelado e veículo liberado. A proposta pode ser reformalizada.`,
+            rota: `/contratos/${c.id}`,
+            tipo: 'ASSINATURA',
+            area: 'COMERCIAL',
+          },
+        });
+        expirados += 1;
+      } catch (e) {
+        console.error(`expiração do contrato ${c.numero} falhou: ${(e as Error).message}`);
+      }
+    }
+    return { expirados };
+  }
 
   async criar(
     dto: CriarContratoDto,

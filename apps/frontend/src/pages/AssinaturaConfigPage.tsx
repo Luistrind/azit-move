@@ -104,6 +104,24 @@ export function AssinaturaConfigPage() {
         </div>
       </div>
 
+      <div className={card} style={cardStyle}>
+        <label className="flex items-center gap-[10px] text-[12.5px] font-semibold">
+          Validade do contrato não efetivado
+          <input
+            value={String(form.validadeDias ?? 7)}
+            onChange={(e) => set({ validadeDias: Math.max(1, parseInt(e.target.value.replace(/\D/g, '') || '7', 10)) })}
+            className="h-[32px] w-[64px] rounded-[8px] px-[8px] text-right text-[13px]"
+            style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
+          />
+          dias
+        </label>
+        <div className="mt-[4px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
+          Instrumento não assinado (ou entrada não paga) além desse prazo EXPIRA automaticamente:
+          o contrato é cancelado, o veículo volta ao estoque e a proposta pode ser reformalizada.
+          O cancelamento manual continua disponível no detalhe do contrato.
+        </div>
+      </div>
+
       <button className={`${btnP} self-start`} disabled={ocupado} onClick={() => void salvar()}>Salvar parâmetros</button>
     </div>
   );

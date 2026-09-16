@@ -13,6 +13,7 @@ import {
   ResultadoAnalise,
 } from '@azit/utils';
 import { InjectQueue } from '@nestjs/bullmq';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../database/prisma.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
@@ -58,6 +59,58 @@ export class AnaliseService implements OnModuleInit {
     private readonly assistente: AssistenteAnaliseService,
     @InjectQueue(QUEUE_NAMES.RESUMO_ANALISE) private readonly filaResumo: Queue,
   ) {}
+
+  // Bloco B da auditoria (15/09): pendências e ressalvas com PRAZO vencido
+  // viram EXPIRADA — o prazo era gravado e nunca cobrado (achado P1-9). A
+  // expiração não decide nada sozinha: notifica a análise para o analista
+  // encerrar, reabrir prazo (nova pendência) ou não aprovar.
+  @Cron(CronExpression.EVERY_DAY_AT_5AM)
+  async cronExpirarPrazos(): Promise<void> {
+    const { pendencias, ressalvas } = await this.expirarPrazosVencidos();
+    if (pendencias + ressalvas > 0) {
+      console.log(`[cron] análise: ${pendencias} pendência(s) e ${ressalvas} ressalva(s) expiradas por prazo`);
+    }
+  }
+
+  async expirarPrazosVencidos(): Promise<{ pendencias: number; ressalvas: number }> {
+    const agora = new Date();
+    const pend = await this.prisma.db.pendenciaAnalise.findMany({
+      where: { situacao: 'ABERTA', prazo: { lt: agora } },
+      select: { id: true, analiseId: true, descricao: true },
+    });
+    const ress = await this.prisma.db.ressalvaAnalise.findMany({
+      where: { situacao: 'PENDENTE', prazo: { lt: agora } },
+      select: { id: true, analiseId: true, condicao: true },
+    });
+    if (pend.length) {
+      await this.prisma.db.pendenciaAnalise.updateMany({
+        where: { id: { in: pend.map((p) => p.id) } },
+        data: { situacao: 'EXPIRADA' },
+      });
+    }
+    if (ress.length) {
+      await this.prisma.db.ressalvaAnalise.updateMany({
+        where: { id: { in: ress.map((r) => r.id) } },
+        data: { situacao: 'EXPIRADA' },
+      });
+    }
+    // Uma notificação por ANÁLISE afetada (não por item).
+    const porAnalise = new Map<string, string[]>();
+    for (const p of pend) porAnalise.set(p.analiseId, [...(porAnalise.get(p.analiseId) ?? []), `pendência: ${p.descricao}`]);
+    for (const r of ress) porAnalise.set(r.analiseId, [...(porAnalise.get(r.analiseId) ?? []), `ressalva: ${r.condicao}`]);
+    for (const [analiseId, itens] of porAnalise) {
+      await this.prisma.db.notificacao.create({
+        data: {
+          titulo: 'Prazo VENCIDO na análise de cadastro',
+          corpo: `${itens.length} item(ns) expirou(aram) sem cumprimento: ${itens.slice(0, 3).join('; ')}${itens.length > 3 ? '…' : ''}. Decida: encerrar, renovar o prazo ou não aprovar.`,
+          rota: `/analises/${analiseId}`,
+          tipo: 'APROVACAO',
+          area: 'ANALISE_CADASTRO',
+        },
+      }).catch(() => undefined);
+    }
+    return { pendencias: pend.length, ressalvas: ress.length };
+  }
 
   // Enfileira a geração do resumo do assistente (IA — 14/09): marca 'gerando'
   // na hora (a tela mostra o estado) e o worker chama a API do Claude. Nunca

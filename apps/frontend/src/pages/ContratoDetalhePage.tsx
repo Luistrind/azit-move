@@ -130,6 +130,28 @@ export function ContratoDetalhePage() {
     }
   }
 
+  // Bloco B (15/09): cancelamento de contrato NÃO efetivado (aguardando
+  // assinatura/entrada) — libera o veículo e devolve a proposta para
+  // reformalização. Novação desmonta o par de contratos junto.
+  const [cancelandoAberto, setCancelandoAberto] = useState(false);
+  const [motivoCancel, setMotivoCancel] = useState('');
+  const podeCancelar =
+    !!detalhe.data && ['Aguardando assinatura', 'Aguardando pagamento inicial'].includes(detalhe.data.status);
+  async function confirmarCancelamento() {
+    setSimulando(true);
+    try {
+      await contratoService.cancelarNaoEfetivado(id, motivoCancel.trim() || undefined);
+      setCancelandoAberto(false);
+      setMotivoCancel('');
+      toast.sucesso('Contrato cancelado — veículo liberado e proposta reformalizável.');
+      await recarregar();
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+    } finally {
+      setSimulando(false);
+    }
+  }
+
   // 6.7 — Sinistro: indenização amortiza o saldo (não quita automaticamente).
   async function sinistro() {
     const v = window.prompt('Valor da indenização recebida (R$):', '20000');
@@ -373,6 +395,16 @@ export function ContratoDetalhePage() {
               Reajuste IPCA
             </button>
           )}
+          {podeOperar && podeCancelar && (
+            <button
+              onClick={() => setCancelandoAberto(true)}
+              disabled={simulando}
+              className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
+              style={{ background: '#fdeceb', color: '#c0392b', border: '1px solid #f2c6c2', opacity: simulando ? 0.6 : 1 }}
+            >
+              Cancelar contrato
+            </button>
+          )}
           {podeOperar && import.meta.env.DEV && (
             <button
               onClick={simularPagamento}
@@ -386,6 +418,25 @@ export function ContratoDetalhePage() {
           )}
         </div>
       </div>
+
+      {cancelandoAberto && (
+        <Modal open onClose={() => setCancelandoAberto(false)} title="Cancelar contrato não efetivado">
+          <div className="flex flex-col gap-[10px] text-[12.5px]">
+            <p>
+              O contrato ainda não virou obrigação ({c?.status.toLowerCase()}). Cancelar libera o veículo
+              de volta ao estoque e permite reformalizar a proposta. Esta ação não tem desfazer.
+            </p>
+            <label className="flex flex-col gap-[4px] text-[12px]">
+              <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Motivo (opcional)</span>
+              <input value={motivoCancel} onChange={(e) => setMotivoCancel(e.target.value)} placeholder="ex: cliente desistiu / dados incorretos" className="h-[34px] rounded-[8px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+            </label>
+            <div className="flex justify-end gap-[8px]">
+              <button onClick={() => setCancelandoAberto(false)} className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>Voltar</button>
+              <button onClick={() => void confirmarCancelamento()} disabled={simulando} className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold" style={{ background: '#c0392b', color: '#fff', opacity: simulando ? 0.6 : 1 }}>Cancelar contrato</button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {tab === 'cronograma' && (
         <div

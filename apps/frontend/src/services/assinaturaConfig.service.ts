@@ -14,6 +14,8 @@ export interface ParametrosAssinatura {
   testemunha2Cpf: string;
   testemunha2Whatsapp: string;
   envioAutomaticoWhatsapp: boolean;
+  // Bloco B (15/09): prazo de expiração do contrato não efetivado (dias).
+  validadeDias: number;
 }
 
 export const assinaturaConfigService = {

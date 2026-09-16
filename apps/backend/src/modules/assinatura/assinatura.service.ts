@@ -55,6 +55,9 @@ export interface ParametrosAssinaturaDto {
   testemunha2Cpf: string;
   testemunha2Whatsapp: string;
   envioAutomaticoWhatsapp: boolean;
+  // Bloco B (15/09): prazo de validade — instrumento não assinado / entrada
+  // não paga além disso expira o contrato e libera o veículo.
+  validadeDias: number;
 }
 
 @Injectable()
@@ -99,6 +102,7 @@ export class AssinaturaService {
         testemunha2Cpf: dto.testemunha2Cpf?.trim() ?? atual.testemunha2Cpf,
         testemunha2Whatsapp: (dto.testemunha2Whatsapp ?? atual.testemunha2Whatsapp).replace(/\D/g, ''),
         envioAutomaticoWhatsapp: dto.envioAutomaticoWhatsapp ?? atual.envioAutomaticoWhatsapp,
+        validadeDias: Math.max(1, Math.round(dto.validadeDias ?? atual.validadeDias)),
       },
     });
     await this.prisma.db.logAuditoria.create({

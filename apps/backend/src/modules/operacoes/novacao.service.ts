@@ -78,6 +78,20 @@ export class NovacaoService implements OnModuleInit {
     });
     // Instrumento assinado por todos → recebimento inicial ou ativação direta.
     this.assinatura.registrarPosAssinatura((contratoId) => this.aoAssinarContrato(contratoId));
+    // Bloco B (15/09): cancelamento/expiração de contrato de novação não
+    // assinado desmonta a OPERAÇÃO inteira (par de contratos + ativo da troca).
+    this.contrato.registrarCancelamentoDedicado(async (contratoId, motivo) => {
+      const nv = await this.prisma.db.novacao.findFirst({
+        where: {
+          OR: [{ contratoVeiculoId: contratoId }, { contratoTermoId: contratoId }],
+          status: 'AGUARDANDO_ASSINATURA',
+        },
+        select: { id: true },
+      });
+      if (!nv) return false;
+      await this.cancelar(nv.id, motivo);
+      return true;
+    });
   }
 
   // ---------------------------------------------------------------
