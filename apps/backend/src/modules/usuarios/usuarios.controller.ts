@@ -11,6 +11,10 @@ import { PrismaService } from '../../database/prisma.service';
 // Papel carrega as áreas do seu domínio (matriz papel×área, editável);
 // exceções por usuário concedem/revogam áreas específicas com motivo.
 
+const preferenciasSchema = z.object({
+  ordemInicio: z.array(z.string().max(60)).max(30).optional(),
+});
+
 const criarUsuarioSchema = z.object({
   nome: z.string().min(3),
   email: z.string().email(),
@@ -46,6 +50,30 @@ export class UsuariosController {
   @Get('me/areas')
   async minhasAreas(@CurrentUser() user: UsuarioAutenticado) {
     return { areas: await this.areasEfetivas(user.id) };
+  }
+
+  // Preferências de interface do PRÓPRIO usuário (16/09) — ordem dos cards
+  // do Início. Merge raso: cada chave enviada substitui só ela.
+  @Get('me/preferencias')
+  async minhasPreferencias(@CurrentUser() user: UsuarioAutenticado) {
+    const u = await this.prisma.db.usuario.findFirst({ where: { id: user.id }, select: { preferencias: true } });
+    return (u?.preferencias as Record<string, unknown> | null) ?? {};
+  }
+
+  @Put('me/preferencias')
+  @HttpCode(200)
+  async salvarPreferencias(
+    @CurrentUser() user: UsuarioAutenticado,
+    @Body(new ZodValidationPipe(preferenciasSchema)) body: z.infer<typeof preferenciasSchema>,
+  ) {
+    const u = await this.prisma.db.usuario.findFirst({ where: { id: user.id }, select: { preferencias: true } });
+    const atual = (u?.preferencias as Record<string, unknown> | null) ?? {};
+    const novo = { ...atual, ...body };
+    await this.prisma.db.usuario.update({
+      where: { id: user.id },
+      data: { preferencias: novo as Prisma.InputJsonValue },
+    });
+    return novo;
   }
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)

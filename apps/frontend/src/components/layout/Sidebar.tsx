@@ -1,4 +1,5 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../stores/authStore';
 import { authService } from '../../services/auth.service';
@@ -102,8 +103,41 @@ const GRUPOS_NAV: GrupoNav[] = [
   },
 ];
 
+// Grupos recolhíveis (16/09): o estado fica no navegador do usuário — é uma
+// conveniência de tela, não um dado do sistema.
+const CHAVE_RECOLHIDOS = 'azit.menu.recolhidos';
+function lerRecolhidos(): string[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(CHAVE_RECOLHIDOS) ?? '[]');
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+function gravarRecolhidos(v: string[]) {
+  try {
+    localStorage.setItem(CHAVE_RECOLHIDOS, JSON.stringify(v));
+  } catch {
+    /* armazenamento indisponível — o menu segue funcionando sem lembrar */
+  }
+}
+
 export function Sidebar() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const [recolhidos, setRecolhidos] = useState<string[]>(lerRecolhidos);
+  function alternar(area: string) {
+    const novo = recolhidos.includes(area) ? recolhidos.filter((a) => a !== area) : [...recolhidos, area];
+    setRecolhidos(novo);
+    gravarRecolhidos(novo);
+  }
+  function definirTodos(recolher: boolean) {
+    const novo = recolher ? GRUPOS_NAV.flatMap((g) => (g.area ? [g.area] : [])) : [];
+    setRecolhidos(novo);
+    gravarRecolhidos(novo);
+  }
+  // O grupo da tela aberta fica sempre visível — o operador nunca perde onde está.
+  const ativa = (to: string) => (to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(`${to}/`));
   const usuario = useAuthStore((s) => s.usuario);
   const limpar = useAuthStore((s) => s.limpar);
   // Badge de aprovações pendentes (atualiza a cada 60s).
@@ -154,18 +188,30 @@ export function Sidebar() {
         style={{ background: 'rgba(255,255,255,.08)' }}
       />
 
+      <div className="mx-[20px] -mt-[4px] mb-[2px] flex justify-end gap-[10px] text-[10.5px]" style={{ color: 'var(--navy-text-muted)' }}>
+        <button className="hover:underline" onClick={() => definirTodos(false)}>Expandir tudo</button>
+        <button className="hover:underline" onClick={() => definirTodos(true)}>Recolher tudo</button>
+      </div>
+
       <nav className="flex flex-col gap-[2px] overflow-y-auto px-[12px]">
-        {grupos.map((grupo) => (
+        {grupos.map((grupo) => {
+          const temAtiva = grupo.itens.some((i) => ativa(i.to));
+          const aberto = !grupo.area || !recolhidos.includes(grupo.area) || temAtiva;
+          return (
           <div key={grupo.area ?? 'inicio'} className="flex flex-col gap-[2px]">
-            {grupo.titulo && (
-              <div
-                className="mx-[8px] mb-[6px] mt-[14px] text-[10px] uppercase tracking-[0.14em]"
+            {grupo.titulo && grupo.area && (
+              <button
+                onClick={() => alternar(grupo.area as string)}
+                aria-expanded={aberto}
+                title={temAtiva ? 'Grupo da tela aberta' : aberto ? 'Recolher' : 'Expandir'}
+                className="mx-[4px] mb-[4px] mt-[12px] flex items-center justify-between rounded-[6px] px-[4px] py-[3px] text-left text-[10px] uppercase tracking-[0.14em] hover:bg-[rgba(255,255,255,.05)]"
                 style={{ color: 'var(--navy-text-muted)' }}
               >
-                {grupo.titulo}
-              </div>
+                <span>{grupo.titulo}</span>
+                <span className="text-[8px] transition-transform" style={{ transform: aberto ? 'rotate(0deg)' : 'rotate(-90deg)' }}>▼</span>
+              </button>
             )}
-            {grupo.itens.map((item) => (
+            {aberto && grupo.itens.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
@@ -189,7 +235,8 @@ export function Sidebar() {
               </NavLink>
             ))}
           </div>
-        ))}
+          );
+        })}
       </nav>
 
       <div className="flex-1" />

@@ -37,6 +37,14 @@ export const usuarioService = {
     const { data } = await api.get<{ areas: string[] }>('/api/v1/me/areas');
     return data.areas;
   },
+  // Preferências de interface do próprio usuário (ordem dos cards do Início).
+  async minhasPreferencias(): Promise<{ ordemInicio?: string[] }> {
+    const { data } = await api.get<{ ordemInicio?: string[] }>('/api/v1/me/preferencias');
+    return data;
+  },
+  async salvarPreferencias(prefs: { ordemInicio?: string[] }): Promise<void> {
+    await api.put('/api/v1/me/preferencias', prefs);
+  },
   async listar(): Promise<UsuarioInterno[]> {
     const { data } = await api.get<UsuarioInterno[]>('/api/v1/usuarios');
     return data;

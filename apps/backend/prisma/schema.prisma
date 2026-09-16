@@ -1382,6 +1382,9 @@ model Usuario {
   email     String  @unique
   senhaHash String
   ativo     Boolean @default(true)
+  // Preferências de interface do próprio usuário (16/09): ex. ordem dos cards
+  // da tela Início — acompanha o usuário em qualquer computador.
+  preferencias Json?
 
   roles                 UsuarioRole[]
   acordos               Acordo[]

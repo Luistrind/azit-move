@@ -62,7 +62,8 @@ export class InicioController {
     if (areas.has(AreaSistema.ANALISE_CADASTRO)) {
       const analises = await this.prisma.db.analiseCadastro.findMany({
         where: { status: { notIn: ANALISE_FINAIS } },
-        orderBy: { updatedAt: 'asc' },
+        // Mais recente primeiro (feedback Luís 16/09 — a fila começava pela mais antiga).
+        orderBy: { createdAt: 'desc' },
         include: { proposta: { include: { titular: true } } },
       });
       blocos.push({
@@ -86,7 +87,8 @@ export class InicioController {
           deletedAt: null,
           status: { in: ['PENDENTE', 'EM_ANALISE', 'APROVADA', 'EM_FORMALIZACAO'] },
         },
-        orderBy: { updatedAt: 'asc' },
+        // Mais recente primeiro (feedback Luís 16/09).
+        orderBy: { createdAt: 'desc' },
         include: { titular: true },
       });
       blocos.push({
