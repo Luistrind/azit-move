@@ -662,6 +662,18 @@ function ListaLotes({ lotes, carregando, onMudou }: { lotes: LotePagamentoApi[];
               {l.status === 'ENVIADO_BPO' && <button className={btnP} disabled={ocupado} onClick={() => rodar(() => financeiroService.eventoLote(l.id, 'cadastrado_cora'), 'Cadastro no banco registrado — aguardando aprovação do Diretor no aplicativo.')}>Marcar cadastrado no banco</button>}
               {l.status === 'AGUARDANDO_APROVACAO_BANCO' && <button className={btnP} disabled={ocupado} onClick={() => rodar(() => financeiroService.eventoLote(l.id, 'aprovado_banco'), 'Aprovação bancária registrada — registre os pagamentos nos títulos.')}>Marcar aprovado no banco</button>}
               {l.status === 'EM_PREPARACAO' && <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Aguardando liberação na Central de Aprovações</span>}
+              {/* Auditoria 15/09 (Bloco D): estados finais do lote ficavam sem
+                  ação NEM explicação — o operador não sabia a continuação. */}
+              {['APROVADO_BANCO', 'PARCIALMENTE_PAGO'].includes(l.status) && (
+                <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                  Banco aprovou — registre cada pagamento na aba <b>Títulos</b> ("Registrar pagamento") e depois concilie.
+                </span>
+              )}
+              {l.status === 'PAGO' && (
+                <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                  Lote pago — a conciliação com o extrato acontece título a título na aba <b>Títulos</b>.
+                </span>
+              )}
             </div>
           </div>
           <div className="mt-[8px] flex flex-col gap-[4px]">

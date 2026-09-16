@@ -177,7 +177,9 @@ export function ReguaPage() {
         <div className="text-[12.5px]" style={{ color: 'var(--text-body)' }}>
           {itens.length} contrato(s) em régua de cobrança
         </div>
-        {podeOperar && (
+        {/* Auditoria 15/09 (Bloco D): era o ÚNICO botão dev sem gate — aparecia
+            em produção. Em produção a régua roda pelo cron diário. */}
+        {podeOperar && import.meta.env.DEV && (
           <button
             onClick={() => comRefetch(() => reguaService.rodar())}
             disabled={ocupado}

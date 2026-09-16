@@ -43,7 +43,9 @@ export function ContratoDetalhePage() {
     setAssinando(true);
     try {
       await fn();
-      await queryClient.invalidateQueries({ queryKey: ['contrato-detalhe'] });
+      // Auditoria 15/09 (Bloco D): a chave era 'contrato-detalhe', que NENHUMA
+      // query usa — a tela não refletia a assinatura sem F5.
+      await queryClient.invalidateQueries({ queryKey: ['contrato', id] });
     } catch (e) {
       toast.erro(mensagemErro(e));
     } finally {
@@ -101,7 +103,7 @@ export function ContratoDetalhePage() {
       await contratoService.simularPagamento(id);
       await recarregar();
     } catch (e) {
-      alert(mensagemErro(e));
+      toast.erro(mensagemErro(e));
     } finally {
       setSimulando(false);
     }
@@ -114,7 +116,7 @@ export function ContratoDetalhePage() {
     try {
       setSimQuitacao(await operacoesService.simularQuitacao(id));
     } catch (e) {
-      alert(mensagemErro(e));
+      toast.erro(mensagemErro(e));
     }
   }
   async function confirmarQuitacao() {
@@ -124,7 +126,7 @@ export function ContratoDetalhePage() {
       setSimQuitacao(null);
       await recarregar();
     } catch (e) {
-      alert(mensagemErro(e));
+      toast.erro(mensagemErro(e));
     } finally {
       setSimulando(false);
     }
@@ -153,30 +155,35 @@ export function ContratoDetalhePage() {
   }
 
   // 6.7 — Sinistro: indenização amortiza o saldo (não quita automaticamente).
-  async function sinistro() {
-    const v = window.prompt('Valor da indenização recebida (R$):', '20000');
-    if (!v) return;
+  // Auditoria 15/09 (Bloco D): window.prompt/alert saíram — Modal + toast (P6).
+  const [sinistroAberto, setSinistroAberto] = useState(false);
+  const [valorSinistro, setValorSinistro] = useState('20.000,00');
+  async function confirmarSinistro() {
     setSimulando(true);
     try {
-      await operacoesService.registrarSinistro(id, reaisParaCentavos(v));
+      await operacoesService.registrarSinistro(id, reaisParaCentavos(valorSinistro));
+      setSinistroAberto(false);
+      toast.sucesso('Sinistro registrado — indenização amortizada no saldo.');
       await recarregar();
     } catch (e) {
-      alert(mensagemErro(e));
+      toast.erro(mensagemErro(e));
     } finally {
       setSimulando(false);
     }
   }
 
   // 6.8 — Reajuste IPCA (gera -> aprova -> aplica nas parcelas futuras).
-  async function reajustar() {
-    const v = window.prompt('Índice IPCA acumulado (%):', '4,5');
-    if (!v) return;
+  const [reajusteAberto, setReajusteAberto] = useState(false);
+  const [indiceReajuste, setIndiceReajuste] = useState('4,5');
+  async function confirmarReajuste() {
     setSimulando(true);
     try {
-      await operacoesService.reajustar(id, numeroBR(v));
+      await operacoesService.reajustar(id, numeroBR(indiceReajuste));
+      setReajusteAberto(false);
+      toast.sucesso('Reajuste proposto — segue para a Central de Aprovações.');
       await recarregar();
     } catch (e) {
-      alert(mensagemErro(e));
+      toast.erro(mensagemErro(e));
     } finally {
       setSimulando(false);
     }
@@ -377,7 +384,7 @@ export function ContratoDetalhePage() {
           )}
           {podeOperar && (
             <button
-              onClick={sinistro}
+              onClick={() => setSinistroAberto(true)}
               disabled={simulando}
               className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
               style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)', opacity: simulando ? 0.6 : 1 }}
@@ -387,7 +394,7 @@ export function ContratoDetalhePage() {
           )}
           {podeReajustar && (
             <button
-              onClick={reajustar}
+              onClick={() => setReajusteAberto(true)}
               disabled={simulando}
               className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
               style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)', opacity: simulando ? 0.6 : 1 }}
@@ -418,6 +425,38 @@ export function ContratoDetalhePage() {
           )}
         </div>
       </div>
+
+      {sinistroAberto && (
+        <Modal open onClose={() => setSinistroAberto(false)} title="Registrar sinistro">
+          <div className="flex flex-col gap-[10px] text-[12.5px]">
+            <p>A indenização recebida amortiza o saldo devedor (a dívida não se extingue com o bem — Regra 3).</p>
+            <label className="flex flex-col gap-[4px] text-[12px]">
+              <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Valor da indenização (R$)</span>
+              <input value={valorSinistro} onChange={(e) => setValorSinistro(e.target.value)} className="h-[34px] rounded-[8px] px-[10px] text-right text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+            </label>
+            <div className="flex justify-end gap-[8px]">
+              <button onClick={() => setSinistroAberto(false)} className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>Voltar</button>
+              <button onClick={() => void confirmarSinistro()} disabled={simulando} className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold" style={{ background: 'var(--navy)', color: '#fff', opacity: simulando ? 0.6 : 1 }}>Registrar sinistro</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {reajusteAberto && (
+        <Modal open onClose={() => setReajusteAberto(false)} title="Reajuste IPCA">
+          <div className="flex flex-col gap-[10px] text-[12.5px]">
+            <p>Propõe o reajuste das parcelas futuras pelo índice acumulado — a aplicação depende da Central de Aprovações.</p>
+            <label className="flex flex-col gap-[4px] text-[12px]">
+              <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Índice IPCA acumulado (%)</span>
+              <input value={indiceReajuste} onChange={(e) => setIndiceReajuste(e.target.value)} className="h-[34px] rounded-[8px] px-[10px] text-right text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+            </label>
+            <div className="flex justify-end gap-[8px]">
+              <button onClick={() => setReajusteAberto(false)} className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>Voltar</button>
+              <button onClick={() => void confirmarReajuste()} disabled={simulando} className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold" style={{ background: 'var(--navy)', color: '#fff', opacity: simulando ? 0.6 : 1 }}>Propor reajuste</button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {cancelandoAberto && (
         <Modal open onClose={() => setCancelandoAberto(false)} title="Cancelar contrato não efetivado">

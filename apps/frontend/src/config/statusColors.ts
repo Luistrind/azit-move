@@ -143,6 +143,13 @@ export const CONTAS_PAGAR_STATUS_COLORS: Record<string, StatusColor> = {
   CONCILIADO: { bg: '#eafaf1', fg: '#1f9d5b' },
   CANCELADO: { bg: '#fdeceb', fg: '#e0413c' },
   BLOQUEADO: { bg: '#fdeceb', fg: '#e0413c' },
+  // Status de LOTE de pagamento (auditoria 15/09, Bloco D — o ciclo do lote
+  // ficava monocromático no cinza default).
+  EM_PREPARACAO: { bg: '#eef4ff', fg: '#2456c7' },
+  CADASTRADO_CORA: { bg: '#eef4ff', fg: '#2456c7' },
+  AGUARDANDO_APROVACAO_BANCO: { bg: '#fef6e9', fg: '#c98a0a' },
+  APROVADO_BANCO: { bg: '#eafaf1', fg: '#1f9d5b' },
+  PARCIALMENTE_PAGO: { bg: '#fef6e9', fg: '#c98a0a' },
 };
 
 // Fornecedores (RF-16).

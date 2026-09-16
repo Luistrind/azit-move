@@ -695,8 +695,12 @@ function Decisao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean; aca
         </div>
       )}
 
+      {/* Auditoria 15/09 (Bloco D): o botão "Liberar para formalização" vive no
+          banner de próximo passo (ProximaAcao) — aparecia DUPLICADO aqui. */}
       {['APROVADO_ALCADA_ANALISTA', 'APROVADO_COCAD'].includes(d.status) && (
-        <button className={btnP} disabled={ocupado} onClick={() => acao(() => analiseService.liberar(d.id), 'Liberada para formalização.')}>Liberar para formalização</button>
+        <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+          Análise aprovada — use <b>Liberar para formalização</b> no banner de próximo passo, no topo.
+        </div>
       )}
 
       <ModalAprovarJustificando aberto={modal === 'aprovar_justificando'} codigos={codigosCocad} fechar={() => setModal(null)} ocupado={ocupado} confirmar={(justificativa) => { setModal(null); void acao(() => analiseService.aprovar(d.id, justificativa), 'Aprovada na alçada do analista (contra recomendação — registrado na trilha).'); }} />

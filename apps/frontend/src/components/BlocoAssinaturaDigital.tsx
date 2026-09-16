@@ -38,7 +38,10 @@ export function BlocoAssinaturaDigital({ contratoId, ocupado, run, titulo }: {
   async function recarregar() {
     await qc.invalidateQueries({ queryKey: ['assinatura-digital', contratoId] });
     await qc.invalidateQueries({ queryKey: ['pacote-status'] });
-    await qc.invalidateQueries({ queryKey: ['contrato-detalhe'] });
+    // Auditoria 15/09 (Bloco D): 'contrato-detalhe' não existia como chave —
+    // invalida as queries reais do contrato e da proposta.
+    await qc.invalidateQueries({ queryKey: ['contrato', contratoId] });
+    await qc.invalidateQueries({ queryKey: ['proposta'] });
   }
 
   const ROTULO_STATUS: Record<string, string> = {

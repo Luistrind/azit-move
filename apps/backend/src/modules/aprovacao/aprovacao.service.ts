@@ -61,9 +61,13 @@ export class AprovacaoService {
       case 'credito_avulso':
       case 'reembolso_parcelado':
         return a.titularId ? `/titulares/${a.titularId}` : '/carteira';
-      case 'despesa':
-      case 'orcamento':
+      // Auditoria 15/09 (Bloco D): as chaves eram 'despesa'/'orcamento', que
+      // NÃO existem como tipoOperacao — as notificações caíam no default.
+      case 'despesa_contas_pagar':
+      case 'orcamento_contas_pagar':
       case 'lote_pagamento':
+      case 'reabertura_titulo':
+      case 'fornecedor_dados_bancarios':
         return '/contas-a-pagar';
       default:
         return '/aprovacoes';

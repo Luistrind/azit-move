@@ -157,6 +157,23 @@ export const router = createBrowserRouter([
         path: 'configuracoes/usuarios',
         element: <UsuariosPage />,
       },
+      // Catch-all (auditoria 15/09, Bloco D): URL desconhecida não pode cair
+      // no erro cru do React Router (já aconteceu com /originacao) — mostra
+      // uma página simples com caminho de volta.
+      {
+        path: '*',
+        element: (
+          <div className="flex flex-col items-start gap-[10px] p-[24px]">
+            <h1 className="font-display text-[20px] font-bold">Página não encontrada</h1>
+            <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
+              O endereço não existe (ou mudou). Use o menu ao lado ou volte ao início.
+            </p>
+            <a href="/" className="rounded-[8px] px-[14px] py-[8px] text-[12.5px] font-semibold" style={{ background: 'var(--navy)', color: '#fff' }}>
+              Ir para o Início
+            </a>
+          </div>
+        ),
+      },
     ],
   },
 ]);

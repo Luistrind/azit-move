@@ -77,10 +77,13 @@ export function AcordosPage() {
 
   return (
     <div className="flex flex-col gap-[16px]">
+      {/* Auditoria 15/09 (Bloco D): os banners descreviam o caminho SEM link —
+          o operador lia "ficha do titular" e tinha que achar sozinho. */}
       {podeRenegociar && (
         <div className="rounded-[12px] px-[16px] py-[12px] text-[12.5px]" style={{ background: '#eaf1fb', color: 'var(--navy)' }}>
           💡 A renegociação nasce da <b>ficha do titular</b> (botão "Renegociar atraso") — ela cobre as
-          parcelas em atraso de todos os contratos da conta e passa pela Central de Aprovações.
+          parcelas em atraso de todos os contratos da conta e passa pela Central de Aprovações.{' '}
+          <button onClick={() => navigate('/carteira')} className="font-semibold underline">Abrir a carteira →</button>
         </div>
       )}
 
@@ -91,7 +94,8 @@ export function AcordosPage() {
         <div className="rounded-[12px] px-[16px] py-[12px] text-[12.5px]" style={{ background: '#eaf1fb', color: 'var(--navy)' }}>
           💡 A novação também nasce da <b>ficha do titular</b> (botão "Novação (prévia do saldo)"):
           o sistema decompõe o saldo da conta por produto — parte do veículo × demais produtos — e a
-          proposta dos dois contratos será montada a partir daí.
+          proposta dos dois contratos será montada a partir daí.{' '}
+          <button onClick={() => navigate('/carteira')} className="font-semibold underline">Abrir a carteira →</button>
         </div>
       )}
 

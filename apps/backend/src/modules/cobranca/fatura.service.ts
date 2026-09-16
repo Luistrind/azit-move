@@ -85,7 +85,7 @@ export class FaturaService {
       where: { status: 'FECHADA', asaasChargeId: null, deletedAt: null },
       select: {
         id: true, numero: true, dataVencimento: true, dataFechamento: true,
-        conta: { select: { titular: { select: { nome: true } } } },
+        conta: { select: { titular: { select: { id: true, nome: true } } } },
       },
       orderBy: { dataVencimento: 'asc' },
     });
@@ -119,7 +119,9 @@ export class FaturaService {
       await this.notificacao.emitir({
         titulo: `${vencidas.length} fatura(s) vencida(s) sem cobrança no Asaas`,
         corpo: `${nomes}${vencidas.length > 5 ? ' · …' : ''}. O Asaas não aceita vencimento no passado — reemita no detalhe da fatura (ficha do titular) ou trate na régua.`,
-        rota: '/regua',
+        // A rota leva à AÇÃO (auditoria 15/09, Bloco D): a reemissão vive na
+        // ficha do titular; /regua só quando há vários titulares afetados.
+        rota: vencidas.length === 1 ? `/titulares/${vencidas[0].conta.titular.id}` : '/regua',
         tipo: 'FALHA',
         area: 'CARTEIRA_COBRANCA',
       });

@@ -12,6 +12,7 @@ import { PROPOSTA_STATUS_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, ROLE_PARECER, mensagemErro } from '../lib/permissoes';
 import { proximaSegundaISO, somarDiasISO } from '../lib/datas';
 import { BlocoAssinaturaDigital } from '../components/BlocoAssinaturaDigital';
+import { toast } from '../components/Toast';
 import { ROTULO_SITUACAO_PROPOSTA as LABEL_STATUS } from '../lib/rotulos';
 const PAPEL_LABEL: Record<string, string> = {
   comprador_principal: 'Comprador principal', comprador_secundario: 'Comprador secundário', garantidor: 'Garantidor',
@@ -326,7 +327,11 @@ export function PropostaDetalhePage() {
         </div>
       )}
 
-      {/* Passo 3 — Análise: anexos de embasamento + observação analítica + parecer em cards */}
+      {/* Passo 3 — Análise: anexos de embasamento + observação analítica + parecer em cards.
+          Auditoria 15/09 (Bloco D): o banner era renderizado em TODOS os passos,
+          inclusive em proposta convertida/cancelada — agora só enquanto a análise
+          faz sentido. */}
+      {!['convertida', 'cancelada', 'reprovada'].includes(p.status) && (
       <div className="mb-[10px] flex flex-wrap items-center justify-between gap-[8px] rounded-[12px] border-2 border-[var(--navy)] bg-[var(--surface)] p-[14px]">
         <div>
           <div className="font-display text-[13px] font-bold">Análise de Cadastro — Política v1.0</div>
@@ -335,11 +340,12 @@ export function PropostaDetalhePage() {
         <button
           className="h-[36px] rounded-[8px] px-[16px] text-[12px] font-bold"
           style={{ background: 'var(--navy)', color: '#fff' }}
-          onClick={() => { void (async () => { try { const a = await analiseService.iniciar(id); navigate(`/analises/${a.id}`); } catch (e) { alert(mensagemErro(e)); } })(); }}
+          onClick={() => { void (async () => { try { const a = await analiseService.iniciar(id); navigate(`/analises/${a.id}`); } catch (e) { toast.erro(mensagemErro(e)); } })(); }}
         >
           Abrir análise →
         </button>
       </div>
+      )}
 
       {step === 2 && (() => {
         const anexos = p.documentos.filter((d) => d.tipo === 'anexo_analise');

@@ -86,7 +86,7 @@ export function PropostasPage() {
                   <td className="px-[18px] py-[12px]"><StatusBadge label={LABEL_STATUS[p.status] ?? p.status} colors={PROPOSTA_STATUS_COLORS} /></td>
                   <td className="px-[18px] py-[12px] text-right">
                     <button onClick={(e) => { e.stopPropagation(); navigate(`/propostas/${p.id}`); }}
-                      className="text-[11.5px] font-semibold" style={{ color: 'var(--accent)' }}>Abrir análise →</button>
+                      className="text-[11.5px] font-semibold" style={{ color: 'var(--accent)' }}>Abrir proposta →</button>
                   </td>
                 </tr>
               ))}
@@ -139,7 +139,7 @@ export function PropostasPage() {
             </div>
             <button onClick={() => { const pid = modalP.id; setModalP(null); navigate(`/propostas/${pid}`); }}
               className="mt-[4px] h-[34px] rounded-[8px] text-[12.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff' }}>
-              Abrir análise documental
+              Abrir proposta →
             </button>
           </div>
         )}

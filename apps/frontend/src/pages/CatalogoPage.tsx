@@ -79,7 +79,7 @@ export function CatalogoPage() {
                   Estrutura dona
                   <select
                     value={p.estruturaJuridica?.id ?? ''}
-                    onChange={(e) => { void catalogoService.atualizarCadastral(p.id, { estruturaJuridicaId: e.target.value || null }).then(() => produtos.refetch()); }}
+                    onChange={(e) => { void catalogoService.atualizarCadastral(p.id, { estruturaJuridicaId: e.target.value || null }).then(() => produtos.refetch()).catch((err) => { toast.erro(mensagemErro(err)); void produtos.refetch(); }); }}
                     className="h-[28px] rounded-[7px] px-[6px] text-[11.5px]"
                     style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
                   >
@@ -94,7 +94,7 @@ export function CatalogoPage() {
                   <input
                     type="checkbox"
                     checked={p.contratacaoAvulsa}
-                    onChange={(e) => { void catalogoService.atualizarCadastral(p.id, { contratacaoAvulsa: e.target.checked }).then(() => produtos.refetch()); }}
+                    onChange={(e) => { void catalogoService.atualizarCadastral(p.id, { contratacaoAvulsa: e.target.checked }).then(() => produtos.refetch()).catch((err) => { toast.erro(mensagemErro(err)); void produtos.refetch(); }); }}
                   />
                   Contratação avulsa
                 </label>

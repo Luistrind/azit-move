@@ -162,6 +162,22 @@ nenhum resíduo da novação 1:1 antiga; renegociação já 100% conta-cêntrica
 
 ## P3 — UI e higiene
 
+> **BLOCOS D e E EXECUTADOS (15/09):** 20 (botão duplicado removido — ação vive no banner
+> de próximo passo); 21 ("Abrir proposta →" nos dois lugares da lista; banner da análise
+> só em proposta ativa e com toast); 22 (gate DEV no botão da régua); 23 (banners de
+> /acordos com link "Abrir a carteira →"); 24 (chaves de cache corrigidas — a tela
+> reflete a assinatura); 25 parcial (prompt/alert do sinistro/reajuste viraram Modal+
+> toast; os 2 modais reimplementados sem Esc ficam documentados); 26 (catch-all "Página
+> não encontrada" + títulos de topbar para as 8 rotas sem entrada); 27 (cores dos 5
+> status de lote; catch+toast nas mutações do Catálogo; rotas de notificação de
+> aprovação corrigidas para as chaves reais de contas a pagar); P1-10 (lote em estado
+> final ganhou texto de continuação; notificação de fatura vencida única leva à ficha do
+> titular). Bloco E: PlaceholderPage removida; CORREÇÃO ao item 11 — a seção "Contratos
+> de investimento" da TitularPage é alimentada pela ficha e só renderiza com dados (o
+> achado exagerou); o módulo investimento segue órfão de TELA própria e fica DOCUMENTADO
+> como futuro planejado, junto com os demais endpoints órfãos e enums não usados (P3-28)
+> — remoção só com decisão de produto.
+
 20. "Liberar para formalização" DUPLICADO simultâneo na mesma tela
     (`AnalisePage.tsx:536` e `:699`).
 21. "Abrir análise →" que abre a PROPOSTA (`PropostasPage.tsx:88`); banner "Abrir análise"

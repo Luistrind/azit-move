@@ -25,6 +25,13 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
   '/configuracoes/alcadas': { title: 'Alçadas', subtitle: 'Matriz de aprovação por papel' },
   '/configuracoes/simulador': { title: 'Simulador', subtitle: 'Parâmetros versionados e ofertas fixas' },
   '/centros-custo': { title: 'Custo por ativo', subtitle: 'Quanto gastamos × quanto recebemos, por veículo' },
+  // Auditoria 15/09 (Bloco D): 5 telas ficavam com topbar genérico "Azit Move".
+  '/simulacoes': { title: 'Simulações', subtitle: 'Atendimentos simulados e retomada' },
+  '/propostas': { title: 'Propostas', subtitle: 'Funil comercial — da proposta à formalização' },
+  '/titulares': { title: 'Titulares', subtitle: 'Cadastro único de clientes' },
+  '/ativos': { title: 'Estoque de ativos', subtitle: 'Veículos e disponibilidade' },
+  '/produtos': { title: 'Itens avulsos de contrato', subtitle: 'Itens contratáveis avulsos (legado §9)' },
+  '/configuracoes/assinatura': { title: 'Assinatura digital', subtitle: 'Signatários padrão e validade do contrato' },
 };
 
 export function Shell() {
@@ -32,7 +39,13 @@ export function Shell() {
   const [menuAberto, setMenuAberto] = useState(false);
   const meta = pathname.startsWith('/contratos/')
     ? { title: 'Detalhe do contrato', subtitle: 'Cronograma e posição' }
-    : TITULOS[pathname] ?? { title: 'Azit Move', subtitle: '' };
+    : pathname.startsWith('/titulares/')
+      ? { title: 'Ficha do titular', subtitle: 'Hub de operações da conta' }
+      : pathname.startsWith('/propostas/')
+        ? { title: 'Proposta', subtitle: 'Detalhe e formalização' }
+        : pathname.startsWith('/analises/')
+          ? { title: 'Análise de cadastro', subtitle: 'Dossiê e decisão' }
+          : TITULOS[pathname] ?? { title: 'Azit Move', subtitle: '' };
 
   // Fecha a gaveta ao navegar (mobile).
   useEffect(() => { setMenuAberto(false); }, [pathname]);
