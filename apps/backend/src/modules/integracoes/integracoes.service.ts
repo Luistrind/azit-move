@@ -65,22 +65,31 @@ export class IntegracoesService implements OnModuleInit {
     private readonly config: ConfigService,
   ) {}
 
+  private adocaoPendente = true;
+
   async onModuleInit() {
-    try {
-      await this.recarregar();
-      // Bootstrap (decisão Luís 15/09): o sistema já sobe com as credenciais
-      // do ambiente CADASTRADAS e ativas na central — o operador nunca precisa
-      // caçar chave em arquivo nem importar à mão. Só preenche o que estiver
-      // vazio no banco; o que foi salvo pela tela manda sempre.
-      await this.adotarDoAmbiente();
-    } catch (e) {
-      this.logger.error(`integracoes: carga inicial falhou: ${(e as Error).message}`);
-    }
+    await this.recarregar().catch((e) =>
+      // Deploy: o backend novo pode subir ANTES do migrate criar a tabela —
+      // não é erro fatal, a adoção acontece no primeiro refresh bem-sucedido.
+      this.logger.warn(`integracoes: carga inicial adiada (${(e as Error).message})`),
+    );
   }
 
   private async recarregar(): Promise<void> {
     this.linha = (await this.prisma.db.parametroIntegracao.findFirst()) as Linha | null;
     this.carregadoEm = Date.now();
+    // Bootstrap (decisão Luís 15-16/09): o sistema já fica com as credenciais
+    // do ambiente CADASTRADAS e ativas na central — o operador nunca precisa
+    // caçar chave em arquivo. Roda na primeira carga bem-sucedida (mesmo que
+    // seja depois da migração, sem exigir restart). Só preenche o que estiver
+    // vazio no banco; o que foi salvo pela tela manda sempre.
+    if (this.adocaoPendente) {
+      this.adocaoPendente = false;
+      await this.adotarDoAmbiente().catch((e) => {
+        this.adocaoPendente = true; // tenta de novo no próximo refresh
+        this.logger.warn(`integracoes: adoção do ambiente adiada (${(e as Error).message})`);
+      });
+    }
   }
 
   private snapshot(): Linha | null {
