@@ -102,7 +102,17 @@ export class CatalogoController {
   @Get('avulsos')
   async avulsos() {
     const produtos = await this.prisma.db.produtoCatalogo.findMany({
-      where: { deletedAt: null, status: 'ATIVO', contratacaoAvulsa: true },
+      where: {
+        deletedAt: null,
+        status: 'ATIVO',
+        contratacaoAvulsa: true,
+        // Produtos com FLUXO PRÓPRIO em tela dedicada nunca entram no
+        // formulário de crédito avulso (correção 15/09 — o acordo_pagamento
+        // apareceu DUPLICADO no modal "Novo produto" e o card do catálogo
+        // caía no formulário genérico, o fluxo errado): acordo entra pelo
+        // wizard da régua; novação, pela ficha do titular.
+        chave: { notIn: ['acordo_pagamento', 'novacao'] },
+      },
       orderBy: { nome: 'asc' },
       select: { id: true, chave: true, nome: true, finalidade: true, descricao: true },
     });
