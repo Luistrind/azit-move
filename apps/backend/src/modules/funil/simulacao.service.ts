@@ -63,14 +63,20 @@ export class SimulacaoService {
   }
 
   // Homologação 04/08: proteção embutida CALCULADA do produto PV (Essencial),
-  // base = valor à vista (proxy da FIPE). O chumbado da versão fica de fallback.
+  // base = valor à vista (proxy da FIPE). O chumbado da versão fica de fallback
+  // — mas NUNCA mais silencioso (Bloco C da auditoria, P2-15: três fontes de
+  // proteção divergindo sem rastro): fallback em uso agora é logado.
   private async aplicarProtecaoPV(cat: ParametrosCatalogoCompraParcelada, valorAvista: number): Promise<void> {
     if (!cat.protecaoObrigatoria) return;
     const semanalExata = await this.catalogoFonte.protecaoEssencialSemanalExata(cat.varianteChave, valorAvista);
     if (semanalExata !== null) {
       cat.protecaoSemanalExata = semanalExata;
       cat.protecaoSemanal = Math.round(semanalExata);
+      return;
     }
+    console.warn(
+      `[protecao] produto PV indisponível para variante ${cat.varianteChave} — usando ${cat.protecaoSemanal > 0 ? `fallback CHUMBADO da versão (R$ ${reais(cat.protecaoSemanal)}/sem)` : 'proteção ZERO'} na simulação (calibrar o Catálogo)`,
+    );
   }
 
   // Preço no modo catálogo: motor V3 + componente de proteção (fatores de VALOR
@@ -165,8 +171,6 @@ export class SimulacaoService {
   // Tela 1→2: cria a simulação (ativo OU valor manual) e calcula as ofertas
   // padrão + a oferta fixa vinculada ao ativo. Status: CALCULADA.
   async criar(dto: CriarSimulacaoDto) {
-    const params = await this.parametros.vigente();
-
     let ativo: {
       id: string;
       descricao: string;
@@ -207,6 +211,17 @@ export class SimulacaoService {
         ? `Valor informado (R$ ${reais(dto.valorAvista)}) diverge do cadastro (R$ ${reais(valorCadastro)}) — usado o valor do cadastro`
         : null;
 
+    // Bloco C da auditoria (15/09): a FONTE decide TODOS os campos — antes,
+    // mesmo em modo Catálogo, entradaMinima/validadeDias/parametroVersaoId
+    // vinham SEMPRE do motor legado (vazamento P2-13), e o simulador caía sem
+    // uma versão legada cadastrada. Agora: Catálogo ativo governa (com
+    // fallback explícito ao legado no que a versão não definir); o legado
+    // permanece intacto como motor quando o Catálogo não está ativo.
+    const cat = await this.fonteCatalogo(ativo?.id);
+    const params = cat ? await this.parametros.vigenteOpcional() : await this.parametros.vigente();
+    const entradaProvisoria = cat ? cat.entradaMinima : params!.entradaMinima;
+    const validadeDias = cat ? (cat.validadeDias ?? params?.validadeDias ?? 3) : params!.validadeDias;
+
     const simulacao = await this.prisma.db.simulacao.create({
       data: {
         leadId: dto.leadId,
@@ -214,10 +229,11 @@ export class SimulacaoService {
         ativoId: ativo?.id,
         valorAvista: reais(valorAvista),
         valorAvistaManual: manual,
-        valorEntrada: reais(params.entradaMinima), // provisório até escolher oferta
+        valorEntrada: reais(entradaProvisoria), // provisório até escolher oferta
         status: 'CALCULADA',
-        validaAte: new Date(Date.now() + params.validadeDias * DIA_MS),
-        parametroVersaoId: params.id,
+        validaAte: new Date(Date.now() + validadeDias * DIA_MS),
+        // Rastreabilidade do legado só quando ele foi consultado/existia.
+        parametroVersaoId: params?.id ?? null,
         observacoes: dto.observacoes,
       },
     });
@@ -226,12 +242,14 @@ export class SimulacaoService {
     if (ativo?.ofertaFixaId) {
       const fixa = await this.prisma.db.ofertaFixa.findFirst({ where: { id: ativo.ofertaFixaId } });
       if (fixa && this.ofertaFixa.estaVigente(fixa)) {
+        // Fator de PRAZO da fonte vigente (Bloco C): Catálogo usa a fonte única
+        // 4,3452/2,1726; modo legado mantém as colunas da versão.
         const fator =
           fixa.frequencia === 'MENSAL'
             ? 1
             : fixa.frequencia === 'QUINZENAL'
-              ? params.fatorQuinzenal
-              : params.fatorSemanal;
+              ? (cat ? FATORES_CATALOGO.contratoQuinzenal : params!.fatorQuinzenal)
+              : (cat ? FATORES_CATALOGO.contratoSemanal : params!.fatorSemanal);
         await this.prisma.db.oferta.create({
           data: {
             simulacaoId: simulacao.id,
@@ -249,11 +267,10 @@ export class SimulacaoService {
 
     // Ofertas PADRÃO — pula combos cuja entrada não cabe no VA. Fonte: Catálogo
     // (produto/variante ATIVOS) ou combos legados dos parâmetros do simulador.
-    const cat = await this.fonteCatalogo(ativo?.id);
     if (cat) await this.aplicarProtecaoPV(cat, valorAvista);
     const combosPadrao = cat
       ? cat.ofertasPadrao.map((o) => ({ valorEntrada: o.valorEntrada, prazoMeses: o.prazoMeses, frequencia: o.frequencia }))
-      : params.ofertasPadrao;
+      : params!.ofertasPadrao;
     for (const combo of combosPadrao) {
       if (combo.valorEntrada >= valorAvista) continue;
       const freqApi = FREQ_API[combo.frequencia] ?? 'semanal';
@@ -264,13 +281,13 @@ export class SimulacaoService {
             valorEntrada: combo.valorEntrada,
             prazoMeses: combo.prazoMeses,
             frequencia: freqApi,
-            comissaoInicial: params.comissaoInicial,
-            comissaoRecorrente: params.comissaoRecorrente,
-            taxaMensal: params.taxaMensal,
-            fatorPrecificacaoSemanal: params.fatorPrecificacaoSemanal,
-            fatorPrecificacaoQuinzenal: params.fatorPrecificacaoQuinzenal,
-            fatorSemanal: params.fatorSemanal,
-            fatorQuinzenal: params.fatorQuinzenal,
+            comissaoInicial: params!.comissaoInicial,
+            comissaoRecorrente: params!.comissaoRecorrente,
+            taxaMensal: params!.taxaMensal,
+            fatorPrecificacaoSemanal: params!.fatorPrecificacaoSemanal,
+            fatorPrecificacaoQuinzenal: params!.fatorPrecificacaoQuinzenal,
+            fatorSemanal: params!.fatorSemanal,
+            fatorQuinzenal: params!.fatorQuinzenal,
           });
       await this.prisma.db.oferta.create({
         data: {
@@ -290,7 +307,7 @@ export class SimulacaoService {
       ativoId: ativo?.id ?? null,
       valorAvista,
       manual,
-      parametroVersaoId: params.id,
+      parametroVersaoId: params?.id ?? null,
       fonte: cat ? 'catalogo' : 'parametros_simulador',
       ...(cat ? { catalogo: { variante: cat.varianteChave, versaoProduto: cat.versaoProduto, versaoVariante: cat.versaoVariante } } : {}),
     });

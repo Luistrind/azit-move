@@ -13,6 +13,7 @@ import {
   precificarAcordoPagamento,
   diasAtrasoCalendario,
   inicioHojeBrasilUTC,
+  calcularEncargoAtraso,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
@@ -215,7 +216,11 @@ export class RenegociacaoService implements OnModuleInit {
         const nominal = cent(p.valorNominal);
         // Dias de CALENDÁRIO (correção 31/08) — venceu ontem = 1 dia de mora.
         const diasAtraso = diasAtrasoCalendario(p.dataVencimento);
-        const encargo = Math.round(nominal * multaPct + nominal * jurosMensalPct * (diasAtraso / 30));
+        // Fonte ÚNICA da fórmula (Bloco C da auditoria, P2-16): mesmo cálculo
+        // da fatura/novação — antes era reimplementada aqui.
+        const encargo = Math.round(
+          calcularEncargoAtraso(nominal, diasAtraso, multaPct * 100, jurosMensalPct * 100),
+        );
         return { ...p, nominal, diasAtraso, encargo, atualizado: nominal + encargo };
       });
       const valorNominal = comMora.reduce((s, p) => s + p.nominal, 0);

@@ -49,6 +49,10 @@ export interface ParametrosCatalogoCompraParcelada {
   isencaoComissaoLiquidacao: boolean;
   isencaoProtecaoLiquidacao: boolean;
   ofertasPadrao: OfertaPadraoCatalogo[];
+  // Bloco C da auditoria (15/09): validade da oferta governada pelo Catálogo
+  // quando a versão definir o parâmetro `validadeDias`; undefined = a
+  // simulação cai no valor do motor legado (fallback EXPLÍCITO, nada some).
+  validadeDias?: number;
 }
 
 export interface ParametrosCatalogoReembolso {
@@ -142,6 +146,7 @@ export class CatalogoFonteService {
       isencaoComissaoLiquidacao: bool(p.isencaoComissaoLiquidacao),
       isencaoProtecaoLiquidacao: bool(p.isencaoProtecaoLiquidacao),
       ofertasPadrao,
+      validadeDias: p.validadeDias !== undefined ? Math.max(1, num(p.validadeDias, 3)) : undefined,
     };
   }
 

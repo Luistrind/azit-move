@@ -105,6 +105,23 @@ nenhum resíduo da novação 1:1 antiga; renegociação já 100% conta-cêntrica
 
 ## P2 — Duplicações de conceito (a raiz dos bugs recorrentes)
 
+> **BLOCO C EXECUTADO (15/09) — modo cirúrgico, nada removido, com PROVA DE PARIDADE:**
+> golden de 48 casos do simulador colhido ANTES e reproduzido IDÊNTICO (48/48) DEPOIS.
+> Item 13: em modo Catálogo, entradaMinima/validadeDias/parametroVersaoId agora vêm do
+> Catálogo (validadeDias é parâmetro novo opcional da versão da CP; sem ele, fallback
+> EXPLÍCITO ao legado) e o simulador não exige mais versão legada cadastrada
+> (`vigenteOpcional`); o motor legado permanece INTACTO como fonte quando o Catálogo não
+> está ativo. Item 14: fator da oferta fixa em modo Catálogo unificado na fonte única;
+> hardcode 4,345 do assistente → FATOR_PRAZO de @azit/utils. Item 15: fallback chumbado da
+> proteção agora é LOGADO (nunca mais silencioso); leitura mantida para versões antigas.
+> Item 16: renegociação usa `calcularEncargoAtraso` (fonte única — equivalência varrida em
+> 24.084 combinações; 7 casos com 365 dias de atraso divergem 1 centavo por associação de
+> ponto flutuante, e agora os três fluxos concordam entre si). Item 19: pendente de tela
+> (parametrizar CR da novação no Catálogo). NÃO mudados de propósito: crédito avulso
+> genérico (placeholder, fatores legados mantidos — documentado), prazosPadronizados
+> (lista de UI do simulador, segue no legado), colunas de fatores legados (congeladas em
+> contratos existentes). 106 testes utils verdes.
+
 13. **DOIS motores de precificação da venda.** `VersaoParametrosSimulacao` (legado) ×
     Catálogo `compra_parcelada` — mesmos conceitos em duas tabelas
     (`catalogo-fonte.service.ts:26-52` × `schema.prisma:498-522`). E o modo Catálogo

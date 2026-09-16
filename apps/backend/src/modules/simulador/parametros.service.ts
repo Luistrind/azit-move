@@ -79,16 +79,24 @@ export class ParametrosService {
   }
 
   async vigente(): Promise<ParametrosVigentes> {
-    const v = await this.prisma.db.versaoParametrosSimulacao.findFirst({
-      orderBy: { vigenteDesde: 'desc' },
-    });
+    const v = await this.vigenteOpcional();
     if (!v) {
       throw new UnprocessableEntityException({
         erro: 'sem_parametros',
         mensagem: 'Nenhuma versão de parâmetros do simulador cadastrada',
       });
     }
-    return this.mapear(v);
+    return v;
+  }
+
+  // Bloco C da auditoria (15/09): em modo Catálogo o motor legado é OPCIONAL —
+  // o simulador não pode mais cair por falta de versão legada quando o
+  // Catálogo governa a precificação.
+  async vigenteOpcional(): Promise<ParametrosVigentes | null> {
+    const v = await this.prisma.db.versaoParametrosSimulacao.findFirst({
+      orderBy: { vigenteDesde: 'desc' },
+    });
+    return v ? this.mapear(v) : null;
   }
 
   async listar() {
