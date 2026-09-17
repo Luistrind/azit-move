@@ -1,0 +1,46 @@
+# Verificação automática a cada push/PR (plano de ambientes, 17/09):
+# pega erro de tipo, de schema e de cálculo ANTES de publicar em qualquer
+# ambiente. Deploy continua manual (deploy-hml.sh / deploy-prod.sh <tag>).
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Pacotes compartilhados (types + utils)
+        run: pnpm --filter @azit/types build && pnpm --filter @azit/utils build
+
+      - name: Testes do motor financeiro (utils)
+        run: pnpm --filter @azit/utils test
+
+      - name: Prisma — schema válido e client gerado
+        working-directory: apps/backend
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+        run: pnpm exec prisma validate && pnpm exec prisma generate
+
+      - name: Tipos do backend
+        run: pnpm --filter backend typecheck
+
+      - name: Tipos do frontend
+        run: pnpm --filter frontend typecheck

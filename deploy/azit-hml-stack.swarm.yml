@@ -1,0 +1,102 @@
+# Stack de HOMOLOGAÇÃO do Azit (17/09) — mesmo servidor, totalmente isolada
+# da produção: banco, Redis e uploads PRÓPRIOS (os volumes ganham o prefixo
+# do stack: azit-hml_azit_pgdata etc.), domínios e roteadores Traefik próprios.
+#
+#   https://hml.azitmove.com.br      (frontend, com faixa "HOMOLOGAÇÃO")
+#   https://api-hml.azitmove.com.br  (backend)
+#
+# Não suba à mão: use  bash deploy/deploy-hml.sh  (build + stack + migrate).
+# Segredos em deploy/stack-hml.env (NÃO versionado) — ver stack-hml.env.example.
+version: "3.8"
+
+services:
+  azit-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: azit
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: azit
+    volumes:
+      - azit_pgdata:/var/lib/postgresql/data
+    networks: [azit_internal]
+    deploy:
+      replicas: 1
+      restart_policy: { condition: any }
+
+  azit-redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - azit_redisdata:/data
+    networks: [azit_internal]
+    deploy:
+      replicas: 1
+      restart_policy: { condition: any }
+
+  backend:
+    image: azit-backend:hml
+    environment:
+      NODE_ENV: production
+      # Libera as ferramentas de teste (/dev/*) — só aqui, nunca na produção.
+      AMBIENTE: homologacao
+      PORT: "3001"
+      FRONTEND_URL: https://hml.azitmove.com.br
+      DATABASE_URL: postgresql://azit:${POSTGRES_PASSWORD}@azit-db:5432/azit?schema=public
+      REDIS_URL: redis://azit-redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN_DAYS: "7"
+      # Homologação usa SEMPRE o sandbox do Asaas (as credenciais também podem
+      # ser trocadas pela tela Configurações > Integrações deste ambiente).
+      ASAAS_API_URL: https://api-sandbox.asaas.com/v3
+      ASAAS_API_KEY: ${ASAAS_API_KEY:-}
+      ASAAS_WEBHOOK_SECRET: ${ASAAS_WEBHOOK_SECRET}
+      # Vazio = provedor simulado (não consome créditos da BigDataCorp).
+      BIGDATACORP_TOKEN_ID: ${BIGDATACORP_TOKEN_ID:-}
+      BIGDATACORP_ACCESS_TOKEN: ${BIGDATACORP_ACCESS_TOKEN:-}
+      ZAPSIGN_API_TOKEN: ${ZAPSIGN_API_TOKEN:-}
+      ZAPSIGN_API_URL: https://sandbox.api.zapsign.com.br/api/v1
+      ZAPSIGN_WEBHOOK_SECRET: ${ZAPSIGN_WEBHOOK_SECRET:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5}
+      MCP_SECRET: ${MCP_SECRET:-}
+    volumes:
+      - azit_uploads:/app/apps/backend/uploads
+    networks: [azit_internal, PopCarrosNet]
+    deploy:
+      replicas: 1
+      restart_policy: { condition: any }
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=PopCarrosNet
+        - traefik.http.routers.azit-hml-api.entrypoints=websecure
+        - traefik.http.routers.azit-hml-api.rule=Host(`api-hml.azitmove.com.br`)
+        - traefik.http.routers.azit-hml-api.tls=true
+        - traefik.http.routers.azit-hml-api.tls.certresolver=letsencryptresolver
+        - traefik.http.services.azit-hml-api.loadbalancer.server.port=3001
+
+  frontend:
+    image: azit-frontend:hml
+    networks: [PopCarrosNet]
+    deploy:
+      replicas: 1
+      restart_policy: { condition: any }
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=PopCarrosNet
+        - traefik.http.routers.azit-hml-web.entrypoints=websecure
+        - traefik.http.routers.azit-hml-web.rule=Host(`hml.azitmove.com.br`)
+        - traefik.http.routers.azit-hml-web.tls=true
+        - traefik.http.routers.azit-hml-web.tls.certresolver=letsencryptresolver
+        - traefik.http.services.azit-hml-web.loadbalancer.server.port=80
+
+networks:
+  PopCarrosNet:
+    external: true
+  azit_internal:
+    driver: overlay
+
+volumes:
+  azit_pgdata:
+  azit_redisdata:
+  azit_uploads:

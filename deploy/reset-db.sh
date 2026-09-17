@@ -2,6 +2,9 @@
 # Recria o banco do zero: remove o stack + o volume do Postgres e sobe de novo.
 # Use se o Postgres estiver com senha antiga (volume reaproveitado). APAGA os dados do Azit.
 set -euo pipefail
+# Proteção (17/09): este script APAGA o banco da PRODUÇÃO (stack azit).
+read -r -p "Isto apaga o banco da PRODUÇÃO. Digite APAGAR-PRODUCAO para continuar: " CONF
+[ "$CONF" = "APAGAR-PRODUCAO" ] || { echo "Confirmação não confere — nada foi feito."; exit 1; }
 cd "$(dirname "$0")/.."
 
 echo "Removendo stack azit..."

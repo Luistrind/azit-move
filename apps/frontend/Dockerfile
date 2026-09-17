@@ -9,6 +9,9 @@ COPY . .
 
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
+# producao (padrão) | homologacao — liga a faixa de homolog e as ferramentas de teste.
+ARG VITE_AMBIENTE=producao
+ENV VITE_AMBIENTE=$VITE_AMBIENTE
 
 RUN pnpm install --frozen-lockfile \
  && pnpm --filter @azit/types build \

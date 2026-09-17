@@ -12,6 +12,7 @@ uploads/
 
 # Segredos do deploy (stack.env real fica só no servidor)
 deploy/stack.env
+deploy/stack-hml.env
 
 # Config local/pessoal do Claude Code (settings.json compartilhado é versionado)
 .claude/settings.local.json

@@ -1,6 +1,10 @@
 // Mapeamento das variáveis de ambiente (Doc 4 §9.1).
 export interface AppConfig {
   nodeEnv: string;
+  // Ambiente de NEGÓCIO (17/09): producao | homologacao | desenvolvimento.
+  // NODE_ENV fica 'production' também no homolog (build/performance); é o
+  // AMBIENTE que libera as ferramentas de teste (/dev/*) só na homologação.
+  ambiente: 'producao' | 'homologacao' | 'desenvolvimento';
   port: number;
   frontendUrl: string;
   databaseUrl: string;
@@ -17,6 +21,12 @@ export interface AppConfig {
 
 export default (): AppConfig => ({
   nodeEnv: process.env.NODE_ENV ?? 'development',
+  ambiente:
+    process.env.AMBIENTE === 'homologacao'
+      ? 'homologacao'
+      : (process.env.NODE_ENV ?? 'development') === 'production'
+        ? 'producao'
+        : 'desenvolvimento',
   port: parseInt(process.env.PORT ?? '3001', 10),
   frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:3000',
   databaseUrl: process.env.DATABASE_URL ?? '',

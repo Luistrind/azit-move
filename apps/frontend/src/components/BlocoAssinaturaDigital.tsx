@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { originacaoService } from '../services/originacao.service';
 import { toast } from './Toast';
+import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 
 // ---------------------------------------------------------------------------
 // Assinatura digital ZapSign F1 (doc 02 §21): cartão por signatário com link
@@ -121,7 +122,7 @@ export function BlocoAssinaturaDigital({ contratoId, ocupado, run, titulo }: {
                 Reenviar para assinatura (novo documento — consome o plano)
               </button>
             )}
-            {import.meta.env.DEV && a.status !== 'assinado' && (
+            {FERRAMENTAS_TESTE && a.status !== 'assinado' && (
               <button disabled={ocupado}
                 onClick={() => run(async () => { await originacaoService.simularAssinaturaDigital(contratoId); await recarregar(); })}
                 className="h-[30px] rounded-[8px] px-[12px] text-[11.5px] font-semibold" style={{ background: 'var(--accent)', color: 'var(--navy)' }}>

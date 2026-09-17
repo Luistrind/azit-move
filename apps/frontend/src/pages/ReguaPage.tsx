@@ -8,6 +8,7 @@ import { Modal } from '../components/Modal';
 import { RenegociacaoWizard } from '../components/RenegociacaoWizard';
 import { REGUA_STAGE_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
+import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 
 // Kanban por DIAS DE ATRASO (decisão Luís 31/08): colunas 1 a 7 dias + "+7";
 // o caso se MOVE de coluna conforme o atraso da parcela vencida mais antiga.
@@ -179,7 +180,7 @@ export function ReguaPage() {
         </div>
         {/* Auditoria 15/09 (Bloco D): era o ÚNICO botão dev sem gate — aparecia
             em produção. Em produção a régua roda pelo cron diário. */}
-        {podeOperar && import.meta.env.DEV && (
+        {podeOperar && FERRAMENTAS_TESTE && (
           <button
             onClick={() => comRefetch(() => reguaService.rodar())}
             disabled={ocupado}

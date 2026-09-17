@@ -3,6 +3,9 @@
 # as migrations do zero e roda o seed. Use quando o migrate deploy falhar com P2002.
 # ATENÇÃO: apaga os dados do banco do Azit (ok num deploy novo, ainda sem dados reais).
 set -euo pipefail
+# Proteção (17/09): este script APAGA o banco da PRODUÇÃO (stack azit).
+read -r -p "Isto apaga o banco da PRODUÇÃO. Digite APAGAR-PRODUCAO para continuar: " CONF
+[ "$CONF" = "APAGAR-PRODUCAO" ] || { echo "Confirmação não confere — nada foi feito."; exit 1; }
 CID=$(docker ps -qf name=azit_backend | head -1)
 if [ -z "${CID:-}" ]; then echo "Backend não está rodando (azit_backend)."; exit 1; fi
 

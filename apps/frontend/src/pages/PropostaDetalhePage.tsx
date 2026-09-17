@@ -14,6 +14,7 @@ import { proximaSegundaISO, somarDiasISO } from '../lib/datas';
 import { BlocoAssinaturaDigital } from '../components/BlocoAssinaturaDigital';
 import { toast } from '../components/Toast';
 import { ROTULO_SITUACAO_PROPOSTA as LABEL_STATUS } from '../lib/rotulos';
+import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 const PAPEL_LABEL: Record<string, string> = {
   comprador_principal: 'Comprador principal', comprador_secundario: 'Comprador secundário', garantidor: 'Garantidor',
 };
@@ -581,7 +582,7 @@ export function PropostaDetalhePage() {
                     ) : (
                       <div className="mt-[12px] rounded-[8px] p-[10px] text-[12px] font-semibold" style={{ background: '#fef6e9', color: '#8a5a0a' }}>
                         Cobrança da entrada emitida ({formatCurrency(pacote.data.entradaAVista)}). O cronograma do pacote nasce quando a entrada for paga.
-                        {import.meta.env.DEV && (
+                        {FERRAMENTAS_TESTE && (
                           <button disabled={ocupado} onClick={() => run(() => originacaoService.simularPagamentoAtivacao(pacote.data!.ancoraId!))}
                             className="ml-[10px] h-[30px] rounded-[8px] px-[12px] text-[11.5px] font-semibold" style={btn('var(--accent)')}>Simular pagamento (dev)</button>
                         )}

@@ -24,6 +24,14 @@ export class AtivacaoProcessor extends WorkerHost {
     if (job.name === 'entrada-vencida') {
       return this.formalizacao.alertarEntradaVencida(job.data.contratoId);
     }
+    // Homologação e produção compartilham a conta SANDBOX do Asaas enquanto a
+    // produção não usa a chave real (17/09): o webhook de um ambiente recebe as
+    // cobranças do outro. Contrato inexistente AQUI = cobrança do outro
+    // ambiente → ignora (antes falhava e gerava alerta falso no sino).
+    if (!(await this.formalizacao.contratoExiste(job.data.contratoId))) {
+      this.logger.warn(`ativacao ${job.data.contratoId}: contrato inexistente neste ambiente — ignorado`);
+      return { resultado: 'contrato_de_outro_ambiente' };
+    }
     const r = await this.formalizacao.ativarPacotePorPagamento(job.data.contratoId, job.data.paymentDate);
     this.logger.log(`ativacao ${job.data.contratoId}: ${r.contratosAtivados} contrato(s) ativado(s)`);
     return r;

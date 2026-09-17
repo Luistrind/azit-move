@@ -21,6 +21,7 @@ import { toast } from '../components/Toast';
 import { CONTRATO_STATUS_COLORS, SITUACAO_CONTRATO_COLORS, SITUACAO_CONTRATO_LABEL, FATURA_SITUACAO_COLORS, FATURA_SITUACAO_LABEL } from '../config/statusColors';
 import { Metrica, Campo } from '../components/Metrica';
 import { DocumentoViewer, useDocumentoViewer } from '../components/DocumentoViewer';
+import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 
 const card = { background: 'var(--surface)', border: '1px solid var(--border)' };
 
@@ -516,7 +517,7 @@ export function TitularDetalhePage() {
 
             {/* Ações dev — paga a FATURA; atraso aumenta dia a dia. Só fora de produção:
                 em produção o cliente paga a cobrança no Asaas e o webhook concilia. */}
-            {import.meta.env.DEV && (() => {
+            {FERRAMENTAS_TESTE && (() => {
               const fd = faturaDet.data;
               const paga = fd.status === 'paga' || fd.status === 'paga_em_atraso';
               const atraso = diasAtrasoLocal(fd.dataVencimento);

@@ -12,8 +12,17 @@
 #     vive no .env (NUNCA no banco) — não é tocada.
 # Destrutivo e IRREVERSÍVEL. Resiliente: só apaga tabela que existir.
 set -euo pipefail
-CID=$(docker ps -qf name=azit_azit-db | head -1)
-if [ -z "${CID:-}" ]; then echo "Container do banco (azit_azit-db) não encontrado."; exit 1; fi
+cd "$(dirname "$0")/.."
+source deploy/lib.sh
+# Uso: bash deploy/limpar-dados.sh [azit|azit-hml]   (padrão: azit = PRODUÇÃO)
+STACK="${1:-azit}"
+case "$STACK" in azit|azit-hml) ;; *) erro "Stack inválido: $STACK"; exit 1 ;; esac
+CID=$(container_do_servico "${STACK}_azit-db")
+if [ -z "${CID:-}" ]; then erro "Container do banco (${STACK}_azit-db) não encontrado."; exit 1; fi
+aviso "Isto APAGA todo o movimento (titulares, contratos, faturas, análises…) do ambiente '$STACK'."
+read -r -p "Digite LIMPAR-$STACK para confirmar: " CONF
+[ "$CONF" = "LIMPAR-$STACK" ] || { erro "Confirmação não confere — nada foi feito."; exit 1; }
+bash deploy/backup.sh "$STACK" "antes-limpeza"
 
 docker exec -i "$CID" psql -U azit -d azit -v ON_ERROR_STOP=1 <<'SQL'
 \echo '== ANTES =='

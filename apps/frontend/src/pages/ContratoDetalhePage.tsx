@@ -17,6 +17,7 @@ import { usePodeRole, ROLE_OPERACAO, ROLE_REAJUSTE, mensagemErro } from '../lib/
 import { reaisParaCentavos, numeroBR } from '../lib/valor';
 import { Metrica } from '../components/Metrica';
 import { BlocoAssinaturaDigital } from '../components/BlocoAssinaturaDigital';
+import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 
 const ORIGEM_CAPITAL_LABEL: Record<string, string> = {
   CAPITAL_PROPRIO: 'Capital próprio',
@@ -412,7 +413,7 @@ export function ContratoDetalhePage() {
               Cancelar contrato
             </button>
           )}
-          {podeOperar && import.meta.env.DEV && (
+          {podeOperar && FERRAMENTAS_TESTE && (
             <button
               onClick={simularPagamento}
               disabled={simulando}

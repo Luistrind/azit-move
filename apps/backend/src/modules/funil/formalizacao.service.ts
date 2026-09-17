@@ -700,6 +700,10 @@ export class FormalizacaoService {
     return { contratoId: contrato.id, numero: contrato.numero, status: 'ativo', cronogramaGerado: true, contratosAtivados: pacote.length };
   }
 
+  async contratoExiste(contratoId: string): Promise<boolean> {
+    return (await this.prisma.db.contratoCredito.count({ where: { id: contratoId } })) > 0;
+  }
+
   // Entrada do contrato VENCIDA sem pagamento (auditoria 15/09, P0-3): alerta a
   // carteira com a ação na ficha — reemitir a cobrança ou tratar o caso. A
   // expiração automática do contrato é decisão de domínio pendente (Bloco B).

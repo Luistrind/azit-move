@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
-# Rebuilda a imagem do backend e força o serviço a rodar a versão nova.
-# (Só `docker stack deploy` não troca a imagem :latest se o spec não mudou — daí o --force.)
-set -euo pipefail
-cd "$(dirname "$0")/.."
-
-echo "== Rebuild backend =="
-docker build -t azit-backend:latest -f apps/backend/Dockerfile /opt/azit
-
-echo "== Atualizando o serviço com a imagem nova =="
-docker service update --force --image azit-backend:latest azit_backend
-
-echo "== OK. Log:  docker service logs -f azit_backend =="
+# DESATIVADO em 17/09 (plano de ambientes): a produção NÃO é mais publicada a
+# partir da main. Fluxo novo:
+#   homologação:  cd /opt/azit && git pull && bash deploy/deploy-hml.sh
+#   produção:     cd /opt/azit && git pull && bash deploy/deploy-prod.sh vX.Y.Z
+echo "✘ update-backend.sh foi aposentado — a produção agora sobe só por release."
+echo "  Homologação:  bash deploy/deploy-hml.sh"
+echo "  Produção:     bash deploy/deploy-prod.sh <tag>   (tags: git tag --sort=-creatordate | head)"
+exit 1

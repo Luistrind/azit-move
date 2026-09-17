@@ -7,6 +7,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { ACORDO_STATUS_COLORS, NOVACAO_STATUS_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_RENEGOCIACAO, ROLE_NOVACAO, mensagemErro } from '../lib/permissoes';
 import { toast } from '../components/Toast';
+import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 
 const LABEL_STATUS: Record<string, string> = {
   rascunho: 'Aguardando aprovação',
@@ -129,7 +130,7 @@ export function AcordosPage() {
                 <td className="px-[18px] py-[12px]"><StatusBadge label={LABEL_STATUS[a.status] ?? a.status} colors={ACORDO_STATUS_COLORS} /></td>
                 <td className="px-[18px] py-[12px] text-right">
                   <div className="flex items-center justify-end gap-[6px]">
-                    {(a.status === 'aguardando_entrada' || a.status === 'rascunho') && podeRenegociar && import.meta.env.DEV && (
+                    {(a.status === 'aguardando_entrada' || a.status === 'rascunho') && podeRenegociar && FERRAMENTAS_TESTE && (
                       <button onClick={() => efetivar(a.id)} disabled={ocupado} className="rounded-[7px] px-[12px] py-[5px] text-[11.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>
                         Simular entrada (dev)
                       </button>
@@ -183,7 +184,7 @@ export function AcordosPage() {
                 </td>
                 <td className="px-[18px] py-[12px]"><StatusBadge label={LABEL_STATUS_NOVACAO[nv.status] ?? nv.status} colors={NOVACAO_STATUS_COLORS} /></td>
                 <td className="px-[18px] py-[12px] text-right">
-                  {nv.status === 'aguardando_recebimento' && podeNovar && import.meta.env.DEV && (
+                  {nv.status === 'aguardando_recebimento' && podeNovar && FERRAMENTAS_TESTE && (
                     <button onClick={() => simularRecebimento(nv.id)} disabled={ocupado} className="rounded-[7px] px-[12px] py-[5px] text-[11.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>
                       Simular recebimento (dev)
                     </button>
