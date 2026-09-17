@@ -67,7 +67,11 @@ docker run --rm -v "${STACK}_azit_uploads:/dados:ro" -v "$DESTINO:/backup" alpin
 ok "Documentos: $ARQ_UP ($(du -h "$ARQ_UP" 2>/dev/null | cut -f1 || echo 0))"
 
 etapa "2/7 Banco novo + migrações"
-docker exec "$DBCID" psql -U azit -d postgres -q -c "drop database if exists \"$NOVO\"" -c "create database \"$NOVO\""
+# Descarta bancos "novos" de tentativas anteriores que ficaram para trás.
+for velho in $(docker exec "$DBCID" psql -U azit -d postgres -tAc "select datname from pg_database where datname like 'azit_novo_%'"); do
+  docker exec "$DBCID" psql -U azit -d postgres -q -c "drop database if exists \"$velho\"" && aviso "banco de tentativa anterior removido: $velho"
+done
+docker exec "$DBCID" psql -U azit -d postgres -q -c "create database \"$NOVO\""
 SENHA=$(docker exec "$BECID" sh -lc 'echo "$DATABASE_URL"' | sed -E 's|postgresql://[^:]+:([^@]+)@.*|\1|')
 docker exec -e DATABASE_URL="postgresql://azit:${SENHA}@azit-db:5432/${NOVO}?schema=public" "$BECID" \
   sh -lc "cd /app/apps/backend && pnpm exec prisma migrate deploy" 2>&1 | tail -4
@@ -76,6 +80,12 @@ TAB=$(docker exec "$DBCID" psql -U azit -d "$NOVO" -tAc "select count(*) from in
 ok "Banco novo com $TAB tabelas e catálogo limpo"
 
 etapa "3/7 Copiando o que fica"
+# As MIGRAÇÕES já semeiam parte dessas tabelas (alçadas, tipos de operação,
+# catálogo, naturezas, centros de custo…). Esvaziamos antes para que o banco
+# novo fique com EXATAMENTE o conteúdo da produção — nem linha a mais.
+LISTA=$(echo $PRESERVAR | tr ' ' ',')
+docker exec "$DBCID" psql -U azit -d "$NOVO" -q -c "TRUNCATE TABLE $LISTA RESTART IDENTITY CASCADE"
+ok "Tabelas de configuração do banco novo zeradas (serão preenchidas pela produção)"
 FALHAS=0
 for t in $PRESERVAR; do
   if docker exec "$DBCID" sh -c "psql -U azit -d azit -qAtc \"\\copy (select * from $t) to stdout\" | psql -U azit -d $NOVO -qc \"\\copy $t from stdin\"" 2>/tmp/erro_copia; then
