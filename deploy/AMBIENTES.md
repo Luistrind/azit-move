@@ -46,6 +46,13 @@ as cobranças que não são suas.
 Logins do homolog (dados de teste): `admin@`, `diretor@`, `aprovador@`,
 `operador@`, `financeiro@azit.com.br` — senha `azit123`.
 
+**Depois de um seed novo, ative o catálogo** (Configurações não: tela *Catálogo de
+produtos*): o seed cria os produtos em **Rascunho** e, assim, os motores rodam no
+modo placeholder — o homolog não reproduziria a produção. Deixe igual à produção:
+`compra_parcelada` (e as variantes carro/moto/outro), `protecao_veicular`,
+`reembolso_parcelado` e `acordo_pagamento` **ATIVOS**; `novacao` em Rascunho
+até o jurídico liberar. Feito em 17/09 na primeira subida.
+
 **1.3 Backup diário da produção**
 
 ```bash
