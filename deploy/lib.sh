@@ -72,6 +72,23 @@ migrar() {
   ok "Migrações aplicadas"
 }
 
+# Confirmação digitada de ação destrutiva. DESCARTA o que já estiver no buffer
+# do terminal antes de perguntar: colar dois comandos de uma vez fazia o
+# segundo virar "resposta" (e o primeiro abortar) — caso real 17/09.
+confirmar() {
+  local esperado="$1" pergunta="$2" resposta=""
+  while read -r -t 0.05 -n 4096 _descartado < /dev/tty; do :; done 2>/dev/null
+  if ! read -r -p "$pergunta" resposta < /dev/tty 2>/dev/null; then
+    erro "Sem terminal interativo — esta ação exige confirmação digitada."
+    return 1
+  fi
+  if [ "$resposta" != "$esperado" ]; then
+    erro "Confirmação não confere (esperado: $esperado) — nada foi feito."
+    return 1
+  fi
+  return 0
+}
+
 # Checagem de saúde pela URL pública (passa pelo Traefik + TLS).
 checar_saude() {
   local url="$1"

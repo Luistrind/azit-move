@@ -23,8 +23,7 @@ case "$STACK" in azit|azit-hml) ;; *) erro "Stack inválido: $STACK"; exit 1 ;; 
 CID=$(container_do_servico "${STACK}_azit-db")
 if [ -z "${CID:-}" ]; then erro "Container do banco (${STACK}_azit-db) não encontrado."; exit 1; fi
 aviso "Isto APAGA todo o movimento (titulares, contratos, faturas, análises…) do ambiente '$STACK'."
-read -r -p "Digite LIMPAR-$STACK para confirmar: " CONF
-[ "$CONF" = "LIMPAR-$STACK" ] || { erro "Confirmação não confere — nada foi feito."; exit 1; }
+confirmar "LIMPAR-$STACK" "Digite LIMPAR-$STACK para confirmar: " || exit 1
 bash deploy/backup.sh "$STACK" "antes-limpeza"
 
 docker exec -i "$CID" psql -U azit -d azit -v ON_ERROR_STOP=1 <<'SQL'

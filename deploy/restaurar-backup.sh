@@ -22,8 +22,7 @@ BECID=$(container_do_servico "${STACK}_backend")
 
 aviso "Isto vai SUBSTITUIR todo o banco do ambiente '$STACK' pelo arquivo:"
 echo "  $ARQ"
-read -r -p "Digite RESTAURAR-$STACK para confirmar: " CONF
-[ "$CONF" = "RESTAURAR-$STACK" ] || { erro "Confirmação não confere — nada foi feito."; exit 1; }
+confirmar "RESTAURAR-$STACK" "Digite RESTAURAR-$STACK para confirmar: " || exit 1
 
 etapa "Backup de segurança do estado atual"
 bash deploy/backup.sh "$STACK" "antes-restauracao"

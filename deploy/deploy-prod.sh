@@ -37,8 +37,7 @@ if [ -n "$ANTERIOR" ] && git -C "$REPO_DIR" rev-parse -q --verify "refs/tags/$AN
 fi
 
 echo
-read -r -p "Digite a tag ($TAG) para confirmar a publicação em PRODUÇÃO: " CONF
-[ "$CONF" = "$TAG" ] || { erro "Confirmação não confere — nada foi feito."; exit 1; }
+confirmar "$TAG" "Digite a tag ($TAG) para confirmar a publicação em PRODUÇÃO: " || exit 1
 
 etapa "1/5 Backup antes da publicação"
 bash deploy/backup.sh "$STACK" "pre-$TAG" || { erro "Backup falhou — publicação ABORTADA (nada mudou)."; exit 1; }
