@@ -77,11 +77,15 @@ migrar() {
 # segundo virar "resposta" (e o primeiro abortar) — caso real 17/09.
 confirmar() {
   local esperado="$1" pergunta="$2" resposta=""
-  while read -r -t 0.05 -n 4096 _descartado < /dev/tty; do :; done 2>/dev/null
-  if ! read -r -p "$pergunta" resposta < /dev/tty 2>/dev/null; then
-    erro "Sem terminal interativo — esta ação exige confirmação digitada."
-    return 1
-  fi
+  [ -r /dev/tty ] || { erro "Sem terminal interativo — esta ação exige confirmação digitada."; return 1; }
+  # Descarta o que JÁ estiver enfileirado no terminal (ex.: um segundo comando
+  # colado junto) — senão ele viraria a "resposta" (caso real 17/09).
+  while read -r -t 0 _descartado < /dev/tty 2>/dev/null; do
+    read -r _descartado < /dev/tty 2>/dev/null || break
+  done
+  # O prompt vai para o TERMINAL (não para stderr, que pode estar silenciado).
+  printf '%s' "$pergunta" > /dev/tty
+  read -r resposta < /dev/tty || { erro "Sem terminal interativo — esta ação exige confirmação digitada."; return 1; }
   if [ "$resposta" != "$esperado" ]; then
     erro "Confirmação não confere (esperado: $esperado) — nada foi feito."
     return 1
