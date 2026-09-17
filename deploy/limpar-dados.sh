@@ -8,6 +8,9 @@
 #     ofertas_fixas, tipos_operacao_alcada, alcadas
 #   - Fundação do financeiro (seed/config, o desembolso do RP depende dela):
 #     entidades_legais, contas_bancarias, naturezas_financeiras, centros_custo_areas
+#   - Estruturas jurídicas (dona dos produtos/ativos — o catálogo aponta para ela)
+#   - Parâmetros de assinatura e credenciais de integração (parametros_assinatura,
+#     parametros_integracao) — configuração, não movimento
 #   - Templates vivem no código (nada a preservar no banco). Chave do Asaas
 #     vive no .env (NUNCA no banco) — não é tocada.
 # Destrutivo e IRREVERSÍVEL. Resiliente: só apaga tabela que existir.
@@ -29,6 +32,7 @@ docker exec -i "$CID" psql -U azit -d azit -v ON_ERROR_STOP=1 <<'SQL'
 select 'usuarios' t, count(*) n from usuarios
   union all select 'alcadas', count(*) from alcadas
   union all select 'versoes_produto (catalogo)', count(*) from versoes_produto
+  union all select 'estruturas_juridicas', count(*) from estruturas_juridicas
   union all select 'naturezas_financeiras', count(*) from naturezas_financeiras
   union all select 'titulares', count(*) from titulares
   union all select 'ativos', count(*) from ativos
@@ -52,8 +56,12 @@ DECLARE
     'consultas_externas','pendencias_analise','ressalvas_analise','alertas_fraude',
     'transicoes_analise','titular_classificacoes',
     -- Pessoas e capital
-    'titulares','contas','estruturas_juridicas','investidores_estrutura',
+    'titulares','contas','investidores_estrutura',
     'contratos_investimento','origens_capital',
+    -- 'estruturas_juridicas' NÃO entra (17/09): produtos_catalogo referencia a
+    -- estrutura dona, e o TRUNCATE CASCADE levaria o CATÁLOGO INTEIRO junto
+    -- (produtos + variantes + versões de parâmetros). Estrutura jurídica é
+    -- parametrização — fica.
     -- Ativos (estoque de teste)
     'ativos','ativo_documentos','lancamentos_custo_ativo',
     -- Credito e carteira
@@ -65,6 +73,10 @@ DECLARE
     'fornecedores_financeiro','fornecedores_dados_bancarios',
     'solicitacoes_orcamento','orcamentos_fornecedor','titulos_pagar',
     'documentos_titulo','lotes_pagamento','pagamentos_titulo','conciliacoes_titulo',
+    -- Lançamentos da conta (entradas de contrato/acordo materializadas)
+    'lancamentos_conta','documentos_assinatura',
+    -- Sino: notificações apontam para casos que deixam de existir
+    'notificacoes','notificacoes_lidas',
     -- Trilhas
     'logs_auditoria'
   ];
@@ -80,6 +92,7 @@ END $$;
 select 'usuarios' t, count(*) n from usuarios
   union all select 'alcadas', count(*) from alcadas
   union all select 'versoes_produto (catalogo)', count(*) from versoes_produto
+  union all select 'estruturas_juridicas', count(*) from estruturas_juridicas
   union all select 'naturezas_financeiras', count(*) from naturezas_financeiras
   union all select 'titulares', count(*) from titulares
   union all select 'ativos', count(*) from ativos
