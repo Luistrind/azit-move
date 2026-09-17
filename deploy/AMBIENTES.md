@@ -129,6 +129,28 @@ Histórico de releases publicadas: `cat /opt/azit-backups/releases.log`
 - [ ] BigDataCorp: credenciais reais conferidas (a produção cobra por consulta)
 - [ ] Monitoramento externo (UptimeRobot em `api.azitmove.com.br/api/v1/health`)
 
+## 6-A. Reconstrução do banco (produção, 17/09) — resolve backup + limpeza
+
+O banco de produção teve o schema `public` recriado em algum reset antigo: ele
+ficou com OID 16392 e **244 registros de catálogo apontando para o schema
+antigo (2200)**. O sistema funciona, mas o `pg_dump` falha inteiro
+(`schema with OID 2200 does not exist`) — ou seja, **a produção não tinha como
+ser copiada**. Em vez de cirurgia no catálogo, a correção é criar um banco novo
+pelas migrações e copiar só o que fica:
+
+```bash
+bash deploy/reconstruir-banco.sh azit
+```
+
+Faz backup físico (`pg_basebackup`) e dos documentos, cria o banco novo, aplica
+as migrações, copia as 20 tabelas de configuração na ordem das dependências,
+confere contagem por tabela, testa o `pg_dump` no banco novo e só então troca
+(backend para por segundos). O banco anterior vira `azit_antigo_<data>` — nada
+é apagado, e o comando de volta aparece no fim. Ensaiado em cópia local em
+17/09 antes de ir para produção.
+
+Depois disso, o `limpar-dados.sh` abaixo só é necessário para limpezas futuras.
+
 ## 6. Limpeza da produção (decisão do Luís antes de rodar)
 
 `bash deploy/limpar-dados.sh azit` apaga todo o movimento (titulares, contratos,
