@@ -20,6 +20,15 @@ CARIMBO="$(date '+%Y-%m-%d_%H%M')_${MOTIVO}"
 DBCID=$(container_do_servico "${STACK}_azit-db")
 [ -n "$DBCID" ] || { erro "Banco do stack $STACK não está rodando"; exit 1; }
 
+# Sanidade (17/09): confirma que estamos falando com o banco CERTO e populado
+# antes de gerar o dump — evita "backup" vazio de uma instância errada.
+TABELAS=$(docker exec "$DBCID" psql -U azit -d azit -tAc "select count(*) from information_schema.tables where table_schema='public'" 2>/dev/null || echo 0)
+if [ "${TABELAS:-0}" -lt 10 ]; then
+  erro "O banco de $STACK respondeu com apenas ${TABELAS:-0} tabela(s) — instância errada ou banco vazio. Backup abortado."
+  exit 1
+fi
+ok "Banco conferido: $TABELAS tabelas em public"
+
 ARQ_DB="$DESTINO/banco_$CARIMBO.dump"
 docker exec "$DBCID" pg_dump -U azit -d azit -Fc > "$ARQ_DB"
 # Um dump válido tem conteúdo e é legível pelo pg_restore.
