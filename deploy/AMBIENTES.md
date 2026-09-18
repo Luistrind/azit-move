@@ -68,25 +68,91 @@ bash deploy/deploy-prod.sh v1.0.0
 
 ---
 
-## 2. Dia a dia
+## 2. Dia a dia — do seu computador até a produção
 
-1. Mudança feita e enviada para a `main` → o **CI** do GitHub verifica tipos,
-   schema e os testes do motor financeiro (aba *Actions*).
-2. Publicar no homolog: `cd /opt/azit && git pull && bash deploy/deploy-hml.sh`
-3. Validar em https://hml.azitmove.com.br.
-4. Criar a release (Claude faz, ou à mão):
-   `git tag -a v1.0.1 -m "resumo das mudanças" && git push origin v1.0.1`
-5. Publicar na produção: `cd /opt/azit && git pull && bash deploy/deploy-prod.sh v1.0.1`
-   — o script mostra as mudanças e as migrações, pede a tag digitada, faz backup,
-   publica, migra e confere a saúde.
+A regra é uma só: **na produção só entra o que foi testado no homolog.** O
+`deploy-prod.sh` confere isso sozinho (o homolog registra cada commit que
+publica; a produção recusa uma versão que nunca passou por lá).
 
-**Rollback:** `bash deploy/deploy-prod.sh <tag anterior>` (a última linha do
-publicação mostra o comando exato). O código volta; migrações não voltam — por
-isso a regra de migração só aditiva.
+**1. Desenvolvimento local** — cada assunto na sua própria branch:
 
-Histórico de releases publicadas: `cat /opt/azit-backups/releases.log`
+```bash
+git switch -c feat/nome-do-assunto     # no seu computador
+# ... desenvolve e testa local (pnpm dev) ...
+git push -u origin feat/nome-do-assunto
+```
 
----
+O **CI** do GitHub roda a cada push (tipos, schema e testes do motor
+financeiro). Se estiver vermelho, nem leve para o homolog.
+
+**2. Testar no homolog** — publique a branch (não precisa passar pela `main`):
+
+```bash
+cd /opt/azit && git pull && bash deploy/deploy-hml.sh origin/feat/nome-do-assunto
+```
+
+Valide em https://hml.azitmove.com.br. Achou problema: corrige, faz push e
+publica de novo. O homolog tem **uma versão por vez** — se estiver testando
+duas coisas, publique por último a que vai promover.
+
+**3. Aprovado vira candidato à produção** — junte na `main`:
+
+```bash
+git switch main && git merge --no-ff feat/nome-do-assunto && git push
+```
+
+A `main` guarda só o que já foi aprovado. Junto duas ou mais branches? Publique
+a `main` no homolog e valide o conjunto, que é o que vai subir:
+
+```bash
+cd /opt/azit && git pull && bash deploy/deploy-hml.sh      # sem argumento = main
+```
+
+**4. Versionar** — a tag marca o que vai para a produção (o Claude cria, ou à mão):
+
+```bash
+git tag -a v1.1.0 -m "resumo do que entrou" && git push origin v1.1.0
+```
+
+Correção pequena aumenta o último número (v1.0.1); novidade aumenta o do meio
+(v1.1.0).
+
+**5. Publicar na produção:**
+
+```bash
+cd /opt/azit && git pull && bash deploy/deploy-prod.sh v1.1.0
+```
+
+O script mostra o que muda e quais migrações vão rodar, confirma que aquele
+commit passou pelo homolog, pede a tag digitada, **faz backup**, publica,
+migra e confere a saúde dos dois endereços.
+
+### Onde está cada coisa
+
+```bash
+bash deploy/status.sh
+```
+
+Mostra o que está no homolog, qual release está na produção, **os commits que
+já foram testados e ainda não subiram**, as últimas publicações, os backups
+recentes e os serviços no ar.
+
+### Se der errado
+
+```bash
+bash deploy/reverter-prod.sh            # volta para a release anterior
+bash deploy/reverter-prod.sh v1.0.3     # ou para uma específica
+```
+
+Ele lista o que sai do ar, avisa quais migrações permanecem aplicadas, aponta o
+backup feito antes da publicação problemática e reverte. O **código** volta em
+segundos (as imagens de cada versão ficam guardadas). O **banco** não volta
+sozinho — por isso migração é sempre aditiva: o código antigo continua rodando
+sobre o banco novo. Se o problema tiver sido nos **dados**, aí sim:
+
+```bash
+bash deploy/restaurar-backup.sh azit /opt/azit-backups/azit/banco_XXXX_pre-v1.1.0.dump
+```
 
 ## 3. Checklist antes de cada publicação em produção
 

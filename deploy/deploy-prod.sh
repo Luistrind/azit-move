@@ -36,8 +36,26 @@ if [ -n "$ANTERIOR" ] && git -C "$REPO_DIR" rev-parse -q --verify "refs/tags/$AN
   echo; echo "Migrações novas:"; echo "${MIGS:-  (nenhuma)}"
 fi
 
+# Só sobe o que FOI TESTADO: a tag precisa apontar para um commit publicado no
+# homolog (registro em homolog.log). Emergência tem escape, mas consciente.
+TAG_SHA=$(git -C "$REPO_DIR" rev-parse "$TAG^{commit}")
+if grep -q " $TAG " "$REGISTRO" 2>/dev/null; then
+  ok "Esta versão já esteve em produção (reversão) — dispensa nova homologação"
+elif grep -q "$TAG_SHA" "$BACKUP_ROOT/homolog.log" 2>/dev/null; then
+  QUANDO=$(grep "$TAG_SHA" "$BACKUP_ROOT/homolog.log" | tail -1 | cut -d' ' -f1-2)
+  ok "Este commit foi publicado no homolog em $QUANDO"
+else
+  aviso "ATENÇÃO: o commit desta tag NUNCA foi publicado no homolog."
+  aviso "O fluxo combinado é: desenvolve → publica no homolog → valida → promove."
+  confirmar "PUBLICAR-SEM-HOMOLOGAR" "Digite PUBLICAR-SEM-HOMOLOGAR para seguir assim mesmo: " || exit 1
+fi
+
 echo
-confirmar "$TAG" "Digite a tag ($TAG) para confirmar a publicação em PRODUÇÃO: " || exit 1
+if [ "${REVERSAO_CONFIRMADA:-}" = "1" ]; then
+  aviso "Reversão já confirmada — seguindo direto."
+else
+  confirmar "$TAG" "Digite a tag ($TAG) para confirmar a publicação em PRODUÇÃO: " || exit 1
+fi
 
 etapa "1/5 Backup antes da publicação"
 bash deploy/backup.sh "$STACK" "pre-$TAG" || { erro "Backup falhou — publicação ABORTADA (nada mudou)."; exit 1; }

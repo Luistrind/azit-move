@@ -59,5 +59,10 @@ fi
 etapa "5/5 Saúde"
 checar_saude https://api-hml.azitmove.com.br/api/v1/health || aviso "Se for a 1ª subida, o certificado pode levar 1–2 min (DNS precisa apontar para o servidor)."
 
+SHA=$(git -C "$REPO_DIR" rev-parse "$REF")
+mkdir -p "$BACKUP_ROOT"
+echo "$(date '+%Y-%m-%d %H:%M') $REF $SHA" >> "$BACKUP_ROOT/homolog.log"
+
 echo
-ok "HOMOLOGAÇÃO publicada ($(git -C "$REPO_DIR" rev-parse --short "$REF")) → https://hml.azitmove.com.br"
+ok "HOMOLOGAÇÃO publicada ($REF · ${SHA:0:7}) → https://hml.azitmove.com.br"
+echo "  Quando validar, promova ESTE commit para produção (veja deploy/AMBIENTES.md §2)."
