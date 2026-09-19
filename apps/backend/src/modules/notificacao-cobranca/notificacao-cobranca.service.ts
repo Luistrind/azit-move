@@ -76,6 +76,7 @@ export interface ParametrosEfetivos {
   modeloNome: string;
   modeloIdioma: string;
   textos: Record<number, TextoNotificacao & { personalizado: boolean }>;
+  numerosTeste: string[]; // fora de produção, só estes recebem de verdade (§23 item 10)
 }
 
 @Injectable()
@@ -116,7 +117,18 @@ export class NotificacaoCobrancaService {
       modeloNome: p?.modeloNome ?? 'azit_notificacao_cobranca',
       modeloIdioma: p?.modeloIdioma ?? 'pt_BR',
       textos,
+      numerosTeste: p?.numerosTeste ?? [],
     };
+  }
+
+  // Número real único em todos os ambientes (doc 02 §23 item 10): envia de
+  // verdade só com credencial E (produção OU destino autorizado no ambiente).
+  // Retorna o motivo quando NÃO é real — vira o registro da SIMULADA.
+  private motivoSimulacao(destino: string | null, numerosTeste: string[]): string | null {
+    if (!this.meta.configurado()) return 'ambiente sem credencial do WhatsApp — nada foi enviado';
+    if (this.producao()) return null;
+    if (destino && numerosTeste.includes(destino)) return null;
+    return `destino ${destino ? `+${destino}` : '(sem WhatsApp válido)'} fora da lista de números autorizados deste ambiente de teste — nada foi enviado`;
   }
 
   async parametrosTela() {
@@ -127,15 +139,34 @@ export class NotificacaoCobrancaService {
       variaveis: VARIAVEIS_NOTIFICACAO,
       etapas: ETAPAS_NOTIFICACAO,
       provedor: { configurado: !prov.simulado, simulado: prov.simulado, producao: this.producao() },
+      numerosTeste: p.numerosTeste,
       janela: 'Dias úteis, das 9h às 17h (horário de Brasília) — feriados nacionais excluídos',
     };
   }
 
   async salvarParametros(
-    dto: { ativo?: boolean; modeloNome?: string; modeloIdioma?: string; textos?: Record<string, { subtitulo?: string; assunto: string; texto: string } | null> },
+    dto: {
+      ativo?: boolean;
+      modeloNome?: string;
+      modeloIdioma?: string;
+      textos?: Record<string, { subtitulo?: string; assunto: string; texto: string } | null>;
+      numerosTeste?: string[];
+    },
     usuarioId?: string,
   ) {
     const atual = await this.prisma.db.parametroNotificacaoCobranca.findFirst();
+    let numerosTeste = atual?.numerosTeste ?? [];
+    if (dto.numerosTeste !== undefined) {
+      if (this.producao()) {
+        throw new UnprocessableEntityException({ erro: 'so_teste', mensagem: 'A lista de números autorizados só vale em ambientes de teste — em produção todos os clientes recebem.' });
+      }
+      const normalizados = dto.numerosTeste.map((n) => ({ bruto: n, ok: normalizarWhatsapp(n) }));
+      const invalido = normalizados.find((n) => !n.ok);
+      if (invalido) {
+        throw new UnprocessableEntityException({ erro: 'numero_invalido', mensagem: `"${invalido.bruto}" não é um WhatsApp brasileiro válido (DDD + número)` });
+      }
+      numerosTeste = [...new Set(normalizados.map((n) => n.ok as string))];
+    }
     if (dto.ativo === true && this.producao() && !this.meta.configurado()) {
       throw new UnprocessableEntityException({
         erro: 'sem_credencial',
@@ -161,6 +192,7 @@ export class NotificacaoCobrancaService {
       modeloNome: dto.modeloNome?.trim() || atual?.modeloNome || 'azit_notificacao_cobranca',
       modeloIdioma: dto.modeloIdioma?.trim() || atual?.modeloIdioma || 'pt_BR',
       textos: textos as unknown as Prisma.InputJsonValue,
+      numerosTeste,
     };
     const salvo = atual
       ? await this.prisma.db.parametroNotificacaoCobranca.update({ where: { id: atual.id }, data })
@@ -172,7 +204,7 @@ export class NotificacaoCobrancaService {
         entidade: 'parametro_notificacao_cobranca',
         entidadeId: salvo.id,
         antes: atual ? ({ ativo: atual.ativo, modeloNome: atual.modeloNome, etapasPersonalizadas: Object.keys(atual.textos as object) } as Prisma.InputJsonValue) : undefined,
-        depois: { ativo: data.ativo, modeloNome: data.modeloNome, etapasPersonalizadas: Object.keys(textos) } as Prisma.InputJsonValue,
+        depois: { ativo: data.ativo, modeloNome: data.modeloNome, etapasPersonalizadas: Object.keys(textos), numerosTeste } as Prisma.InputJsonValue,
       },
     });
     return this.parametrosTela();
@@ -435,17 +467,20 @@ export class NotificacaoCobrancaService {
         });
 
     let final: StatusNotificacaoCobranca;
+    // Fora de produção: só destinos autorizados recebem de verdade (§23 item 10).
+    const motivoSimulada = this.motivoSimulacao(destino, params.numerosTeste);
     try {
-      if (prov.simulado) {
+      if (motivoSimulada) {
         await this.prisma.db.notificacaoCobranca.update({
           where: { id: registro.id },
-          data: { status: 'SIMULADA', provedor: 'simulado', enviadaEm: new Date(), eventos: await this.anexarEvento(registro.id, { tipo: 'simulada', detalhe: 'ambiente sem credencial do WhatsApp — nada foi enviado' }) },
+          data: { status: 'SIMULADA', provedor: 'simulado', enviadaEm: new Date(), eventos: await this.anexarEvento(registro.id, { tipo: 'simulada', detalhe: motivoSimulada }) },
         });
         final = 'SIMULADA';
       } else {
         if (!destino) throw new Error(`WhatsApp do titular inválido ("${contrato.conta.titular.whatsapp}") — corrija o cadastro e reenvie`);
         const mensagemId = await this.meta.enviarNotificacao({
           destino,
+          destinoAutorizadoTeste: !this.producao() && params.numerosTeste.includes(destino),
           modelo: params.modeloNome,
           idioma: params.modeloIdioma,
           pdf,
@@ -656,7 +691,7 @@ export class NotificacaoCobrancaService {
     return {
       elegivel,
       disparoAutomatico: params.ativo,
-      provedor: { simulado: prov.simulado, disponivel: prov.disponivel },
+      provedor: { simulado: prov.simulado, disponivel: prov.disponivel, producao: this.producao(), numerosTeste: params.numerosTeste.length },
       estado: estado && av
         ? {
             casoAberto: !!estado.casoId,

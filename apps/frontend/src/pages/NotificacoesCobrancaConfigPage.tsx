@@ -41,6 +41,7 @@ export function NotificacoesCobrancaConfigPage() {
   const [rascunho, setRascunho] = useState<{ subtitulo: string; assunto: string; texto: string } | null>(null);
   const [modelo, setModelo] = useState({ nome: '', idioma: '' });
   const [ocupado, setOcupado] = useState(false);
+  const [novoNumero, setNovoNumero] = useState('');
 
   useEffect(() => {
     if (p) setModelo({ nome: p.modeloNome, idioma: p.modeloIdioma });
@@ -113,6 +114,41 @@ export function NotificacoesCobrancaConfigPage() {
           </div>
         )}
       </div>
+
+      {/* Número real único em todos os ambientes (doc 02 §23 item 10) */}
+      {!p.provedor.producao && (
+        <div className={card} style={cardStyle}>
+          <div className="font-display text-[14px] font-bold">Números autorizados para teste</div>
+          <div className="mb-[10px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
+            Este é um ambiente de <b>teste</b> e usa o mesmo número de WhatsApp da produção. Por isso só estes números
+            recebem mensagem de verdade. Qualquer outro destino fica registrado como SIMULADA e nada é enviado. Cadastre
+            os clientes de teste com um destes WhatsApp. Lista vazia: nada sai deste ambiente.
+          </div>
+          <div className="mb-[10px] flex flex-wrap gap-[6px]">
+            {p.numerosTeste.length === 0 && <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum número autorizado.</span>}
+            {p.numerosTeste.map((n) => (
+              <span key={n} className="flex items-center gap-[6px] rounded-full px-[10px] py-[3px] text-[12px] font-semibold tabular-nums" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+                +{n}
+                {editar && (
+                  <button aria-label={`Remover +${n}`} disabled={ocupado} className="font-bold" style={{ color: 'var(--text-muted)' }}
+                    onClick={() => void rodar(() => svc.salvarParametros({ numerosTeste: p.numerosTeste.filter((x) => x !== n) }), `+${n} removido.`)}>
+                    ×
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+          {editar && (
+            <div className="flex max-w-[420px] gap-[8px]">
+              <input className={inputCls} style={inputStyle} value={novoNumero} onChange={(e) => setNovoNumero(e.target.value)} placeholder="DDD + número, ex.: 27999998888" />
+              <button className={btnP} disabled={ocupado || novoNumero.replace(/\D/g, '').length < 10}
+                onClick={() => void rodar(async () => { await svc.salvarParametros({ numerosTeste: [...p.numerosTeste, novoNumero] }); setNovoNumero(''); }, 'Número autorizado.')}>
+                Autorizar
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Modelo na Meta */}
       <div className={card} style={cardStyle}>

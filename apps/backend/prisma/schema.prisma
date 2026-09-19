@@ -951,6 +951,9 @@ model ParametroNotificacaoCobranca {
   modeloNome   String  @default("azit_notificacao_cobranca") // modelo aprovado na Meta
   modeloIdioma String  @default("pt_BR")
   textos       Json    @default("{}") // { "1": { assunto, texto } } — ausente = padrão do POP
+  // Fora de produção, SÓ estes destinos recebem de verdade (número real único
+  // em todos os ambientes — doc 02 sec.23 item 10). Só dígitos, com DDI.
+  numerosTeste String[] @default([])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

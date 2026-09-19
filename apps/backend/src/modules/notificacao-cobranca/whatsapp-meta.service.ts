@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { IntegracoesService } from '../integracoes/integracoes.service';
 
@@ -17,7 +18,10 @@ export class ErroMeta extends Error {}
 
 @Injectable()
 export class WhatsappMetaService {
-  constructor(private readonly integracoes: IntegracoesService) {}
+  constructor(
+    private readonly integracoes: IntegracoesService,
+    private readonly config: ConfigService,
+  ) {}
 
   configurado(): boolean {
     const w = this.integracoes.whatsapp();
@@ -44,12 +48,19 @@ export class WhatsappMetaService {
 
   async enviarNotificacao(p: {
     destino: string; // só dígitos, com DDI
+    // Número real ÚNICO em todos os ambientes (doc 02 §23 item 10): fora de
+    // produção o chamador precisa afirmar que o destino está na lista de teste.
+    // Segunda camada da trava — nenhum caminho novo envia a cliente por engano.
+    destinoAutorizadoTeste: boolean;
     modelo: string;
     idioma: string;
     pdf: Buffer;
     nomeArquivo: string;
     parametros: string[]; // {{1}}..{{n}} do corpo
   }): Promise<string> {
+    if (this.config.get<string>('ambiente') !== 'producao' && !p.destinoAutorizadoTeste) {
+      throw new ErroMeta(`envio bloqueado: +${p.destino} não está autorizado neste ambiente de teste`);
+    }
     const w = this.integracoes.whatsapp();
     const mediaId = await this.subirPdf(p.pdf, p.nomeArquivo);
     const resp = await fetch(`${w.graphUrl}/${w.phoneNumberId}/messages`, {

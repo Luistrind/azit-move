@@ -76,7 +76,8 @@ function LinhaNotificacao({ n, onAcao, ocupado, podeReenviar }: { n: Notificacao
               Reenviar
             </button>
           )}
-          {FERRAMENTAS_TESTE && n.status === 'SIMULADA' && !n.lidaEm && (
+          {/* Fora de produção o webhook pode apontar para outro ambiente: simula também p/ ENVIADA. */}
+          {FERRAMENTAS_TESTE && ['SIMULADA', 'ENVIADA', 'ENTREGUE'].includes(n.status) && !n.lidaEm && (
             <button className={btn} style={btnSec} disabled={ocupado} title="Teste: simula o carimbo de entrega/leitura do WhatsApp"
               onClick={() => onAcao(() => svc.simularStatus(n.id, n.entregueEm ? 'read' : 'delivered'))}>
               {n.entregueEm ? 'Simular leitura' : 'Simular entrega'}
@@ -148,6 +149,9 @@ export function NotificacoesCobrancaBloco({ contratoId, numero }: { contratoId: 
         <div className="flex flex-wrap items-center gap-[6px]">
           {e?.casoAberto && <Chip texto={FASE_POP_LABEL[e.fase] ?? e.fase} cor={FASE_POP_COLORS[e.fase] ?? FASE_POP_COLORS.ordinaria} />}
           {!p.disparoAutomatico && <Chip texto="Disparo automático desligado" cor={FASE_POP_COLORS.juridico} />}
+          {!p.provedor.producao && !p.provedor.simulado && (
+            <Chip texto={p.provedor.numerosTeste ? `Teste: envia só para ${p.provedor.numerosTeste} número(s) autorizado(s)` : 'Teste: nenhum número autorizado — tudo simulado'} cor={NOTIFICACAO_COBRANCA_STATUS_COLORS.SIMULADA} />
+          )}
           {p.provedor.simulado && <Chip texto={p.provedor.disponivel ? 'Modo simulado (sem WhatsApp)' : 'Retidas: WhatsApp sem credencial'} cor={NOTIFICACAO_COBRANCA_STATUS_COLORS.SIMULADA} />}
           <button className={btn} style={btnSec} disabled={p.casos.length === 0} onClick={() => void acao(() => svc.baixarDossie(contratoId, numero))}>
             Dossiê (PDF)

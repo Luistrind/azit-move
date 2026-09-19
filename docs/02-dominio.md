@@ -1262,6 +1262,11 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 ### 11.3 WhatsApp — API oficial da Meta (Comunicação)
 - **Direção:** Azit → Cliente
 - **Uso:** notificações formais de cobrança do POP-COB-001 (§23), num número dedicado
+- **Decisão 2026-09-19 (Luís):** o número já existe no app WhatsApp Business, e a intenção é
+  mantê-lo no app em **coexistência** com a API, para a equipe ver as respostas dos clientes. A
+  documentação da Meta só permite ativar a coexistência por meio de Solution Partner ou Tech
+  Provider. **Decisão pendente**: parceiro (BSP) × tornar-se Tech Provider × migrar o número só
+  para a API.
 - **Decisão 2026-09-19 (Luís):** WhatsApp Business Platform oficial (Cloud API da Meta), não
   Z-API — modelos aprovados, status de entrega/leitura oficial e sem risco de banimento por
   volume: prova mais forte. Credenciais na Central de Integrações (§22).
@@ -1826,6 +1831,18 @@ cuida dos marcos formais e do registro.
    - parcelas cobertas por acordo não contam;
    - caso no jurídico sai do automático;
    - sem WhatsApp válido, a falha é registrada e o operador recebe alerta.
-10. **Retomada** (intervenção, camada 3): `veiculoRetomadoEm` + registro mínimo (data e
+10. **Um número só para todos os ambientes** (decisão Luís, 19/09). O número real da Azit é
+    usado em desenvolvimento, homologação e produção, sem número de teste. Por isso, **fora de
+    produção só sai mensagem de verdade para os números autorizados** do ambiente (lista em
+    Configurações > Notificações de cobrança, gravada no banco de cada ambiente). Os clientes de
+    teste são cadastrados com o WhatsApp do Luís ou de funcionários.
+    - Qualquer outro destino é registrado como SIMULADA, com o motivo, e nada é enviado.
+    - Lista vazia significa que nada real sai do ambiente.
+    - A trava existe em duas camadas: a regra do envio e o cliente da Meta, que recusa enviar
+      fora de produção sem a autorização explícita do destino.
+    - O webhook da Meta aponta para UMA URL. Durante a homologação, aponta para o homolog; no
+      go-live, passa para a produção. Depois disso o homolog não recebe mais entrega/leitura, e
+      a ferramenta de teste simula esses carimbos.
+11. **Retomada** (intervenção, camada 3): `veiculoRetomadoEm` + registro mínimo (data e
     hora, local, responsável e condições do veículo), que dispara a 5ª. Ficam para a fase 2
     as fotos, a vistoria, o registro diário de contatos e o registro de monitoramento.

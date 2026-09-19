@@ -36,7 +36,8 @@ export interface ProximaNotificacao {
 export interface PainelNotificacoes {
   elegivel: boolean;
   disparoAutomatico: boolean;
-  provedor: { simulado: boolean; disponivel: boolean };
+  // producao=false: só os números autorizados do ambiente recebem de verdade.
+  provedor: { simulado: boolean; disponivel: boolean; producao: boolean; numerosTeste: number };
   estado: {
     casoAberto: boolean;
     parcelasVencidas: number;
@@ -82,6 +83,7 @@ export interface ParametrosNotificacao {
   etapas: Record<string, { titulo: string; resumo: string; anexo: string }>;
   provedor: { configurado: boolean; simulado: boolean; producao: boolean };
   janela: string;
+  numerosTeste: string[];
 }
 
 function abrirPdf(blob: Blob) {
@@ -135,7 +137,7 @@ export const notificacaoCobrancaService = {
     const { data } = await api.get<ParametrosNotificacao>('/api/v1/notificacoes-cobranca/parametros');
     return data;
   },
-  async salvarParametros(body: { ativo?: boolean; modeloNome?: string; modeloIdioma?: string; textos?: Record<string, { subtitulo?: string; assunto: string; texto: string } | null> }) {
+  async salvarParametros(body: { ativo?: boolean; modeloNome?: string; modeloIdioma?: string; textos?: Record<string, { subtitulo?: string; assunto: string; texto: string } | null>; numerosTeste?: string[] }) {
     const { data } = await api.put<ParametrosNotificacao>('/api/v1/notificacoes-cobranca/parametros', body);
     return data;
   },
