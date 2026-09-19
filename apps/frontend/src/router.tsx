@@ -8,6 +8,7 @@ import { AnalisesPage } from './pages/AnalisesPage';
 import { PessoasPage } from './pages/PessoasPage';
 import { EstruturasPage } from './pages/EstruturasPage';
 import { ContratoDetalhePage } from './pages/ContratoDetalhePage';
+import { NotificacoesCobrancaConfigPage } from './pages/NotificacoesCobrancaConfigPage';
 import { ReguaPage } from './pages/ReguaPage';
 import { AcordosPage } from './pages/AcordosPage';
 import { AtendimentoPage } from './pages/AtendimentoPage';
@@ -161,6 +162,10 @@ export const router = createBrowserRouter([
       {
         path: 'configuracoes/integracoes',
         element: <IntegracoesPage />,
+      },
+      {
+        path: 'configuracoes/notificacoes-cobranca',
+        element: <NotificacoesCobrancaConfigPage />,
       },
       // Catch-all (auditoria 15/09, Bloco D): URL desconhecida não pode cair
       // no erro cru do React Router (já aconteceu com /originacao) — mostra

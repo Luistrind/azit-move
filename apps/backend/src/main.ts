@@ -11,6 +11,9 @@ async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({ logger: true }),
+    // Corpo cru disponível em req.rawBody: o webhook da Meta é autenticado por
+    // HMAC do corpo EXATO recebido (X-Hub-Signature-256, doc 02 §23).
+    { rawBody: true },
   );
 
   const configService = app.get(ConfigService);

@@ -14,7 +14,7 @@ export class ReguaStepProcessor extends WorkerHost {
   async process() {
     const r = await this.regua.rodar();
     this.logger.log(
-      `régua: ${r.faturasVencidas} vencidas, ${r.emRegua} em régua, ${r.notificados} notificados`,
+      `régua: ${r.faturasVencidas} vencidas, ${r.emRegua} em régua`,
     );
     return r;
   }

@@ -698,8 +698,10 @@ Evento de reajuste anual das parcelas por IPCA. Precisa de aprovação humana an
 > "Inadimplente" DEIXA DE SER STATUS.
 >
 > **Camada 3 — INTERVENÇÕES (estados reais paralelos, carimbo + auditoria):**
-> `veiculoBloqueadoEm` (bloqueio remoto D+3, Regra 6 — desbloqueio manual limpa o
-> carimbo) e `recuperacaoIniciadaEm` (processo de retomada). Convivem com fase Ativo.
+> `veiculoBloqueadoEm` (bloqueio remoto, Regra 6 / POP-COB-001 — desbloqueio manual limpa o
+> carimbo), `recuperacaoIniciadaEm` (processo de retomada), `veiculoRetomadoEm` (retomada
+> realizada — dispara a 5ª notificação, §23) e `cobrancaJuridicaEm` (caso encaminhado ao
+> jurídico — sai do fluxo automático de notificações, §23). Convivem com fase Ativo.
 > **"Suspenso" SAI do modelo** (nenhum produtor; se surgir suspensão administrativa
 > real, nasce como intervenção com motivo, neste padrão).
 >
@@ -776,11 +778,12 @@ só em Encerrado por quitação).
 - Parcelas vinculadas: Vencida → **Paga em atraso**
 - Contrato: Inadimplente → **Ativo** *(somente se não houver outras faturas vencidas)*
 
-### Gatilho 4 — D+3 sem pagamento
+### Gatilho 4 — Bloqueio liberado (POP-COB-001: 24h após a 4ª notificação sem regularização)
 - Fatura: permanece **Vencida**
 - Parcelas: permanecem **Vencidas**
-- Contrato: Inadimplente → **Bloqueado**
-- Ação: bloqueio remoto do veículo (manual via sistema)
+- Contrato: permanece **Ativo** com a intervenção `veiculoBloqueadoEm` (camada 3)
+- Ação: bloqueio remoto do veículo (manual via sistema). Antes do marco do POP, só com
+  justificativa registrada (risco concreto — cláusulas 8.3/7.7), nunca antes do D+1 (§23)
 
 ### Gatilho 5 — Operador registra acordo
 - Acordo: nasce em **Rascunho**
@@ -886,21 +889,30 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 - Se o IPCA deixar de ser divulgado, utilizar índice oficial substituto
 
 ### 7.6 Régua de Cobrança
-| Dia | Ação | Tipo |
-|---|---|---|
-| D+0 | Fatura vence, Asaas registra inadimplência | Automático |
-| D+1 | Bot inicia cobrança via WhatsApp | Automático |
-| D+2 | Segunda tentativa de cobrança via bot | Automático |
-| D+3 | Bloqueio remoto do veículo | Manual (registrado no sistema) |
-| D+10 | Notificação extrajudicial | Manual |
-| D+12 | Início do processo de recuperação do veículo | Manual |
+
+> **Decisão 2026-09-19 (Luís) — a régua segue o POP-COB-001** (Procedimento Operacional
+> Padrão de Cobrança de Inadimplência e Retomada de Veículos, v1.0 de 28/08/2026). Substitui
+> a tabela anterior (D+1/D+2 bot, D+3 bloqueio, D+10 extrajudicial, D+12 recuperação). Os
+> marcos contam **parcelas vencidas** e **horas desde a notificação anterior**, não só dias
+> de atraso. Regras completas do disparo e da prova em §23.
+
+| Marco | Gatilho | Ação | Tipo |
+|---|---|---|---|
+| D+0 | Fatura vence | Asaas registra o vencimento | Automático |
+| D1 | 1 parcela vencida | 1ª notificação + cobrança diária (operação) | Automático |
+| +72h da 1ª | Débito em aberto | 2ª notificação | Automático |
+| 2 parcelas vencidas | Duas ao mesmo tempo, consecutivas ou não | 3ª notificação + monitoramento do veículo | Automático |
+| +72h da 3ª | 2+ parcelas ainda vencidas | 4ª notificação (pré-bloqueio) | Automático |
+| +24h da 4ª | Sem regularização | Bloqueio e retomada liberados | Manual (registrado) |
+| Retomada | Registrada no sistema | 5ª notificação | Automático ao registrar |
+| +30 dias ou 4 parcelas | — | Encaminhamento para rescisão + 6ª notificação | Manual (ADMIN/DIRETOR) |
 
 > Desbloqueio após pagamento é sempre **manual** — o operador confirma a regularização antes de liberar.
 
 > **Decisão 2026-08-31 (Luís, homologação) — o kanban da régua é por DIAS DE ATRASO.** Colunas
 > **1 a 7 dias + "+7 dias"**; o caso se move de coluna conforme o atraso (em **dias de
 > calendário** — venceu ontem = 1 dia, independente da hora) da parcela vencida mais antiga.
-> Os marcos da tabela acima (D+1/D+2 cobrança, D+3 bloqueio, D+10/D+12) continuam valendo como
+> Os marcos da tabela acima (reescrita em 19/09 pelo POP-COB-001) continuam valendo como
 > **automação e alçada** — na tela viram subtítulo da coluna correspondente, não colunas
 > próprias. Correção da mesma data: dias de atraso em TODO o sistema (régua, mora da
 > renegociação, conciliação de pagamento) contam por calendário, nunca por diferença de
@@ -1247,9 +1259,12 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 - **Regra:** uma cobrança ativa por contrato por vez, gerada em D-5
 - **Juros/multas:** calculados automaticamente pelo Asaas no momento do pagamento; sistema recalcula internamente para conciliação
 
-### 11.3 WhatsApp / Z-API (Comunicação)
+### 11.3 WhatsApp — API oficial da Meta (Comunicação)
 - **Direção:** Azit → Cliente
-- **Uso:** notificação de vencimento, cobrança na régua, comunicados operacionais
+- **Uso:** notificações formais de cobrança do POP-COB-001 (§23), num número dedicado
+- **Decisão 2026-09-19 (Luís):** WhatsApp Business Platform oficial (Cloud API da Meta), não
+  Z-API — modelos aprovados, status de entrega/leitura oficial e sem risco de banimento por
+  volume: prova mais forte. Credenciais na Central de Integrações (§22).
 
 ### 11.4 Assinatura Digital (provisória — mock manual)
 - Hoje a assinatura é **manual**: o sistema gera o documento, o operador baixa, o cliente assina por fora, o operador sobe o assinado.
@@ -1745,3 +1760,72 @@ troca próxima da credencial do Asaas de sandbox para produção.
    ambiente antes de qualquer cobrança real.
 6. Webhooks continuam exigindo segredo em produção (auditoria 15/09, P0-1) — o segredo
    passa a poder ser definido pela tela, espelhado no painel do provedor.
+
+## 23. Notificações formais de cobrança — POP-COB-001 (decisão Luís, 2026-09-19)
+
+O sistema dispara automaticamente as notificações formais do POP pelo WhatsApp dedicado e
+guarda a prova de cada uma: o conjunto probatório para rescisão ou execução judicial. A
+operação de cobrança (contatos diários, ligações, negociação) continua humana. O sistema
+cuida dos marcos formais e do registro.
+
+1. **Escopo**: contratos na fase Ativo com ativo do tipo VEÍCULO. A unidade é o contrato do
+   veículo. "Parcela vencida" é cada **vencimento** (data) com parcela em aberto fora de
+   acordo. As linhas de item do mesmo vencimento (veículo + proteção) contam como UMA
+   parcela semanal.
+2. **Caso de cobrança** (estado real, gravado). Abre quando o contrato passa a ter um ou mais
+   vencimentos em atraso. Encerra quando o atraso zera (pagamento, ou acordo que cobre as
+   parcelas), quando o contrato sai de Ativo ou quando é encaminhado ao jurídico.
+   Inadimplência nova depois do encerramento abre caso novo, que recomeça na 1ª. Cada
+   notificação sai **no máximo uma vez por caso**.
+3. **Gatilhos**. São sequenciais, e sai no máximo uma notificação por caso por dia.
+   - **1ª**: caso aberto (D1).
+   - **2ª**: 72h ou mais depois da 1ª, com o débito em aberto.
+   - **3ª**: depois da 2ª, com 2+ vencimentos em atraso ao mesmo tempo, consecutivos ou não
+     (POP §10). Sai assim que for constatado, sem esperar o D7. Sinaliza "monitorar veículo".
+   - **4ª**: 72h ou mais depois da 3ª, com 2+ vencimentos em atraso. Se o atraso cair para 1
+     vencimento, a 4ª fica suspensa e o caso volta ao fluxo ordinário (POP §9, situação 1).
+     Voltando a 2+, a 4ª sai sem reenviar a 3ª.
+   - **Bloqueio liberado**: 24h depois da 4ª (Regra 6).
+   - **5ª**: ao registrar a retomada do veículo. É um evento, não um prazo.
+   - **6ª (rescisão)**: nunca automática. O sistema sinaliza a rescisão com atraso acima de
+     30 dias ou 4+ vencimentos em atraso. O envio é manual, por ADMIN ou DIRETOR, e encaminha
+     o caso ao jurídico, encerrando o fluxo automático (POP §16).
+4. **Janela de envio** (cláusula 1.1 do contrato): dias úteis, das 9h às 17h
+   (America/Sao_Paulo). Enviada até as 18h de dia útil, a notificação conta como recebida no
+   mesmo dia, então os prazos de 72h e 24h contam a partir do envio. Feriados nacionais não
+   são dias úteis. Os feriados estaduais e municipais ficam como placeholder (Regra 12).
+   Gatilho fora da janela sai na abertura da janela seguinte.
+5. **Canal**: WhatsApp Business Platform, a API oficial da Meta (§11.3), no número dedicado.
+   Mensagem iniciada pela empresa exige um **modelo aprovado** pela Meta, com corpo de até
+   1.024 caracteres. Por isso a notificação formal vai como **PDF anexado** (cabeçalho do
+   tipo documento) a um modelo curto da categoria utilidade. O e-mail como canal de apoio
+   (POP §5) fica pendente de um provedor de e-mail (placeholder).
+6. **Texto**: os modelos dos Anexos I–VI do POP, preenchidos pelo sistema com:
+   - nome, veículo e placa;
+   - vencimentos em atraso;
+   - valor atualizado: parcelas + multa e juros do contrato, pro rata die (§7.2);
+   - datas e horas das notificações anteriores, que formam a cadeia de prova.
+
+   Os textos são editáveis em Configurações > Notificações de cobrança (ADMIN/DIRETOR,
+   auditado). O padrão do POP é sempre restaurável.
+7. **Prova, por notificação**:
+   - o texto integral, com SHA-256 do texto e do PDF;
+   - o número de destino e o id da mensagem na Meta;
+   - os carimbos de envio, entrega, leitura e falha vindos do webhook oficial, com o horário
+     da Meta.
+
+   Dossiê exportável por contrato.
+8. **Chave geral** do disparo automático, desligada por padrão. Sem credencial do WhatsApp:
+   - **fora de produção** (local e homologação), roda em modo simulado. Registra tudo, com PDF
+     e prova, marcado "SIMULADA — não enviada", nunca confundível com um envio real;
+   - **em produção**, nada é simulado. As notificações ficam retidas e o caso não avança, para
+     que a cadeia de prova nunca contenha um envio que não aconteceu. A chave geral nem liga
+     sem credencial.
+9. **Salvaguardas**:
+   - pagamento derruba o caso na varredura seguinte;
+   - parcelas cobertas por acordo não contam;
+   - caso no jurídico sai do automático;
+   - sem WhatsApp válido, a falha é registrada e o operador recebe alerta.
+10. **Retomada** (intervenção, camada 3): `veiculoRetomadoEm` + registro mínimo (data e
+    hora, local, responsável e condições do veículo), que dispara a 5ª. Ficam para a fase 2
+    as fotos, a vistoria, o registro diário de contatos e o registro de monitoramento.

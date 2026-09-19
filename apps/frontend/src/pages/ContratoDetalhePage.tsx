@@ -17,6 +17,7 @@ import { usePodeRole, ROLE_OPERACAO, ROLE_REAJUSTE, mensagemErro } from '../lib/
 import { reaisParaCentavos, numeroBR } from '../lib/valor';
 import { Metrica } from '../components/Metrica';
 import { BlocoAssinaturaDigital } from '../components/BlocoAssinaturaDigital';
+import { NotificacoesCobrancaBloco } from '../components/NotificacoesCobrancaBloco';
 import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 
 const ORIGEM_CAPITAL_LABEL: Record<string, string> = {
@@ -332,6 +333,10 @@ export function ContratoDetalhePage() {
           />
         </div>
       )}
+
+      {/* Notificações formais de cobrança — POP-COB-001 (doc 02 §23). O bloco
+          só aparece em contrato de veículo ativo (ou com histórico de casos). */}
+      {c && <NotificacoesCobrancaBloco contratoId={c.id} numero={c.numero} />}
 
       {/* Resumo financeiro + documento do contrato */}
       {c && (

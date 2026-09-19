@@ -5,16 +5,15 @@ import { CobrancaModule } from '../cobranca/cobranca.module';
 import { ReguaService } from './regua.service';
 import { ReguaController } from './regua.controller';
 import { ReguaStepProcessor } from './regua.processor';
+import { NotificacaoCobrancaModule } from '../notificacao-cobranca/notificacao-cobranca.module';
 
 // Bloco 5 — Régua de cobrança. Estágio é posição operacional calculada (não status).
 // Usa FaturaService (CobrancaModule) para marcar inadimplência.
 @Module({
   imports: [
     CobrancaModule,
-    BullModule.registerQueue(
-      { name: QUEUE_NAMES.REGUA_STEP },
-      { name: QUEUE_NAMES.NOTIFICAR_CLIENTE },
-    ),
+    NotificacaoCobrancaModule, // estado POP-COB-001 no card + trava do bloqueio (Regra 6)
+    BullModule.registerQueue({ name: QUEUE_NAMES.REGUA_STEP }),
   ],
   controllers: [ReguaController],
   providers: [ReguaService, ReguaStepProcessor],

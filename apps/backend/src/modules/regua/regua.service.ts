@@ -12,6 +12,7 @@ import { diasAtrasoCalendario, inicioHojeBrasilUTC, resolverEstagioRegua } from 
 import { PrismaService } from '../../database/prisma.service';
 import { FaturaService } from '../cobranca/fatura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
+import { NotificacaoCobrancaService } from '../notificacao-cobranca/notificacao-cobranca.service';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 const cent = (d: Prisma.Decimal | null): number =>
@@ -28,8 +29,7 @@ export class ReguaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly fatura: FaturaService,
-    @InjectQueue(QUEUE_NAMES.NOTIFICAR_CLIENTE)
-    private readonly filaNotificar: Queue,
+    private readonly notificacoes: NotificacaoCobrancaService,
     @InjectQueue(QUEUE_NAMES.REGUA_STEP)
     private readonly filaRegua: Queue,
   ) {}
@@ -60,6 +60,9 @@ export class ReguaService {
       _count: { _all: true },
     });
     const porId = new Map(vencidas.map((v) => [v.contratoId, v]));
+    // Estado do POP-COB-001 (doc 02 §23) — só contratos de veículo; o card
+    // mostra a etapa, a próxima notificação e os sinais (monitorar/bloqueio/rescisão).
+    const pop = await this.notificacoes.avaliarPorIds(ids);
 
     return contratos
       .map((c) => {
@@ -81,6 +84,23 @@ export class ReguaService {
           parcelasVencidas: v?._count._all ?? 0,
           titular: c.conta.titular,
           ativo: c.ativo,
+          retomado: c.veiculoRetomadoEm !== null,
+          noJuridico: c.cobrancaJuridicaEm !== null,
+          pop: (() => {
+            const e = pop.get(c.id);
+            if (!e) return null;
+            const a = e.avaliacao;
+            return {
+              fase: a.fase,
+              ultimaEtapa: a.ultimaEtapa,
+              proxima: a.proxima ? { etapa: a.proxima.etapa, condicao: a.proxima.condicao, prevista: a.proxima.prevista?.toISOString() ?? null } : null,
+              monitorarVeiculo: a.monitorarVeiculo,
+              bloqueioLiberado: a.bloqueioLiberado,
+              bloqueioLiberadoEm: a.bloqueioLiberadoEm?.toISOString() ?? null,
+              rescisaoSinalizada: a.rescisaoSinalizada,
+              parcelasVencidas: e.vencimentos.length, // vencimentos distintos (veículo + proteção = 1)
+            };
+          })(),
         };
       })
       // Kanban por DIAS de atraso (decisão 31/08): entra na régua a partir de
@@ -103,8 +123,10 @@ export class ReguaService {
     this.logger.log('[cron] varredura da régua enfileirada');
   }
 
-  // 5.1 + 5.3 — Varre faturas vencidas (marca inadimplência) e dispara as ações
-  // automáticas da régua (WhatsApp em D+1/D+2). Job em prod; trigger dev aqui.
+  // 5.1 — Varredura diária da régua (relatório da rodada). As mensagens ao
+  // cliente NÃO saem mais daqui (o antigo stub D+1/D+2 foi substituído pelas
+  // notificações do POP-COB-001, doc 02 §23 — módulo notificacao-cobranca,
+  // de hora em hora na janela de dias úteis).
   async rodar() {
     const hoje = this.hojeUTC();
     // Vocabulário 07/09: "vencida" é situação CALCULADA por data — a varredura
@@ -117,24 +139,16 @@ export class ReguaService {
     });
 
     const emRegua = await this.listar();
-    let notificados = 0;
-    for (const c of emRegua) {
-      if (c.estagio === 'D+1' || c.estagio === 'D+2') {
-        await this.filaNotificar.add('cobranca', {
-          contratoId: c.id,
-          estagio: c.estagio,
-        });
-        notificados += 1;
-      }
-    }
-    return { faturasVencidas: aVencer, emRegua: emRegua.length, notificados };
+    return { faturasVencidas: aVencer, emRegua: emRegua.length };
   }
 
-  // 5.4 — Bloqueio D+3 (regra absoluta, registrado no sistema; integração externa
-  // é placeholder). Só permitido a partir de D+3.
+  // 5.4 — Bloqueio (Regra 6 reescrita em 19/09 — POP-COB-001, doc 02 §23):
+  // liberado 24h após a 4ª notificação sem regularização; ANTES disso só com
+  // justificativa registrada (risco concreto — cláusulas 8.3/7.7), e nunca
+  // antes do D+1. Integração remota é placeholder.
   // Modelo de 3 camadas (07/09): bloqueio é INTERVENÇÃO (carimbo), não fase —
   // o contrato segue ATIVO com o veículo bloqueado.
-  async bloquear(contratoId: string, usuarioId?: string) {
+  async bloquear(contratoId: string, usuarioId?: string, justificativa?: string) {
     const { contrato, diasAtraso } = await this.contratoComAtraso(contratoId);
     if (contrato.status !== 'ATIVO') {
       throw new UnprocessableEntityException({
@@ -145,10 +159,22 @@ export class ReguaService {
     if (contrato.veiculoBloqueadoEm) {
       throw new UnprocessableEntityException({ erro: 'ja_bloqueado', mensagem: 'O veículo já está bloqueado' });
     }
-    if (diasAtraso < 3) {
+    if (diasAtraso < 1) {
       throw new UnprocessableEntityException({
-        erro: 'antes_do_d3',
-        mensagem: 'Bloqueio só a partir de D+3',
+        erro: 'sem_atraso',
+        mensagem: 'Bloqueio só com parcela vencida (a partir do D+1)',
+      });
+    }
+    const pop = (await this.notificacoes.avaliarPorIds([contratoId])).get(contratoId)?.avaliacao;
+    const liberadoPeloPop = !!pop?.bloqueioLiberado;
+    const motivo = justificativa?.trim() ?? '';
+    if (!liberadoPeloPop && motivo.length < 15) {
+      const quando = pop?.bloqueioLiberadoEm
+        ? `O POP libera o bloqueio em ${pop.bloqueioLiberadoEm.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })} (24h após a 4ª notificação).`
+        : 'O POP só libera o bloqueio 24h após a 4ª notificação.';
+      throw new UnprocessableEntityException({
+        erro: 'fora_do_pop',
+        mensagem: `${quando} Para bloquear antes, registre a justificativa (risco concreto — cláusulas 8.3/7.7), com pelo menos 15 caracteres.`,
       });
     }
     await this.prisma.db.contratoCredito.update({
@@ -163,7 +189,13 @@ export class ReguaService {
         entidade: 'contrato',
         entidadeId: contratoId,
         antes: { veiculoBloqueado: false },
-        depois: { veiculoBloqueado: true, diasAtraso },
+        depois: {
+          veiculoBloqueado: true,
+          diasAtraso,
+          liberadoPeloPop,
+          ultimaNotificacao: pop?.ultimaEtapa ?? null,
+          justificativa: liberadoPeloPop ? null : motivo,
+        },
       },
     });
     // Placeholder: integração de bloqueio remoto do veículo (telemetria).

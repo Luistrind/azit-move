@@ -14,6 +14,19 @@ export interface StatusProvedor {
 export interface StatusIntegracoes {
   asaas: StatusProvedor & { apiKeyConfigurada: boolean; apiKeyFinal: string | null };
   zapsign: StatusProvedor & { apiTokenConfigurado: boolean; apiTokenFinal: string | null };
+  whatsapp: {
+    fonte: 'banco' | 'env';
+    simulado: boolean;
+    phoneNumberId: string | null;
+    wabaId: string | null;
+    accessTokenConfigurado: boolean;
+    accessTokenFinal: string | null;
+    appSecretConfigurado: boolean;
+    appSecretFinal: string | null;
+    verifyTokenConfigurado: boolean;
+    verifyTokenFinal: string | null;
+    webhookPath: string;
+  };
   atualizadoEm: string | null;
 }
 
@@ -24,6 +37,11 @@ export interface AtualizarIntegracoes {
   zapsignAmbiente?: string;
   zapsignApiToken?: string;
   zapsignWebhookSecret?: string;
+  whatsappPhoneNumberId?: string;
+  whatsappWabaId?: string;
+  whatsappAccessToken?: string;
+  whatsappAppSecret?: string;
+  whatsappVerifyToken?: string;
 }
 
 export const integracoesService = {
@@ -33,6 +51,10 @@ export const integracoesService = {
   },
   async atualizar(body: AtualizarIntegracoes): Promise<StatusIntegracoes> {
     const { data } = await api.put<StatusIntegracoes>('/api/v1/integracoes', body);
+    return data;
+  },
+  async testarWhatsapp(): Promise<{ ok: boolean; simulado: boolean; mensagem: string }> {
+    const { data } = await api.post('/api/v1/integracoes/whatsapp/testar');
     return data;
   },
   async testarAsaas(): Promise<{ ok: boolean; simulado: boolean; ambiente: string; mensagem: string }> {

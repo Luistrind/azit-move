@@ -1000,6 +1000,32 @@ Split entre carteira do fundo e carteira Azit:
 
 ---
 
+## 6-A. Notificações formais de cobrança — POP-COB-001 (doc 02 §23, 19/09)
+
+| Método e rota | Papéis | O que faz |
+|---|---|---|
+| `GET /notificacoes-cobranca/parametros` | ADMIN, DIRETOR, OPERADOR | Chave geral, modelo da Meta, textos efetivos (padrão do POP ou personalizados), variáveis, estado do provedor |
+| `PUT /notificacoes-cobranca/parametros` | ADMIN, DIRETOR | `{ ativo?, modeloNome?, modeloIdioma?, textos?: { "1".."6": { subtitulo?, assunto, texto } \| null } }` — `null` restaura o padrão do POP. Em produção, `ativo: true` exige credencial (422 `sem_credencial`) |
+| `POST /notificacoes-cobranca/previa/:etapa` | ADMIN, DIRETOR, OPERADOR | PDF com dados de exemplo (corpo opcional: rascunho do texto) |
+| `GET /contratos/:id/notificacoes-cobranca` | autenticado | Painel do contrato: estado POP (fase, próxima, sinais), intervenções e casos com as notificações e a prova |
+| `GET /contratos/:id/notificacoes-cobranca/dossie` | autenticado | PDF do dossiê (checklist POP §16) |
+| `GET /notificacoes-cobranca/:id/pdf` | autenticado | PDF exatamente como enviado |
+| `POST /notificacoes-cobranca/:id/reenviar` | ADMIN, DIRETOR, OPERADOR | Reenvia uma notificação que FALHOU |
+| `POST /contratos/:id/retomada` | ADMIN, DIRETOR, OPERADOR | `{ dataHora?, local, responsavel, condicoes, observacoes? }`: marca a retomada, põe o ativo em RECUPERADO e dispara a 5ª |
+| `POST /contratos/:id/retomada/devolver` | ADMIN, DIRETOR, OPERADOR | `{ motivo }`: desfaz a retomada (ativo volta a EM_CONTRATO) |
+| `POST /contratos/:id/juridico` | ADMIN, DIRETOR | `{ encaminhar, motivo? }`: pausa ou retoma o envio automático do caso |
+| `POST /contratos/:id/notificacoes-cobranca/rescisao` | ADMIN, DIRETOR | Envia a 6ª notificação (exige atraso acima de 30 dias) |
+| `POST /contratos/:id/bloquear` | ADMIN, OPERADOR | `{ justificativa? }`: antes de 24h após a 4ª, exige 15+ caracteres (422 `fora_do_pop`) — Regra 6 |
+| `GET /webhooks/whatsapp` | público | Handshake da Meta (`hub.mode`, `hub.verify_token`, `hub.challenge`) |
+| `POST /webhooks/whatsapp` | público + HMAC | Status das mensagens (`X-Hub-Signature-256` com a chave secreta do app). Responde 200 e enfileira (Regra 4) |
+| `POST /integracoes/whatsapp/testar` | ADMIN, DIRETOR | Lê o número na Meta com a credencial efetiva (não envia mensagem) |
+| `POST /dev/notificacoes-cobranca/varrer` | dev/homolog | Roda a varredura agora (`ignorarJanela` padrão true) |
+| `POST /dev/contratos/:id/notificacoes-cobranca/avancar` | dev/homolog | `{ horas }`: recua os carimbos do caso, para simular 72h/24h |
+| `POST /dev/notificacoes-cobranca/:id/simular-status` | dev/homolog | `{ status: delivered \| read }` |
+
+Agendamento: varredura de hora em hora (`5 9-16 * * 1-5`, America/Sao_Paulo) na fila
+`notificacao-cobranca`. O motor ainda confere feriados e a janela de dias úteis.
+
 ## 7. Placeholders de API
 
 | Endpoint | Descrição | Bloqueio |

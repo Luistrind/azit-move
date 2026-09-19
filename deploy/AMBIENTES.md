@@ -193,6 +193,16 @@ bash deploy/restaurar-backup.sh azit /opt/azit-backups/azit/banco_XXXX_pre-v1.1.
       ficar só com o `api-hml`
 - [ ] ZapSign: token de produção (Integrações) + webhook no painel
 - [ ] BigDataCorp: credenciais reais conferidas (a produção cobra por consulta)
+- [ ] WhatsApp das notificações de cobrança (POP-COB-001, doc 02 §23):
+      1. Meta for Developers: app Business + número dedicado na Cloud API + usuário do
+         sistema com token permanente;
+      2. **Configurações > Integrações > WhatsApp (Meta)**: id do número, token, chave
+         secreta do app e token de verificação (botão Gerar) → Salvar → Testar conexão;
+      3. no painel da Meta, webhook para `https://api.azitmove.com.br/api/v1/webhooks/whatsapp`
+         com o mesmo token de verificação, assinando o campo **messages**;
+      4. criar e aprovar o modelo (texto na tela *Notificações de cobrança*);
+      5. só então **ligar o disparo automático** em Configurações > Notificações de cobrança.
+      No homolog o disparo pode ficar ligado **sem** credencial: tudo sai SIMULADO.
 - [ ] Monitoramento externo (UptimeRobot em `api.azitmove.com.br/api/v1/health`)
 
 ## 6-A. Reconstrução do banco (produção, 17/09) — resolve backup + limpeza

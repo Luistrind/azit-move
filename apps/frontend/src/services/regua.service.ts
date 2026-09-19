@@ -13,6 +13,19 @@ export interface ReguaItem {
   parcelasVencidas: number;
   titular: { nome: string; cpfCnpj: string };
   ativo: { placa: string | null; modelo: string | null } | null; // null = sem ativo (RP)
+  retomado: boolean;
+  noJuridico: boolean;
+  // Estado do POP-COB-001 (doc 02 §23) — só contrato de veículo.
+  pop: {
+    fase: string;
+    ultimaEtapa: number | null;
+    proxima: { etapa: number; condicao: string; prevista: string | null } | null;
+    monitorarVeiculo: boolean;
+    bloqueioLiberado: boolean;
+    bloqueioLiberadoEm: string | null;
+    rescisaoSinalizada: boolean;
+    parcelasVencidas: number;
+  } | null;
 }
 
 export const reguaService = {
@@ -20,13 +33,14 @@ export const reguaService = {
     const { data } = await api.get<ReguaItem[]>('/api/v1/regua');
     return data;
   },
-  async bloquear(contratoId: string): Promise<void> {
-    await api.post(`/api/v1/contratos/${contratoId}/bloquear`);
+  // Regra 6 (POP-COB-001): antes de 24h após a 4ª notificação, exige justificativa.
+  async bloquear(contratoId: string, justificativa?: string): Promise<void> {
+    await api.post(`/api/v1/contratos/${contratoId}/bloquear`, { justificativa });
   },
   async desbloquear(contratoId: string): Promise<void> {
     await api.post(`/api/v1/contratos/${contratoId}/desbloquear`);
   },
-  // Dev: roda a régua (varre inadimplência + cobrança automática D+1/D+2).
+  // Dev: roda a varredura diária da régua (as notificações do POP têm fila própria).
   async rodar(): Promise<void> {
     await api.post('/api/v1/dev/varrer-regua');
   },

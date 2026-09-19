@@ -27,10 +27,21 @@ export class IntegracoesController {
       zapsignAmbiente?: string;
       zapsignApiToken?: string;
       zapsignWebhookSecret?: string;
+      whatsappPhoneNumberId?: string;
+      whatsappWabaId?: string;
+      whatsappAccessToken?: string;
+      whatsappAppSecret?: string;
+      whatsappVerifyToken?: string;
     },
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.service.atualizar(body ?? {}, user.id);
+  }
+
+  @Post('whatsapp/testar')
+  @HttpCode(200)
+  testarWhatsapp() {
+    return this.service.testarWhatsapp();
   }
 
   @Post('asaas/testar')

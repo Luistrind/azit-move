@@ -66,6 +66,9 @@ DECLARE
     -- Credito e carteira
     'contratos_credito','itens_contratados','parcelas','faturas','itens_fatura',
     'recebiveis','acordos','novacoes','reajustes_ipca',
+    -- Notificações formais do POP-COB-001 (casos + prova; os PDFs ficam no
+    -- volume de uploads/notificacoes). Parâmetros e textos FICAM.
+    'casos_cobranca','notificacoes_cobranca',
     -- Motor de aprovacao (trilha transacional; tipos/alcadas FICAM)
     'aprovacoes','aprovacao_decisoes',
     -- Contas a pagar (movimento; entidades/contas bancarias/naturezas/centros FICAM)

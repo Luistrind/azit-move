@@ -35,7 +35,8 @@ PRESERVAR="usuarios usuario_roles permissoes_usuario_area permissoes_papel_area
 tipos_operacao_alcada alcadas estruturas_juridicas produtos_catalogo
 variantes_produto versoes_produto produtos versoes_parametros_simulacao
 versoes_parametros_analise ofertas_fixas entidades_legais contas_bancarias
-naturezas_financeiras centros_custo_areas parametros_assinatura parametros_integracao"
+naturezas_financeiras centros_custo_areas parametros_assinatura parametros_integracao
+parametros_notificacao_cobranca"
 
 DBCID=$(container_do_servico "${STACK}_azit-db")
 [ -n "$DBCID" ] || { erro "Banco do stack $STACK não está rodando"; exit 1; }

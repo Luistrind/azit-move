@@ -5,6 +5,8 @@ export const ROLE_OPERACAO = ['ADMIN', 'OPERADOR']; // cobrança, bloqueio, quit
 export const ROLE_RENEGOCIACAO = ['ADMIN', 'OPERADOR', 'APROVADOR', 'DIRETOR'];
 export const ROLE_NOVACAO = ['ADMIN', 'APROVADOR', 'DIRETOR']; // recuperação radical (mais sensível)
 export const ROLE_REAJUSTE = ['ADMIN']; // ciclo gerar->aprovar->aplicar só fecha solo no ADMIN
+export const ROLE_RETOMADA = ['ADMIN', 'OPERADOR', 'DIRETOR']; // POP-COB-001: registrar retomada / reenviar notificação
+export const ROLE_JURIDICO = ['ADMIN', 'DIRETOR']; // POP-COB-001 §16: jurídico e notificação de rescisão
 export const ROLE_PARECER = ['ADMIN', 'APROVADOR', 'DIRETOR']; // análise de crédito (Bloco 7)
 
 // Hook reativo: retorna uma função pode(rolesAlvo) -> boolean.

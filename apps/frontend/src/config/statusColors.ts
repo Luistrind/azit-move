@@ -189,3 +189,33 @@ export const ANALISE_SITUACAO_FG: Record<string, string> = {
   complemento: '#c98a0a',
   cocad: '#e0413c',
 };
+
+// Notificações formais de cobrança — POP-COB-001 (doc 02 §23, 19/09). Chaves =
+// enum StatusNotificacaoCobranca. SIMULADA é âmbar: nunca confundível com envio.
+export const NOTIFICACAO_COBRANCA_STATUS_COLORS: Record<string, StatusColor> = {
+  PREPARADA: { bg: '#f1f4f8', fg: '#8694a4' },
+  ENVIADA: { bg: '#eef4ff', fg: '#2456c7' },
+  ENTREGUE: { bg: '#eef4ff', fg: '#2456c7' },
+  LIDA: { bg: '#eafaf1', fg: '#1f9d5b' },
+  FALHOU: { bg: '#fdeceb', fg: '#e0413c' },
+  SIMULADA: { bg: '#fef6e9', fg: '#c98a0a' },
+};
+
+// Fase do caso no POP (calculada pelo motor — Regra 7, nunca gravada).
+export const FASE_POP_COLORS: Record<string, StatusColor> = {
+  ordinaria: { bg: '#fef6e9', fg: '#c98a0a' },
+  escalonamento: { bg: '#fff1e6', fg: '#e07a0c' },
+  pre_bloqueio: { bg: '#fdeceb', fg: '#e0413c' },
+  bloqueio_liberado: { bg: '#fdeceb', fg: '#c0392b' },
+  pos_retomada: { bg: '#f3eafb', fg: '#9a3bd1' },
+  juridico: { bg: '#eef1f5', fg: '#5b6b7f' },
+};
+
+export const FASE_POP_LABEL: Record<string, string> = {
+  ordinaria: 'Cobrança ordinária',
+  escalonamento: 'Escalonamento · monitorar veículo',
+  pre_bloqueio: 'Pré-bloqueio (24h)',
+  bloqueio_liberado: 'Bloqueio liberado',
+  pos_retomada: 'Após a retomada',
+  juridico: 'No jurídico',
+};

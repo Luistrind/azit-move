@@ -864,11 +864,98 @@ model ParametroIntegracao {
   zapsignAmbiente      String  @default("sandbox") // sandbox | producao
   zapsignApiToken      String?
   zapsignWebhookSecret String?
+  // WhatsApp Business Platform — Cloud API oficial da Meta (doc 02 sec.23, 19/09)
+  whatsappPhoneNumberId String?
+  whatsappWabaId        String?
+  whatsappAccessToken   String?
+  whatsappAppSecret     String? // valida a assinatura X-Hub-Signature-256 do webhook
+  whatsappVerifyToken   String? // handshake GET do webhook (hub.verify_token)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("parametros_integracao")
+}
+
+// ============================================================
+// Notificações formais de cobrança — POP-COB-001 (doc 02 sec.23, 19/09).
+// CASO = período contínuo de inadimplência do contrato do veículo (estado
+// real: abre com o 1º vencimento em atraso, encerra ao zerar). Cada
+// notificação sai no máximo UMA vez por caso — guardada com a prova.
+// ============================================================
+enum StatusNotificacaoCobranca {
+  PREPARADA // texto/PDF gerados, envio em curso
+  ENVIADA // aceita pela Meta (id da mensagem)
+  ENTREGUE
+  LIDA
+  FALHOU
+  SIMULADA // fora de produção sem credencial: registrada, NÃO enviada
+}
+
+model CasoCobranca {
+  id                 String    @id @default(cuid())
+  contratoId         String
+  abertoEm           DateTime  @default(now())
+  encerradoEm        DateTime?
+  motivoEncerramento String? // regularizado | contrato_encerrado | juridico
+
+  contrato     ContratoCredito       @relation(fields: [contratoId], references: [id])
+  notificacoes NotificacaoCobranca[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([contratoId])
+  @@map("casos_cobranca")
+}
+
+model NotificacaoCobranca {
+  id          String                    @id @default(cuid())
+  casoId      String
+  contratoId  String
+  etapa       Int // 1..6 (Anexos I–VI do POP)
+  status      StatusNotificacaoCobranca @default(PREPARADA)
+  disparo     String // automatico | manual
+  usuarioId   String? // quem disparou (manual)
+  destino     String? // WhatsApp do titular no envio (E.164, só dígitos)
+  assunto     String
+  texto       String // texto integral enviado (prova)
+  textoSha256 String
+  pdfRef      String?
+  pdfSha256   String?
+  dados       Json // variáveis usadas no preenchimento (valores, datas)
+  provedor    String? // meta | simulado
+  mensagemId  String?   @unique // wamid da Meta
+  tentativas  Int       @default(0)
+  enviadaEm   DateTime?
+  entregueEm  DateTime?
+  lidaEm      DateTime?
+  falhaEm     DateTime?
+  falhaMotivo String?
+  eventos     Json      @default("[]") // linha do tempo [{ em, tipo, detalhe }]
+
+  caso     CasoCobranca    @relation(fields: [casoId], references: [id])
+  contrato ContratoCredito @relation(fields: [contratoId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([casoId, etapa])
+  @@index([contratoId])
+  @@map("notificacoes_cobranca")
+}
+
+model ParametroNotificacaoCobranca {
+  id           String  @id @default(cuid())
+  ativo        Boolean @default(false) // chave geral do disparo automático
+  modeloNome   String  @default("azit_notificacao_cobranca") // modelo aprovado na Meta
+  modeloIdioma String  @default("pt_BR")
+  textos       Json    @default("{}") // { "1": { assunto, texto } } — ausente = padrão do POP
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("parametros_notificacao_cobranca")
 }
 
 // Notificacao ao operador (doc 02 sec.20 passo 13): marcos do pos-contrato
@@ -958,6 +1045,12 @@ model ContratoCredito {
   // fica no logAuditoria).
   veiculoBloqueadoEm      DateTime? // bloqueio remoto D+3 (Regra 6); desbloqueio manual limpa
   recuperacaoIniciadaEm   DateTime? // processo de retomada do veículo em andamento
+  // POP-COB-001 (doc 02 §23, 19/09): retomada REALIZADA (dispara a 5ª
+  // notificação) com o registro mínimo da operação; e caso encaminhado ao
+  // jurídico (sai do fluxo automático de notificações).
+  veiculoRetomadoEm       DateTime?
+  retomadaRegistro        Json? // { local, responsavel, condicoes, observacoes, registradoPor }
+  cobrancaJuridicaEm      DateTime?
   transferenciaEfetivadaEm DateTime? // reserva de domínio transferida (só Encerrado por quitação)
   solicitadoPor        String? // crédito de manutenção: usuário que originou (Doc 2 §4.7-A)
   aprovadoPor          String? // usuário que aprovou pela alçada (§7.9)
@@ -981,6 +1074,8 @@ model ContratoCredito {
   propostaOrigem    Proposta?        @relation("PropostaContrato")
   propostaPacote    Proposta?        @relation("PacoteProposta", fields: [propostaPacoteId], references: [id])
   documentoAssinatura DocumentoAssinatura? // ZapSign F1 (doc 02 sec.21)
+  casosCobranca     CasoCobranca[] // POP-COB-001 (doc 02 sec.23)
+  notificacoesCobranca NotificacaoCobranca[]
   // Novação conta-cêntrica (14/09): contrato EXTINTO por uma novação aponta
   // para ela; os contratos NOVOS são referenciados pela novação (veículo/termo).
   novacaoOrigem     Novacao?         @relation("NovacaoOrigens", fields: [novacaoOrigemId], references: [id])

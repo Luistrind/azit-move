@@ -23,7 +23,7 @@ Nunca contrarie sem validação humana explícita:
 3. **A dívida independe do ativo.** Sinistro/furto não extingue obrigação. Parcela não é apagada.
 4. **Webhook nunca é síncrono.** Responde 202 e enfileira via BullMQ.
 5. **Acordo ≠ Novação.** O *Acordo* (recuperação branda) dilui parcelas em atraso sem liquidar o contrato: as parcelas cobertas recebem vínculo de acordo (NÃO o status RENEGOCIADA como marca), e um ItemContratado de origem ACORDO nasce com as parcelas novas. A *Novação* (radical) liquida o contrato inteiro (LIQUIDADO_POR_NOVACAO) e cria um novo. São mecanismos distintos — nunca confundir.
-6. **D+3 bloqueio é absoluto.** Sem exceção. Desbloqueio sempre manual.
+6. **Bloqueio segue o POP-COB-001.** (Reescrita 2026-09-19, Luís — substitui "D+3 absoluto".) Liberado 24h após a 4ª notificação sem regularização; antes disso só com justificativa registrada (risco concreto, cláusulas 8.3/7.7) e nunca antes do D+1. Sempre manual e auditado. Desbloqueio sempre manual. Ver doc 02 §23.
 7. **Status calculados não são gravados.** Em aberto/Vence hoje/Vencida são runtime. Só estados reais vão ao banco.
 8. **Titular é o cadastro único.** Cliente e investidor são papéis derivados do que a conta possui — não entidades nem tipos de login.
 9. **Sem cor ou status hardcoded.** Cor vem de `statusColors.ts`, status dos enums de `@azit/types`.
