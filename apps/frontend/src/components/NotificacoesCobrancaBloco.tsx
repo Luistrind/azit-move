@@ -11,6 +11,7 @@ import {
 import { FASE_POP_COLORS, FASE_POP_LABEL, NOTIFICACAO_COBRANCA_STATUS_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_JURIDICO, ROLE_RETOMADA, mensagemErro } from '../lib/permissoes';
 import { FERRAMENTAS_TESTE } from '../lib/ambiente';
+import { Link } from 'react-router-dom';
 
 // Notificações formais de cobrança — POP-COB-001 (doc 02 §23). Mostra onde o
 // caso está no procedimento, a trilha das 6 notificações com a PROVA de cada
@@ -216,6 +217,21 @@ export function NotificacoesCobrancaBloco({ contratoId, numero }: { contratoId: 
           {casoAtual.notificacoes.map((n) => (
             <LinhaNotificacao key={n.id} n={n} ocupado={ocupado} podeReenviar={pode(ROLE_RETOMADA)} onAcao={(fn, ok) => void acao(fn, ok)} />
           ))}
+        </div>
+      )}
+
+      {p.conversa.numero && (p.conversa.total > 0 || e?.casoAberto) && (
+        <div className='flex flex-wrap items-center justify-between gap-[8px] rounded-[10px] px-[12px] py-[8px] text-[12.5px]' style={{ background: 'var(--surface-input)' }}>
+          <span>
+            <b>Conversa no WhatsApp:</b>{' '}
+            {p.conversa.total === 0 ? 'o cliente ainda não respondeu.' : `${p.conversa.total} mensagem(ns)`}
+            {p.conversa.naoLidas > 0 && (
+              <span className='ml-[6px] rounded-full px-[8px] py-[1px] text-[11px] font-bold' style={{ background: NOTIFICACAO_COBRANCA_STATUS_COLORS.ENVIADA.bg, color: NOTIFICACAO_COBRANCA_STATUS_COLORS.ENVIADA.fg }}>
+                {p.conversa.naoLidas} não lida(s)
+              </span>
+            )}
+          </span>
+          <Link to={`/conversas?numero=${p.conversa.numero}`} className='font-semibold underline' style={{ color: 'var(--navy)' }}>Abrir conversa</Link>
         </div>
       )}
 

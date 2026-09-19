@@ -6,7 +6,7 @@ import { reguaService, type ReguaItem } from '../services/regua.service';
 import { operacoesService } from '../services/operacoes.service';
 import { Modal } from '../components/Modal';
 import { RenegociacaoWizard } from '../components/RenegociacaoWizard';
-import { FASE_POP_COLORS, FASE_POP_LABEL, REGUA_STAGE_COLORS } from '../config/statusColors';
+import { FASE_POP_COLORS, FASE_POP_LABEL, NOTIFICACAO_COBRANCA_STATUS_COLORS, REGUA_STAGE_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
 import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 import { notificacaoCobrancaService } from '../services/notificacaoCobranca.service';
@@ -96,6 +96,11 @@ function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem;
         )}
       </div>
       {item.pop && <LinhaPop pop={item.pop} />}
+      {item.mensagensNaoLidas > 0 && (
+        <span className="mb-[8px] inline-block rounded-full px-[8px] py-[1px] text-[10px] font-bold" style={{ background: NOTIFICACAO_COBRANCA_STATUS_COLORS.ENVIADA.bg, color: NOTIFICACAO_COBRANCA_STATUS_COLORS.ENVIADA.fg }}>
+          {item.mensagensNaoLidas} resposta(s) nova(s) no WhatsApp
+        </span>
+      )}
       <div className="flex items-center justify-between">
         <div className="font-display text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>
           {formatCurrency(item.valorVencido)}

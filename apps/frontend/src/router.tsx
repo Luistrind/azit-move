@@ -9,6 +9,7 @@ import { PessoasPage } from './pages/PessoasPage';
 import { EstruturasPage } from './pages/EstruturasPage';
 import { ContratoDetalhePage } from './pages/ContratoDetalhePage';
 import { NotificacoesCobrancaConfigPage } from './pages/NotificacoesCobrancaConfigPage';
+import { ConversasPage } from './pages/ConversasPage';
 import { ReguaPage } from './pages/ReguaPage';
 import { AcordosPage } from './pages/AcordosPage';
 import { AtendimentoPage } from './pages/AtendimentoPage';
@@ -162,6 +163,10 @@ export const router = createBrowserRouter([
       {
         path: 'configuracoes/integracoes',
         element: <IntegracoesPage />,
+      },
+      {
+        path: 'conversas',
+        element: <ConversasPage />,
       },
       {
         path: 'configuracoes/notificacoes-cobranca',

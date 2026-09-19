@@ -69,6 +69,8 @@ DECLARE
     -- Notificações formais do POP-COB-001 (casos + prova; os PDFs ficam no
     -- volume de uploads/notificacoes). Parâmetros e textos FICAM.
     'casos_cobranca','notificacoes_cobranca',
+    -- Conversas do WhatsApp (doc 02 sec.24; mídias em uploads/whatsapp)
+    'mensagens_whatsapp',
     -- Motor de aprovacao (trilha transacional; tipos/alcadas FICAM)
     'aprovacoes','aprovacao_decisoes',
     -- Contas a pagar (movimento; entidades/contas bancarias/naturezas/centros FICAM)

@@ -11,7 +11,8 @@ export interface ReguaItem {
   estagio: string; // 'D+1' | 'D+2' | 'D+3' | 'D+10' | 'D+12'
   valorVencido: number;
   parcelasVencidas: number;
-  titular: { nome: string; cpfCnpj: string };
+  titular: { id: string; nome: string; cpfCnpj: string };
+  mensagensNaoLidas: number; // respostas do cliente no WhatsApp ainda não lidas (doc 02 §24)
   ativo: { placa: string | null; modelo: string | null } | null; // null = sem ativo (RP)
   retomado: boolean;
   noJuridico: boolean;

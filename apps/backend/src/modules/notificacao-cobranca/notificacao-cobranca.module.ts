@@ -5,13 +5,15 @@ import { NotificacaoCobrancaService } from './notificacao-cobranca.service';
 import { NotificacaoCobrancaProcessor } from './notificacao-cobranca.processor';
 import { NotificacaoCobrancaController, WhatsappWebhookController } from './notificacao-cobranca.controller';
 import { WhatsappMetaService } from './whatsapp-meta.service';
+import { ConversaService } from './conversa.service';
+import { ConversaController } from './conversa.controller';
 
 // Notificações formais de cobrança — POP-COB-001 (doc 02 §23). Consumido pela
 // régua (estado POP do card + trava do bloqueio, Regra 6).
 @Module({
   imports: [BullModule.registerQueue({ name: QUEUE_NAMES.NOTIFICACAO_COBRANCA })],
-  controllers: [NotificacaoCobrancaController, WhatsappWebhookController],
-  providers: [NotificacaoCobrancaService, NotificacaoCobrancaProcessor, WhatsappMetaService],
-  exports: [NotificacaoCobrancaService],
+  controllers: [NotificacaoCobrancaController, WhatsappWebhookController, ConversaController],
+  providers: [NotificacaoCobrancaService, NotificacaoCobrancaProcessor, WhatsappMetaService, ConversaService],
+  exports: [NotificacaoCobrancaService, ConversaService],
 })
 export class NotificacaoCobrancaModule {}

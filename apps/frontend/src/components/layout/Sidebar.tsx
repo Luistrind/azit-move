@@ -43,6 +43,7 @@ const GRUPOS_NAV: GrupoNav[] = [
     itens: [
       { to: '/carteira', label: 'Carteira' },
       { to: '/regua', label: 'Régua de cobrança' },
+      { to: '/conversas', label: 'Conversas do WhatsApp' },
       { to: '/acordos', label: 'Renegociações' },
     ],
   },

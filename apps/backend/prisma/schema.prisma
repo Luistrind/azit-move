@@ -373,6 +373,7 @@ model Titular {
   propostas     Proposta[]
   vinculosPapel VinculoPapel[]
   documentos    DocumentoProposta[]
+  mensagensWhatsapp MensagemWhatsapp[] // conversas do WhatsApp (doc 02 sec.24)
 
   participantesAnalise ParticipanteAnalise[]
 
@@ -943,6 +944,44 @@ model NotificacaoCobranca {
   @@unique([casoId, etapa])
   @@index([contratoId])
   @@map("notificacoes_cobranca")
+}
+
+// Conversas do WhatsApp (doc 02 sec.24, opção C 19/09): o número dedicado fica
+// só na API; o cliente que responde é atendido no sistema. As notificações
+// formais continuam em NotificacaoCobranca — a tela junta as duas.
+enum DirecaoMensagemWhatsapp {
+  ENTRADA
+  SAIDA
+}
+
+model MensagemWhatsapp {
+  id               String                  @id @default(cuid())
+  direcao          DirecaoMensagemWhatsapp
+  numero           String // contraparte, só dígitos com DDI (como a Meta informa)
+  titularId        String?
+  nomePerfil       String? // nome do perfil do WhatsApp (entrada)
+  mensagemId       String?                 @unique // wamid
+  tipo             String // text | image | audio | document | video | sticker | location | button | interactive | reaction | unsupported
+  texto            String?
+  midiaId          String? // id da mídia na Meta (entrada)
+  midiaRef         String? // arquivo guardado em uploads/whatsapp
+  midiaTipo        String?
+  midiaNome        String?
+  status           String? // saída: enviada | entregue | lida | falhou
+  falhaMotivo      String?
+  usuarioId        String? // saída: operador que respondeu
+  momento          DateTime // horário da Meta (entrada) ou do envio (saída)
+  lidaEm           DateTime? // entrada: quando um operador abriu a conversa
+  bruto            Json? // payload original (prova)
+
+  titular Titular? @relation(fields: [titularId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([numero, momento])
+  @@index([titularId])
+  @@map("mensagens_whatsapp")
 }
 
 model ParametroNotificacaoCobranca {

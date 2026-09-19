@@ -13,6 +13,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { FaturaService } from '../cobranca/fatura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { NotificacaoCobrancaService } from '../notificacao-cobranca/notificacao-cobranca.service';
+import { ConversaService } from '../notificacao-cobranca/conversa.service';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 const cent = (d: Prisma.Decimal | null): number =>
@@ -30,6 +31,7 @@ export class ReguaService {
     private readonly prisma: PrismaService,
     private readonly fatura: FaturaService,
     private readonly notificacoes: NotificacaoCobrancaService,
+    private readonly conversas: ConversaService,
     @InjectQueue(QUEUE_NAMES.REGUA_STEP)
     private readonly filaRegua: Queue,
   ) {}
@@ -43,7 +45,7 @@ export class ReguaService {
     const contratos = await this.prisma.db.contratoCredito.findMany({
       where: { status: 'ATIVO' },
       include: {
-        conta: { include: { titular: { select: { nome: true, cpfCnpj: true } } } },
+        conta: { include: { titular: { select: { id: true, nome: true, cpfCnpj: true } } } },
         ativo: { select: { placa: true, modelo: true } },
       },
     });
@@ -63,6 +65,8 @@ export class ReguaService {
     // Estado do POP-COB-001 (doc 02 §23) — só contratos de veículo; o card
     // mostra a etapa, a próxima notificação e os sinais (monitorar/bloqueio/rescisão).
     const pop = await this.notificacoes.avaliarPorIds(ids);
+    // Respostas do cliente ainda não lidas (conversas do WhatsApp — doc 02 §24).
+    const naoLidas = await this.conversas.naoLidasPorTitular([...new Set(contratos.map((c) => c.conta.titularId))]);
 
     return contratos
       .map((c) => {
@@ -86,6 +90,7 @@ export class ReguaService {
           ativo: c.ativo,
           retomado: c.veiculoRetomadoEm !== null,
           noJuridico: c.cobrancaJuridicaEm !== null,
+          mensagensNaoLidas: naoLidas.get(c.conta.titularId) ?? 0,
           pop: (() => {
             const e = pop.get(c.id);
             if (!e) return null;

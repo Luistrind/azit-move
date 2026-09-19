@@ -1267,6 +1267,10 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
   documentação da Meta só permite ativar a coexistência por meio de Solution Partner ou Tech
   Provider. **Decisão pendente**: parceiro (BSP) × tornar-se Tech Provider × migrar o número só
   para a API.
+- **Decisão 2026-09-19 (Luís) — opção C: o número sai do app e fica só na API.** Sem coexistência
+  e sem parceiro: o custo é só a tarifa da Meta (≈ R$ 0,035 por mensagem de utilidade). As
+  respostas dos clientes passam a ser atendidas **no sistema** (§24), o que também as registra
+  como prova (POP §17).
 - **Decisão 2026-09-19 (Luís):** WhatsApp Business Platform oficial (Cloud API da Meta), não
   Z-API — modelos aprovados, status de entrega/leitura oficial e sem risco de banimento por
   volume: prova mais forte. Credenciais na Central de Integrações (§22).
@@ -1846,3 +1850,30 @@ cuida dos marcos formais e do registro.
 11. **Retomada** (intervenção, camada 3): `veiculoRetomadoEm` + registro mínimo (data e
     hora, local, responsável e condições do veículo), que dispara a 5ª. Ficam para a fase 2
     as fotos, a vistoria, o registro diário de contatos e o registro de monitoramento.
+
+## 24. Conversas do WhatsApp (decisão Luís, 2026-09-19 — opção C)
+
+Com o número só na API (§11.3), o cliente que responde a uma notificação é atendido pelo
+sistema. A conversa é da **pessoa** (número de WhatsApp), ligada ao titular quando o número
+bate com o cadastro. Não é um produto de atendimento geral: serve à cobrança.
+
+1. **Entrada**: toda mensagem recebida (texto, áudio, imagem, documento, localização, botão)
+   chega pelo webhook (Regra 4: responde e enfileira) e é gravada com o conteúdo original, o
+   horário da Meta e o id da mensagem. A mídia é baixada da Meta na hora, porque o link dela
+   expira, e fica guardada no sistema.
+2. **Identificação**: o número é comparado ao WhatsApp dos titulares, com e sem o nono dígito,
+   porque a Meta às vezes informa números brasileiros sem ele. Sem correspondência, a conversa
+   aparece como "número não identificado".
+3. **Resposta**: ADMIN, DIRETOR e OPERADOR respondem pela tela. Pela regra da Meta, **texto
+   livre só pode sair até 24h depois da última mensagem do cliente**. Fora dessa janela, só
+   modelos aprovados, e a tela bloqueia a resposta explicando o motivo. Fora de produção, vale
+   a mesma lista de números autorizados do §23 item 10.
+4. **Uma conversa só**: a tela junta as mensagens trocadas e as notificações formais enviadas
+   àquele número, sem duplicar registro. As notificações continuam em `notificacoes_cobranca`.
+5. **Leitura**: abrir a conversa marca as mensagens como lidas no sistema e avisa a Meta
+   (confirmação azul para o cliente). Mensagem nova gera alerta no sino (área Carteira e
+   Cobrança) e um indicador no card da régua.
+6. **Prova**: as mensagens recebidas entram no dossiê do contrato. Promessas de pagamento e
+   justificativas ficam registradas, como pede o POP §17.
+7. **Fora do escopo desta fase**: enviar anexos pela tela, respostas prontas, atribuir a
+   conversa a um operador.

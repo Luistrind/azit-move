@@ -24,6 +24,7 @@ import { QUEUE_NAMES } from '../queues/queues.module';
 import { TEXTOS_POP, VARIAVEIS_NOTIFICACAO, preencher, type TextoNotificacao } from './textos-pop';
 import { gerarPdfDossie, gerarPdfNotificacao } from './pdf-notificacao';
 import { normalizarWhatsapp, WhatsappMetaService } from './whatsapp-meta.service';
+import { ConversaService } from './conversa.service';
 
 // ============================================================
 // Notificações formais de cobrança — POP-COB-001 (doc 02 §23, decisão Luís
@@ -88,6 +89,7 @@ export class NotificacaoCobrancaService {
     private readonly config: ConfigService,
     private readonly alertas: NotificacaoService,
     private readonly meta: WhatsappMetaService,
+    private readonly conversas: ConversaService,
     @InjectQueue(QUEUE_NAMES.NOTIFICACAO_COBRANCA) private readonly fila: Queue,
   ) {}
 
@@ -536,14 +538,22 @@ export class NotificacaoCobrancaService {
 
   async processarStatusMeta(payload: unknown) {
     type StatusMeta = { id: string; status: string; timestamp?: string; errors?: { code?: number; title?: string; message?: string; error_data?: { details?: string } }[] };
-    const p = payload as { entry?: { changes?: { value?: { statuses?: StatusMeta[] } }[] }[] };
+    type ValorMeta = { statuses?: StatusMeta[] } & Parameters<ConversaService['registrarEntradas']>[0];
+    const p = payload as { entry?: { changes?: { value?: ValorMeta }[] }[] };
     let processados = 0;
     for (const entry of p.entry ?? []) {
       for (const ch of entry.changes ?? []) {
+        // Respostas dos clientes (opção C — doc 02 §24): viram conversa no sistema.
+        if (ch.value?.messages?.length) processados += await this.conversas.registrarEntradas(ch.value);
         for (const s of ch.value?.statuses ?? []) {
-          const n = await this.prisma.db.notificacaoCobranca.findUnique({ where: { mensagemId: s.id } });
-          if (!n) continue; // mensagem que não é deste ambiente/sistema
           const quando = s.timestamp ? new Date(Number(s.timestamp) * 1000) : new Date();
+          const n = await this.prisma.db.notificacaoCobranca.findUnique({ where: { mensagemId: s.id } });
+          if (!n) {
+            // Não é notificação formal: pode ser uma resposta em texto livre.
+            const er = s.errors?.[0];
+            await this.conversas.atualizarStatusSaida(s.id, s.status, quando, [er?.code, er?.title, er?.message].filter(Boolean).join(' · ') || undefined);
+            continue;
+          }
           const data: Prisma.NotificacaoCobrancaUpdateInput = {};
           let detalhe: string | undefined;
           if (s.status === 'delivered') {
@@ -718,6 +728,8 @@ export class NotificacaoCobrancaService {
         retomada: contrato.retomadaRegistro ?? null,
         juridicoEm: contrato.cobrancaJuridicaEm?.toISOString() ?? null,
       },
+      // Conversa do WhatsApp do titular (doc 02 §24) — atalho na tela do contrato.
+      conversa: await this.conversas.resumoDoTitular(contrato.conta.titularId, contrato.conta.titular.whatsapp),
       casos: contrato.casosCobranca.map((cs) => ({
         id: cs.id,
         abertoEm: cs.abertoEm.toISOString(),
@@ -774,7 +786,15 @@ export class NotificacaoCobrancaService {
     }
     if (c.cobrancaJuridicaEm) intervencoes.push(`Caso encaminhado ao jurídico em ${dh(c.cobrancaJuridicaEm)}`);
     const a = c.ativo;
+    // Mensagens recebidas do comprador (POP §17: promessa, justificativa…).
+    const recebidas = await this.conversas.entradasDoTitular(c.conta.titularId, c.conta.titular.whatsapp);
     const pdf = await gerarPdfDossie({
+      mensagensRecebidas: recebidas.map((m) => ({
+        momento: m.momento,
+        numero: m.numero,
+        texto: m.texto ?? `(${m.tipo}${m.midiaNome ? `: ${m.midiaNome}` : ''})`,
+        mensagemId: m.mensagemId,
+      })),
       contrato: c.numero,
       titular: c.conta.titular.nome,
       cpfCnpj: c.conta.titular.cpfCnpj,

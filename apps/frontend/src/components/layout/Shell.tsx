@@ -21,6 +21,7 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
   '/estruturas': { title: 'Estruturas jurídicas', subtitle: 'Capital por rodada de captação' },
   '/configuracoes/usuarios': { title: 'Usuários e permissões', subtitle: 'Acesso por papel e por área' },
   '/regua': { title: 'Régua de Cobrança', subtitle: 'Gestão de inadimplência' },
+  '/conversas': { title: 'Conversas do WhatsApp', subtitle: 'Respostas dos clientes às notificações de cobrança' },
   '/acordos': { title: 'Renegociações', subtitle: 'Acompanhamento de acordos e novações' },
   '/aprovacoes': { title: 'Central de Aprovações', subtitle: 'Solicitações pendentes de alçada' },
   '/configuracoes/alcadas': { title: 'Alçadas', subtitle: 'Matriz de aprovação por papel' },

@@ -58,6 +58,8 @@ export interface PainelNotificacoes {
     retomada: { local?: string; responsavel?: string; condicoes?: string; observacoes?: string | null; devolvidoEm?: string; motivoDevolucao?: string } | null;
     juridicoEm: string | null;
   };
+  // Conversa do WhatsApp do titular (doc 02 §24).
+  conversa: { numero: string | null; total: number; naoLidas: number };
   casos: {
     id: string;
     abertoEm: string;

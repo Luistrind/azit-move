@@ -1023,6 +1023,19 @@ Split entre carteira do fundo e carteira Azit:
 | `POST /dev/contratos/:id/notificacoes-cobranca/avancar` | dev/homolog | `{ horas }`: recua os carimbos do caso, para simular 72h/24h |
 | `POST /dev/notificacoes-cobranca/:id/simular-status` | dev/homolog | `{ status: delivered \| read }` |
 
+**Conversas do WhatsApp (doc 02 §24, opção C)** — papéis ADMIN, DIRETOR e OPERADOR:
+
+| Método e rota | O que faz |
+|---|---|
+| `GET /conversas-whatsapp` | Conversas por número: titular, prévia da última mensagem, não lidas |
+| `GET /conversas-whatsapp/:numero` | Linha do tempo (mensagens + notificações formais ao número), contratos ativos, janela de 24h |
+| `POST /conversas-whatsapp/:numero/lida` | Marca como lidas e manda o visto azul |
+| `POST /conversas-whatsapp/:numero/responder` | `{ texto }` — só dentro da janela de 24h (422 `janela_fechada`) |
+| `GET /conversas-whatsapp/midia/:id` | Arquivo recebido do cliente |
+| `POST /dev/conversas-whatsapp/simular-entrada` | dev/homolog: `{ numero, texto }` |
+
+O mesmo `POST /webhooks/whatsapp` recebe as mensagens (campo `messages`) e os status.
+
 Agendamento: varredura de hora em hora (`5 9-16 * * 1-5`, America/Sao_Paulo) na fila
 `notificacao-cobranca`. O motor ainda confere feriados e a janela de dias úteis.
 

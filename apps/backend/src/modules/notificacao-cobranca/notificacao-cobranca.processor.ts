@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { NotificacaoCobrancaService } from './notificacao-cobranca.service';
+import { ConversaService } from './conversa.service';
 
 // Fila das notificações do POP-COB-001 (doc 02 §23): varredura horária,
 // envio (1 job por notificação, jobId idempotente) e status do webhook da
@@ -11,7 +12,10 @@ import { NotificacaoCobrancaService } from './notificacao-cobranca.service';
 export class NotificacaoCobrancaProcessor extends WorkerHost {
   private readonly logger = new Logger(NotificacaoCobrancaProcessor.name);
 
-  constructor(private readonly service: NotificacaoCobrancaService) {
+  constructor(
+    private readonly service: NotificacaoCobrancaService,
+    private readonly conversas: ConversaService,
+  ) {
     super();
   }
 
@@ -24,6 +28,8 @@ export class NotificacaoCobrancaProcessor extends WorkerHost {
       }
       case 'enviar':
         return this.service.enviar(job.data);
+      case 'midia-entrada': // doc 02 §24: o link da Meta expira — baixa já
+        return this.conversas.baixarMidia(job.data.id);
       case 'status-meta':
         return this.service.processarStatusMeta(job.data);
       default:

@@ -158,7 +158,7 @@ export function NotificacoesCobrancaConfigPage() {
           <b>Utilidade</b>, idioma português (BR), com <b>cabeçalho do tipo Documento</b> e este corpo:
         </div>
         <pre className="mb-[10px] whitespace-pre-wrap rounded-[10px] p-[10px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
-{`Olá, {{1}}. Segue a {{2}} referente ao contrato nº {{3}}, veículo placa {{4}}. O documento anexo traz os detalhes e os prazos. Para regularizar ou negociar, fale com a Azit pelos canais informados no seu contrato.`}
+{`Olá, {{1}}. Segue a {{2}} referente ao contrato nº {{3}}, veículo placa {{4}}. O documento anexo traz os detalhes e os prazos. Para regularizar ou negociar, responda esta mensagem.`}
         </pre>
         <div className="mb-[10px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
           {'{{1}}'} nome do comprador · {'{{2}}'} qual notificação (ex.: "1ª Notificação – Parcela em aberto") · {'{{3}}'} número do contrato · {'{{4}}'} placa. O PDF vai no cabeçalho.

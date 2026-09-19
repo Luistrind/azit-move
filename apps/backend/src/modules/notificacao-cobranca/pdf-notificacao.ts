@@ -131,6 +131,8 @@ export interface Dossie {
   geradoPor: string;
   intervencoes: string[]; // linhas: bloqueio, retomada, jurídico
   itens: ItemDossie[];
+  // Respostas do comprador pelo WhatsApp (doc 02 §24 item 6).
+  mensagensRecebidas: { momento: Date; numero: string; texto: string; mensagemId: string | null }[];
 }
 
 export async function gerarPdfDossie(d: Dossie): Promise<Buffer> {
@@ -165,6 +167,13 @@ export async function gerarPdfDossie(d: Dossie): Promise<Buffer> {
     ].filter(Boolean) as string[];
     doc.font('Helvetica').fontSize(8.5).fillColor(APAGADO).text(linhas.join('\n'));
     doc.moveDown(0.6);
+  }
+  doc.moveDown(0.4).font('Helvetica-Bold').fontSize(10).fillColor(TINTA).text('Mensagens recebidas do comprador (WhatsApp)');
+  doc.moveDown(0.3);
+  if (d.mensagensRecebidas.length === 0) doc.font('Helvetica').fontSize(9).text('Nenhuma mensagem recebida.');
+  for (const m of d.mensagensRecebidas) {
+    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(APAGADO).text(`${dataHoraBR(m.momento)} · +${m.numero}${m.mensagemId ? ` · id ${m.mensagemId}` : ''}`);
+    doc.font('Helvetica').fontSize(9.5).fillColor(TINTA).text(m.texto, { paragraphGap: 5 });
   }
   // Íntegra de cada notificação, uma por página (mesmo texto do envio).
   for (const it of d.itens) {
