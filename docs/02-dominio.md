@@ -1745,3 +1745,93 @@ troca próxima da credencial do Asaas de sandbox para produção.
    ambiente antes de qualquer cobrança real.
 6. Webhooks continuam exigindo segredo em produção (auditoria 15/09, P0-1) — o segredo
    passa a poder ser definido pela tela, espelhado no painel do provedor.
+
+## 25. Controle de frota (decisão Luís, 2026-09-20)
+
+> Numeração: §23 e §24 nascem na branch das notificações de cobrança; esta seção é a §25
+> para não colidir quando as duas entrarem.
+
+Hoje o Luís controla na mão duas coisas que o sistema não tem: **onde cada veículo está** e
+**as multas e pendências de cada placa**, que por contrato são do cliente. O Ativo já é
+centro de custo (§4.4-A) e o contrato já resolve a regra:
+
+- **6.4** — a Azit monitora multas e encargos, informa o cliente e inclui os valores nas
+  cobranças periódicas;
+- **6.10** — a Azit faz a gestão de IPVA, DPVAT e licenciamento, e integra nas cobranças;
+- **6.7** — o comprador é registrado como condutor principal no DETRAN;
+- **3.5** — reembolsos de despesas podem ser cobrados junto com as parcelas.
+
+### 25.1 Situação operacional do veículo
+
+O `StatusAtivo` continua respondendo **"qual a relação deste veículo com um contrato?"**
+(Disponível, Em contrato, Transferido, Recuperado, Sinistrado) — é o que régua, carteira e
+venda consultam. **Onde o carro está** é outra pergunta e ganha campo próprio,
+`situacaoOperacional`, com histórico (quem mudou, quando, por quê, previsão de retorno):
+
+> Com o cliente · Em oficina · No pátio · Em vistoria · Em preparação · Em estoque · Baixado
+
+Decisão: **não ampliar o StatusAtivo** — um carro em contrato que foi para a oficina não pode
+deixar de ser "Em contrato", sob pena de sumir da cobrança e dos relatórios. As duas camadas
+convivem, como já acontece com fase × situação financeira × intervenções do contrato (§5.2).
+
+O **Quadro da frota** lista os veículos por situação, com dias parado em cada uma.
+
+### 25.2 Ocorrências do veículo
+
+Registro único para o que chega pela placa: **multa, IPVA, licenciamento, DPVAT, pedágio,
+avaria e outros**. Campos: ativo, tipo, órgão, número do auto (chave natural), data do fato,
+vencimento, valor, valor com desconto, prazo de indicação ou recurso, anexo, observação.
+
+**Responsabilidade sai da data do fato** (cláusulas 6.4 e 6.7): fato ocorrido enquanto o
+cliente tinha a posse — entre a ativação do contrato e a retomada ou o encerramento — é do
+**cliente**; fora dessa janela é da **Azit**. O sistema calcula e sugere; o operador pode
+sobrepor com justificativa registrada.
+
+### 25.3 Desfecho — nem toda ocorrência vira cobrança
+
+> **Decisão Luís 2026-09-20:** o repasse é negociado caso a caso. O cliente pode pagar direto
+> ao órgão. A fatura é um dos caminhos, não o único.
+
+| Desfecho | Efeito no sistema |
+|---|---|
+| **Cliente paga direto** | Pendência de comprovante, com prazo e alerta. Nada vai para a fatura. |
+| **Azit paga e repassa** | Item avulso na próxima fatura da conta (cl. 3.5) ou, se o valor pesar, um Reembolso Parcelado (§18.5). |
+| **Azit assume** | Vira `LancamentoCustoAtivo` — custo do veículo, sem cobrar o cliente. |
+| **Em recurso** | Fica parada com prazo controlado até a decisão. |
+| **Cancelada** | Encerrada com motivo. |
+
+Repasse não pago segue o caminho normal: entra na fatura e, vencida, cai na régua de cobrança
+— nenhum mecanismo novo de cobrança.
+
+**Item avulso na fatura** é peça nova: até aqui a fatura só agrega parcelas de contrato. O
+item avulso nasce com natureza SERVICO, vinculado à conta e à ocorrência que o originou.
+
+### 25.4 Origem dos dados — Infleet
+
+As infrações chegam hoje pelo **Infleet** (gestão de frotas), que varre os Detrans a cada 7
+dias. A API deles existe (GraphQL em `api.infleet.com.br/v1/graphql`, operação
+`listTrafficInfractionsKanban`), mas **o fornecedor recusou dar credencial de integração**
+(pedido do Luís, antes de 20/09). Então:
+
+1. **Entrada manual** e **importação da planilha** do botão Exportar — sempre disponíveis.
+2. **Robô com navegador no servidor** (decisão Luís 20/09): o operador abre a tela, digita
+   usuário e senha do Infleet, e o backend faz o login num navegador headless, lê o quadro de
+   infrações e grava as ocorrências novas.
+
+**Regras da credencial do robô (invioláveis):**
+- a senha **nunca** é gravada — nem em banco, nem em log, nem em auditoria, nem em fila;
+- por isso a importação **não passa por BullMQ** (o payload ficaria no Redis): roda na própria
+  requisição, com a credencial só em memória;
+- sem credencial guardada não existe execução diária automática: o disparo é **manual, por
+  um clique**. É suficiente, porque a fonte atualiza a cada 7 dias.
+
+**Idempotência:** a chave é o **número do auto**. Importar duas vezes atualiza a ocorrência
+existente; nunca duplica. O que o operador já decidiu (desfecho, responsável) não é
+sobrescrito pela importação.
+
+### 25.5 Fases
+
+- **Fase 1** (esta): situação operacional + ocorrências + desfecho/repasse + entrada manual,
+  importação de planilha e robô do Infleet.
+- **Fase 2**: vencimentos recorrentes (IPVA/licenciamento) gerados por calendário, controle de
+  indicação de condutor e cobrança automática do comprovante prometido.

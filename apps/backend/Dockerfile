@@ -21,6 +21,11 @@ RUN pnpm install --frozen-lockfile \
  && pnpm --filter backend exec prisma generate \
  && pnpm --filter backend build
 
+# Chromium do Playwright: robô do Infleet (doc 02 §25.4) — o fornecedor não dá
+# credencial de integração, então o backend entra no sistema deles como uma
+# pessoa. Só o Chromium (nem Firefox nem WebKit) para não inchar a imagem.
+RUN pnpm --filter backend exec playwright install --with-deps chromium
+
 WORKDIR /app/apps/backend
 ENV NODE_ENV=production
 # A porta é lida de PORT (default 3001). Ajuste EXPOSE se mudar.

@@ -31,6 +31,8 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
   '/propostas': { title: 'Propostas', subtitle: 'Funil comercial — da proposta à formalização' },
   '/titulares': { title: 'Titulares', subtitle: 'Cadastro único de clientes' },
   '/ativos': { title: 'Estoque de ativos', subtitle: 'Veículos e disponibilidade' },
+  '/frota': { title: 'Quadro da frota', subtitle: 'Onde cada veículo está agora' },
+  '/frota/ocorrencias': { title: 'Multas e pendências', subtitle: 'Ocorrências da placa e repasse ao cliente' },
   '/produtos': { title: 'Itens avulsos de contrato', subtitle: 'Itens contratáveis avulsos (legado §9)' },
   '/configuracoes/assinatura': { title: 'Assinatura digital', subtitle: 'Signatários padrão e validade do contrato' },
   '/configuracoes/integracoes': { title: 'Integrações', subtitle: 'Credenciais do Asaas e da ZapSign — sem redeploy' },

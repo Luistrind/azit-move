@@ -189,3 +189,31 @@ export const ANALISE_SITUACAO_FG: Record<string, string> = {
   complemento: '#c98a0a',
   cocad: '#e0413c',
 };
+
+// Controle de frota (doc 02 §25, 20/09) — situação operacional do veículo.
+// Camada SEPARADA do StatusAtivo: diz onde o carro está, não a relação com o contrato.
+export const SITUACAO_FROTA_COLORS: Record<string, StatusColor> = {
+  COM_CLIENTE: { bg: '#eafaf1', fg: '#1f9d5b' },
+  EM_OFICINA: { bg: '#fef6e9', fg: '#c98a0a' },
+  NO_PATIO: { bg: '#eef4ff', fg: '#2456c7' },
+  EM_VISTORIA: { bg: '#f3eafb', fg: '#9a3bd1' },
+  EM_PREPARACAO: { bg: '#fff1e6', fg: '#e07a0c' },
+  EM_ESTOQUE: { bg: '#f1f4f8', fg: '#8694a4' },
+  BAIXADO: { bg: '#eef1f5', fg: '#5b6b7f' },
+};
+
+// Desfecho da ocorrência (multa, IPVA, licenciamento) — doc 02 §25.3.
+export const OCORRENCIA_STATUS_COLORS: Record<string, StatusColor> = {
+  REGISTRADA: { bg: '#fef6e9', fg: '#c98a0a' },
+  EM_RECURSO: { bg: '#f3eafb', fg: '#9a3bd1' },
+  AGUARDANDO_COMPROVANTE: { bg: '#eef4ff', fg: '#2456c7' },
+  REPASSADA: { bg: '#eafaf1', fg: '#1f9d5b' },
+  ASSUMIDA_AZIT: { bg: '#eef1f5', fg: '#5b6b7f' },
+  QUITADA: { bg: '#eafaf1', fg: '#1f9d5b' },
+  CANCELADA: { bg: '#fdeceb', fg: '#e0413c' },
+};
+
+export const RESPONSAVEL_OCORRENCIA_COLORS: Record<string, StatusColor> = {
+  CLIENTE: { bg: '#eef4ff', fg: '#2456c7' },
+  AZIT: { bg: '#fdeceb', fg: '#e0413c' },
+};

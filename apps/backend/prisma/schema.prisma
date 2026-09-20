@@ -575,6 +575,7 @@ model LancamentoCustoAtivo {
   criadoPor String?
 
   ativo Ativo @relation(fields: [ativoId], references: [id])
+  ocorrencia OcorrenciaVeiculo? // ocorrência assumida pela Azit (doc 02 sec.25.3)
 
   createdAt DateTime  @default(now())
   deletedAt DateTime?
@@ -723,12 +724,20 @@ model Ativo {
   pacoteOfertaId       String? // vínculo opcional a pacote/oferta genérica (legado PopHub)
   ofertaFixaId         String? // oferta fixa desenhada (Doc 2 §4-A.3) — seletor no cadastro
   status               StatusAtivo      @default(DISPONIVEL)
+  // Controle de frota (doc 02 sec.25.1, 20/09): ONDE o carro está. Camada
+  // SEPARADA do status (que diz a relação com o contrato) — um veículo pode
+  // estar Em contrato E na oficina ao mesmo tempo.
+  situacaoOperacional  SituacaoOperacionalAtivo @default(EM_ESTOQUE)
+  situacaoDesde        DateTime?
+  previsaoRetorno      DateTime?
 
   origemCapital    OrigemCapital?
   estruturaJuridica EstruturaJuridica?   @relation(fields: [estruturaJuridicaId], references: [id])
   ofertaFixa       OfertaFixa?           @relation(fields: [ofertaFixaId], references: [id])
   lancamentosCusto LancamentoCustoAtivo[]
   documentos       AtivoDocumento[]
+  movimentacoesFrota MovimentacaoFrota[] // histórico da situação (doc 02 sec.25.1)
+  ocorrencias        OcorrenciaVeiculo[] // multas, IPVA, licenciamento (sec.25.2)
   // 1 ativo pode ter vários contratos no tempo (ex: novação gera um novo);
   // a regra "1 ativo = 1 contrato ATIVO" é garantida em runtime (Doc 2 §4.4).
   contratosCredito ContratoCredito[]
@@ -856,6 +865,115 @@ model ParametroAssinatura {
 // gravados write-only (a API nunca devolve o valor, so status mascarado).
 // Precedencia: BANCO > variavel de ambiente (o env vira fallback) — trocar a
 // credencial (ex.: Asaas sandbox -> producao) passa a valer sem redeploy.
+// ============================================================
+// Controle de frota — doc 02 sec.25 (decisão Luís 20/09).
+// ============================================================
+enum SituacaoOperacionalAtivo {
+  COM_CLIENTE
+  EM_OFICINA
+  NO_PATIO
+  EM_VISTORIA
+  EM_PREPARACAO
+  EM_ESTOQUE
+  BAIXADO
+}
+
+model MovimentacaoFrota {
+  id              String                    @id @default(cuid())
+  ativoId         String
+  de              SituacaoOperacionalAtivo?
+  para            SituacaoOperacionalAtivo
+  motivo          String?
+  previsaoRetorno DateTime?
+  usuarioId       String?
+  em              DateTime                  @default(now())
+
+  ativo Ativo @relation(fields: [ativoId], references: [id])
+
+  @@index([ativoId, em])
+  @@map("movimentacoes_frota")
+}
+
+enum TipoOcorrenciaVeiculo {
+  MULTA
+  NOTIFICACAO // autuação: ainda sem valor, com prazo de indicação
+  IPVA
+  LICENCIAMENTO
+  DPVAT
+  PEDAGIO
+  AVARIA
+  OUTRA
+}
+
+// Quem responde pelo valor (doc 02 sec.25.2): calculado pela DATA DO FATO
+// contra a posse do cliente; o operador pode sobrepor com justificativa.
+enum ResponsavelOcorrencia {
+  CLIENTE
+  AZIT
+}
+
+// Desfecho (doc 02 sec.25.3): nem toda ocorrência vira cobrança.
+enum StatusOcorrenciaVeiculo {
+  REGISTRADA
+  EM_RECURSO
+  AGUARDANDO_COMPROVANTE // cliente paga direto ao órgão
+  REPASSADA // virou item de fatura ou Reembolso Parcelado
+  ASSUMIDA_AZIT // custo do veículo, sem cobrar o cliente
+  QUITADA
+  CANCELADA
+}
+
+model OcorrenciaVeiculo {
+  id         String                  @id @default(cuid())
+  ativoId    String
+  contratoId String? // contrato vigente na data do fato (posse do cliente)
+  tipo       TipoOcorrenciaVeiculo
+  orgao      String?
+  numeroAuto String?                 @unique // chave natural da importação (idempotência)
+  descricao  String?
+  dataFato   DateTime
+  dataVencimento   DateTime?
+  prazoIndicacao   DateTime?
+  valor            Decimal            @default(0) @db.Decimal(12, 2)
+  valorComDesconto Decimal?           @db.Decimal(12, 2)
+
+  responsavel              ResponsavelOcorrencia
+  responsavelJustificativa String? // obrigatória quando o operador sobrepõe o cálculo
+  status                   StatusOcorrenciaVeiculo @default(REGISTRADA)
+
+  // Desfecho
+  desfechoEm       DateTime?
+  desfechoPor      String?
+  desfechoObs      String?
+  prazoComprovante DateTime? // cliente paga direto: até quando trazer o comprovante
+  comprovanteRef   String? // arquivo em uploads/ocorrencias
+  comprovanteEm    DateTime?
+  itemFaturaId     String? @unique // repasse à vista
+  repasseContratoId String? // repasse parcelado (Reembolso Parcelado)
+  lancamentoCustoId String? @unique // Azit assumiu: virou custo do ativo
+
+  // Rastro da origem
+  origem    String  @default("manual") // manual | planilha | infleet
+  origemRef String? // id da infração no sistema de origem
+  bruto     Json? // linha/registro original (prova e reprocessamento)
+
+  ativo            Ativo                 @relation(fields: [ativoId], references: [id])
+  contrato         ContratoCredito?      @relation("OcorrenciasDoContrato", fields: [contratoId], references: [id])
+  repasseContrato  ContratoCredito?      @relation("RepasseParcelado", fields: [repasseContratoId], references: [id])
+  itemFatura       ItemFatura?           @relation(fields: [itemFaturaId], references: [id])
+  lancamentoCusto  LancamentoCustoAtivo? @relation(fields: [lancamentoCustoId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([ativoId])
+  @@index([contratoId])
+  @@index([status])
+  @@index([dataFato])
+  @@map("ocorrencias_veiculo")
+}
+
 model ParametroIntegracao {
   id                   String  @id @default(cuid())
   asaasAmbiente        String  @default("sandbox") // sandbox | producao
@@ -981,6 +1099,8 @@ model ContratoCredito {
   propostaOrigem    Proposta?        @relation("PropostaContrato")
   propostaPacote    Proposta?        @relation("PacoteProposta", fields: [propostaPacoteId], references: [id])
   documentoAssinatura DocumentoAssinatura? // ZapSign F1 (doc 02 sec.21)
+  ocorrenciasVeiculo  OcorrenciaVeiculo[] @relation("OcorrenciasDoContrato") // fato na posse deste contrato
+  repassesOcorrencia  OcorrenciaVeiculo[] @relation("RepasseParcelado") // RP que parcelou a ocorrência
   // Novação conta-cêntrica (14/09): contrato EXTINTO por uma novação aponta
   // para ela; os contratos NOVOS são referenciados pela novação (veículo/termo).
   novacaoOrigem     Novacao?         @relation("NovacaoOrigens", fields: [novacaoOrigemId], references: [id])
@@ -1132,6 +1252,7 @@ model ItemFatura {
 
   fatura  Fatura   @relation(fields: [faturaId], references: [id])
   parcela Parcela? @relation(fields: [parcelaId], references: [id])
+  ocorrencia OcorrenciaVeiculo? // repasse de multa/IPVA (doc 02 sec.25.3)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

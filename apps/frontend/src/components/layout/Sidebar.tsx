@@ -68,6 +68,8 @@ const GRUPOS_NAV: GrupoNav[] = [
     titulo: 'Ativos e frota',
     itens: [
       { to: '/ativos', label: 'Estoque de ativos' },
+      { to: '/frota', label: 'Quadro da frota' },
+      { to: '/frota/ocorrencias', label: 'Multas e pendências' },
       { to: '/centros-custo', label: 'Custo por ativo' },
     ],
   },
