@@ -5,7 +5,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # feat/** e fix/**: o fluxo (deploy/AMBIENTES.md §2) manda o CI estar verde
+    # ANTES de publicar a branch no homolog.
+    branches: [main, 'feat/**', 'fix/**']
     tags: ['v*']
   pull_request:
 
