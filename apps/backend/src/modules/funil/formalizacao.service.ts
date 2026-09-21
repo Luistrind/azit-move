@@ -549,18 +549,21 @@ export class FormalizacaoService {
         mensagem: 'Contrato não está aguardando assinatura/pagamento inicial',
       });
     }
-    // Gate do dia zero (doc 02 §4-A.3, 2026-08-16): sem origem de capital no ativo,
-    // o cronograma não nasce — melhor barrar AQUI, antes de existir dinheiro pago,
-    // do que falhar mudo na fila (caso real do contrato 2026080001). Contrato sem
-    // ativo (RP — 12/09) dispensa: o lastro é a estrutura do produto.
-    const temOrigem = contrato.ativoId
-      ? await this.prisma.db.origemCapital.count({ where: { ativoId: contrato.ativoId } })
-      : 1;
-    if (!temOrigem) {
-      throw new UnprocessableEntityException({
-        erro: 'origem_capital_ausente',
-        mensagem: 'O ativo deste contrato não tem Origem de Capital — cadastre no Estoque de Ativos antes de gerar a cobrança da entrada (necessária para gerar os recebíveis no dia zero)',
+    // Gate do dia zero (doc 02 §4-A.3): a origem de capital deixou de ser
+    // exigida em 20/09 (§19) — o lastro é a estrutura jurídica, obrigatória no
+    // cadastro do ativo. O que ainda barra aqui é o contrato sem estrutura, que
+    // deixaria o recebível sem dono de capital.
+    if (contrato.ativoId) {
+      const ativo = await this.prisma.db.ativo.findFirst({
+        where: { id: contrato.ativoId },
+        select: { estruturaJuridicaId: true },
       });
+      if (!ativo?.estruturaJuridicaId) {
+        throw new UnprocessableEntityException({
+          erro: 'estrutura_ausente',
+          mensagem: 'O veículo deste contrato não tem estrutura jurídica dona — vincule em Frota e estoque antes de gerar a cobrança da entrada (é ela que lastreia os recebíveis)',
+        });
+      }
     }
 
     // Contrato SEM entrada (doc 02 §4-A.3, 2026-08-16): upgrade de veículo e

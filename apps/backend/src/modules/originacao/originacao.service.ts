@@ -96,21 +96,8 @@ export class OriginacaoService {
       });
     }
 
-    // 5. OrigemCapital: garante uma para os recebíveis (default capital próprio).
-    const origem = await this.prisma.db.origemCapital.findFirst({
-      where: { ativoId: ativo.id },
-      select: { id: true },
-    });
-    if (!origem) {
-      await this.prisma.db.origemCapital.create({
-        data: {
-          ativoId: ativo.id,
-          tipo: 'CAPITAL_PROPRIO',
-          valorAportado: centavosParaReaisString(p.ativo.valor_aquisicao ?? 0),
-          dataAporte: p.contrato.data_assinatura,
-        },
-      });
-    }
+    // 5. Origem de Capital não é mais criada (doc 02 §19, 20/09): o recebível
+    // nasce sem ela e o lastro é a estrutura jurídica do ativo.
 
     // 6. Termos do financiamento (item parcelado âncora).
     const parcelamento = p.itens_contratados.find((i) => i.natureza === 'parcelado');

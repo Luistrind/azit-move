@@ -10,7 +10,6 @@ import { ATIVO_STATUS_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
 import { reaisParaCentavos, inteiroBR } from '../lib/valor';
 import { toast } from '../components/Toast';
-import { hojeLocalISO } from '../lib/datas';
 
 const DOC_TIPOS: { v: string; l: string }[] = [
   { v: 'crlv', l: 'CRLV / documento' },
@@ -24,9 +23,6 @@ const STATUS_LABEL: Record<string, string> = {
 };
 const COMBUSTIVEIS = ['flex', 'gasolina', 'eletrico', 'diesel', 'hibrido'];
 const ORIGENS = ['locadora', 'particular', 'concessionaria'];
-const CAPITAIS: Record<string, string> = {
-  capital_proprio: 'Capital próprio', emprestimo: 'Empréstimo', investidor_ativo: 'Investidor de ativo', fundo: 'Fundo',
-};
 
 const inputCls = 'h-[34px] rounded-[8px] px-[10px] text-[12.5px]';
 const inStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' };
@@ -39,7 +35,6 @@ const EMPTY: FormState = {
   estruturaJuridicaId: '',
   marca: '', modelo: '', anoFabricacao: '', anoModelo: '', cor: '', placa: '', chassi: '', renavam: '', varianteCatalogo: 'carro',
   combustivel: 'flex', origem: '', quilometragemEntrada: '', valorAquisicao: '', valorVenda: '', pacoteOfertaId: '', ofertaFixaId: '',
-  capTipo: 'capital_proprio', capValor: '', capTaxa: '', capData: '',
 };
 
 const reais = (v: string) => reaisParaCentavos(v);
@@ -55,7 +50,6 @@ export function AtivoPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [status, setStatus] = useState('disponivel');
-  const [temOC, setTemOC] = useState(false); // ativo já tem origem de capital
 
   const [busca, setBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('');
@@ -122,12 +116,12 @@ export function AtivoPage() {
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  function novo() { setEditId(null); setForm(EMPTY); setStatus('disponivel'); setTemOC(false); setAberto(true); }
+  function novo() { setEditId(null); setForm(EMPTY); setStatus('disponivel'); setAberto(true); }
 
   async function editar(id: string) {
     setOcupado(true);
     try {
-      const [a, oc] = await Promise.all([ativoService.buscarPorId(id), ativoService.origemCapital(id)]);
+      const a = await ativoService.buscarPorId(id);
       setForm({
         estruturaJuridicaId: a.estruturaJuridica?.id ?? '',
         marca: a.marca ?? '', modelo: a.modelo ?? '', anoFabricacao: a.anoFabricacao?.toString() ?? '',
@@ -138,12 +132,7 @@ export function AtivoPage() {
         valorVenda: a.valorVenda ? (a.valorVenda / 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '',
         pacoteOfertaId: a.pacoteOfertaId ?? '',
         ofertaFixaId: a.ofertaFixaId ?? '',
-        capTipo: oc?.tipo ?? 'capital_proprio',
-        capValor: oc?.valorAportado ? (oc.valorAportado / 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '',
-        capTaxa: oc?.taxaRetorno ? (oc.taxaRetorno * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '',
-        capData: oc?.dataAporte ? oc.dataAporte.slice(0, 10) : '',
       });
-      setTemOC(!!oc);
       setStatus(a.status);
       setEditId(id);
       setAberto(true);
@@ -170,20 +159,12 @@ export function AtivoPage() {
     };
     setOcupado(true);
     try {
-      // Cadastro UNIFICADO (doc 02 §19, 12/09): a estrutura É a origem do capital
-      // — o aporte nasce junto do ativo, vinculado à mesma estrutura (necessário
-      // para gerar os recebíveis no dia zero). Valor aportado default = aquisição.
-      const aporte = {
-        tipo: form.capTipo,
-        valorAportado: form.capValor ? reais(form.capValor) : (body.valorAquisicao ?? 0),
-        taxaRetorno: form.capTaxa ? Number(form.capTaxa.replace(',', '.')) / 100 : undefined,
-        dataAporte: form.capData || hojeLocalISO(),
-      };
+      // Aporte saiu do cadastro (doc 02 §19, 20/09): aqui se declara só a
+      // estrutura jurídica dona — é ela que lastreia os recebíveis.
       if (editId) {
         await ativoService.atualizar(editId, { ...body, status });
-        if (!temOC) await ativoService.definirOrigemCapital(editId, aporte);
       } else {
-        await ativoService.criar({ ...body, aporte });
+        await ativoService.criar(body);
       }
       setAberto(false);
       await queryClient.invalidateQueries({ queryKey: ['ativos'] });
@@ -270,31 +251,6 @@ export function AtivoPage() {
                 </select>
               </label>
             )}
-          </div>
-
-          {/* Doc 02 §19 (12/09): a estrutura jurídica É a origem do capital — o
-              aporte nasce junto do ativo, vinculado à MESMA estrutura escolhida
-              acima (necessário para gerar os recebíveis no dia zero). */}
-          <div className="mt-[14px] border-t pt-[14px]" style={{ borderColor: 'var(--border)' }}>
-            <div className="mb-[8px] text-[12px] font-semibold" style={{ color: 'var(--text-body)' }}>
-              Aporte do capital {temOC ? '(já registrado)' : '— nasce vinculado à estrutura dona escolhida acima'}
-            </div>
-            <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2 lg:grid-cols-4">
-              <label className="flex flex-col gap-[4px]"><Lbl>Natureza</Lbl>
-                <select value={form.capTipo} onChange={set('capTipo')} disabled={temOC} className={inputCls} style={{ ...inStyle, opacity: temOC ? 0.6 : 1 }}>
-                  {Object.entries(CAPITAIS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-              </label>
-              <label className="flex flex-col gap-[4px]"><Lbl>Valor aportado (R$)</Lbl>
-                <input value={form.capValor} onChange={set('capValor')} disabled={temOC} placeholder="= valor de aquisição" className={inputCls} style={{ ...inStyle, opacity: temOC ? 0.6 : 1 }} />
-              </label>
-              <label className="flex flex-col gap-[4px]"><Lbl>Taxa de retorno (% a.m., opcional)</Lbl>
-                <input value={form.capTaxa} onChange={set('capTaxa')} disabled={temOC} placeholder="0,00" className={inputCls} style={{ ...inStyle, opacity: temOC ? 0.6 : 1 }} />
-              </label>
-              <label className="flex flex-col gap-[4px]"><Lbl>Data do aporte</Lbl>
-                <input type="date" value={form.capData} onChange={set('capData')} disabled={temOC} className={inputCls} style={{ ...inStyle, opacity: temOC ? 0.6 : 1 }} />
-              </label>
-            </div>
           </div>
 
           {/* Central de documentos do veículo (Doc 2 §4.4-A) — só ao editar */}

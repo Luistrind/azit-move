@@ -611,15 +611,15 @@ export class RenegociacaoService implements OnModuleInit {
         select: { valorNominal: true, faturaId: true },
       });
       if (parcelas.length === 0) continue;
-      // Contrato SEM ativo (RP — doc 02 §19, 12/09): recebíveis do acordo nascem
-      // sem origem de capital, com lastro na estrutura do produto.
+      // Recebível do acordo nasce sem origem de capital (doc 02 §19, 20/09): o
+      // lastro é a estrutura jurídica — do ativo, quando há veículo, ou do
+      // produto (RP). O vínculo antigo segue preenchido quando existe (legados).
       const origem = c.ativoId
         ? await this.prisma.db.origemCapital.findFirst({
             where: { ativoId: c.ativoId },
             select: { id: true },
           })
         : null;
-      if (c.ativoId && !origem) return { resultado: 'origem_capital_ausente', contrato: c.numero };
       porContrato.push({
         contratoId: c.id,
         atraso: parcelas.reduce((s, p) => s + cent(p.valorNominal), 0),

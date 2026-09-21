@@ -59,7 +59,8 @@ export interface ContratoDetalhe {
     modelo: string | null;
     descricao: string;
     anoModelo: number | null;
-    origemCapitalTipo: string | null;
+    // Doc 02 §19 (20/09): a estrutura dona substituiu "origem de capital".
+    estruturaJuridica: string | null;
   } | null;
   resumo: {
     parcelasPagas: number;

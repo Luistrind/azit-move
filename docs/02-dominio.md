@@ -1572,6 +1572,35 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 > 4. Dados existentes são TESTE (sem contrato real em produção): sintéticos são removidos
 >    na migração. A visão do investidor por ativo será rediscutida depois (anotado).
 
+> **Decisão 2026-09-20 (Luís) — o APORTE sai do cadastro de ativo. No ativo declara-se só a
+> estrutura jurídica dona.** Aporte é assunto da ESTRUTURA, e valor aportado e taxa de retorno
+> serão discutidos mais à frente; enquanto isso, pedi-los no cadastro do veículo é inventar
+> número que ninguém usa. Revoga o item 3 da decisão de 12/09 (cadastro unificado com bloco de
+> aporte).
+>
+> Levantamento que sustentou a decisão (varredura de 20/09):
+> - `OrigemCapital.taxaRetorno` **não é lida em lugar nenhum**; `valorAportado` não entra em
+>   cálculo algum (os "valor aportado" do módulo de Capital são outros: `InvestidorEstrutura`
+>   e `ContratoInvestimento`, que permanecem);
+> - `Recebivel.origemCapitalId` é **gravado e nunca lido**;
+> - a única amarra real eram quatro travas que exigiam a Origem de Capital para gerar recebível
+>   de contrato com veículo (criação do contrato, ativação, gate do dia zero da formalização e
+>   montagem do plano de Acordo/renegociação).
+>
+> Consequências:
+> 1. **Recebível de veículo nasce sem Origem de Capital**, como o Reembolso Parcelado já faz
+>    desde 12/09. As quatro travas caem.
+> 2. **O lastro do recebível passa a ser a estrutura jurídica do ativo** (`Ativo.estruturaJuridicaId`,
+>    a tag do §19) — que segue obrigatória no cadastro. Um trilho só: ativo → estrutura →
+>    entidade legal → conta bancária.
+> 3. **Origem de Capital não é mais criada** para ativo novo (nem pelo cadastro, nem pela
+>    importação de legado). Os registros antigos ficam, e o vínculo existente continua sendo
+>    usado quando houver — nada é apagado.
+> 4. O detalhe do contrato passa a mostrar a **estrutura jurídica** no lugar de "origem de
+>    capital".
+> 5. **Em aberto para a discussão futura do aporte:** quanto a estrutura recebeu dos
+>    investidores × quanto já foi alocado em veículos (hoje ninguém concilia os dois).
+
 ---
 
 ## 20. Jornada do Atendimento — 13 passos do operador + Camada 1 do birô (2026-08-08)

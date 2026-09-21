@@ -19,13 +19,6 @@ import { Metrica } from '../components/Metrica';
 import { BlocoAssinaturaDigital } from '../components/BlocoAssinaturaDigital';
 import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 
-const ORIGEM_CAPITAL_LABEL: Record<string, string> = {
-  CAPITAL_PROPRIO: 'Capital próprio',
-  EMPRESTIMO: 'Empréstimo',
-  INVESTIDOR_ATIVO: 'Investidor de ativo',
-  FUNDO: 'Fundo',
-};
-
 
 function fmtData(iso: string): string {
   return iso.slice(0, 10).split('-').reverse().join('/');
@@ -304,8 +297,8 @@ export function ContratoDetalhePage() {
                 destaque
               />
               <Metrica
-                label="Origem de capital"
-                valor={c.ativo?.origemCapitalTipo ? ORIGEM_CAPITAL_LABEL[c.ativo.origemCapitalTipo] ?? '—' : '—'}
+                label="Estrutura jurídica"
+                valor={c.ativo?.estruturaJuridica ?? '—'}
               />
             </div>
           </>

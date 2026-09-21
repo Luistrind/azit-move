@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
-import { mapearOrigemCapitalEnums } from '../origem-capital/origem-capital.mapper';
 import { CriarAtivoDto } from './dto/criar-ativo.dto';
 import { AtualizarAtivoDto } from './dto/atualizar-ativo.dto';
 import { ListarAtivosDto } from './dto/listar-ativos.dto';
@@ -78,20 +77,9 @@ export class AtivoService {
       include: { estruturaJuridica: { select: { id: true, nome: true } } },
     });
 
-    // Cadastro UNIFICADO (doc 02 §19, 12/09): aporte informado junto → a Origem
-    // de Capital nasce aqui, vinculada à MESMA estrutura dona do ativo.
-    if (dto.aporte) {
-      await this.prisma.db.origemCapital.create({
-        data: {
-          ativoId: ativo.id,
-          estruturaId: dto.estruturaJuridicaId ?? null,
-          tipo: mapearOrigemCapitalEnums.tipoParaPrisma(dto.aporte.tipo),
-          valorAportado: valorAquisicaoParaPrisma(dto.aporte.valorAportado),
-          taxaRetorno: dto.aporte.taxaRetorno,
-          dataAporte: dto.aporte.dataAporte,
-        },
-      });
-    }
+    // Aporte SAIU do cadastro de ativo (doc 02 §19, decisão Luís 20/09): aqui se
+    // declara apenas a estrutura jurídica dona. Valor aportado e taxa de retorno
+    // são assunto da estrutura e serão discutidos adiante.
     return ativoParaApi(ativo);
   }
 

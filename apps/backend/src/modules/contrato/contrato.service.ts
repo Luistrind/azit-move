@@ -219,21 +219,15 @@ export class ContratoService {
       }
     }
 
-    // Recebível de contrato COM ativo exige a OrigemCapital dele. Só é obrigatória
-    // quando o cronograma é gerado agora; na originação nativa o cronograma nasce
-    // na ATIVAÇÃO (Decisão 2026-06-29), então a origem de capital é cobrada lá.
+    // Lastro do recebível (doc 02 §19, decisão Luís 20/09): é a ESTRUTURA
+    // JURÍDICA do ativo, não mais a Origem de Capital — que saiu do cadastro.
+    // O vínculo antigo continua sendo preenchido quando existe (legados).
     const origemCapital = dto.ativoId
       ? await this.prisma.db.origemCapital.findFirst({
           where: { ativoId: dto.ativoId },
           select: { id: true },
         })
       : null;
-    if (comCronograma && dto.ativoId && !origemCapital) {
-      throw new UnprocessableEntityException({
-        erro: 'origem_capital_ausente',
-        mensagem: 'O ativo não possui origem de capital — necessária para gerar os recebíveis',
-      });
-    }
 
     const saldoDevedor = dto.valorTotal - dto.valorEntrada;
     if (saldoDevedor < 0) {
@@ -597,17 +591,11 @@ export class ContratoService {
     const item = contrato.itensContratados[0];
     if (!item) throw new UnprocessableEntityException({ erro: 'sem_item', mensagem: 'Contrato sem item de financiamento' });
 
-    // Contrato SEM ativo (Reembolso Parcelado — doc 02 §19, 12/09): recebíveis
-    // nascem sem origem de capital, com lastro na estrutura do produto.
+    // Recebível nasce sem origem de capital (doc 02 §19, 20/09): o lastro é a
+    // estrutura jurídica — do ativo, quando há veículo, ou do produto (RP).
     const origemCapital = contrato.ativoId
       ? await this.prisma.db.origemCapital.findFirst({ where: { ativoId: contrato.ativoId }, select: { id: true } })
       : null;
-    if (contrato.ativoId && !origemCapital) {
-      throw new UnprocessableEntityException({
-        erro: 'origem_capital_ausente',
-        mensagem: 'O ativo não possui origem de capital — necessária para gerar os recebíveis',
-      });
-    }
 
     const periodicidade = PeriodicidadeTypes[contrato.periodicidade] as 'semanal' | 'quinzenal' | 'mensal';
     const passo = periodicidade === 'mensal' ? 30 : periodicidade === 'quinzenal' ? 14 : 7;
@@ -782,7 +770,7 @@ export class ContratoService {
       where: { id },
       include: {
         conta: { include: { titular: { select: { id: true, nome: true, cpfCnpj: true, whatsapp: true } } } },
-        ativo: { include: { origemCapital: { select: { tipo: true } } } },
+        ativo: { include: { estruturaJuridica: { select: { nome: true } } } },
       },
     });
     if (!contrato) throw this.naoEncontrado();
@@ -838,7 +826,8 @@ export class ContratoService {
             modelo: contrato.ativo.modelo,
             descricao: contrato.ativo.descricao,
             anoModelo: contrato.ativo.anoModelo,
-            origemCapitalTipo: contrato.ativo.origemCapital?.tipo ?? null,
+            // Doc 02 §19 (20/09): a estrutura dona substitui "origem de capital".
+            estruturaJuridica: contrato.ativo.estruturaJuridica?.nome ?? null,
           }
         : null,
       resumo: {

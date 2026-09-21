@@ -29,14 +29,6 @@ export interface Ativo {
   cliente: { id: string; nome: string; contratoId: string; contratoNumero: string } | null;
 }
 
-export interface OrigemCapital {
-  tipo: string;
-  valorAportado: number;
-  taxaRetorno: number | null;
-  dataAporte: string;
-  status?: string;
-}
-
 export interface CriarAtivoBody {
   // Obrigatória ao criar (homologação 04/08): estrutura jurídica dona do ativo.
   estruturaJuridicaId: string;
@@ -57,16 +49,6 @@ export interface CriarAtivoBody {
   valorVenda?: number;
   pacoteOfertaId?: string;
   ofertaFixaId?: string | null;
-  // Cadastro unificado (doc 02 §19, 12/09): aporte nasce junto do ativo,
-  // vinculado à mesma estrutura dona.
-  aporte?: { tipo: string; valorAportado: number; taxaRetorno?: number; dataAporte: string };
-}
-
-export interface OrigemCapitalBody {
-  tipo: string;
-  valorAportado: number;
-  taxaRetorno?: number;
-  dataAporte: string;
 }
 
 export const ativoService = {
@@ -84,22 +66,6 @@ export const ativoService = {
   },
   async atualizar(id: string, body: Partial<CriarAtivoBody> & { status?: string; observacao?: string | null }): Promise<Ativo> {
     const { data } = await api.patch(`/api/v1/ativos/${id}`, body);
-    return data;
-  },
-  async origemCapital(ativoId: string): Promise<OrigemCapital | null> {
-    try {
-      const { data } = await api.get(`/api/v1/ativos/${ativoId}/origem-capital`);
-      return data;
-    } catch {
-      return null;
-    }
-  },
-  async definirOrigemCapital(ativoId: string, body: OrigemCapitalBody): Promise<OrigemCapital> {
-    const { data } = await api.post(`/api/v1/ativos/${ativoId}/origem-capital`, body);
-    return data;
-  },
-  async atualizarOrigemCapital(ativoId: string, body: { valorAportado?: number; taxaRetorno?: number }): Promise<OrigemCapital> {
-    const { data } = await api.patch(`/api/v1/ativos/${ativoId}/origem-capital`, body);
     return data;
   },
   // Central de documentos do veículo (Doc 2 §4.4-A).
