@@ -1,34 +1,12 @@
--- Controle de frota (doc 02 sec.25, decisao Luis 20/09): situacao operacional do
+-- Controle de frota (doc 02 sec.25, decisao Luis 20/09): observacao livre do
 -- veiculo + ocorrencias (multas, IPVA, licenciamento) com desfecho e repasse.
--- Somente ADITIVA.
-CREATE TYPE "SituacaoOperacionalAtivo" AS ENUM ('COM_CLIENTE', 'EM_OFICINA', 'NO_PATIO', 'EM_VISTORIA', 'EM_PREPARACAO', 'EM_ESTOQUE', 'BAIXADO');
+-- O STATUS do ativo ja muda sozinho com o contrato; a operacao anota o resto
+-- na observacao. Somente ADITIVA.
 CREATE TYPE "TipoOcorrenciaVeiculo" AS ENUM ('MULTA', 'NOTIFICACAO', 'IPVA', 'LICENCIAMENTO', 'DPVAT', 'PEDAGIO', 'AVARIA', 'OUTRA');
 CREATE TYPE "ResponsavelOcorrencia" AS ENUM ('CLIENTE', 'AZIT');
 CREATE TYPE "StatusOcorrenciaVeiculo" AS ENUM ('REGISTRADA', 'EM_RECURSO', 'AGUARDANDO_COMPROVANTE', 'REPASSADA', 'ASSUMIDA_AZIT', 'QUITADA', 'CANCELADA');
 
--- Camada 2 do ativo: ONDE o carro esta (o status continua dizendo a relacao com o contrato).
-ALTER TABLE "ativos" ADD COLUMN "situacaoOperacional" "SituacaoOperacionalAtivo" NOT NULL DEFAULT 'EM_ESTOQUE';
-ALTER TABLE "ativos" ADD COLUMN "situacaoDesde" TIMESTAMP(3);
-ALTER TABLE "ativos" ADD COLUMN "previsaoRetorno" TIMESTAMP(3);
-
--- Veiculo ja em contrato nasce "com o cliente"; o resto fica no estoque.
-UPDATE "ativos" SET "situacaoOperacional" = 'COM_CLIENTE', "situacaoDesde" = now() WHERE "status" = 'EM_CONTRATO';
-UPDATE "ativos" SET "situacaoOperacional" = 'NO_PATIO', "situacaoDesde" = now() WHERE "status" = 'RECUPERADO';
-UPDATE "ativos" SET "situacaoDesde" = now() WHERE "situacaoDesde" IS NULL;
-
-CREATE TABLE "movimentacoes_frota" (
-    "id" TEXT NOT NULL,
-    "ativoId" TEXT NOT NULL,
-    "de" "SituacaoOperacionalAtivo",
-    "para" "SituacaoOperacionalAtivo" NOT NULL,
-    "motivo" TEXT,
-    "previsaoRetorno" TIMESTAMP(3),
-    "usuarioId" TEXT,
-    "em" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "movimentacoes_frota_pkey" PRIMARY KEY ("id")
-);
-CREATE INDEX "movimentacoes_frota_ativoId_em_idx" ON "movimentacoes_frota"("ativoId", "em");
-ALTER TABLE "movimentacoes_frota" ADD CONSTRAINT "movimentacoes_frota_ativoId_fkey" FOREIGN KEY ("ativoId") REFERENCES "ativos"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "ativos" ADD COLUMN "observacao" TEXT;
 
 CREATE TABLE "ocorrencias_veiculo" (
     "id" TEXT NOT NULL,

@@ -3,21 +3,6 @@ import { api } from '../lib/api';
 // Controle de frota (doc 02 §25): situação do veículo, ocorrências e desfecho.
 // Valores em centavos.
 
-export interface ItemQuadro {
-  id: string;
-  placa: string | null;
-  descricao: string;
-  status: string; // relação com o contrato (camada 1)
-  situacao: string;
-  situacaoRotulo: string;
-  situacaoDesde: string | null;
-  diasNaSituacao: number | null;
-  previsaoRetorno: string | null;
-  atrasadoNoRetorno: boolean;
-  contrato: { id: string; numero: string; titular: { id: string; nome: string } } | null;
-  ocorrenciasAbertas: number;
-}
-
 export interface Ocorrencia {
   id: string;
   tipo: string;
@@ -46,7 +31,6 @@ export interface Ocorrencia {
 }
 
 export interface OpcoesFrota {
-  situacoes: { valor: string; rotulo: string }[];
   tipos: { valor: string; rotulo: string }[];
   status: { valor: string; rotulo: string }[];
 }
@@ -61,21 +45,8 @@ export interface ResumoImportacao {
 }
 
 export const frotaService = {
-  async quadro(): Promise<ItemQuadro[]> {
-    const { data } = await api.get<ItemQuadro[]>('/api/v1/frota/quadro');
-    return data;
-  },
   async opcoes(): Promise<OpcoesFrota> {
     const { data } = await api.get<OpcoesFrota>('/api/v1/frota/opcoes');
-    return data;
-  },
-  async mover(ativoId: string, body: { situacao: string; motivo?: string; previsaoRetorno?: string }) {
-    await api.post(`/api/v1/frota/ativos/${ativoId}/situacao`, body);
-  },
-  async historico(ativoId: string) {
-    const { data } = await api.get<{ id: string; em: string; deRotulo: string | null; paraRotulo: string; motivo: string | null; usuario: string | null }[]>(
-      `/api/v1/frota/ativos/${ativoId}/historico`,
-    );
     return data;
   },
   async ocorrencias(filtros: { status?: string; tipo?: string; responsavel?: string; ativoId?: string; busca?: string } = {}): Promise<Ocorrencia[]> {

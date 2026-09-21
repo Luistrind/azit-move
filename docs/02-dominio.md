@@ -1761,20 +1761,22 @@ centro de custo (§4.4-A) e o contrato já resolve a regra:
 - **6.7** — o comprador é registrado como condutor principal no DETRAN;
 - **3.5** — reembolsos de despesas podem ser cobrados junto com as parcelas.
 
-### 25.1 Situação operacional do veículo
+### 25.1 A frota é uma LISTA (revisto com o Luís em 20/09)
 
-O `StatusAtivo` continua respondendo **"qual a relação deste veículo com um contrato?"**
-(Disponível, Em contrato, Transferido, Recuperado, Sinistrado) — é o que régua, carteira e
-venda consultam. **Onde o carro está** é outra pergunta e ganha campo próprio,
-`situacaoOperacional`, com histórico (quem mudou, quando, por quê, previsão de retorno):
+> **Primeira versão descartada:** eu havia criado uma "situação operacional" com sete valores
+> (oficina, pátio, vistoria…) e um quadro em colunas. O Luís mostrou que o controle real é
+> mais simples — e que **arrastar veículo não faz sentido, porque o status muda sozinho** com
+> o contrato. O que ele controla é: **modelo, placa, status, cliente e uma observação livre**,
+> usada principalmente nos veículos disponíveis ("na oficina", "aguardando documento").
 
-> Com o cliente · Em oficina · No pátio · Em vistoria · Em preparação · Em estoque · Baixado
-
-Decisão: **não ampliar o StatusAtivo** — um carro em contrato que foi para a oficina não pode
-deixar de ser "Em contrato", sob pena de sumir da cobrança e dos relatórios. As duas camadas
-convivem, como já acontece com fase × situação financeira × intervenções do contrato (§5.2).
-
-O **Quadro da frota** lista os veículos por situação, com dias parado em cada uma.
+Decisões:
+- a frota **não é tela nova**: é a lista de **Estoque de ativos**, que ganha as colunas
+  **Cliente** (titular do contrato ativo, quando houver) e **Observação** (texto livre,
+  editável na própria linha e auditado);
+- o **status continua automático** (Disponível, Em contrato, Transferido, Recuperado,
+  Sinistrado) — ninguém muda na mão;
+- nada de enum de situação: obrigar a operação a classificar o que hoje ela escreve livremente
+  seria trabalho novo sem ganho.
 
 ### 25.2 Ocorrências do veículo
 
@@ -1829,7 +1831,13 @@ dias. A API deles existe (GraphQL em `api.infleet.com.br/v1/graphql`, operação
 existente; nunca duplica. O que o operador já decidiu (desfecho, responsável) não é
 sobrescrito pela importação.
 
-### 25.5 Fases
+### 25.5 A tela de ocorrências é um KANBAN (decisão Luís 20/09)
+
+Ao contrário da frota, o desfecho de cada multa é **tratativa manual** — por isso as
+ocorrências ficam num quadro por etapa (registrada, em recurso, aguardando comprovante,
+resolvidas), onde o operador vê o que está parado esperando decisão.
+
+### 25.6 Fases
 
 - **Fase 1** (esta): situação operacional + ocorrências + desfecho/repasse + entrada manual,
   importação de planilha e robô do Infleet.

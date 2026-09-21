@@ -1,53 +1,31 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query, Res } from '@nestjs/common';
-import { ResponsavelOcorrencia, RoleUsuario, SituacaoOperacionalAtivo, TipoOcorrenciaVeiculo } from '@prisma/client';
+import { ResponsavelOcorrencia, RoleUsuario, TipoOcorrenciaVeiculo } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
-import { FrotaService, ROTULO_SITUACAO, SITUACOES } from './frota.service';
 import { OcorrenciaService, ROTULO_STATUS_OCORRENCIA, ROTULO_TIPO } from './ocorrencia.service';
 import { InfleetService } from './infleet.service';
 
 type Resposta = { header: (k: string, v: string) => Resposta; send: (b: Buffer) => void };
 const OPERACAO_FROTA = [RoleUsuario.ADMIN, RoleUsuario.DIRETOR, RoleUsuario.OPERADOR];
 
-// Controle de frota — doc 02 §25. Situação do veículo, ocorrências (multas,
-// IPVA, licenciamento) e o desfecho de cada uma.
+// Controle de frota — doc 02 §25: ocorrências do veículo (multas, IPVA,
+// licenciamento) e o desfecho de cada uma. A lista de veículos (modelo, placa,
+// status, cliente, observação) é a tela de Estoque de ativos.
 @Roles(...OPERACAO_FROTA)
 @Controller('frota')
 export class FrotaController {
   constructor(
-    private readonly frota: FrotaService,
     private readonly ocorrencias: OcorrenciaService,
     private readonly infleet: InfleetService,
   ) {}
 
-  // ---- Situação operacional ----
-  @Get('quadro')
-  quadro() {
-    return this.frota.quadro();
-  }
-
+  // Rótulos para os filtros e o quadro de ocorrências.
   @Get('opcoes')
   opcoes() {
     return {
-      situacoes: SITUACOES.map((s) => ({ valor: s, rotulo: ROTULO_SITUACAO[s] })),
       tipos: Object.entries(ROTULO_TIPO).map(([valor, rotulo]) => ({ valor, rotulo })),
       status: Object.entries(ROTULO_STATUS_OCORRENCIA).map(([valor, rotulo]) => ({ valor, rotulo })),
     };
-  }
-
-  @Post('ativos/:id/situacao')
-  @HttpCode(200)
-  mover(
-    @Param('id') id: string,
-    @Body() body: { situacao: SituacaoOperacionalAtivo; motivo?: string; previsaoRetorno?: string },
-    @CurrentUser() user: UsuarioAutenticado,
-  ) {
-    return this.frota.mover(id, body, user.id);
-  }
-
-  @Get('ativos/:id/historico')
-  historico(@Param('id') id: string) {
-    return this.frota.historico(id);
   }
 
   // ---- Ocorrências ----

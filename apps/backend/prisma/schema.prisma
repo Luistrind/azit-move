@@ -724,20 +724,17 @@ model Ativo {
   pacoteOfertaId       String? // vínculo opcional a pacote/oferta genérica (legado PopHub)
   ofertaFixaId         String? // oferta fixa desenhada (Doc 2 §4-A.3) — seletor no cadastro
   status               StatusAtivo      @default(DISPONIVEL)
-  // Controle de frota (doc 02 sec.25.1, 20/09): ONDE o carro está. Camada
-  // SEPARADA do status (que diz a relação com o contrato) — um veículo pode
-  // estar Em contrato E na oficina ao mesmo tempo.
-  situacaoOperacional  SituacaoOperacionalAtivo @default(EM_ESTOQUE)
-  situacaoDesde        DateTime?
-  previsaoRetorno      DateTime?
+  // Controle de frota (doc 02 sec.25.1, decisão Luís 20/09): o status já muda
+  // SOZINHO com o contrato; o que a operação anota à mão é uma observação
+  // livre (usada sobretudo nos veículos disponíveis — ex.: "na oficina").
+  observacao           String?
 
   origemCapital    OrigemCapital?
   estruturaJuridica EstruturaJuridica?   @relation(fields: [estruturaJuridicaId], references: [id])
   ofertaFixa       OfertaFixa?           @relation(fields: [ofertaFixaId], references: [id])
   lancamentosCusto LancamentoCustoAtivo[]
   documentos       AtivoDocumento[]
-  movimentacoesFrota MovimentacaoFrota[] // histórico da situação (doc 02 sec.25.1)
-  ocorrencias        OcorrenciaVeiculo[] // multas, IPVA, licenciamento (sec.25.2)
+  ocorrencias        OcorrenciaVeiculo[] // multas, IPVA, licenciamento (doc 02 sec.25.2)
   // 1 ativo pode ter vários contratos no tempo (ex: novação gera um novo);
   // a regra "1 ativo = 1 contrato ATIVO" é garantida em runtime (Doc 2 §4.4).
   contratosCredito ContratoCredito[]
@@ -868,32 +865,6 @@ model ParametroAssinatura {
 // ============================================================
 // Controle de frota — doc 02 sec.25 (decisão Luís 20/09).
 // ============================================================
-enum SituacaoOperacionalAtivo {
-  COM_CLIENTE
-  EM_OFICINA
-  NO_PATIO
-  EM_VISTORIA
-  EM_PREPARACAO
-  EM_ESTOQUE
-  BAIXADO
-}
-
-model MovimentacaoFrota {
-  id              String                    @id @default(cuid())
-  ativoId         String
-  de              SituacaoOperacionalAtivo?
-  para            SituacaoOperacionalAtivo
-  motivo          String?
-  previsaoRetorno DateTime?
-  usuarioId       String?
-  em              DateTime                  @default(now())
-
-  ativo Ativo @relation(fields: [ativoId], references: [id])
-
-  @@index([ativoId, em])
-  @@map("movimentacoes_frota")
-}
-
 enum TipoOcorrenciaVeiculo {
   MULTA
   NOTIFICACAO // autuação: ainda sem valor, com prazo de indicação

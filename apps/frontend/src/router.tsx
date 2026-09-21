@@ -31,7 +31,6 @@ import { SimuladorConfigPage } from './pages/SimuladorConfigPage';
 import { UsuariosPage } from './pages/UsuariosPage';
 import { CentroCustoPage } from './pages/CentroCustoPage';
 import { IntegracoesPage } from './pages/IntegracoesPage';
-import { FrotaPage } from './pages/FrotaPage';
 import { OcorrenciasPage } from './pages/OcorrenciasPage';
 
 // Rotas client-side — Doc 4 §5.1. /login é pública; o restante é protegido pela sessão.
@@ -147,10 +146,6 @@ export const router = createBrowserRouter([
       {
         path: 'configuracoes/assinatura',
         element: <AssinaturaConfigPage />,
-      },
-      {
-        path: 'frota',
-        element: <FrotaPage />,
       },
       {
         path: 'frota/ocorrencias',

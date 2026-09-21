@@ -8,31 +8,81 @@ import { toast } from '../components/Toast';
 import { mensagemErro, usePodeRole, ROLE_OPERACAO } from '../lib/permissoes';
 import { OCORRENCIA_STATUS_COLORS, RESPONSAVEL_OCORRENCIA_COLORS } from '../config/statusColors';
 
-// Multas e pendências do veículo (doc 02 §25.2/§25.3): quem responde sai da data
-// do fato, e o desfecho é negociado — nem toda ocorrência vira cobrança.
+// Multas e pendências (doc 02 §25.2/§25.3). É um KANBAN porque cada desfecho é
+// TRATATIVA MANUAL (decisão Luís 20/09) — ao contrário da frota, que é lista,
+// já que o status do veículo muda sozinho com o contrato.
 
-const dataBR = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('pt-BR') : '—');
+// Data-calendário direto do ISO (mesma convenção das outras telas): converter
+// pelo fuso local faz 01/09 virar 31/08, porque o vencimento é UTC-meia-noite.
+const dataBR = (iso: string | null) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—');
 const btn = 'h-[30px] rounded-[8px] px-[10px] text-[11.5px] font-semibold disabled:opacity-50';
 const btnSec = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-body)' } as const;
 const inputCls = 'w-full rounded-[8px] px-[10px] py-[7px] text-[13px]';
 const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' } as const;
-const ABERTAS = ['REGISTRADA', 'EM_RECURSO', 'AGUARDANDO_COMPROVANTE'];
+
+// Etapas do quadro: as três primeiras são o que espera decisão; a última fecha o ciclo.
+const COLUNAS: { chave: string; titulo: string; ajuda: string; status: string[] }[] = [
+  { chave: 'novas', titulo: 'Novas', ajuda: 'Chegaram e ainda não têm desfecho', status: ['REGISTRADA'] },
+  { chave: 'recurso', titulo: 'Em recurso', ajuda: 'Aguardando decisão do órgão', status: ['EM_RECURSO'] },
+  { chave: 'comprovante', titulo: 'Aguardando comprovante', ajuda: 'Cliente ficou de pagar direto', status: ['AGUARDANDO_COMPROVANTE'] },
+  { chave: 'encerradas', titulo: 'Encerradas', ajuda: 'Cobradas, quitadas, assumidas ou canceladas', status: ['REPASSADA', 'QUITADA', 'ASSUMIDA_AZIT', 'CANCELADA'] },
+];
 
 type Acao = 'repassar' | 'cliente-paga' | 'assumir' | 'recurso' | 'cancelar' | 'responsavel' | 'comprovante';
+
+function Card({ o, onAbrir }: { o: Ocorrencia; onAbrir: () => void }) {
+  const cor = OCORRENCIA_STATUS_COLORS[o.status];
+  const corResp = RESPONSAVEL_OCORRENCIA_COLORS[o.responsavel];
+  const prazoVencido = o.status === 'AGUARDANDO_COMPROVANTE' && !!o.prazoComprovante && new Date(o.prazoComprovante) < new Date();
+  return (
+    <div onClick={onAbrir} role="button" title="Abrir a ocorrência"
+      className="cursor-pointer rounded-[10px] p-[11px] transition-shadow hover:shadow-[0_4px_14px_rgba(0,16,41,.12)]"
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div className="flex items-start justify-between gap-[8px]">
+        <div className="min-w-0">
+          <div className="text-[12.5px] font-bold" style={{ color: 'var(--text-primary)' }}>{o.ativo.placa ?? 'sem placa'}</div>
+          <div className="truncate text-[11px]" style={{ color: 'var(--text-secondary)' }}>{o.tipoRotulo}{o.numeroAuto ? ` · ${o.numeroAuto}` : ''}</div>
+        </div>
+        <span className="whitespace-nowrap rounded-full px-[8px] py-[1px] text-[10px] font-bold" style={{ background: corResp.bg, color: corResp.fg }}>
+          {o.responsavel === 'CLIENTE' ? 'cliente' : 'Azit'}
+        </span>
+      </div>
+      {o.contrato && (
+        <div className="mt-[4px] truncate text-[11px]" style={{ color: 'var(--text-muted)' }}>{o.contrato.titular.nome}</div>
+      )}
+      <div className="mt-[7px] flex items-center justify-between">
+        <span className="font-display text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>{formatCurrency(o.valorComDesconto ?? o.valor)}</span>
+        <span className="text-[10.5px] tabular-nums" style={{ color: 'var(--text-muted)' }}>fato {dataBR(o.dataFato)}</span>
+      </div>
+      {o.status === 'AGUARDANDO_COMPROVANTE' && o.prazoComprovante && (
+        <div className="mt-[5px] text-[10.5px] tabular-nums" style={{ color: prazoVencido ? OCORRENCIA_STATUS_COLORS.CANCELADA.fg : 'var(--text-muted)' }}>
+          comprovante até {dataBR(o.prazoComprovante)}{prazoVencido ? ' · atrasado' : ''}
+        </div>
+      )}
+      {o.repasse && (
+        <div className="mt-[5px] text-[10.5px]" style={{ color: 'var(--text-muted)' }}>fatura {o.repasse.faturaNumero} · venc. {dataBR(o.repasse.vencimento)}</div>
+      )}
+      {['REPASSADA', 'QUITADA', 'ASSUMIDA_AZIT', 'CANCELADA'].includes(o.status) && (
+        <span className="mt-[6px] inline-block rounded-full px-[8px] py-[1px] text-[10px] font-bold" style={{ background: cor.bg, color: cor.fg }}>{o.statusRotulo}</span>
+      )}
+    </div>
+  );
+}
 
 export function OcorrenciasPage() {
   const qc = useQueryClient();
   const pode = usePodeRole();
   const podeOperar = pode(ROLE_OPERACAO);
   const [params] = useSearchParams();
-  const [filtros, setFiltros] = useState({ status: 'abertas', tipo: '', responsavel: '', busca: '' });
   const ativoId = params.get('ativo') ?? undefined;
+  const [filtros, setFiltros] = useState({ tipo: '', responsavel: '', busca: '' });
   const lista = useQuery({
     queryKey: ['ocorrencias', filtros, ativoId],
-    queryFn: () => svc.ocorrencias({ ...filtros, ativoId, status: filtros.status || undefined, tipo: filtros.tipo || undefined, responsavel: filtros.responsavel || undefined, busca: filtros.busca || undefined }),
+    queryFn: () => svc.ocorrencias({ ativoId, tipo: filtros.tipo || undefined, responsavel: filtros.responsavel || undefined, busca: filtros.busca || undefined }),
   });
   const opcoes = useQuery({ queryKey: ['frota-opcoes'], queryFn: () => svc.opcoes() });
 
+  const [detalhe, setDetalhe] = useState<Ocorrencia | null>(null);
   const [acao, setAcao] = useState<{ tipo: Acao; o: Ocorrencia } | null>(null);
   const [nova, setNova] = useState(false);
   const [importar, setImportar] = useState(false);
@@ -44,6 +94,17 @@ export function OcorrenciasPage() {
 
   const itens = lista.data ?? [];
 
+  function abrirAcao(tipo: Acao, o: Ocorrencia) {
+    setCampo({
+      valor: String(((o.valorComDesconto ?? o.valor) / 100).toFixed(2)),
+      prazo: '', obs: '', motivo: '', justificativa: '',
+      responsavel: o.responsavel === 'CLIENTE' ? 'AZIT' : 'CLIENTE',
+      arquivoNome: '', arquivoConteudo: '',
+    });
+    setDetalhe(null);
+    setAcao({ tipo, o });
+  }
+
   async function rodar(fn: () => Promise<unknown>, ok: string) {
     setOcupado(true);
     try {
@@ -51,9 +112,7 @@ export function OcorrenciasPage() {
       toast.sucesso(ok);
       setAcao(null);
       setNova(false);
-      setCampo({ valor: '', prazo: '', obs: '', motivo: '', justificativa: '', responsavel: 'CLIENTE', arquivoNome: '', arquivoConteudo: '' });
       await qc.invalidateQueries({ queryKey: ['ocorrencias'] });
-      await qc.invalidateQueries({ queryKey: ['frota-quadro'] });
     } catch (e) {
       toast.erro(mensagemErro(e));
     } finally {
@@ -66,7 +125,7 @@ export function OcorrenciasPage() {
     setResumo(null);
     try {
       const r = await svc.importarInfleet(credencial.usuario, credencial.senha);
-      setCredencial({ usuario: '', senha: '' }); // a credencial não fica nem na tela
+      setCredencial({ usuario: '', senha: '' }); // não fica nem na tela
       setResumo(r);
       toast.sucesso(`${r.criadas} nova(s), ${r.atualizadas} atualizada(s).`);
       await qc.invalidateQueries({ queryKey: ['ocorrencias'] });
@@ -83,26 +142,23 @@ export function OcorrenciasPage() {
     leitor.readAsDataURL(file);
   }
 
+  const aberta = (o: Ocorrencia) => ['REGISTRADA', 'EM_RECURSO', 'AGUARDANDO_COMPROVANTE'].includes(o.status);
+
   return (
-    <div className="flex flex-col gap-[14px]">
+    <div className="flex h-full flex-col gap-[12px]">
       <div className="flex flex-wrap items-center justify-between gap-[10px]">
-        <p className="max-w-[720px] text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
-          Multas, IPVA, licenciamento e outras pendências da placa. O responsável sai da <b>data do fato</b>: o que
-          aconteceu na posse do cliente é dele (cláusulas 6.4 e 6.7 do contrato).
+        <p className="max-w-[680px] text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
+          Cada cartão espera uma decisão sua: cobrar do cliente, deixar que ele pague direto ou a Azit assumir. O
+          responsável vem da <b>data do fato</b> (cláusulas 6.4 e 6.7 do contrato).
         </p>
         <div className="flex flex-wrap gap-[8px]">
-          <Link to="/frota" className={btn} style={{ ...btnSec, lineHeight: '30px' }}>Quadro da frota</Link>
+          <Link to="/ativos" className={btn} style={{ ...btnSec, lineHeight: '30px' }}>Frota e estoque</Link>
           {podeOperar && <button className={btn} style={btnSec} onClick={() => { setResumo(null); setImportar(true); }}>Importar do Infleet</button>}
           {podeOperar && <button className={btn} style={{ background: 'var(--navy)', color: '#fff' }} onClick={() => setNova(true)}>Nova ocorrência</button>}
         </div>
       </div>
 
       <div className="flex flex-wrap gap-[8px]">
-        <select className="h-[32px] rounded-[8px] px-[8px] text-[12px]" style={inputStyle} value={filtros.status} onChange={(e) => setFiltros({ ...filtros, status: e.target.value })}>
-          <option value="abertas">Em aberto</option>
-          <option value="">Todas</option>
-          {(opcoes.data?.status ?? []).map((s) => <option key={s.valor} value={s.valor}>{s.rotulo}</option>)}
-        </select>
         <select className="h-[32px] rounded-[8px] px-[8px] text-[12px]" style={inputStyle} value={filtros.tipo} onChange={(e) => setFiltros({ ...filtros, tipo: e.target.value })}>
           <option value="">Todos os tipos</option>
           {(opcoes.data?.tipos ?? []).map((t) => <option key={t.valor} value={t.valor}>{t.rotulo}</option>)}
@@ -116,95 +172,77 @@ export function OcorrenciasPage() {
           value={filtros.busca} onChange={(e) => setFiltros({ ...filtros, busca: e.target.value })} />
       </div>
 
-      <div className="rounded-card overflow-x-auto" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <table className="w-full text-[12.5px]">
-          <thead>
-            <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
-              <th className="px-[14px] py-[10px] text-left">Veículo</th>
-              <th className="px-[14px] py-[10px] text-left">Ocorrência</th>
-              <th className="px-[14px] py-[10px] text-left">Fato</th>
-              <th className="px-[14px] py-[10px] text-left">Vencimento</th>
-              <th className="px-[14px] py-[10px] text-right">Valor</th>
-              <th className="px-[14px] py-[10px] text-left">Responsável</th>
-              <th className="px-[14px] py-[10px] text-left">Situação</th>
-              <th className="px-[14px] py-[10px]"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {itens.length === 0 && (
-              <tr><td colSpan={8} className="px-[14px] py-[18px] text-center" style={{ color: 'var(--text-muted)' }}>
-                {lista.isLoading ? 'Carregando…' : 'Nenhuma ocorrência com esses filtros.'}
-              </td></tr>
-            )}
-            {itens.map((o) => {
-              const cor = OCORRENCIA_STATUS_COLORS[o.status];
-              const corResp = RESPONSAVEL_OCORRENCIA_COLORS[o.responsavel];
-              const aberta = ABERTAS.includes(o.status);
-              return (
-                <tr key={o.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td className="px-[14px] py-[10px]">
-                    <div className="font-semibold">{o.ativo.placa ?? '—'}</div>
-                    <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{o.ativo.descricao}</div>
-                  </td>
-                  <td className="px-[14px] py-[10px]">
-                    <div className="font-semibold">{o.tipoRotulo}</div>
-                    <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                      {o.numeroAuto ?? 'sem número'}{o.orgao ? ` · ${o.orgao}` : ''}{o.origem !== 'manual' ? ` · ${o.origem}` : ''}
-                    </div>
-                  </td>
-                  <td className="px-[14px] py-[10px] tabular-nums">{dataBR(o.dataFato)}</td>
-                  <td className="px-[14px] py-[10px] tabular-nums">
-                    {dataBR(o.dataVencimento)}
-                    {o.prazoIndicacao && <div className="text-[10.5px]" style={{ color: 'var(--text-muted)' }}>indicação {dataBR(o.prazoIndicacao)}</div>}
-                  </td>
-                  <td className="px-[14px] py-[10px] text-right font-semibold tabular-nums">{formatCurrency(o.valorComDesconto ?? o.valor)}</td>
-                  <td className="px-[14px] py-[10px]">
-                    <span className="rounded-full px-[9px] py-[2px] text-[10.5px] font-bold" style={{ background: corResp.bg, color: corResp.fg }}>
-                      {o.responsavel === 'CLIENTE' ? 'Cliente' : 'Azit'}
-                    </span>
-                    {o.contrato && (
-                      <div className="mt-[3px] text-[10.5px]">
-                        <Link to={`/contratos/${o.contrato.id}`} className="hover:underline" style={{ color: 'var(--navy)' }}>{o.contrato.titular.nome}</Link>
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-[14px] py-[10px]">
-                    <span className="rounded-full px-[9px] py-[2px] text-[10.5px] font-bold" style={{ background: cor.bg, color: cor.fg }}>{o.statusRotulo}</span>
-                    {o.repasse && (
-                      <div className="mt-[3px] text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
-                        fatura {o.repasse.faturaNumero} · venc. {dataBR(o.repasse.vencimento)}
-                      </div>
-                    )}
-                    {o.status === 'AGUARDANDO_COMPROVANTE' && o.prazoComprovante && (
-                      <div className="mt-[3px] text-[10.5px]" style={{ color: new Date(o.prazoComprovante) < new Date() ? '#c0392b' : 'var(--text-muted)' }}>
-                        comprovante até {dataBR(o.prazoComprovante)}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-[14px] py-[10px]">
-                    <div className="flex flex-wrap justify-end gap-[6px]">
-                      {o.temComprovante && <button className={btn} style={btnSec} onClick={() => svc.abrirComprovante(o.id)}>Comprovante</button>}
-                      {podeOperar && aberta && (
-                        <>
-                          {o.responsavel === 'CLIENTE' && <button className={btn} style={{ background: 'var(--accent)', color: '#fff' }} onClick={() => { setCampo((c) => ({ ...c, valor: String(((o.valorComDesconto ?? o.valor) / 100).toFixed(2)) })); setAcao({ tipo: 'repassar', o }); }}>Cobrar na fatura</button>}
-                          {o.responsavel === 'CLIENTE' && o.status !== 'AGUARDANDO_COMPROVANTE' && <button className={btn} style={btnSec} onClick={() => setAcao({ tipo: 'cliente-paga', o })}>Cliente paga direto</button>}
-                          {o.status === 'AGUARDANDO_COMPROVANTE' && <button className={btn} style={btnSec} onClick={() => setAcao({ tipo: 'comprovante', o })}>Registrar comprovante</button>}
-                          <button className={btn} style={btnSec} onClick={() => setAcao({ tipo: 'assumir', o })}>Azit assume</button>
-                          <button className={btn} style={btnSec} onClick={() => setAcao({ tipo: 'recurso', o })}>Recurso</button>
-                          <button className={btn} style={btnSec} onClick={() => { setCampo((c) => ({ ...c, responsavel: o.responsavel === 'CLIENTE' ? 'AZIT' : 'CLIENTE' })); setAcao({ tipo: 'responsavel', o }); }}>Trocar responsável</button>
-                          <button className={btn} style={btnSec} onClick={() => setAcao({ tipo: 'cancelar', o })}>Cancelar</button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="flex flex-1 gap-[13px] overflow-x-auto pb-[8px]">
+        {COLUNAS.map((col) => {
+          const cards = itens.filter((o) => col.status.includes(o.status));
+          const cor = OCORRENCIA_STATUS_COLORS[col.status[0]];
+          const total = cards.reduce((s, o) => s + (o.valorComDesconto ?? o.valor), 0);
+          return (
+            <div key={col.chave} className="flex w-[230px] flex-none flex-col rounded-card" style={{ background: 'var(--surface-muted)', border: '1px solid var(--border)' }}>
+              <div className="flex items-start gap-[8px] px-[13px] py-[11px]" style={{ borderBottom: '1px solid var(--border)' }}>
+                <span className="mt-[4px] h-[9px] w-[9px] flex-none rounded-full" style={{ background: cor.fg }} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12px] font-bold" style={{ color: 'var(--text-primary)' }}>{col.titulo}</div>
+                  <div className="truncate text-[10px]" style={{ color: 'var(--text-muted)' }} title={col.ajuda}>{col.ajuda}</div>
+                  {total > 0 && <div className="text-[10.5px] tabular-nums" style={{ color: 'var(--text-muted)' }}>{formatCurrency(total)}</div>}
+                </div>
+                <div className="font-display text-[14px] font-bold" style={{ color: cor.fg }}>{cards.length}</div>
+              </div>
+              <div className="flex flex-1 flex-col gap-[9px] overflow-auto p-[11px]">
+                {cards.length === 0 && <div className="py-[10px] text-center text-[11px]" style={{ color: 'var(--text-muted)' }}>Vazio</div>}
+                {cards.map((o) => <Card key={o.id} o={o} onAbrir={() => setDetalhe(o)} />)}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* ---- Ações ---- */}
+      {/* Detalhe + tratativas */}
+      {detalhe && (
+        <Modal open onClose={() => setDetalhe(null)} title={`${detalhe.tipoRotulo} — ${detalhe.ativo.placa ?? 'sem placa'}`} largura={540}>
+          <div className="flex flex-col gap-[10px] text-[12.5px]">
+            <div className="flex flex-wrap gap-[6px]">
+              <span className="rounded-full px-[9px] py-[2px] text-[11px] font-bold" style={{ background: OCORRENCIA_STATUS_COLORS[detalhe.status].bg, color: OCORRENCIA_STATUS_COLORS[detalhe.status].fg }}>{detalhe.statusRotulo}</span>
+              <span className="rounded-full px-[9px] py-[2px] text-[11px] font-bold" style={{ background: RESPONSAVEL_OCORRENCIA_COLORS[detalhe.responsavel].bg, color: RESPONSAVEL_OCORRENCIA_COLORS[detalhe.responsavel].fg }}>
+                {detalhe.responsavel === 'CLIENTE' ? 'Responsável: cliente' : 'Responsável: Azit'}
+              </span>
+              {detalhe.origem !== 'manual' && <span className="rounded-full px-[9px] py-[2px] text-[11px]" style={{ background: 'var(--surface-input)', color: 'var(--text-muted)' }}>origem: {detalhe.origem}</span>}
+            </div>
+            <div className="grid grid-cols-2 gap-x-[16px] gap-y-[4px]" style={{ color: 'var(--text-body)' }}>
+              <span>Veículo: <b>{detalhe.ativo.descricao}</b></span>
+              <span>Valor: <b className="tabular-nums">{formatCurrency(detalhe.valorComDesconto ?? detalhe.valor)}</b></span>
+              <span>Data do fato: <b className="tabular-nums">{dataBR(detalhe.dataFato)}</b></span>
+              <span>Vencimento: <b className="tabular-nums">{dataBR(detalhe.dataVencimento)}</b></span>
+              {detalhe.numeroAuto && <span>Auto: <b>{detalhe.numeroAuto}</b></span>}
+              {detalhe.orgao && <span>Órgão: <b>{detalhe.orgao}</b></span>}
+              {detalhe.prazoIndicacao && <span>Indicação até: <b className="tabular-nums">{dataBR(detalhe.prazoIndicacao)}</b></span>}
+              {detalhe.contrato && (
+                <span>Cliente: <Link to={`/contratos/${detalhe.contrato.id}`} className="font-bold hover:underline" style={{ color: 'var(--navy)' }}>{detalhe.contrato.titular.nome}</Link></span>
+              )}
+            </div>
+            {detalhe.descricao && <div style={{ color: 'var(--text-muted)' }}>{detalhe.descricao}</div>}
+            {detalhe.responsavelJustificativa && <div style={{ color: 'var(--text-muted)' }}>Responsável alterado: {detalhe.responsavelJustificativa}</div>}
+            {detalhe.desfechoObs && <div style={{ color: 'var(--text-muted)' }}>Desfecho: {detalhe.desfechoObs}</div>}
+            {detalhe.repasse && <div style={{ color: 'var(--text-muted)' }}>Cobrado na fatura {detalhe.repasse.faturaNumero}, com vencimento em {dataBR(detalhe.repasse.vencimento)}.</div>}
+
+            <div className="flex flex-wrap justify-end gap-[8px] pt-[4px]">
+              {detalhe.temComprovante && <button className={btn} style={btnSec} onClick={() => svc.abrirComprovante(detalhe.id)}>Ver comprovante</button>}
+              {podeOperar && aberta(detalhe) && (
+                <>
+                  {detalhe.responsavel === 'CLIENTE' && <button className={btn} style={{ background: 'var(--accent)', color: '#fff' }} onClick={() => abrirAcao('repassar', detalhe)}>Cobrar na fatura</button>}
+                  {detalhe.responsavel === 'CLIENTE' && detalhe.status !== 'AGUARDANDO_COMPROVANTE' && <button className={btn} style={btnSec} onClick={() => abrirAcao('cliente-paga', detalhe)}>Cliente paga direto</button>}
+                  {detalhe.status === 'AGUARDANDO_COMPROVANTE' && <button className={btn} style={btnSec} onClick={() => abrirAcao('comprovante', detalhe)}>Registrar comprovante</button>}
+                  <button className={btn} style={btnSec} onClick={() => abrirAcao('assumir', detalhe)}>Azit assume</button>
+                  <button className={btn} style={btnSec} onClick={() => abrirAcao('recurso', detalhe)}>Recurso</button>
+                  <button className={btn} style={btnSec} onClick={() => abrirAcao('responsavel', detalhe)}>Trocar responsável</button>
+                  <button className={btn} style={btnSec} onClick={() => abrirAcao('cancelar', detalhe)}>Cancelar</button>
+                </>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {acao?.tipo === 'repassar' && (
         <Modal open onClose={() => setAcao(null)} title="Cobrar na fatura do cliente">
           <div className="flex flex-col gap-[10px] text-[12.5px]">
@@ -238,7 +276,7 @@ export function OcorrenciasPage() {
               <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Em branco = 7 dias.</span>
             </label>
             <label className="flex flex-col gap-[4px]">Observação
-              <input className={inputCls} style={inputStyle} value={campo.obs} onChange={(e) => setCampo({ ...campo, obs: e.target.value })} placeholder="Ex.: combinado por telefone com o cliente" />
+              <input className={inputCls} style={inputStyle} value={campo.obs} onChange={(e) => setCampo({ ...campo, obs: e.target.value })} placeholder="Ex.: combinado por telefone" />
             </label>
             <div className="flex justify-end gap-[8px]">
               <button className={btn} style={btnSec} onClick={() => setAcao(null)}>Cancelar</button>
@@ -407,7 +445,7 @@ export function OcorrenciasPage() {
                   </div>
                 )}
                 {resumo.naoMapeadas > 0 && (
-                  <div className="text-[11.5px]" style={{ color: '#c0392b' }}>
+                  <div className="text-[11.5px]" style={{ color: OCORRENCIA_STATUS_COLORS.CANCELADA.fg }}>
                     {resumo.naoMapeadas} registro(s) vieram num formato que ainda não sei ler. Mande este trecho para o
                     time de desenvolvimento:
                     <pre className="mt-[4px] max-h-[160px] overflow-auto whitespace-pre-wrap rounded-[8px] p-[8px] text-[10.5px]" style={{ background: 'var(--surface)' }}>

@@ -17,6 +17,16 @@ import {
   valorAquisicaoParaPrisma,
 } from './ativo.mapper';
 
+// Cliente do veículo (doc 02 §25.1): titular do contrato ATIVO, quando existe.
+// 1 ativo = 1 contrato ativo por vez (Doc 2 §4.4), por isso take: 1.
+const INCLUDE_CLIENTE = {
+  contratosCredito: {
+    where: { status: 'ATIVO' as const, deletedAt: null },
+    select: { id: true, numero: true, conta: { select: { titular: { select: { id: true, nome: true } } } } },
+    take: 1,
+  },
+};
+
 export interface ListaPaginada<T> {
   total: number;
   page: number;
@@ -99,7 +109,7 @@ export class AtivoService {
         orderBy: { createdAt: 'desc' },
         skip: (filtros.page - 1) * filtros.limit,
         take: filtros.limit,
-        include: { estruturaJuridica: { select: { id: true, nome: true } } },
+        include: { estruturaJuridica: { select: { id: true, nome: true } }, ...INCLUDE_CLIENTE },
       }),
     ]);
 
@@ -114,7 +124,7 @@ export class AtivoService {
   async buscarPorId(id: string): Promise<AtivoApi> {
     const ativo = await this.prisma.db.ativo.findFirst({
       where: { id },
-      include: { estruturaJuridica: { select: { id: true, nome: true } } },
+      include: { estruturaJuridica: { select: { id: true, nome: true } }, ...INCLUDE_CLIENTE },
     });
     if (!ativo) throw this.naoEncontrado();
     return ativoParaApi(ativo);
@@ -157,6 +167,7 @@ export class AtivoService {
       renavam: dto.renavam,
       quilometragemEntrada: dto.quilometragemEntrada,
     };
+    if (dto.observacao !== undefined) data.observacao = dto.observacao?.trim() || null;
     if (dto.tipo) data.tipo = mapearAtivoEnums.tipoParaPrisma(dto.tipo);
     if (dto.status) data.status = mapearAtivoEnums.statusParaPrisma(dto.status);
     if (dto.origem !== undefined) {

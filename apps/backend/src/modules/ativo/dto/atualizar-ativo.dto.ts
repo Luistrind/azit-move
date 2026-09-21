@@ -27,6 +27,9 @@ export const atualizarAtivoSchema = z.object({
   status: z
     .enum(['disponivel', 'em_contrato', 'transferido', 'recuperado', 'sinistrado'])
     .optional(),
+  // Controle de frota (doc 02 §25.1): anotação livre da operação — "na
+  // oficina", "aguardando documento". Editada na própria lista.
+  observacao: z.string().trim().max(500).nullish(),
 });
 
 export type AtualizarAtivoDto = z.infer<typeof atualizarAtivoSchema>;

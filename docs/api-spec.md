@@ -1000,6 +1000,35 @@ Split entre carteira do fundo e carteira Azit:
 
 ---
 
+## 6-B. Controle de frota — doc 02 §25 (20/09)
+
+A **lista da frota** é a tela de ativos: `GET /ativos` passou a devolver `cliente`
+(titular do contrato ATIVO, com id e número do contrato) e `observacao`. A anotação livre é
+gravada pelo endpoint que já existia: `PATCH /ativos/:id` com `{ "observacao": "..." }`
+(`null` ou vazio limpa). Não há tela nem rota de "situação do veículo": o status é automático.
+
+Ocorrências (multa, IPVA, licenciamento…) — papéis ADMIN, DIRETOR e OPERADOR:
+
+| Método e rota | O que faz |
+|---|---|
+| `GET /frota/opcoes` | Rótulos de tipo e de situação, para filtros e colunas |
+| `GET /frota/ocorrencias` | Filtros: `status` (ou `abertas`), `tipo`, `responsavel`, `ativoId`, `busca` (placa ou número do auto) |
+| `POST /frota/ocorrencias` | Registro manual; identifica o veículo por `ativoId` ou `placa`. O responsável sai da **data do fato** contra a posse do cliente |
+| `POST /frota/ocorrencias/:id/responsavel` | `{ responsavel, justificativa }` — sobrepõe o cálculo (mínimo 10 caracteres, auditado) |
+| `POST /frota/ocorrencias/:id/repassar` | `{ valor? }` — item SERVICO na próxima fatura ABERTA da conta, somando no total (422 `sem_fatura_aberta` quando não há ciclo à frente) |
+| `POST /frota/ocorrencias/:id/cliente-paga` | `{ prazoComprovante?, observacao? }` — pendência de comprovante (padrão 7 dias) |
+| `POST /frota/ocorrencias/:id/comprovante` | `{ arquivo?: { nome, conteudo base64 }, observacao? }` → quitada |
+| `GET /frota/ocorrencias/:id/comprovante` | Baixa o comprovante |
+| `POST /frota/ocorrencias/:id/assumir` | Vira `LancamentoCustoAtivo` (centro de custo do veículo) |
+| `POST /frota/ocorrencias/:id/recurso` · `/cancelar` · `/reabrir` | Demais desfechos |
+| `POST /frota/ocorrencias/importar-infleet` | `{ usuario, senha }` — robô com navegador no servidor. A credencial **não** é gravada nem enfileirada; roda na própria requisição. Devolve `criadas`, `atualizadas`, `ignoradas`, `naoMapeadas` e `amostraBruta` |
+
+Idempotência: a chave é o **número do auto**. Reimportar atualiza os dados da fonte e nunca
+sobrescreve desfecho ou responsável definidos pelo operador.
+
+Agendado: alerta diário às 7h (America/Sao_Paulo) de prazo de indicação, comprovante atrasado
+e vencimento próximo.
+
 ## 7. Placeholders de API
 
 | Endpoint | Descrição | Bloqueio |

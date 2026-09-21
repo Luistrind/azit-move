@@ -106,12 +106,32 @@ export interface AtivoApi {
   // Estrutura jurídica DONA do ativo (tag — homologação 04/08); null nos legados.
   estruturaJuridica: { id: string; nome: string } | null;
   status: StatusApi;
+  // Controle de frota (doc 02 §25.1): anotação livre da operação e o cliente
+  // do contrato ativo — as duas colunas que faltavam na lista de veículos.
+  observacao: string | null;
+  cliente: { id: string; nome: string; contratoId: string; contratoNumero: string } | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export function ativoParaApi(a: Ativo & { estruturaJuridica?: { id: string; nome: string } | null }): AtivoApi {
+type ContratoDoAtivo = {
+  id: string;
+  numero: string;
+  conta: { titular: { id: string; nome: string } };
+};
+
+export function ativoParaApi(
+  a: Ativo & {
+    estruturaJuridica?: { id: string; nome: string } | null;
+    contratosCredito?: ContratoDoAtivo[];
+  },
+): AtivoApi {
+  const contrato = a.contratosCredito?.[0];
   return {
+    observacao: a.observacao,
+    cliente: contrato
+      ? { id: contrato.conta.titular.id, nome: contrato.conta.titular.nome, contratoId: contrato.id, contratoNumero: contrato.numero }
+      : null,
     id: a.id,
     tipo: tipo.paraApi[a.tipo],
     varianteCatalogo: a.varianteCatalogo,

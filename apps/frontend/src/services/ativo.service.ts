@@ -24,6 +24,9 @@ export interface Ativo {
   // Estrutura jurídica DONA do ativo (tag — homologação 04/08); null nos legados.
   estruturaJuridica?: { id: string; nome: string } | null;
   status: string;
+  // Controle de frota (doc 02 §25.1): anotação livre e cliente do contrato ativo.
+  observacao: string | null;
+  cliente: { id: string; nome: string; contratoId: string; contratoNumero: string } | null;
 }
 
 export interface OrigemCapital {
@@ -79,7 +82,7 @@ export const ativoService = {
     const { data } = await api.post('/api/v1/ativos', body);
     return data;
   },
-  async atualizar(id: string, body: Partial<CriarAtivoBody> & { status?: string }): Promise<Ativo> {
+  async atualizar(id: string, body: Partial<CriarAtivoBody> & { status?: string; observacao?: string | null }): Promise<Ativo> {
     const { data } = await api.patch(`/api/v1/ativos/${id}`, body);
     return data;
   },

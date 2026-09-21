@@ -94,6 +94,19 @@ export function AtivoPage() {
       await queryClient.invalidateQueries({ queryKey: ['ativo-documentos', editId] });
     } catch (e) { toast.erro(mensagemErro(e)); }
   }
+  // Observação da frota (doc 02 §25.1): o operador anota na própria linha —
+  // "na oficina", "aguardando documento". Salva ao sair do campo.
+  async function salvarObservacao(id: string, texto: string, anterior: string | null) {
+    if (texto.trim() === (anterior ?? '').trim()) return;
+    try {
+      await ativoService.atualizar(id, { observacao: texto.trim() || null });
+      await queryClient.invalidateQueries({ queryKey: ['ativos'] });
+      toast.sucesso('Observação salva.');
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+    }
+  }
+
   const ativos = useQuery({
     queryKey: ['ativos', filtroStatus, busca],
     queryFn: () => ativoService.listar({
@@ -338,11 +351,13 @@ export function AtivoPage() {
               <th className="px-[18px] py-[12px] text-left font-semibold">Estrutura jurídica</th>
               <th className="px-[18px] py-[12px] text-right font-semibold">Valor de venda</th>
               <th className="px-[18px] py-[12px] text-left font-semibold">Status</th>
+              <th className="px-[18px] py-[12px] text-left font-semibold">Cliente</th>
+              <th className="px-[18px] py-[12px] text-left font-semibold">Observação</th>
             </tr>
           </thead>
           <tbody>
             {ativos.data?.data.length === 0 && (
-              <tr><td colSpan={5} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>Nenhum ativo.</td></tr>
+              <tr><td colSpan={7} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>Nenhum ativo.</td></tr>
             )}
             {ativos.data?.data.map((a) => (
               <tr key={a.id} className={podeEditar ? 'cursor-pointer hover:bg-[var(--surface-input)]' : ''}
@@ -358,6 +373,30 @@ export function AtivoPage() {
                 </td>
                 <td className="px-[18px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>{a.valorVenda ? formatCurrency(a.valorVenda) : '—'}</td>
                 <td className="px-[18px] py-[12px]"><StatusBadge label={STATUS_LABEL[a.status] ?? a.status} colors={ATIVO_STATUS_COLORS} /></td>
+                <td className="px-[18px] py-[12px]" style={{ color: 'var(--text-body)' }}>
+                  {a.cliente ? (
+                    <Link to={`/contratos/${a.cliente.contratoId}`} onClick={(e) => e.stopPropagation()} className="hover:underline" style={{ color: 'var(--navy)' }}>
+                      {a.cliente.nome}
+                      <span className="block text-[11px]" style={{ color: 'var(--text-muted)' }}>{a.cliente.contratoNumero}</span>
+                    </Link>
+                  ) : '—'}
+                </td>
+                {/* Observação livre da operação — editada aqui mesmo (doc 02 §25.1). */}
+                <td className="px-[18px] py-[8px]" onClick={(e) => e.stopPropagation()}>
+                  {podeEditar ? (
+                    <input
+                      defaultValue={a.observacao ?? ''}
+                      placeholder="—"
+                      title="Anotação livre: na oficina, aguardando documento…"
+                      onBlur={(e) => void salvarObservacao(a.id, e.target.value, a.observacao)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                      className="w-full min-w-[160px] rounded-[7px] px-[8px] py-[5px] text-[12px]"
+                      style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
+                    />
+                  ) : (
+                    <span style={{ color: 'var(--text-body)' }}>{a.observacao ?? '—'}</span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
