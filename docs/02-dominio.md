@@ -1872,3 +1872,99 @@ resolvidas), onde o operador vê o que está parado esperando decisão.
   importação de planilha e robô do Infleet.
 - **Fase 2**: vencimentos recorrentes (IPVA/licenciamento) gerados por calendário, controle de
   indicação de condutor e cobrança automática do comprovante prometido.
+
+## 26. Migração do legado — contratos ativos no Asaas antes do sistema (decisão Luís, 2026-09-21)
+
+**Contexto.** A conta real do Asaas (ligada em 19/09) tem cerca de **107 clientes** com contrato
+em andamento, cobrados por **assinatura** (recorrência semanal do próprio Asaas, que emite as
+cobranças aos poucos). O contrato é um **PDF no PopHub**, consultado à mão, contrato a contrato —
+e parte deles é anterior ao PopHub. Seguro, taxa e acordos **só existem na descrição da cobrança**.
+Esses contratos foram precificados fora da estrutura atual.
+
+### 26.1 Princípios
+
+1. **Entra pela originação, sem cadeia paralela** (já fixado neste doc): Titular → Conta → Ativo →
+   ContratoCredito, nascendo **ATIVO com o cronograma completo** (Regra 2: legado já nasce ativo)
+   e com a marca de origem `legado`.
+2. **Sem reprecificação.** O cronograma reproduz a parcela real que o cliente já paga; a
+   originação usa `valor_parcela × numero_parcelas` como vieram. Contrato legado não tem versão
+   de parâmetros (CR = 0, taxa única de quitação — regra já existente).
+3. **Histórico completo, preservado como foi cobrado** (opção A, decisão 21/09): todas as
+   parcelas desde a primeira, as pagas com data e valor vindos das cobranças do Asaas. O objetivo
+   é traçar o histórico inteiro **sem quebrar o sistema** — régua, D+3, acordo e novação passam a
+   enxergar o cliente por inteiro.
+4. **Validado caso a caso ANTES de gravar.** Nenhum contrato legado é criado sem um operador ter
+   conciliado e marcado o caso como validado.
+5. **Só clientes ATIVOS.** Quem não está ativo no Asaas não é migrado.
+6. **Titular aponta para o cliente que já existe no Asaas** (busca por CPF/CNPJ) — nunca duplica.
+   A mesma busca por CPF passa a valer para a originação normal.
+7. **Todos os veículos sob a estrutura jurídica da Azit** — não há veículo de investidor no legado.
+
+### 26.2 Composição da parcela legada
+
+Parcela padrão semanal: **R$ 997 (HB20)** e **R$ 697 (Mobi/Kwid)**. Dentro dela:
+
+| item | valor | natureza | credor |
+|---|---|---|---|
+| Parcelamento do veículo | 942 / 642 | parcelado | Azit |
+| Seguro | 50 | recorrente | terceiro |
+| Repasse da taxa de mensagens do Asaas | 5 | recorrente | Azit (quem paga o Asaas é a Azit; o cliente reembolsa) |
+
+O que varia é o **prazo**, conforme a entrada — por vezes diluída nas parcelas —, e isso o
+cronograma absorve como número de parcelas. Valor fora do padrão é exceção tratada no caso, não
+regra nova.
+
+### 26.3 Acordos antigos
+
+Importados **como foram cobrados de fato** — as cobranças que existiram, com seus valores e datas —
+e **anotados no contrato**. Não se cria Acordo formal retroativo: o mecanismo de Acordo (§4.14 /
+§7.7) vale só para o que for feito daqui em diante.
+
+### 26.4 A bancada de conciliação (tela "Migração do legado")
+
+Um **caso por cliente ativo**, com estados reais: `Coletado → Em revisão → Validado → Migrado`,
+e `Descartado` para quem não é ativo de fato.
+
+- **Lado Asaas (automático):** cliente por CPF, assinatura e sua configuração, todas as cobranças
+  (data, valor, status, descrição). As descrições recebem **leitura assistida** — proposta de
+  seguro / taxa / acordo / entrada diluída, com marca de dúvida quando a descrição não segue o
+  padrão ("quase sempre" é o caso da dúvida). O operador confirma; a IA propõe, não decide.
+- **Lado PopHub (manual):** o operador informa os termos do contrato (assinatura, entrada,
+  parcelas, veículo/placa) e **anexa o PDF**, que vira documento do contrato.
+- **Conciliação:** cronograma reconstruído × cobranças reais, parcelas pagas reconhecidas,
+  diferenças apontadas. O operador ajusta e marca *Validado*.
+- **Triagem (estratégia do Luís):** primeiro os clientes ativos **sem cobrança vencida** — são os
+  fáceis de conciliar e de achar no PopHub; os complicados ficam por último, porque demandam mais
+  atenção. A fila da tela é ordenada assim.
+
+### 26.5 O corte, por cliente
+
+A migração é **gradual, um cliente por vez** — a assinatura no Asaas é individual, então cada
+caso validado pode ser cortado sozinho. Ao migrar um caso, atomicamente:
+
+1. **parar a assinatura** no Asaas (senão ela continua emitindo em paralelo ao sistema);
+2. **amarrar as cobranças já emitidas e pendentes** às faturas novas (`asaasChargeId`) — o
+   cliente segue com o boleto/PIX que já recebeu; o fechamento já pula fatura com cobrança;
+3. o sistema **assume a emissão do ciclo seguinte**.
+
+A **data de corte** o Luís define depois, caso a caso; não se crava agora. Como as cobranças são
+semanais e os primeiros casos não têm parcela vencida, o corte tende a ser simples.
+
+**Webhook:** cobrança legada não tem `externalReference`; o webhook ganha **fallback por
+`payment.id → fatura.asaasChargeId`** para que o pagamento de cobrança antiga concilie.
+
+**Placeholder a verificar no sandbox:** se remover/parar a assinatura no Asaas preserva as
+cobranças já emitidas. Não contar com isso antes de testar.
+
+### 26.6 Fases
+
+- **F1:** leitura do Asaas (clientes, assinaturas, cobranças) + fila de casos com a triagem +
+  tela (lista e o caso com o lado Asaas). Nada é gravado como contrato.
+- **F2:** lado PopHub no caso (termos + PDF), conciliação, validação e leitura assistida das
+  descrições.
+- **F3:** migração do caso validado (originação + amarração das pendentes + parar assinatura),
+  busca de cliente por CPF na originação e fallback do webhook.
+- **F4:** acompanhamento pós-corte — o que a assinatura ainda gerou, divergências de pagamento.
+
+**LGPD:** o homolog nunca recebe dados reais. F1 e F2 são testadas no homolog contra o sandbox
+(dados fictícios); a rodada real só acontece na produção.
