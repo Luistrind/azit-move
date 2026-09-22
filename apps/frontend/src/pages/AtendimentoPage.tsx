@@ -369,25 +369,37 @@ export function AtendimentoPage() {
 
   // Vários arquivos de uma vez (pedido Luís 14/09 — complementares/"outro"):
   // sobe em sequência; um erro não descarta os que já entraram.
+  // Correção 22/09 (caso real em produção): um arquivo que falha NÃO interrompe
+  // os seguintes — cada um sobe sozinho e, no fim, a tela diz quais não entraram
+  // e por quê. Arquivo acima do limite é barrado antes de sair do navegador.
+  const LIMITE_ARQUIVO = 20 * 1024 * 1024; // 20 MB (em base64 vira ~27 MB; o servidor aceita 30)
   async function anexarVarios(tipo: string, files: File[], descricao?: string) {
     if (!proposta || files.length === 0) return;
     setErro(null);
     setDocBusy(true);
+    const falhas: string[] = [];
     try {
       for (const file of files) {
-        const conteudo = await new Promise<string>((res, rej) => {
-          const r = new FileReader();
-          r.onload = () => res(String(r.result));
-          r.onerror = rej;
-          r.readAsDataURL(file);
-        });
-        const nomeArq = descricao?.trim() ? `${descricao.trim()} — ${file.name}` : file.name;
-        const p = await originacaoService.anexarDocumento(proposta.id, proposta.titular.id, tipo, { nome: nomeArq, conteudo });
-        setProposta(p);
+        if (file.size > LIMITE_ARQUIVO) {
+          falhas.push(`${file.name}: grande demais (${(file.size / 1024 / 1024).toFixed(1)} MB; limite 20 MB)`);
+          continue;
+        }
+        try {
+          const conteudo = await new Promise<string>((res, rej) => {
+            const r = new FileReader();
+            r.onload = () => res(String(r.result));
+            r.onerror = rej;
+            r.readAsDataURL(file);
+          });
+          const nomeArq = descricao?.trim() ? `${descricao.trim()} — ${file.name}` : file.name;
+          const p = await originacaoService.anexarDocumento(proposta.id, proposta.titular.id, tipo, { nome: nomeArq, conteudo });
+          setProposta(p);
+        } catch (e) {
+          falhas.push(`${file.name}: ${mensagemErro(e)}`);
+        }
       }
-      setDescComplementar('');
-    } catch (e) {
-      setErro(mensagemErro(e));
+      if (falhas.length === 0) setDescComplementar('');
+      else setErro(`${files.length - falhas.length} de ${files.length} anexado(s). Não entrou: ${falhas.join(' · ')}`);
     } finally {
       setDocBusy(false);
     }

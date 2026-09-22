@@ -10,8 +10,10 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    // bodyLimit: PDFs de contrato (legado, 16 páginas assinadas) passam de 1 MB em base64.
-    new FastifyAdapter({ logger: true, bodyLimit: 15 * 1024 * 1024 }),
+    // bodyLimit: o padrão do Fastify é 1 MB — foto de celular em base64 passa disso e
+    // voltava 413 sem mensagem ("Operação não permitida", caso real 22/09). Os PDFs
+    // de contrato do legado (16 páginas assinadas) também passam de 1 MB.
+    new FastifyAdapter({ logger: true, bodyLimit: 30 * 1024 * 1024 }),
   );
 
   const configService = app.get(ConfigService);

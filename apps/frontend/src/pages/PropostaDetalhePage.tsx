@@ -18,6 +18,8 @@ import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 const PAPEL_LABEL: Record<string, string> = {
   comprador_principal: 'Comprador principal', comprador_secundario: 'Comprador secundário', garantidor: 'Garantidor',
 };
+// Limite por arquivo (22/09): 20 MB — em base64 vira ~27 MB; o servidor aceita 30.
+const LIMITE_ARQUIVO = 20 * 1024 * 1024;
 const DOC_LABEL: Record<string, string> = {
   cnh: 'CNH', comprovante_endereco: 'Comp. endereço', comprovante_renda: 'Comp. renda', relatorio_brick: 'Relatório Brick', anexo_analise: 'Anexo da análise',
 };
@@ -100,6 +102,7 @@ export function PropostaDetalhePage() {
   }
 
   async function anexarArquivo(titularId: string, tipo: string, file: File) {
+    if (file.size > LIMITE_ARQUIVO) { alert(`${file.name}: grande demais (${(file.size / 1024 / 1024).toFixed(1)} MB; limite 20 MB)`); return; }
     const conteudo = await new Promise<string>((res, rej) => {
       const r = new FileReader();
       r.onload = () => res(r.result as string);
@@ -107,6 +110,31 @@ export function PropostaDetalhePage() {
       r.readAsDataURL(file);
     });
     await run(() => originacaoService.anexarDocumento(id, titularId, tipo, { nome: file.name, conteudo }));
+  }
+
+  // Vários de uma vez (22/09): um arquivo que falha não interrompe os demais; no
+  // fim, um único aviso diz quais não entraram e por quê.
+  async function anexarVarios(titularId: string, tipo: string, files: File[]) {
+    setOcupado(true);
+    const falhas: string[] = [];
+    try {
+      for (const file of files) {
+        if (file.size > LIMITE_ARQUIVO) { falhas.push(`${file.name}: grande demais (${(file.size / 1024 / 1024).toFixed(1)} MB; limite 20 MB)`); continue; }
+        try {
+          const conteudo = await new Promise<string>((res, rej) => {
+            const r = new FileReader();
+            r.onload = () => res(r.result as string);
+            r.onerror = rej;
+            r.readAsDataURL(file);
+          });
+          await originacaoService.anexarDocumento(id, titularId, tipo, { nome: file.name, conteudo });
+        } catch (e) {
+          falhas.push(`${file.name}: ${mensagemErro(e)}`);
+        }
+      }
+      await queryClient.invalidateQueries({ queryKey: ['proposta', id] });
+      if (falhas.length) alert(`${files.length - falhas.length} de ${files.length} anexado(s). Não entrou: ${falhas.join(' · ')}`);
+    } finally { setOcupado(false); }
   }
 
   const hasGarantidor = !!p?.papeis.some((v) => v.papel === 'garantidor');
@@ -157,6 +185,47 @@ export function PropostaDetalhePage() {
           </div>
         </div>
       )}
+
+      {/* Fora das etapas: visível em qualquer passo do stepper. */}
+      <div className="mb-[16px]">
+      {/* Documentos complementares (pedido Luís 22/09): em QUALQUER etapa,
+          mesmo depois de avançar, dá para anexar documento extra que
+          enriqueça a análise. Só a proposta convertida congela a trilha. */}
+      {(() => {
+        const extras = p.documentos.filter((d) => !p.documentosObrigatorios.includes(d.tipo) && d.tipo !== 'anexo_analise');
+        const podeAnexarExtra = (podeOperar || podeParecer) && p.status !== 'convertida';
+        return (
+          <div className="rounded-card p-[18px]" style={card}>
+            <div className="mb-[6px] flex flex-wrap items-center gap-[10px]">
+              <span className="font-display text-[13px] font-bold">Documentos complementares</span>
+              {podeAnexarExtra && (
+                <label className="h-[28px] cursor-pointer rounded-[8px] px-[10px] text-[11.5px] font-semibold leading-[28px]" style={{ ...btn('var(--navy)'), opacity: ocupado ? 0.6 : 1 }}>
+                  + Anexar extras (vários de uma vez)
+                  <input type="file" multiple accept="image/*,.pdf" className="hidden" disabled={ocupado}
+                    onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ''; if (fs.length) void anexarVarios(p.titular.id, 'outro', fs); }} />
+                </label>
+              )}
+              <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>contracheque, extrato, contrato com locadora… — pode anexar em qualquer etapa</span>
+            </div>
+            {extras.length === 0 ? (
+              <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum documento complementar.</div>
+            ) : (
+              <div className="flex flex-wrap gap-[8px]">
+                {extras.map((d) => (
+                  <div key={d.id} className="flex items-center gap-[6px] rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+                    <span title={DOC_LABEL[d.tipo] ?? d.tipo}>{d.arquivoRef}</span>
+                    <button onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="text-[11px] font-semibold" style={{ color: 'var(--accent)' }}>baixar</button>
+                    {podeAnexarExtra && (
+                      <button onClick={() => { if (window.confirm('Remover este documento?')) void run(() => originacaoService.removerDocumento(p.id, d.id)); }} className="text-[11px] font-semibold" style={{ color: '#c0392b' }}>remover</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+      </div>
 
       {/* Passo 2 — Principal (produtos + cadastro + documentos + papéis) */}
       {step === 1 && (
@@ -235,6 +304,7 @@ export function PropostaDetalhePage() {
             {p.documentosCompletos
               ? <div className="text-[12px]" style={{ color: '#1f9d5b' }}>✓ Documentos obrigatórios completos — pode avançar para a análise.</div>
               : <div className="text-[12px]" style={{ color: '#c98a0a' }}>Anexe todos os documentos obrigatórios para liberar a análise.</div>}
+
           </div>
 
           {/* Papéis: 2º comprador e garantidor (este só quando a análise exige) */}
@@ -372,7 +442,7 @@ export function PropostaDetalhePage() {
                       const fs = Array.from(e.target.files ?? []);
                       e.target.value = '';
                       // Sequencial: um erro não descarta os já anexados (14/09).
-                      void (async () => { for (const f of fs) await anexarArquivo(p.titular.id, 'anexo_analise', f); })();
+                      if (fs.length) void anexarVarios(p.titular.id, 'anexo_analise', fs);
                     }} />
                 </label>
               )}
