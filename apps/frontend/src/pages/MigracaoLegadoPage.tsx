@@ -160,7 +160,10 @@ export function MigracaoLegadoPage() {
                   <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>{c.nome}</div>
                   <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-muted)' }}>{cpfBR(c.cpfCnpj)} · {c.asaasCustomerId}</div>
                 </td>
-                <td className={td}><StatusBadge label={c.situacaoRotulo} colors={{ [c.situacaoRotulo]: SITUACAO_LEGADO_COLORS[c.situacao] }} /></td>
+                <td className={td}>
+                  <StatusBadge label={c.situacaoRotulo} colors={{ [c.situacaoRotulo]: SITUACAO_LEGADO_COLORS[c.situacao] }} />
+                  {c.recente && <div className="mt-[3px] text-[10.5px] font-semibold" style={{ color: CASO_LEGADO_STATUS_COLORS.VALIDADO.fg }}>recente · sem parcela paga</div>}
+                </td>
                 <td className={td}>
                   <div className="font-display font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>{c.valorParcelaPadrao == null ? '—' : formatCurrency(c.valorParcelaPadrao)}</div>
                   <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{c.modeloRotulo ?? (c.valorParcelaPadrao == null ? '' : 'fora do padrão')}</div>

@@ -24,6 +24,7 @@ export interface CasoLegado {
   primeiraCobrancaEm: string | null;
   ultimaCobrancaEm: string | null;
   assinaturaAtiva: boolean;
+  recente: boolean; // assinatura ativa e nenhuma parcela paga ainda (cliente novo)
   assinaturaValor: number | null;
   assinaturaCiclo: string | null;
   observacao: string | null;

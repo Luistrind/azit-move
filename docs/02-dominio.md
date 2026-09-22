@@ -1974,3 +1974,37 @@ as cobranças emitidas; é o que o corte usa. (`endDate` não parou a emissão n
 
 **LGPD:** o homolog nunca recebe dados reais. F1 e F2 são testadas no homolog contra o sandbox
 (dados fictícios); a rodada real só acontece na produção.
+
+### 26.7 Onde se valida e o que a F2 guarda (decisão Luís, 2026-09-21, à noite)
+
+**A bancada se valida na PRODUÇÃO, lendo a conta real.** O sandbox tem dados distorcidos
+demais e abrir cada caso lá não compensa. Condição: **tudo o que a bancada grava fica
+separado e descartável** — sem tocar no sistema. Por isso a bancada vive em tabelas próprias
+(`casos_migracao_legado`, `cobrancas_legadas`, `coletas_legado`) **sem chave estrangeira** para
+titular, conta, contrato, fatura ou parcela, e os PDFs em `uploads/legado`. Apagar isso
+(`deploy/limpar-legado.sh`) não desfaz nada do sistema; o script recusa se houver caso
+MIGRADO. A F3 (que cria contrato) **não será usada por enquanto**.
+
+**Triagem:** cliente com assinatura ativa, nada vencido e **nenhuma parcela paga** fica em
+"em dia" — é ainda melhor: são os clientes mais recentes, que **já usam a precificação nova**
+(a diferença aparece no valor da parcela). A tela os marca como *recente*.
+
+**F2 — o que o caso passa a guardar:**
+
+- **Termos do contrato (lado PopHub, digitados; PDF anexado):** nº do contrato de origem,
+  data de assinatura, veículo (marca, modelo, ano, placa), valor do veículo, entrada (valor e
+  se foi à vista ou diluída em N parcelas), parcela (valor, semanal, nº de parcelas, 1ª
+  parcela), seguro e taxa confirmados (a decomposição de §26.2 vem preenchida como proposta),
+  observações.
+- **Leitura das descrições, cobrança a cobrança:** cada cobrança recebe um **tipo**
+  (parcela · entrada · acordo · avulsa · outra) e a decomposição (parcelamento / seguro /
+  taxa). A proposta vem de **regras** sobre a descrição (palavras "seguro", "taxa", "entrada",
+  "acordo", valores em R$) com marca de **dúvida** quando não bate no padrão; com a chave da
+  IA presente, a IA refina a proposta. O operador confirma ou corrige — a decisão final é
+  sempre dele, e fica registrada como tal.
+- **Conciliação:** o cronograma esperado (dos termos) contra as cobranças reais, por data
+  (±3 dias) e valor: parcela esperada × cobrada × paga, diferenças de valor, cobranças que não
+  casam com parcela (entrada, acordo, avulsa). Resumo: pagas de N, em aberto, vencidas,
+  divergências.
+- **Validar** (EM_REVISAO → VALIDADO) exige: termos completos, PDF anexado, nenhuma cobrança
+  em dúvida e cada divergência **reconhecida** com nota. VALIDADO pode voltar a EM_REVISAO.

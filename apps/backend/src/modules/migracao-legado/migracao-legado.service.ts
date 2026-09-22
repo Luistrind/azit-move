@@ -329,6 +329,9 @@ export class MigracaoLegadoService {
       primeiraCobrancaEm: c.primeiraCobrancaEm?.toISOString().slice(0, 10) ?? null,
       ultimaCobrancaEm: c.ultimaCobrancaEm?.toISOString().slice(0, 10) ?? null,
       assinaturaAtiva: c.assinaturaAtiva,
+      // Recente (doc 02 §26.7): assinatura ativa e nenhuma parcela paga ainda —
+      // são os clientes novos, já na precificação atual.
+      recente: c.assinaturaAtiva && c.cobrancasPagas === 0 && c.cobrancasVencidas === 0,
       assinaturaValor: centavos(c.assinaturaValor),
       assinaturaCiclo: c.assinaturaCiclo,
       observacao: c.observacao,
