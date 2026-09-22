@@ -32,6 +32,7 @@ import { UsuariosPage } from './pages/UsuariosPage';
 import { CentroCustoPage } from './pages/CentroCustoPage';
 import { IntegracoesPage } from './pages/IntegracoesPage';
 import { OcorrenciasPage } from './pages/OcorrenciasPage';
+import { MigracaoLegadoPage } from './pages/MigracaoLegadoPage';
 
 // Rotas client-side — Doc 4 §5.1. /login é pública; o restante é protegido pela sessão.
 export const router = createBrowserRouter([
@@ -150,6 +151,10 @@ export const router = createBrowserRouter([
       {
         path: 'frota/ocorrencias',
         element: <OcorrenciasPage />,
+      },
+      {
+        path: 'migracao-legado',
+        element: <MigracaoLegadoPage />,
       },
       {
         path: 'centros-custo',

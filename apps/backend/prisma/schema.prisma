@@ -2383,3 +2383,120 @@ model ConciliacaoTitulo {
 
   @@map("conciliacoes_titulo")
 }
+
+// ============================================================
+// Migração do legado (doc 02 §26, decisão Luís 21/09) — bancada de conciliação
+// dos clientes que já existem no Asaas. Um caso por cliente; nada aqui é
+// contrato: o contrato só nasce na F3, quando o caso está VALIDADO.
+// ============================================================
+enum StatusCasoLegado {
+  COLETADO // lido do Asaas, ninguém olhou ainda
+  EM_REVISAO // operador buscando o contrato no PopHub / conciliando
+  VALIDADO // conciliado; pronto para migrar (F3)
+  MIGRADO // contrato criado no sistema
+  DESCARTADO // não é cliente ativo de fato
+}
+
+enum SituacaoCasoLegado {
+  SEM_VENCIDA // ativo e em dia — tratar primeiro
+  COM_VENCIDA // ativo com cobrança vencida — demanda mais atenção
+  SEM_MOVIMENTO // sem assinatura ativa nem cobrança em aberto — provável inativo
+}
+
+model CasoMigracaoLegado {
+  id              String @id @default(cuid())
+  asaasCustomerId String @unique
+  nome            String
+  cpfCnpj         String?
+  email           String?
+  telefone        String?
+
+  status     StatusCasoLegado   @default(COLETADO)
+  situacao   SituacaoCasoLegado
+  prioridade Int // 1 = tratar primeiro (triagem pura em @azit/utils)
+
+  // Triagem — recalculada a cada coleta
+  totalCobrancas     Int       @default(0)
+  cobrancasPagas     Int       @default(0)
+  cobrancasPendentes Int       @default(0)
+  cobrancasVencidas  Int       @default(0)
+  cobrancasOutras    Int       @default(0)
+  valorParcelaPadrao Decimal?  @db.Decimal(12, 2)
+  modeloSugerido     String? // HB20 | MOBI_KWID (doc 02 §26.2)
+  primeiraCobrancaEm DateTime?
+  ultimaCobrancaEm   DateTime?
+
+  // Assinatura (recorrência) do Asaas que emite as cobranças aos poucos
+  assinaturaId                String?
+  assinaturaStatus            String?
+  assinaturaValor             Decimal?  @db.Decimal(12, 2)
+  assinaturaCiclo             String?
+  assinaturaProximoVencimento DateTime?
+  assinaturaAtiva             Boolean   @default(false)
+
+  clienteBruto    Json? // resposta do Asaas (prova e reprocessamento)
+  assinaturaBruto Json?
+
+  observacao        String?
+  statusAlteradoEm  DateTime?
+  statusAlteradoPor String?
+  coletadoEm        DateTime
+
+  // Preenchidos na F3 (migração): o que o caso virou no sistema
+  titularId  String? @unique
+  contratoId String? @unique
+
+  cobrancas CobrancaLegada[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([situacao, prioridade])
+  @@index([cpfCnpj])
+  @@map("casos_migracao_legado")
+}
+
+model CobrancaLegada {
+  id             String    @id @default(cuid())
+  casoId         String
+  asaasPaymentId String    @unique
+  assinaturaId   String?
+  valor          Decimal   @db.Decimal(12, 2)
+  valorPago      Decimal?  @db.Decimal(12, 2)
+  vencimento     DateTime
+  pagoEm         DateTime?
+  status         String // status do Asaas como veio
+  tipo           String? // BOLETO | PIX | CREDIT_CARD | UNDEFINED
+  descricao      String? // é AQUI que vivem seguro, taxa e acordo (doc 02 §26)
+  invoiceUrl     String?
+  deletada       Boolean   @default(false)
+  bruto          Json
+
+  caso CasoMigracaoLegado @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([casoId])
+  @@index([vencimento])
+  @@map("cobrancas_legadas")
+}
+
+// Cada rodada de leitura do Asaas: o operador vê quando rodou, quanto leu e
+// se terminou. Só uma em andamento por vez.
+model ColetaLegado {
+  id               String    @id @default(cuid())
+  iniciadaEm       DateTime  @default(now())
+  concluidaEm      DateTime?
+  clientesLidos    Int       @default(0)
+  cobrancasLidas   Int       @default(0)
+  casosNovos       Int       @default(0)
+  casosAtualizados Int       @default(0)
+  erro             String?
+  ambiente         String // sandbox | producao | simulado
+  iniciadaPor      String?
+
+  @@index([iniciadaEm])
+  @@map("coletas_legado")
+}

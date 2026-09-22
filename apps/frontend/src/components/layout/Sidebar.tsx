@@ -44,6 +44,7 @@ const GRUPOS_NAV: GrupoNav[] = [
       { to: '/carteira', label: 'Carteira' },
       { to: '/regua', label: 'Régua de cobrança' },
       { to: '/acordos', label: 'Renegociações' },
+      { to: '/migracao-legado', label: 'Migração do legado' },
     ],
   },
   {

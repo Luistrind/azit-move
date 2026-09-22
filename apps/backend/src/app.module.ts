@@ -34,6 +34,7 @@ import { ProdutoModule } from './modules/produto/produto.module';
 import { InvestimentoModule } from './modules/investimento/investimento.module';
 import { AssinaturaModule } from './modules/assinatura/assinatura.module';
 import { FrotaModule } from './modules/frota/frota.module';
+import { MigracaoLegadoModule } from './modules/migracao-legado/migracao-legado.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -56,6 +57,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     AsaasModule,
     CobrancaModule,
     FrotaModule,
+    MigracaoLegadoModule,
     ReguaModule,
     AlcadaModule,
     AprovacaoModule,

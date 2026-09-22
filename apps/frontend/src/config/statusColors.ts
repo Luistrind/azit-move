@@ -205,3 +205,24 @@ export const RESPONSAVEL_OCORRENCIA_COLORS: Record<string, StatusColor> = {
   CLIENTE: { bg: '#eef4ff', fg: '#2456c7' },
   AZIT: { bg: '#fdeceb', fg: '#e0413c' },
 };
+
+// Migração do legado (doc 02 §26): estado do caso e situação no Asaas.
+export const CASO_LEGADO_STATUS_COLORS: Record<string, StatusColor> = {
+  COLETADO: { bg: '#eef1f5', fg: '#5b6b7f' },
+  EM_REVISAO: { bg: '#fef6e9', fg: '#c98a0a' },
+  VALIDADO: { bg: '#eef4ff', fg: '#2456c7' },
+  MIGRADO: { bg: '#eafaf1', fg: '#1f9d5b' },
+  DESCARTADO: { bg: '#fdeceb', fg: '#e0413c' },
+};
+export const SITUACAO_LEGADO_COLORS: Record<string, StatusColor> = {
+  SEM_VENCIDA: { bg: '#eafaf1', fg: '#1f9d5b' },
+  COM_VENCIDA: { bg: '#fdeceb', fg: '#e0413c' },
+  SEM_MOVIMENTO: { bg: '#eef1f5', fg: '#5b6b7f' },
+};
+// Classe da cobrança lida do Asaas (paga / pendente / vencida / outra).
+export const COBRANCA_LEGADA_COLORS: Record<string, StatusColor> = {
+  paga: { bg: '#eafaf1', fg: '#1f9d5b' },
+  pendente: { bg: '#eef4ff', fg: '#2456c7' },
+  vencida: { bg: '#fdeceb', fg: '#e0413c' },
+  outra: { bg: '#eef1f5', fg: '#5b6b7f' },
+};

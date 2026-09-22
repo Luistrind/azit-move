@@ -1029,6 +1029,31 @@ sobrescreve desfecho ou responsável definidos pelo operador.
 Agendado: alerta diário às 7h (America/Sao_Paulo) de prazo de indicação, comprovante atrasado
 e vencimento próximo.
 
+## 6-C. Migração do legado — doc 02 §26 (21/09)
+
+Bancada de conciliação dos clientes que já existem no Asaas. **F1**: leitura + triagem + tela.
+Nada aqui cria titular ou contrato (F3). Papéis: ADMIN, DIRETOR, OPERADOR, FINANCEIRO.
+
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/migracao-legado/resumo` | Ambiente da fonte (`simulado`/`sandbox`/`producao`), última coleta (andamento, contagens, erro), casos por status e por situação, opções dos filtros |
+| POST | `/migracao-legado/coletar` | Dispara a leitura do Asaas em segundo plano (fila `coleta-legado`). **202**. 409 `coleta_em_andamento` se já houver uma rodando |
+| GET | `/migracao-legado/casos?status=&situacao=&busca=` | Casos ordenados pela triagem: `prioridade` asc (1 = em dia), depois menos vencidas, mais pagas |
+| GET | `/migracao-legado/casos/:id` | Caso completo: cliente, assinatura, proposta de decomposição da parcela (§26.2) e todas as cobranças com `classe` (`paga`/`pendente`/`vencida`/`outra`) |
+| PATCH | `/migracao-legado/casos/:id/status` | `{ status, observacao? }`. Transições da F1: COLETADO→EM_REVISAO/DESCARTADO, EM_REVISAO→COLETADO/DESCARTADO, DESCARTADO→COLETADO. 422 `transicao_invalida`; descartar exige `observacao` (422 `motivo_obrigatorio`) |
+| PATCH | `/migracao-legado/casos/:id/observacao` | `{ observacao }` — anotações do caso (o que achou no PopHub) |
+
+**Leitura do Asaas** (`AsaasLeituraService`): `GET /customers`, `GET /subscriptions?customer=`,
+`GET /payments?customer=`, todas paginadas (`limit=100&offset=`). Ritmo de ~4 chamadas/s e, ao
+receber 429/403 "limite de requisições", espera 30s → 60s → 120s e repete (visto no sandbox em
+21/09: ~230 chamadas em um minuto bloqueiam). Reler é idempotente: atualiza triagem e cobranças,
+preserva status e observação dados pelo operador.
+
+**Situação** (triagem pura em `@azit/utils/migracao-legado`): `SEM_VENCIDA` (assinatura ativa ou
+cobrança em aberto, nenhuma vencida — prioridade 1), `COM_VENCIDA` (2), `SEM_MOVIMENTO` (sem
+assinatura ativa nem cobrança em aberto — 3, sugestão de descarte). A data decide vencida/pendente,
+não o status do Asaas.
+
 ## 7. Placeholders de API
 
 | Endpoint | Descrição | Bloqueio |

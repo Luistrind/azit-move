@@ -12,3 +12,4 @@ export * from './imputacao';
 export * from './analise-cadastro';
 export * from './datas';
 export * from './novacao';
+export * from './migracao-legado';
