@@ -1958,9 +1958,9 @@ semanais e os primeiros casos não têm parcela vencida, o corte tende a ser sim
 `payment.id → fatura.asaasChargeId`** para que o pagamento de cobrança antiga concilie.
 
 **Verificado no sandbox (21/09):** a assinatura emite as cobranças **4 semanas à frente**.
- **apaga todas as pendentes já emitidas** () — jamais
-usar no corte.  para a assinatura e **preserva**
-as cobranças emitidas; é o que o corte usa. ( não parou a emissão no teste.)
+`DELETE /subscriptions/{id}` **apaga todas as pendentes já emitidas** (`deleted=true`) — jamais
+usar no corte. `PUT /subscriptions/{id} { status: "INACTIVE" }` para a assinatura e **preserva**
+as cobranças emitidas; é o que o corte usa. (`endDate` não parou a emissão no teste.)
 
 ### 26.6 Fases
 
