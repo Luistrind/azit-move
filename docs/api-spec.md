@@ -1054,6 +1054,28 @@ cobrança em aberto, nenhuma vencida — prioridade 1), `COM_VENCIDA` (2), `SEM_
 assinatura ativa nem cobrança em aberto — 3, sugestão de descarte). A data decide vencida/pendente,
 não o status do Asaas.
 
+**F2 — termos, PDF, leitura das cobranças, conciliação e validação (doc 02 §26.7, 22/09):**
+
+| Método | Rota | O que faz |
+|---|---|---|
+| PUT | `/migracao-legado/casos/:id/termos` | Grava os termos do contrato (`TermosContratoLegado`, valores em centavos). 422 `termos_invalidos` com `campos`. Reaplica a leitura por regra nas cobranças não decididas pelo operador |
+| POST | `/migracao-legado/casos/:id/pdf` | `{ nome, conteudo }` (base64). Guarda em `uploads/legado`, lê o texto (pdf-parse) e, se for o modelo Mod06, **pré-preenche** os termos vazios. Devolve `modeloReconhecido`, `extraidos`, `faltantes`, `cpfDiverge` (CPF do contrato ≠ CPF do cliente no Asaas — aviso, não trava) |
+| GET | `/migracao-legado/casos/:id/pdf` | O PDF anexado (`application/pdf`, inline) |
+| POST | `/migracao-legado/casos/:id/interpretar` | Reaplica as regras de leitura nas cobranças que o operador não decidiu |
+| PUT | `/migracao-legado/casos/:id/cobrancas/:cobrancaId/interpretacao` | Decisão do operador: `{ tipo, parcelamento?, seguro?, taxa?, intermediaria?, observacao? }`. A decomposição precisa somar o valor original (422 `decomposicao_nao_fecha`). Fica `interpretadoPor: operador` e nenhuma releitura sobrescreve |
+| DELETE | `…/cobrancas/:cobrancaId/interpretacao` | Desfaz a decisão e volta à regra |
+| PUT | `/migracao-legado/casos/:id/divergencias/:chave` | `{ nota }` — reconhece uma divergência da conciliação (`parcela:N`, `intermediaria:N`, `entrada`, `cobranca:<id>`) |
+| DELETE | `/migracao-legado/casos/:id/divergencias/:chave` | Desfaz o reconhecimento |
+| POST | `/migracao-legado/casos/:id/validar` | EM_REVISAO → VALIDADO. 422 `pendencias` com a lista: termos incompletos, PDF ausente, cobrança em dúvida ou sem leitura, divergência sem reconhecimento. VALIDADO → EM_REVISAO é pelo `PATCH …/status` (reabrir) |
+
+O `GET /migracao-legado/casos/:id` passa a devolver `termos`, `termosFaltantes`, `pdf`, `extracaoPdf`,
+as cobranças com `valorOriginal`, `encargoPago` (juros/multa: `originalValue`/`interestValue` do
+Asaas), `tipoInterpretado`, `interpretacao`, `duvida`, `interpretadoPor`; a `conciliacao` (linhas do
+cronograma esperado × cobranças, `fora` do cronograma, `resumo`), `divergenciasReconhecidas`,
+`pendenciasParaValidar` e `tiposCobranca`. Tipos de cobrança: parcela · intermediaria (entrada diluída) ·
+entrada · acordo · reembolso (IPVA, multa, manutenção…) · outra. Motores puros em `@azit/utils`:
+`legado-termos` (extração do Mod06), `legado-interpretacao`, `legado-conciliacao` (±3 dias, valor exato).
+
 ## 7. Placeholders de API
 
 | Endpoint | Descrição | Bloqueio |

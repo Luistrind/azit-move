@@ -49,7 +49,9 @@ export function Shell() {
         ? { title: 'Proposta', subtitle: 'Detalhe e formalização' }
         : pathname.startsWith('/analises/')
           ? { title: 'Análise de cadastro', subtitle: 'Dossiê e decisão' }
-          : TITULOS[pathname] ?? { title: 'Azit Move', subtitle: '' };
+          : pathname.startsWith('/migracao-legado/')
+            ? { title: 'Caso do legado', subtitle: 'Termos do contrato, leitura das cobranças e conciliação' }
+            : TITULOS[pathname] ?? { title: 'Azit Move', subtitle: '' };
 
   // Fecha a gaveta ao navegar (mobile).
   useEffect(() => { setMenuAberto(false); }, [pathname]);

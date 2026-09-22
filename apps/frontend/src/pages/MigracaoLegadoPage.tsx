@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '@azit/utils';
 import { migracaoLegadoService as svc } from '../services/migracao-legado.service';
-import { Modal } from '../components/Modal';
 import { Metrica } from '../components/Metrica';
 import { StatusBadge } from '../components/StatusBadge';
 import { toast } from '../components/Toast';
 import { mensagemErro, usePodeRole } from '../lib/permissoes';
-import { CASO_LEGADO_STATUS_COLORS, COBRANCA_LEGADA_COLORS, SITUACAO_LEGADO_COLORS } from '../config/statusColors';
+import { CASO_LEGADO_STATUS_COLORS, SITUACAO_LEGADO_COLORS } from '../config/statusColors';
 
 // Migração do legado — F1 (doc 02 §26): a bancada. Lê o Asaas, monta um caso
 // por cliente e ordena pela triagem do Luís (em dia primeiro; complicados por
@@ -27,7 +27,6 @@ const ROLE_LEGADO = ['ADMIN', 'DIRETOR', 'OPERADOR', 'FINANCEIRO'];
 
 const btn = 'h-[32px] rounded-[8px] px-[12px] text-[12px] font-semibold disabled:opacity-50';
 const btnPri = { background: 'var(--accent)', color: '#fff' } as const;
-const btnSec = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-body)' } as const;
 const inputCls = 'rounded-[8px] px-[10px] py-[7px] text-[13px]';
 const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' } as const;
 const th = 'px-[10px] py-[8px] text-left text-[10.5px] font-bold uppercase tracking-[.04em]';
@@ -38,7 +37,7 @@ export function MigracaoLegadoPage() {
   const pode = usePodeRole();
   const podeOperar = pode(ROLE_LEGADO);
   const [filtros, setFiltros] = useState({ status: '', situacao: '', busca: '' });
-  const [casoId, setCasoId] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const resumo = useQuery({
     queryKey: ['legado-resumo'],
@@ -153,7 +152,7 @@ export function MigracaoLegadoPage() {
               </td></tr>
             )}
             {casos.map((c, i) => (
-              <tr key={c.id} onClick={() => setCasoId(c.id)} role="button" className="cursor-pointer hover:bg-[var(--surface-input)]"
+              <tr key={c.id} onClick={() => navigate(`/migracao-legado/${c.id}`)} role="button" className="cursor-pointer hover:bg-[var(--surface-input)]"
                 style={{ borderBottom: '1px solid var(--border)', opacity: c.status === 'DESCARTADO' ? 0.55 : 1 }}>
                 <td className={`${td} tabular-nums`} style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
                 <td className={td}>
@@ -183,183 +182,6 @@ export function MigracaoLegadoPage() {
         </table>
       </div>
 
-      {casoId && <CasoModal id={casoId} onClose={() => setCasoId(null)} podeOperar={podeOperar} />}
     </div>
-  );
-}
-
-// ---------------- Caso ----------------
-
-function CasoModal({ id, onClose, podeOperar }: { id: string; onClose: () => void; podeOperar: boolean }) {
-  const qc = useQueryClient();
-  const caso = useQuery({ queryKey: ['legado-caso', id], queryFn: () => svc.caso(id) });
-  const [obs, setObs] = useState('');
-  const [motivo, setMotivo] = useState('');
-  const [descartando, setDescartando] = useState(false);
-  const [ocupado, setOcupado] = useState(false);
-  const [soAbertas, setSoAbertas] = useState(false);
-  const c = caso.data;
-
-  useEffect(() => {
-    if (c) setObs(c.observacao ?? '');
-  }, [c?.id, c?.observacao]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function rodar(fn: () => Promise<unknown>, ok: string) {
-    setOcupado(true);
-    try {
-      await fn();
-      toast.sucesso(ok);
-      await Promise.all([qc.invalidateQueries({ queryKey: ['legado-caso', id] }), qc.invalidateQueries({ queryKey: ['legado-casos'] }), qc.invalidateQueries({ queryKey: ['legado-resumo'] })]);
-      setDescartando(false);
-    } catch (e) {
-      toast.erro(mensagemErro(e));
-    } finally {
-      setOcupado(false);
-    }
-  }
-
-  async function salvarObs() {
-    if (!c || (c.observacao ?? '') === obs.trim()) return;
-    try {
-      await svc.anotar(id, obs);
-      await qc.invalidateQueries({ queryKey: ['legado-casos'] });
-    } catch (e) {
-      toast.erro(mensagemErro(e));
-    }
-  }
-
-  const cobrancas = (c?.cobrancas ?? []).filter((p) => !soAbertas || p.classe === 'pendente' || p.classe === 'vencida');
-
-  return (
-    <Modal open onClose={onClose} title={c ? c.nome : 'Caso'} largura={980}>
-      {!c ? (
-        <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
-      ) : (
-        <div className="flex flex-col gap-[14px]">
-          {/* Cabeçalho do caso */}
-          <div className="flex flex-wrap items-center gap-[8px]">
-            <StatusBadge label={c.statusRotulo} colors={{ [c.statusRotulo]: CASO_LEGADO_STATUS_COLORS[c.status] }} />
-            <StatusBadge label={c.situacaoRotulo} colors={{ [c.situacaoRotulo]: SITUACAO_LEGADO_COLORS[c.situacao] }} />
-            <span className="text-[12px] tabular-nums" style={{ color: 'var(--text-secondary)' }}>
-              {cpfBR(c.cpfCnpj)} · {c.telefone ?? 'sem telefone'} · {c.email ?? 'sem e-mail'} · Asaas <b>{c.asaasCustomerId}</b>
-            </span>
-            <span className="ml-auto text-[11px]" style={{ color: 'var(--text-muted)' }}>lido em {dataHoraBR(c.coletadoEm)}</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-4">
-            <Metrica label="Parcela padrão" valor={c.valorParcelaPadrao == null ? '—' : formatCurrency(c.valorParcelaPadrao)} />
-            <Metrica label="Modelo sugerido" valor={c.modeloRotulo ?? (c.valorParcelaPadrao == null ? '—' : 'fora do padrão')} />
-            <Metrica label="Pagas / abertas / vencidas" valor={`${c.cobrancasPagas} / ${c.cobrancasPendentes} / ${c.cobrancasVencidas}`} alerta={c.cobrancasVencidas > 0} />
-            <Metrica label="Histórico" valor={`${dataBR(c.primeiraCobrancaEm)} → ${dataBR(c.ultimaCobrancaEm)}`} />
-          </div>
-
-          {/* Assinatura + decomposição */}
-          <div className="grid grid-cols-1 gap-[10px] lg:grid-cols-2">
-            <div className="rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
-              <div className="text-[11px] font-bold uppercase tracking-[.04em]" style={{ color: 'var(--text-muted)' }}>Assinatura no Asaas (recorrência)</div>
-              {c.assinatura ? (
-                <div className="mt-[6px] text-[12.5px]" style={{ color: 'var(--text-body)' }}>
-                  <div><b>{formatCurrency(c.assinatura.valor ?? 0)}</b> {CICLO[c.assinatura.ciclo ?? ''] ?? c.assinatura.ciclo} · {c.assinatura.status === 'ACTIVE' ? 'ativa' : (c.assinatura.status ?? '').toLowerCase()} · próxima {dataBR(c.assinatura.proximoVencimento)}</div>
-                  <div className="mt-[3px] text-[11.5px]" style={{ color: 'var(--text-secondary)' }}>{c.assinatura.descricao ?? 'sem descrição'}</div>
-                  <div className="mt-[3px] text-[11px]" style={{ color: 'var(--text-muted)' }}>{c.assinatura.id} — é ela que emite as cobranças aos poucos; no corte (F3) ela é parada.</div>
-                </div>
-              ) : (
-                <div className="mt-[6px] text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Sem assinatura — as cobranças foram avulsas.</div>
-              )}
-            </div>
-            <div className="rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
-              <div className="text-[11px] font-bold uppercase tracking-[.04em]" style={{ color: 'var(--text-muted)' }}>Proposta de decomposição da parcela (doc 02 §26.2)</div>
-              {c.decomposicao ? (
-                <div className="mt-[6px] text-[12.5px]" style={{ color: 'var(--text-body)' }}>
-                  <div>Parcelamento do veículo <b>{formatCurrency(c.decomposicao.parcelamento)}</b> + seguro <b>{formatCurrency(c.decomposicao.seguro)}</b> + repasse da taxa de mensagens <b>{formatCurrency(c.decomposicao.taxaMensagens)}</b></div>
-                  <div className="mt-[3px] text-[11px]" style={{ color: c.decomposicao.padrao ? 'var(--text-muted)' : CASO_LEGADO_STATUS_COLORS.EM_REVISAO.fg }}>
-                    {c.decomposicao.padrao ? 'Parcela padrão — decomposição automática.' : 'Parcela fora do padrão — a decomposição é só uma proposta; confirme pela descrição das cobranças.'}
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-[6px] text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Sem cobranças para inferir a parcela.</div>
-              )}
-            </div>
-          </div>
-
-          {/* Observação + ações */}
-          <div className="flex flex-col gap-[8px]">
-            <label className="text-[11px] font-bold uppercase tracking-[.04em]" style={{ color: 'var(--text-muted)' }}>Anotações do caso (o que achou no PopHub, dúvidas, combinados)</label>
-            <textarea className={`${inputCls} w-full`} style={inputStyle} rows={3} value={obs} onChange={(e) => setObs(e.target.value)} onBlur={salvarObs}
-              placeholder="Ex.: contrato PopHub nº 123, assinado em 03/11/2025, entrada R$ 3.000 diluída em 20 parcelas…" disabled={!podeOperar} />
-            {podeOperar && (
-              <div className="flex flex-wrap items-center gap-[8px]">
-                {c.status === 'COLETADO' && (
-                  <button className={btn} style={btnPri} disabled={ocupado} onClick={() => rodar(() => svc.mudarStatus(id, 'EM_REVISAO'), 'Caso em revisão')}>Começar a revisão</button>
-                )}
-                {c.status === 'EM_REVISAO' && (
-                  <button className={btn} style={btnSec} disabled={ocupado} onClick={() => rodar(() => svc.mudarStatus(id, 'COLETADO'), 'Caso devolvido à fila')}>Devolver à fila</button>
-                )}
-                {(c.status === 'COLETADO' || c.status === 'EM_REVISAO') && !descartando && (
-                  <button className={btn} style={btnSec} disabled={ocupado} onClick={() => setDescartando(true)}>Descartar (não é cliente ativo)</button>
-                )}
-                {c.status === 'DESCARTADO' && (
-                  <button className={btn} style={btnSec} disabled={ocupado} onClick={() => rodar(() => svc.mudarStatus(id, 'COLETADO'), 'Caso de volta à fila')}>Voltar para a fila</button>
-                )}
-                {c.status === 'EM_REVISAO' && (
-                  <span className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>Validar o caso (conciliação com o contrato do PopHub) chega na F2.</span>
-                )}
-              </div>
-            )}
-            {descartando && (
-              <div className="flex flex-wrap items-center gap-[8px] rounded-[10px] p-[10px]" style={{ background: CASO_LEGADO_STATUS_COLORS.DESCARTADO.bg }}>
-                <input className={`${inputCls} min-w-[280px] flex-1`} style={inputStyle} placeholder="Por que descartar? (obrigatório)" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
-                <button className={btn} style={{ background: CASO_LEGADO_STATUS_COLORS.DESCARTADO.fg, color: '#fff' }} disabled={ocupado || !motivo.trim()}
-                  onClick={() => rodar(() => svc.mudarStatus(id, 'DESCARTADO', motivo), 'Caso descartado')}>Confirmar descarte</button>
-                <button className={btn} style={btnSec} onClick={() => setDescartando(false)}>Cancelar</button>
-              </div>
-            )}
-          </div>
-
-          {/* Cobranças */}
-          <div>
-            <div className="mb-[6px] flex items-center justify-between">
-              <div className="text-[11px] font-bold uppercase tracking-[.04em]" style={{ color: 'var(--text-muted)' }}>
-                Cobranças no Asaas ({c.cobrancas.length}) — seguro, taxa e acordos estão na descrição
-              </div>
-              <label className="flex items-center gap-[6px] text-[11.5px]" style={{ color: 'var(--text-secondary)' }}>
-                <input type="checkbox" checked={soAbertas} onChange={(e) => setSoAbertas(e.target.checked)} /> só abertas e vencidas
-              </label>
-            </div>
-            <div className="max-h-[360px] overflow-auto rounded-[10px]" style={{ border: '1px solid var(--border)' }}>
-              <table className="w-full min-w-[760px] border-collapse">
-                <thead className="sticky top-0" style={{ background: 'var(--surface)' }}>
-                  <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
-                    <th className={th}>Venc.</th>
-                    <th className={`${th} text-right`}>Valor</th>
-                    <th className={th}>Situação</th>
-                    <th className={th}>Pago em</th>
-                    <th className={th}>Tipo</th>
-                    <th className={th}>Descrição</th>
-                    <th className={th}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cobrancas.map((p) => (
-                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border)', opacity: p.deletada ? 0.5 : 1 }}>
-                      <td className={`${td} tabular-nums whitespace-nowrap`}>{dataBR(p.vencimento)}</td>
-                      <td className={`${td} text-right tabular-nums font-semibold`}>{formatCurrency(p.valor)}</td>
-                      <td className={td}><StatusBadge label={p.classe} colors={COBRANCA_LEGADA_COLORS} /><span className="ml-[6px] text-[10.5px]" style={{ color: 'var(--text-muted)' }}>{p.status}</span></td>
-                      <td className={`${td} tabular-nums whitespace-nowrap`}>{dataBR(p.pagoEm)}</td>
-                      <td className={td} style={{ color: 'var(--text-secondary)' }}>{p.tipo ?? '—'}{p.assinaturaId ? '' : ' · avulsa'}</td>
-                      <td className={td} style={{ color: 'var(--text-body)' }}>{p.descricao ?? <span style={{ color: 'var(--text-muted)' }}>sem descrição</span>}</td>
-                      <td className={td}>{p.invoiceUrl && <a href={p.invoiceUrl} target="_blank" rel="noreferrer" className="text-[11px] underline" style={{ color: 'var(--accent)' }}>abrir</a>}</td>
-                    </tr>
-                  ))}
-                  {cobrancas.length === 0 && (
-                    <tr><td className={td} colSpan={7} style={{ color: 'var(--text-muted)' }}>Nenhuma cobrança{soAbertas ? ' aberta ou vencida' : ''}.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-    </Modal>
   );
 }

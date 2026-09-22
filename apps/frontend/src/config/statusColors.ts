@@ -226,3 +226,14 @@ export const COBRANCA_LEGADA_COLORS: Record<string, StatusColor> = {
   vencida: { bg: '#fdeceb', fg: '#e0413c' },
   outra: { bg: '#eef1f5', fg: '#5b6b7f' },
 };
+
+// Linha da conciliação do legado (doc 02 §26.7): esperado × cobrado × pago.
+export const CONCILIACAO_LINHA_COLORS: Record<string, StatusColor> = {
+  paga: { bg: '#eafaf1', fg: '#1f9d5b' },
+  paga_com_encargo: { bg: '#fef6e9', fg: '#c98a0a' },
+  pendente: { bg: '#eef4ff', fg: '#2456c7' },
+  vencida: { bg: '#fdeceb', fg: '#e0413c' },
+  nao_cobrada: { bg: '#fdeceb', fg: '#e0413c' },
+  futura: { bg: '#eef1f5', fg: '#5b6b7f' },
+  valor_diverge: { bg: '#f3eafb', fg: '#9a3bd1' },
+};

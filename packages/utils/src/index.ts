@@ -13,3 +13,6 @@ export * from './analise-cadastro';
 export * from './datas';
 export * from './novacao';
 export * from './migracao-legado';
+export * from './legado-termos';
+export * from './legado-interpretacao';
+export * from './legado-conciliacao';

@@ -10,7 +10,8 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({ logger: true }),
+    // bodyLimit: PDFs de contrato (legado, 16 páginas assinadas) passam de 1 MB em base64.
+    new FastifyAdapter({ logger: true, bodyLimit: 15 * 1024 * 1024 }),
   );
 
   const configService = app.get(ConfigService);

@@ -9,15 +9,18 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Prisma, SituacaoCasoLegado, StatusCasoLegado } from '@prisma/client';
 import {
+  camposFaltantesTermos,
   centavosParaReaisString,
-  classificarCobrancaLegada,
   dataHojeBrasil,
   decomporParcelaLegada,
+  TERMOS_VAZIOS,
   triarCasoLegado,
+  type TermosContratoLegado,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasLeituraService, CobrancaAsaasLida } from '../asaas/asaas-leitura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
+import { LegadoConciliacaoService, ROTULO_TIPO_COBRANCA } from './legado-conciliacao.service';
 
 // Migração do legado — F1 (doc 02 §26): lê o Asaas, monta um CASO por
 // cliente, tria (sem vencida primeiro) e expõe a bancada. Nada aqui cria
@@ -48,7 +51,7 @@ const TRANSICOES_F1: Record<string, StatusCasoLegado[]> = {
   COLETADO: ['EM_REVISAO', 'DESCARTADO'],
   EM_REVISAO: ['COLETADO', 'DESCARTADO'],
   DESCARTADO: ['COLETADO'],
-  VALIDADO: [],
+  VALIDADO: ['EM_REVISAO'], // reabrir para corrigir; validar de novo é pela F2
   MIGRADO: [],
 };
 
@@ -65,6 +68,7 @@ export class MigracaoLegadoService {
     private readonly prisma: PrismaService,
     private readonly asaas: AsaasLeituraService,
     @InjectQueue(QUEUE_NAMES.COLETA_LEGADO) private readonly fila: Queue,
+    private readonly conciliacao: LegadoConciliacaoService,
   ) {}
 
   // ---------------- Coleta ----------------
@@ -169,6 +173,8 @@ export class MigracaoLegadoService {
           });
         }
         cobrancasLidas += cobrancas.length;
+        // F2: leitura das descrições (regras) — não toca no que o operador já decidiu.
+        await this.conciliacao.interpretarCobrancasDoCaso(caso.id, 'regra');
         clientesLidos += 1;
         if (clientesLidos % 10 === 0) {
           await this.prisma.db.coletaLegado.update({ where: { id: coletaId }, data: { clientesLidos, cobrancasLidas, casosNovos, casosAtualizados } });
@@ -192,11 +198,16 @@ export class MigracaoLegadoService {
   }
 
   private cobrancaParaBanco(casoId: string, c: CobrancaAsaasLida) {
+    const paga = c.status === 'RECEIVED' || c.status === 'CONFIRMED' || c.status === 'RECEIVED_IN_CASH' || c.status === 'DUNNING_RECEIVED';
     return {
       casoId,
       assinaturaId: c.subscription ?? null,
       valor: reais(Math.round(c.value * 100)),
-      valorPago: c.status === 'RECEIVED' || c.status === 'CONFIRMED' || c.status === 'RECEIVED_IN_CASH' ? reais(Math.round(c.value * 100)) : null,
+      // Juros/multa (doc 02 §26.7): o Asaas guarda o valor original quando a
+      // cobrança é alterada por encargo; a diferença é o que o cliente pagou a mais.
+      valorOriginal: reais(Math.round((c.originalValue ?? c.value) * 100)),
+      valorPago: paga ? reais(Math.round(c.value * 100)) : null,
+      encargoPago: paga ? reais(Math.max(Math.round(((c.interestValue as number | undefined) ?? (c.value - (c.originalValue ?? c.value))) * 100), 0)) : null,
       vencimento: dataUTC(c.dueDate) as Date,
       pagoEm: dataUTC(c.paymentDate ?? c.clientPaymentDate ?? c.confirmedDate ?? null),
       status: c.status,
@@ -268,8 +279,10 @@ export class MigracaoLegadoService {
       include: { cobrancas: { orderBy: { vencimento: 'asc' } } },
     });
     if (!c) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Caso não encontrado' });
-    const hoje = dataHojeBrasil();
     const parcela = centavos(c.valorParcelaPadrao);
+    const termos = (c.termos as TermosContratoLegado | null) ?? null;
+    const extracao = c.extracaoPdf as { modeloReconhecido?: boolean; extraidos?: string[]; faltantes?: string[]; cpfDiverge?: boolean; erro?: string } | null;
+    const conc = this.conciliacao.conciliar(c);
     return {
       ...this.casoParaApi(c),
       email: c.email,
@@ -284,26 +297,22 @@ export class MigracaoLegadoService {
             descricao: (c.assinaturaBruto as { description?: string } | null)?.description ?? null,
           }
         : null,
-      // Proposta de decomposição (doc 02 §26.2) — a F2 confirma no caso.
+      // Proposta de decomposição (doc 02 §26.2) — a F2 confirma nos termos.
       decomposicao: parcela == null ? null : decomporParcelaLegada(parcela),
-      cobrancas: c.cobrancas.map((p) => ({
-        id: p.id,
-        asaasPaymentId: p.asaasPaymentId,
-        assinaturaId: p.assinaturaId,
-        valor: centavos(p.valor) ?? 0,
-        valorPago: centavos(p.valorPago),
-        vencimento: p.vencimento.toISOString().slice(0, 10),
-        pagoEm: p.pagoEm?.toISOString().slice(0, 10) ?? null,
-        status: p.status,
-        classe: classificarCobrancaLegada(
-          { valor: centavos(p.valor) ?? 0, vencimento: p.vencimento.toISOString().slice(0, 10), status: p.status, deletada: p.deletada },
-          hoje,
-        ),
-        tipo: p.tipo,
-        descricao: p.descricao,
-        invoiceUrl: p.invoiceUrl,
-        deletada: p.deletada,
-      })),
+      // ---- F2 (doc 02 §26.7) ----
+      termos,
+      termosFaltantes: termos ? camposFaltantesTermos(termos) : camposFaltantesTermos(TERMOS_VAZIOS),
+      termosAtualizadosEm: c.termosAtualizadosEm?.toISOString() ?? null,
+      pdf: c.contratoPdfRef ? { nome: c.contratoPdfNome, em: c.contratoPdfEm?.toISOString() ?? null } : null,
+      extracaoPdf: extracao
+        ? { modeloReconhecido: !!extracao.modeloReconhecido, extraidos: extracao.extraidos ?? [], faltantes: extracao.faltantes ?? [], cpfDiverge: !!extracao.cpfDiverge, erro: extracao.erro ?? null }
+        : null,
+      cobrancas: c.cobrancas.map((p) => this.conciliacao.cobrancaParaApi(p)),
+      conciliacao: { linhas: conc.linhas, fora: conc.fora, resumo: conc.resumo, incompleta: conc.incompleta },
+      divergenciasReconhecidas: conc.reconhecidas,
+      pendenciasParaValidar: this.conciliacao.pendenciasParaValidar(c),
+      validadoEm: c.validadoEm?.toISOString() ?? null,
+      tiposCobranca: Object.entries(ROTULO_TIPO_COBRANCA).map(([valor, rotulo]) => ({ valor, rotulo })),
     };
   }
 

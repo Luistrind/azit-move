@@ -2437,6 +2437,17 @@ model CasoMigracaoLegado {
   clienteBruto    Json? // resposta do Asaas (prova e reprocessamento)
   assinaturaBruto Json?
 
+  // F2 (doc 02 §26.7): lado PopHub + conciliação
+  termos               Json? // TermosContratoLegado (@azit/utils) — digitados/extraídos do PDF, confirmados pelo operador
+  termosAtualizadosEm  DateTime?
+  contratoPdfRef       String? // arquivo em uploads/legado
+  contratoPdfNome      String?
+  contratoPdfEm        DateTime?
+  extracaoPdf          Json? // o que a leitura do PDF achou (prova do pré-preenchimento)
+  divergenciasReconhecidas Json? // [{ chave, nota, em, por }]
+  validadoEm           DateTime?
+  validadoPor          String?
+
   observacao        String?
   statusAlteradoEm  DateTime?
   statusAlteradoPor String?
@@ -2472,6 +2483,17 @@ model CobrancaLegada {
   invoiceUrl     String?
   deletada       Boolean   @default(false)
   bruto          Json
+
+  // F2 (doc 02 §26.7): leitura da descrição. valorOriginal separa juros/multa
+  // (Asaas: originalValue/interestValue) do valor da cobrança.
+  valorOriginal       Decimal? @db.Decimal(12, 2)
+  encargoPago         Decimal? @db.Decimal(12, 2) // juros + multa que o cliente pagou
+  tipoInterpretado    String? // parcela | intermediaria | entrada | acordo | reembolso | outra
+  interpretacao       Json? // InterpretacaoCobranca (decomposição, dúvida, motivo)
+  interpretadoPor     String? // regra | ia | operador
+  interpretadoEm      DateTime?
+  duvida              Boolean  @default(false)
+  interpretacaoObs    String?
 
   caso CasoMigracaoLegado @relation(fields: [casoId], references: [id], onDelete: Cascade)
 
