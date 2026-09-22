@@ -18,6 +18,10 @@ export function mensagemErro(e: unknown): string {
   const err = e as { response?: { data?: { mensagem?: string; erro?: string }; status?: number } };
   return (
     err?.response?.data?.mensagem ??
-    (err?.response?.status === 403 ? 'Sem permissão para esta operação' : 'Operação não permitida')
+    (err?.response?.status === 403
+      ? 'Sem permissão para esta operação'
+      : err?.response?.status === 413
+        ? 'Arquivo grande demais para enviar — reduza a foto ou o PDF (limite de 10 MB)'
+        : 'Operação não permitida')
   );
 }
