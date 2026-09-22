@@ -593,13 +593,43 @@ export class AnaliseService implements OnModuleInit {
     }));
   }
 
+  // Pareceres emitidos (caso real 22/09: o parecer do analista só era gravado
+  // na auditoria — quem aprovava depois não tinha como lê-lo). Vêm da trilha,
+  // com quem emitiu e quando; o mais recente é o que vale para a decisão.
+  async pareceresDe(analiseId: string) {
+    const logs = await this.prisma.db.logAuditoria.findMany({
+      where: { entidade: 'analise_cadastro', entidadeId: analiseId, acao: 'analise_parecer_emitido' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (logs.length === 0) return [];
+    const ids = [...new Set(logs.map((l) => l.usuarioId).filter((x): x is string => !!x))];
+    const usuarios = ids.length ? await this.prisma.db.usuario.findMany({ where: { id: { in: ids } }, select: { id: true, nome: true } }) : [];
+    const nome = new Map(usuarios.map((u) => [u.id, u.nome]));
+    return logs.map((l) => {
+      const d = (l.depois ?? {}) as { tipo?: string; texto?: string; codigos?: string[]; snapshot?: { comprometimento?: number | null; parcelaMensalEquivalente?: number } };
+      return {
+        tipo: d.tipo ?? null,
+        texto: d.texto ?? '',
+        codigos: d.codigos ?? [],
+        comprometimento: d.snapshot?.comprometimento ?? null,
+        parcelaMensalEquivalente: d.snapshot?.parcelaMensalEquivalente ?? null,
+        emitidoEm: l.createdAt.toISOString(),
+        emitidoPor: l.usuarioId ? (nome.get(l.usuarioId) ?? 'usuário removido') : 'sistema',
+      };
+    });
+  }
+
   async dossie(analiseId: string) {
     const a = await this.carregar(analiseId);
     const avaliacao = this.avaliar(a);
+    const pareceres = await this.pareceresDe(analiseId);
     return {
       id: a.id,
       propostaId: a.propostaId,
       status: a.status,
+      // Parecer do analista (o mais recente) e o histórico — visíveis a quem decide.
+      parecer: pareceres[0] ?? null,
+      pareceres,
       // Resumo do assistente (IA — 14/09): apoio ao analista, nunca decisão.
       resumoIa: (a.resumoIa as ResumoIa | null) ?? null,
       politicaVersao: a.parametroVersao.politicaVersao,

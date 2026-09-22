@@ -43,6 +43,8 @@ export interface Aprovacao {
     rendaDeclarada: number | null;
     rendaPresumida: number | null;
     rendaApurada: number | null;
+    // Parecer do analista — o que o Comitê está aprovando ou não.
+    parecer: { texto: string; tipo: string | null; emitidoPor: string; emitidoEm: string } | null;
   } | null;
   // Situação do usuário logado frente a esta solicitação (calculada no backend).
   minha: { podeAprovar: boolean; ehSolicitante: boolean; jaDecidiu: boolean };

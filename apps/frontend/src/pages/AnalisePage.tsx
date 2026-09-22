@@ -649,6 +649,21 @@ function Decisao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean; aca
     <div className={card}>
       <div className="mb-[8px] font-display text-[13px] font-bold">Decisão</div>
 
+      {/* Parecer do analista — visível a quem decide (caso real 22/09: o texto
+          só ia para a auditoria e o aprovador não tinha onde lê-lo). */}
+      {d.parecer && (
+        <div className="mb-[10px] rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+          <div className="flex flex-wrap items-center gap-[8px] text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            <span className="font-bold uppercase tracking-[.04em]">Parecer do analista</span>
+            <span>· {d.parecer.emitidoPor} · {new Date(d.parecer.emitidoEm).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+            {d.parecer.tipo && <span>· {d.parecer.tipo === 'aprovacao' ? 'recomenda aprovação' : d.parecer.tipo === 'cocad' ? 'encaminha ao Comitê' : d.parecer.tipo}</span>}
+            {d.parecer.comprometimento != null && <span>· comprometimento {(d.parecer.comprometimento * 100).toFixed(1)}% no momento do parecer</span>}
+            {d.pareceres.length > 1 && <span>· {d.pareceres.length}ª versão</span>}
+          </div>
+          <div className="mt-[6px] whitespace-pre-wrap text-[13px]" style={{ color: 'var(--text-body)' }}>{d.parecer.texto}</div>
+        </div>
+      )}
+
       {!emParecer && !decidida && (
         <div className="flex flex-col gap-[8px]">
           <textarea className={inputCls} rows={3} placeholder="Parecer do analista (os números vêm do sistema — descreva a conclusão)" value={parecer} onChange={(e) => setParecer(e.target.value)} />

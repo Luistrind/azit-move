@@ -274,6 +274,18 @@ function CardAprovacao({
             <div><span style={{ color: 'var(--text-muted)' }}>Renda declarada</span><div className="font-bold tabular-nums">{a.contextoAnalise.rendaDeclarada !== null ? formatCurrency(a.contextoAnalise.rendaDeclarada) : '—'}</div></div>
             <div><span style={{ color: 'var(--text-muted)' }}>Renda apurada</span><div className="font-bold tabular-nums">{a.contextoAnalise.rendaApurada !== null ? formatCurrency(a.contextoAnalise.rendaApurada) : '—'}</div></div>
           </div>
+          {/* Parecer do analista (22/09): antes o aprovador via só "Ver parecer" e
+              não tinha onde ler o texto — agora ele está aqui, na decisão. */}
+          {a.contextoAnalise.parecer ? (
+            <div className="mt-[10px] rounded-[8px] p-[10px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+              <div className="text-[11px] font-bold uppercase tracking-[.04em]" style={{ color: 'var(--text-muted)' }}>
+                Parecer do analista · {a.contextoAnalise.parecer.emitidoPor} · {fmtDataHora(a.contextoAnalise.parecer.emitidoEm)}
+              </div>
+              <div className="mt-[4px] whitespace-pre-wrap text-[12.5px]" style={{ color: 'var(--text-body)' }}>{a.contextoAnalise.parecer.texto}</div>
+            </div>
+          ) : (
+            <div className="mt-[8px] text-[11.5px]" style={{ color: '#c98a0a' }}>Sem parecer emitido para esta análise.</div>
+          )}
           <Link to={`/analises/${a.contextoAnalise.analiseId}`} className="mt-[8px] inline-block text-[12px] font-semibold" style={{ color: 'var(--navy)' }}>
             Abrir o dossiê completo da análise →
           </Link>

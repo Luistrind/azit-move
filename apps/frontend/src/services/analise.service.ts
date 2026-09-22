@@ -23,8 +23,17 @@ export interface ResumoIaAnalise {
   insumos?: { consultas: number; documentos: number; documentosIgnorados: number };
 }
 
+export interface ParecerAnalise {
+  tipo: string | null; texto: string; codigos: string[];
+  comprometimento: number | null; parcelaMensalEquivalente: number | null;
+  emitidoEm: string; emitidoPor: string;
+}
+
 export interface DossieAnalise {
   id: string; propostaId: string; status: string; politicaVersao: string;
+  // Parecer do analista (o mais recente) e o histórico — quem decide precisa lê-lo.
+  parecer: ParecerAnalise | null;
+  pareceres: ParecerAnalise[];
   resumoIa: ResumoIaAnalise | null;
   condutorPrincipalTitularId: string | null;
   parcelaMensalEquivalente: number; comprometimento: number | null;

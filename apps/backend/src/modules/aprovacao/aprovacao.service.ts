@@ -352,9 +352,25 @@ export class AprovacaoService {
         rendaDeclarada: number | null;
         rendaPresumida: number | null;
         rendaApurada: number | null;
+        // Parecer do analista (caso real 22/09: o aprovador via só "Ver parecer"
+        // e não tinha onde ler o texto). Vem da trilha de auditoria.
+        parecer: { texto: string; tipo: string | null; emitidoPor: string; emitidoEm: string } | null;
       }
     >();
     if (analiseIds.length === 0) return mapa;
+    const logs = await this.prisma.db.logAuditoria.findMany({
+      where: { entidade: 'analise_cadastro', entidadeId: { in: analiseIds }, acao: 'analise_parecer_emitido' },
+      orderBy: { createdAt: 'desc' },
+    });
+    const usuarioIds = [...new Set(logs.map((l) => l.usuarioId).filter((x): x is string => !!x))];
+    const usuarios = usuarioIds.length ? await this.prisma.db.usuario.findMany({ where: { id: { in: usuarioIds } }, select: { id: true, nome: true } }) : [];
+    const nomeDe = new Map(usuarios.map((u) => [u.id, u.nome]));
+    const pareceres = new Map<string, { texto: string; tipo: string | null; emitidoPor: string; emitidoEm: string }>();
+    for (const l of logs) {
+      if (!l.entidadeId || pareceres.has(l.entidadeId)) continue; // o mais recente de cada análise
+      const d = (l.depois ?? {}) as { tipo?: string; texto?: string };
+      pareceres.set(l.entidadeId, { texto: d.texto ?? '', tipo: d.tipo ?? null, emitidoPor: l.usuarioId ? (nomeDe.get(l.usuarioId) ?? 'usuário removido') : 'sistema', emitidoEm: l.createdAt.toISOString() });
+    }
     const analises = await this.prisma.db.analiseCadastro.findMany({
       where: { id: { in: analiseIds } },
       select: {
@@ -384,6 +400,7 @@ export class AprovacaoService {
         rendaDeclarada: p?.rendaDeclarada ? this.cent(p.rendaDeclarada) : null,
         rendaPresumida: p?.rendaPresumida && this.cent(p.rendaPresumida) > 0 ? this.cent(p.rendaPresumida) : null,
         rendaApurada: p?.rendaApurada ? this.cent(p.rendaApurada) : null,
+        parecer: pareceres.get(a.id) ?? null,
       });
     }
     return mapa;
