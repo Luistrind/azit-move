@@ -21,7 +21,7 @@ export function mensagemErro(e: unknown): string {
     (err?.response?.status === 403
       ? 'Sem permissão para esta operação'
       : err?.response?.status === 413
-        ? 'Arquivo grande demais para enviar — reduza a foto ou o PDF (limite de 10 MB)'
+        ? 'Arquivo grande demais para enviar — reduza a foto ou o PDF (limite de 20 MB)'
         : 'Operação não permitida')
   );
 }

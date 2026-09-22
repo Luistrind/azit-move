@@ -372,7 +372,7 @@ export function AtendimentoPage() {
   // Correção 22/09 (caso real em produção): um arquivo que falha NÃO interrompe
   // os seguintes — cada um sobe sozinho e, no fim, a tela diz quais não entraram
   // e por quê. Arquivo acima do limite é barrado antes de sair do navegador.
-  const LIMITE_ARQUIVO = 10 * 1024 * 1024; // 10 MB (em base64 vira ~13,4 MB; o servidor aceita 15)
+  const LIMITE_ARQUIVO = 20 * 1024 * 1024; // 20 MB (em base64 vira ~27 MB; o servidor aceita 30)
   async function anexarVarios(tipo: string, files: File[], descricao?: string) {
     if (!proposta || files.length === 0) return;
     setErro(null);
@@ -381,7 +381,7 @@ export function AtendimentoPage() {
     try {
       for (const file of files) {
         if (file.size > LIMITE_ARQUIVO) {
-          falhas.push(`${file.name}: grande demais (${(file.size / 1024 / 1024).toFixed(1)} MB; limite 10 MB)`);
+          falhas.push(`${file.name}: grande demais (${(file.size / 1024 / 1024).toFixed(1)} MB; limite 20 MB)`);
           continue;
         }
         try {
