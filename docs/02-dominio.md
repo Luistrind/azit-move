@@ -1907,8 +1907,12 @@ Parcela padrão semanal: **R$ 997 (HB20)** e **R$ 697 (Mobi/Kwid)**. Dentro dela
 | item | valor | natureza | credor |
 |---|---|---|---|
 | Parcelamento do veículo | 942 / 642 | parcelado | Azit |
-| Seguro | 50 | recorrente | terceiro |
-| Repasse da taxa de mensagens do Asaas | 5 | recorrente | Azit (quem paga o Asaas é a Azit; o cliente reembolsa) |
+| Seguro | 50 | recorrente | Azit |
+| Repasse da taxa de mensagens do Asaas | 5 | recorrente | Azit |
+
+**Credor é a Azit nos três** (correção do Luís, 21/09): hoje o cliente paga tudo à Azit, e é a
+Azit quem paga a seguradora e o Asaas — o split ainda não foi implementado. Quando existir, o
+seguro passa a apontar para a estrutura da Proteção; no legado, fica como é cobrado hoje.
 
 O que varia é o **prazo**, conforme a entrada — por vezes diluída nas parcelas —, e isso o
 cronograma absorve como número de parcelas. Valor fora do padrão é exceção tratada no caso, não
