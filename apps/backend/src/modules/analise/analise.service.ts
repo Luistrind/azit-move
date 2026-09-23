@@ -169,7 +169,13 @@ export class AnaliseService implements OnModuleInit {
       include: { vinculos: true, analiseCadastro: true },
     });
     if (!proposta) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Proposta não encontrada' });
-    if (proposta.analiseCadastro) return this.dossie(proposta.analiseCadastro.id);
+    if (proposta.analiseCadastro) {
+      // Caso real 22/09: análise aberta pela página da proposta nascia sem a
+      // Camada 1 e sem as consultas. Se ainda está vazia, faz a ponte agora —
+      // idempotente, então reabrir uma análise completa não muda nada.
+      await this.ponteDaProposta(proposta.analiseCadastro.id, usuarioId, false);
+      return this.dossie(proposta.analiseCadastro.id);
+    }
 
     const versao = await this.prisma.db.versaoParametrosAnalise.findFirst({ orderBy: { vigenteDesde: 'desc' } });
     if (!versao) {
@@ -201,6 +207,9 @@ export class AnaliseService implements OnModuleInit {
       },
     });
     await this.auditar(usuarioId, 'analise_iniciada', analise.id, undefined, { propostaId, politicaVersao: versao.politicaVersao });
+    // A ponte com a proposta (Camada 1 + consultas automáticas) vale para QUALQUER
+    // caminho de abertura — não só o "Enviar proposta" do atendimento (22/09).
+    await this.ponteDaProposta(analise.id, usuarioId, false);
     return this.dossie(analise.id);
   }
 
@@ -210,19 +219,36 @@ export class AnaliseService implements OnModuleInit {
   // da Camada 1 na trilha OFICIAL (ConsultaExterna) e copia as rendas declarada
   // e presumida para o participante — nada fica em campo paralelo.
   async abrirDaJornada(propostaId: string, usuarioId?: string) {
+    // iniciar() já faz a ponte; aqui só se garante o passo dos documentos, que
+    // no atendimento é certo (a CNH foi exigida antes de enviar).
     await this.iniciar(propostaId, usuarioId);
+    const analise = await this.prisma.db.analiseCadastro.findFirst({ where: { propostaId }, select: { id: true } });
+    if (analise) await this.ponteDaProposta(analise.id, usuarioId, true);
+  }
+
+  // Ponte proposta → análise (doc 02 §20), IDEMPOTENTE: injeta a Camada 1 que
+  // a proposta já tem na trilha oficial, copia as rendas, avança para
+  // "documentos enviados" quando a CNH está anexada e dispara as consultas da
+  // 2ª camada + resumo — cada passo só roda se ainda não aconteceu. Caso real
+  // 22/09: só o "Enviar proposta" do atendimento fazia isso; a análise aberta
+  // pela página da proposta nascia vazia ("registre a consulta inicial…").
+  private async ponteDaProposta(analiseId: string, usuarioId: string | undefined, documentosConferidos: boolean) {
+    const analiseAtual = await this.prisma.db.analiseCadastro.findFirst({
+      where: { id: analiseId },
+      select: { id: true, status: true, propostaId: true, resumoIa: true, _count: { select: { consultas: true } } },
+    });
+    if (!analiseAtual) return;
     const proposta = await this.prisma.db.proposta.findFirst({
-      where: { id: propostaId },
+      where: { id: analiseAtual.propostaId },
       select: {
         titularId: true,
         rendaDeclarada: true,
         camada1Status: true,
         camada1Resultado: true,
-        analiseCadastro: { select: { id: true, status: true } },
+        documentos: { where: { tipo: 'CNH' }, select: { titularId: true } },
       },
     });
-    if (!proposta?.analiseCadastro) return;
-    const analiseId = proposta.analiseCadastro.id;
+    if (!proposta) return;
 
     // Rendas à disposição do analista (decisão Q4): declarada (entrevista) +
     // presumida (birô, pode ser nula). A APURADA continua decisão do analista.
@@ -254,11 +280,11 @@ export class AnaliseService implements OnModuleInit {
       },
     });
 
-    // Documentos foram anexados e conferidos pelo operador no envio (CNH
-    // obrigatória) — isso É a confirmação humana da etapa.
-    const atual = await this.prisma.db.analiseCadastro.findFirst({ where: { id: analiseId }, select: { status: true } });
-    if (atual?.status === 'CADASTRO_EM_PREENCHIMENTO') {
-      await this.mudarStatus(analiseId, 'DOCUMENTOS_ENVIADOS', usuarioId, 'CNH anexada e proposta enviada no atendimento (doc 02 §20)');
+    // Documentos: no atendimento a CNH foi exigida antes de enviar (confirmação
+    // humana); pela página da proposta, vale a CNH anexada ao comprador principal.
+    const cnhAnexada = documentosConferidos || proposta.documentos.some((d) => d.titularId === proposta.titularId);
+    if (analiseAtual.status === 'CADASTRO_EM_PREENCHIMENTO' && cnhAnexada) {
+      await this.mudarStatus(analiseId, 'DOCUMENTOS_ENVIADOS', usuarioId, documentosConferidos ? 'CNH anexada e proposta enviada no atendimento (doc 02 §20)' : 'CNH anexada na proposta (abertura pela página da proposta)');
     }
 
     // Consulta da Camada 1 entra na trilha oficial (decisão Q2) — inclusive a
@@ -305,8 +331,13 @@ export class AnaliseService implements OnModuleInit {
 
     // Consultas da 2ª camada + resumo do assistente, AUTOMÁTICOS no envio
     // (decisão Luís 14/09: sem botão — o worker roda as 7 consultas, pulando
-    // as já válidas, e o resumo nasce completo de uma só vez).
-    await this.dispararConsultasEResumo(analiseId);
+    // as já válidas, e o resumo nasce completo de uma só vez). Só dispara uma
+    // vez: se já há consulta além da Camada 1, pula. (Um resumo já concluído
+    // pelo connector é preservado pelo assistente quando não há chave da IA.)
+    const consultasAlemDaCamada1 = await this.prisma.db.consultaExterna.count({ where: { analiseId, tipo: { not: 'CAMADA1' } } });
+    if (consultasAlemDaCamada1 === 0) {
+      await this.dispararConsultasEResumo(analiseId);
+    }
   }
 
   // Repetir a consulta da Camada 1 NO BIRÔ, sob demanda do analista (caso do

@@ -64,8 +64,16 @@ export class AssistenteAnaliseService {
   }
 
   // Marca "gerando" imediatamente (a tela mostra o estado) — o worker gera.
+  // Um resumo CONCLUÍDO (ex.: gerado pelo connector MCP) não é apagado por
+  // isso: sem chave da IA no ambiente, ele ficaria "gerando" para sempre (22/09).
   async marcarGerando(analiseId: string) {
+    if (!this.config.get<string>('anthropic.apiKey') && (await this.resumoConcluido(analiseId))) return;
     await this.salvar(analiseId, { status: 'gerando' });
+  }
+
+  private async resumoConcluido(analiseId: string): Promise<boolean> {
+    const a = await this.prisma.db.analiseCadastro.findFirst({ where: { id: analiseId }, select: { resumoIa: true } });
+    return (a?.resumoIa as ResumoIa | null)?.status === 'concluido';
   }
 
   // Insumos do relatório — FONTE ÚNICA entre o pipeline automático (API) e o
@@ -251,6 +259,9 @@ export class AssistenteAnaliseService {
   async gerar(analiseId: string): Promise<{ resultado: string }> {
     const apiKey = this.config.get<string>('anthropic.apiKey');
     if (!apiKey) {
+      // Sem chave, um resumo já concluído (connector MCP) fica como está —
+      // nunca é trocado por "não configurado" (caso real 22/09).
+      if (await this.resumoConcluido(analiseId)) return { resultado: 'nao_configurado_resumo_mantido' };
       await this.salvar(analiseId, {
         status: 'nao_configurado',
         erro: 'ANTHROPIC_API_KEY não configurada no ambiente — o resumo automático fica indisponível até configurá-la',
