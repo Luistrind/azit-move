@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { camposFaltantesTermos, extrairTermosDoTexto, reaisTextoParaCentavos, TERMOS_VAZIOS } from './legado-termos';
-import { contextoDosTermos, interpretarCobrancaLegada } from './legado-interpretacao';
+import { contextoDosTermos, interpretarCobrancaLegada, partesRotuladas } from './legado-interpretacao';
 import { conciliarLegado, type CobrancaConciliavel } from './legado-conciliacao';
 
 // Texto no formato que o pdf-parse devolve para o modelo Mod06 (quebras de
@@ -125,7 +125,7 @@ describe('interpretarCobrancaLegada', () => {
   });
   it('entrada no ato: sem dúvida quando o valor bate com o contrato', () => {
     expect(interp('ENTRADA HB20 - parte a vista', 250_000)).toMatchObject({ tipo: 'entrada', duvida: false });
-    expect(interp('Entrada', 300_000)).toMatchObject({ tipo: 'entrada', duvida: true });
+    expect(interp('Entrada', 300_000)).toMatchObject({ tipo: 'entrada', duvida: false }); // parte da entrada — a conciliação soma
   });
   it('acordo e reembolso pela descrição', () => {
     expect(interp('ACORDO - 2 parcelas em atraso com desconto de juros', 150_000).tipo).toBe('acordo');
@@ -233,5 +233,64 @@ describe('conciliarLegado', () => {
     const r = conciliarLegado({ termos: { ...termos, parcelas: { quantidade: null, valor: null, primeiraEm: null } }, hoje: '2026-08-06', cobrancas: [] });
     expect(r.incompleta).toBe(true);
     expect(r.linhas).toEqual([]);
+  });
+});
+
+// Casos reais da produção (23/09): descrição estruturada com despesa junto da
+// parcela, e entrada paga em várias transações.
+describe('casos reais 23/09 — composição e entrada composta', () => {
+  const ctx = contextoDosTermos({ parcelas: { valor: 94_200 }, intermediarias: { valor: 50_000 }, entradaValor: 250_000, seguroSemanal: 5_000, taxaSemanal: 500 }, null);
+  const interp = (descricao: string, valorOriginal: number) => interpretarCobrancaLegada({ descricao, valorOriginal, avulsa: false, contexto: ctx });
+
+  it('parcela + manutenção na mesma cobrança: é PARCELA, com a despesa como extra', () => {
+    const r = interp('Contrato - Parcela semanal: R$ 942,00 / Proteção Veicular - Repasse: R$ 50,00 / Taxas Boleto Pix - Repasse: R$ 5,00 / Manutenção Periodica R$ 225,75', 122_275);
+    expect(r).toMatchObject({ tipo: 'parcela', parcelamento: 94_200, seguro: 5_000, taxa: 500, extra: 22_575, extraRotulo: 'Manutenção Periodica', duvida: false });
+    const r2 = interp('Contrato - Parcela semanal: R$ 942,00 / Proteção Veicular - Repasse: R$ 50,00 / Taxas Boleto Pix - Repasse: R$ 5,00 / Manutenção Corretiva R$ 331,36 - 01/04.', 132_836);
+    expect(r2).toMatchObject({ tipo: 'parcela', parcelamento: 94_200, extra: 33_136, duvida: false });
+  });
+  it('vale o valor do CONTRATO, não o padrão 997: parcela contratual de 1.100 lida da descrição não fica em dúvida', () => {
+    const c2 = contextoDosTermos({ parcelas: { valor: 110_000 }, intermediarias: null, entradaValor: null, seguroSemanal: 5_000, taxaSemanal: 500 }, null);
+    const r = interpretarCobrancaLegada({ descricao: 'Contrato - Parcela semanal: R$ 1.100,00 / Proteção Veicular: R$ 50,00 / Taxa Pix: R$ 5,00', valorOriginal: 115_500, avulsa: false, contexto: c2 });
+    expect(r).toMatchObject({ tipo: 'parcela', parcelamento: 110_000, seguro: 5_000, taxa: 500, duvida: false });
+  });
+  it('partes soltas ("R$ 50 seguro + R$ 5 taxa") não passam pelo parser estruturado', () => {
+    expect(partesRotuladas('Parcela semanal HB20 - R$ 942,00 parcela + R$ 50,00 seguro + R$ 5,00 taxa')).toEqual([]);
+  });
+  it('reserva da placa e complemento de entrada são partes da entrada', () => {
+    expect(interp('Taxa de reserva da Placa: SIQ 4E66', 50_000).tipo).toBe('entrada');
+    expect(interp('Complemento de entrada da Placa: SIQ 4E66.', 50_000).tipo).toBe('entrada');
+  });
+
+  it('conciliação: entrada em 3 transações soma 2.500 = paga, sem divergência; parcela com manutenção casa pela composição', () => {
+    const termos = { parcelas: { quantidade: 3, valor: 94_200, primeiraEm: '2025-09-09' }, intermediarias: null, entradaValor: 250_000, seguroSemanal: 5_000, taxaSemanal: 500 };
+    const base = { valorPago: null as number | null, pagoEm: null as string | null, classe: 'paga' as const, intermediariaEmbutida: 0, parcelamento: null as number | null, extra: 0, extraRotulo: null as string | null, descricao: null as string | null };
+    const r = conciliarLegado({
+      termos, hoje: '2025-10-01',
+      cobrancas: [
+        { ...base, id: 'e1', vencimento: '2025-08-30', valorOriginal: 50_000, valorPago: 50_000, pagoEm: '2025-08-30', tipo: 'entrada' },
+        { ...base, id: 'e2', vencimento: '2025-09-01', valorOriginal: 150_000, valorPago: 150_000, pagoEm: '2025-09-01', tipo: 'entrada' },
+        { ...base, id: 'e3', vencimento: '2025-09-02', valorOriginal: 50_000, valorPago: 50_000, pagoEm: '2025-09-02', tipo: 'entrada' },
+        { ...base, id: 'p1', vencimento: '2025-09-09', valorOriginal: 99_700, valorPago: 99_700, pagoEm: '2025-09-09', tipo: 'parcela', parcelamento: 94_200 },
+        { ...base, id: 'p2', vencimento: '2025-09-16', valorOriginal: 122_275, valorPago: 122_275, pagoEm: '2025-09-16', tipo: 'parcela', parcelamento: 94_200, extra: 22_575, extraRotulo: 'Manutenção Periodica' },
+        { ...base, id: 'p3', vencimento: '2025-09-23', valorOriginal: 99_700, valorPago: 99_700, pagoEm: '2025-09-23', tipo: 'parcela', parcelamento: 94_200 },
+      ],
+    });
+    const entrada = r.linhas.find((l) => l.chave === 'entrada')!;
+    expect(entrada).toMatchObject({ situacao: 'paga', divergencia: false, cobradoValor: 250_000, pagoValor: 250_000 });
+    expect(entrada.partes.map((x) => x.valor)).toEqual([50_000, 150_000, 50_000]);
+    const p2 = r.linhas.find((l) => l.chave === 'parcela:2')!;
+    expect(p2).toMatchObject({ situacao: 'paga', divergencia: false, cobradoValor: 122_275, esperadoValor: 99_700 });
+    expect(p2.componentes).toMatchObject({ extra: 22_575, extraRotulo: 'Manutenção Periodica' });
+    expect(r.fora).toHaveLength(0);
+    expect(r.resumo).toMatchObject({ parcelasPagas: 3, entradaPaga: true, divergencias: 0 });
+  });
+
+  it('conciliação: entrada que soma menos que o contrato diverge, e as partes ficam visíveis', () => {
+    const termos = { parcelas: { quantidade: 1, valor: 94_200, primeiraEm: '2025-09-09' }, intermediarias: null, entradaValor: 250_000, seguroSemanal: 5_000, taxaSemanal: 500 };
+    const base = { valorPago: null as number | null, pagoEm: null as string | null, classe: 'paga' as const, intermediariaEmbutida: 0, parcelamento: null as number | null, extra: 0, extraRotulo: null as string | null, descricao: null as string | null };
+    const r = conciliarLegado({ termos, hoje: '2025-10-01', cobrancas: [{ ...base, id: 'e1', vencimento: '2025-09-01', valorOriginal: 150_000, valorPago: 150_000, pagoEm: '2025-09-01', tipo: 'entrada' }] });
+    const entrada = r.linhas.find((l) => l.chave === 'entrada')!;
+    expect(entrada).toMatchObject({ situacao: 'valor_diverge', divergencia: true, cobradoValor: 150_000 });
+    expect(entrada.partes).toHaveLength(1);
   });
 });

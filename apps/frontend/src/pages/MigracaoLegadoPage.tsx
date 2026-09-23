@@ -165,7 +165,7 @@ export function MigracaoLegadoPage() {
                 </td>
                 <td className={td}>
                   <div className="font-display font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>{c.valorParcelaPadrao == null ? '—' : formatCurrency(c.valorParcelaPadrao)}</div>
-                  <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{c.modeloRotulo ?? (c.valorParcelaPadrao == null ? '' : 'fora do padrão')}</div>
+                  <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{c.modeloRotulo ?? (c.valorParcelaPadrao == null ? '' : 'valor próprio do contrato')}</div>
                 </td>
                 <td className={td} style={{ color: c.assinaturaAtiva ? 'var(--text-body)' : 'var(--text-muted)' }}>
                   {c.assinaturaValor == null ? '—' : `${formatCurrency(c.assinaturaValor)} ${CICLO[c.assinaturaCiclo ?? ''] ?? c.assinaturaCiclo ?? ''}`}

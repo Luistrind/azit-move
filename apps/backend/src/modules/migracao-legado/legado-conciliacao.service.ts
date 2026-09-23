@@ -209,7 +209,7 @@ export class LegadoConciliacaoService {
   async definirInterpretacao(
     casoId: string,
     cobrancaId: string,
-    corpo: { tipo: string; parcelamento?: number; seguro?: number; taxa?: number; intermediaria?: number; observacao?: string },
+    corpo: { tipo: string; parcelamento?: number; seguro?: number; taxa?: number; intermediaria?: number; extra?: number; extraRotulo?: string; observacao?: string },
     usuarioId: string,
   ) {
     const caso = await this.carregar(casoId);
@@ -223,17 +223,18 @@ export class LegadoConciliacaoService {
     const seguro = corpo.seguro ?? 0;
     const taxa = corpo.taxa ?? 0;
     const intermediaria = corpo.intermediaria ?? 0;
-    const parcelamento = corpo.parcelamento ?? valorOriginal - seguro - taxa - intermediaria;
-    if ([seguro, taxa, intermediaria, parcelamento].some((v) => !Number.isInteger(v) || v < 0)) {
+    const extra = corpo.extra ?? 0; // despesa repassada junto da parcela (23/09)
+    const parcelamento = corpo.parcelamento ?? valorOriginal - seguro - taxa - intermediaria - extra;
+    if ([seguro, taxa, intermediaria, extra, parcelamento].some((v) => !Number.isInteger(v) || v < 0)) {
       throw new UnprocessableEntityException({ erro: 'decomposicao_invalida', mensagem: 'Valores da decomposição precisam ser inteiros em centavos, não negativos' });
     }
-    if (parcelamento + seguro + taxa + intermediaria !== valorOriginal) {
+    if (parcelamento + seguro + taxa + intermediaria + extra !== valorOriginal) {
       throw new UnprocessableEntityException({
         erro: 'decomposicao_nao_fecha',
-        mensagem: `A decomposição soma ${centavosParaReaisString(parcelamento + seguro + taxa + intermediaria)} e a cobrança vale ${centavosParaReaisString(valorOriginal)}`,
+        mensagem: `A decomposição soma ${centavosParaReaisString(parcelamento + seguro + taxa + intermediaria + extra)} e a cobrança vale ${centavosParaReaisString(valorOriginal)}`,
       });
     }
-    const interp: InterpretacaoCobranca = { tipo: corpo.tipo as TipoCobrancaLegada, parcelamento, seguro, taxa, intermediaria, duvida: false, motivo: 'definido pelo operador' };
+    const interp: InterpretacaoCobranca = { tipo: corpo.tipo as TipoCobrancaLegada, parcelamento, seguro, taxa, intermediaria, extra, extraRotulo: extra > 0 ? (corpo.extraRotulo?.trim() || 'despesa junto da parcela') : null, duvida: false, motivo: 'definido pelo operador' };
     const atualizada = await this.prisma.db.cobrancaLegada.update({
       where: { id: cobrancaId },
       data: { tipoInterpretado: interp.tipo, interpretacao: interp as unknown as Prisma.InputJsonValue, interpretadoPor: 'operador', interpretadoEm: new Date(), duvida: false, interpretacaoObs: corpo.observacao?.trim() || null },
@@ -271,6 +272,11 @@ export class LegadoConciliacaoService {
         classe: classificarCobrancaLegada({ valor: valorOriginal, vencimento: iso(c.vencimento) as string, status: c.status, deletada: c.deletada }, hoje),
         tipo: (c.tipoInterpretado as TipoCobrancaLegada | null) ?? 'outra',
         intermediariaEmbutida: interp?.intermediaria ?? 0,
+        // Composição lida da descrição (23/09): casa a parcela pela parte do
+        // contrato e mostra a despesa que veio junto.
+        parcelamento: interp && interp.tipo === 'parcela' ? interp.parcelamento : null,
+        extra: interp?.extra ?? 0,
+        extraRotulo: interp?.extraRotulo ?? null,
         descricao: c.descricao,
       };
     });

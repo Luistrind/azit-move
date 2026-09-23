@@ -26,8 +26,50 @@ export interface InterpretacaoCobranca {
   seguro: number;
   taxa: number;
   intermediaria: number; // quando a intermediária veio junto na mesma cobrança
+  // Despesa repassada JUNTO da parcela (caso real 23/09: "Manutenção Periódica
+  // R$ 225,75" na mesma cobrança da semana) — é o produto de reembolso, não
+  // muda a parcela do contrato.
+  extra: number;
+  extraRotulo: string | null;
   duvida: boolean;
   motivo: string; // por que a regra chegou aqui (ou por que ficou em dúvida)
+}
+
+// Descrição ESTRUTURADA do Asaas, como a operação escrevia: "Contrato -
+// Parcela semanal: R$ 942,00 / Proteção Veicular - Repasse: R$ 50,00 / Taxas
+// Boleto Pix - Repasse: R$ 5,00 / Manutenção Corretiva R$ 331,36 - 01/04".
+// Cada trecho com valor vira uma parte rotulada.
+export interface ParteRotulada {
+  rotulo: string;
+  valor: number; // centavos
+  papel: 'parcelamento' | 'seguro' | 'taxa' | 'intermediaria' | 'entrada' | 'extra';
+}
+
+export function partesRotuladas(descricao: string): ParteRotulada[] {
+  // Só o formato por segmentos ("A: R$ x / B: R$ y / C R$ z"), com exatamente
+  // UM valor em cada segmento. Formatos soltos ("R$ 50 seguro + R$ 5 taxa")
+  // ficam para as regras por palavra, que leem o rótulo depois do valor.
+  // Separador é " / " com espaços — uma data "01/04" no fim do rótulo não corta.
+  const segmentos = descricao.split(/\s+\/\s+/).map((s) => s.trim()).filter(Boolean);
+  if (segmentos.length < 2) return [];
+  const partes: ParteRotulada[] = [];
+  for (const seg of segmentos) {
+    const valores = [...seg.matchAll(/R\$\s*([\d.]+,\d{2})/g)];
+    if (valores.length !== 1) return [];
+    const valor = reais(valores[0][1]);
+    if (valor == null) return [];
+    const rotulo = seg.slice(0, valores[0].index).replace(/[\s\-–:]+$/g, '').trim() || 'valor';
+    const r = rotulo.toLowerCase();
+    const papel: ParteRotulada['papel'] =
+      /intermedi|dilu[íi]d/.test(r) ? 'intermediaria'
+        : /entrada|sinal|reserva/.test(r) ? 'entrada'
+          : /prote[çc][ãa]o|seguro/.test(r) ? 'seguro'
+            : /taxa|boleto|pix|mensag/.test(r) ? 'taxa'
+              : /parcela|semanal|contrato|financiamento/.test(r) ? 'parcelamento'
+                : 'extra';
+    partes.push({ rotulo, valor, papel });
+  }
+  return partes;
 }
 
 const reais = (s: string) => {
@@ -62,8 +104,43 @@ export function interpretarCobrancaLegada(params: {
   const semItens = (v: number) => v - seguro - taxa;
 
   const sem = (tipo: TipoCobrancaLegada, parcelamento: number, extra: Partial<InterpretacaoCobranca> & { motivo: string }): InterpretacaoCobranca => ({
-    tipo, parcelamento, seguro: 0, taxa: 0, intermediaria: 0, duvida: false, ...extra,
+    tipo, parcelamento, seguro: 0, taxa: 0, intermediaria: 0, extra: 0, extraRotulo: null, duvida: false, ...extra,
   });
+
+  // 0. Descrição ESTRUTURADA (rótulo: R$ valor / rótulo: R$ valor …): quando as
+  //    partes somam o valor da cobrança, a composição vem da própria descrição —
+  //    inclusive despesa repassada junto da parcela (caso real 23/09).
+  const partes = partesRotuladas(desc);
+  const somaPartes = partes.reduce((s, x) => s + x.valor, 0);
+  if (partes.length >= 2 && somaPartes === valor) {
+    const soma = (papel: ParteRotulada['papel']) => partes.filter((x) => x.papel === papel).reduce((s, x) => s + x.valor, 0);
+    const parcelamento = soma('parcelamento');
+    const extras = partes.filter((x) => x.papel === 'extra');
+    const entradaParte = soma('entrada');
+    if (parcelamento > 0) {
+      const p0 = c.parcelaContratual;
+      const bate = p0 == null || parcelamento === p0;
+      return {
+        tipo: 'parcela',
+        parcelamento,
+        seguro: soma('seguro'),
+        taxa: soma('taxa'),
+        intermediaria: soma('intermediaria') + entradaParte,
+        extra: soma('extra'),
+        extraRotulo: extras.length ? extras.map((x) => x.rotulo).join(' + ') : null,
+        duvida: !bate,
+        motivo: bate
+          ? `composição lida da descrição${extras.length ? ` (com ${extras.map((x) => x.rotulo).join(', ')})` : ''}`
+          : `composição lida da descrição, mas a parcela (${(parcelamento / 100).toFixed(2)}) difere do contrato (${((p0 ?? 0) / 100).toFixed(2)})`,
+      };
+    }
+    if (entradaParte > 0 && entradaParte === valor) {
+      return sem('entrada', valor, { motivo: 'entrada, pela descrição' });
+    }
+    if (extras.length && soma('extra') === valor) {
+      return sem('reembolso', valor, { extra: valor, extraRotulo: extras.map((x) => x.rotulo).join(' + '), motivo: 'despesa repassada, pela descrição' });
+    }
+  }
 
   // 1. Acordo / renegociação
   if (/acordo|renegocia|negocia[çc][ãa]o|parcelamento de atraso|atrasad[ao]s? renegoc/.test(d)) {
@@ -77,30 +154,33 @@ export function interpretarCobrancaLegada(params: {
   //    "parcela + intermediária" é parcela com a intermediária embutida.
   const p0 = c.parcelaContratual;
   if (p0 != null && valor === p0 + seguro + taxa) {
-    return { tipo: 'parcela', parcelamento: p0, seguro, taxa, intermediaria: 0, duvida: false, motivo: 'valor = parcela + seguro + taxa' };
+    return { tipo: 'parcela', parcelamento: p0, seguro, taxa, intermediaria: 0, extra: 0, extraRotulo: null, duvida: false, motivo: 'valor = parcela + seguro + taxa' };
   }
   if (p0 != null && c.intermediariaValor != null && valor === p0 + seguro + taxa + c.intermediariaValor) {
-    return { tipo: 'parcela', parcelamento: p0, seguro, taxa, intermediaria: c.intermediariaValor, duvida: false, motivo: 'valor = parcela + seguro + taxa + intermediária' };
+    return { tipo: 'parcela', parcelamento: p0, seguro, taxa, intermediaria: c.intermediariaValor, extra: 0, extraRotulo: null, duvida: false, motivo: 'valor = parcela + seguro + taxa + intermediária' };
   }
   // 4. Entrada no ato vs. diluída
   if (/intermedi|dilu[íi]d/.test(d)) {
     return sem('intermediaria', valor, { motivo: 'descrição fala em parcela intermediária / entrada diluída' });
   }
-  if (/entrada|sinal/.test(d)) {
+  // "reserva" e "complemento" (caso real 23/09: "Taxa de reserva da Placa",
+  //  "Complemento de entrada") são partes da entrada — ela pode ter sido paga
+  //  em várias transações; a conciliação soma as partes.
+  if (/entrada|sinal|reserva/.test(d)) {
     const bate = c.entradaValor != null && valor === c.entradaValor;
-    return sem('entrada', valor, { motivo: bate ? 'entrada, valor igual ao do contrato' : 'entrada (valor diferente do contrato — conferir)', duvida: !bate });
+    return sem('entrada', valor, { motivo: bate ? 'entrada, valor igual ao do contrato' : 'parte da entrada (a conciliação soma as partes)', duvida: false });
   }
   // 4. Parcela semanal — pelo valor, com ou sem intermediária junto
   const p = c.parcelaContratual;
   if (p != null) {
     if (valor === p + seguro + taxa) {
-      return { tipo: 'parcela', parcelamento: p, seguro, taxa, intermediaria: 0, duvida: false, motivo: 'valor = parcela + seguro + taxa' };
+      return { tipo: 'parcela', parcelamento: p, seguro, taxa, intermediaria: 0, extra: 0, extraRotulo: null, duvida: false, motivo: 'valor = parcela + seguro + taxa' };
     }
     if (c.intermediariaValor != null && valor === p + seguro + taxa + c.intermediariaValor) {
-      return { tipo: 'parcela', parcelamento: p, seguro, taxa, intermediaria: c.intermediariaValor, duvida: false, motivo: 'valor = parcela + seguro + taxa + intermediária' };
+      return { tipo: 'parcela', parcelamento: p, seguro, taxa, intermediaria: c.intermediariaValor, extra: 0, extraRotulo: null, duvida: false, motivo: 'valor = parcela + seguro + taxa + intermediária' };
     }
     if (valor === p) {
-      return { tipo: 'parcela', parcelamento: p, seguro: 0, taxa: 0, intermediaria: 0, duvida: true, motivo: 'valor = parcela SEM seguro e taxa — confirmar' };
+      return { tipo: 'parcela', parcelamento: p, seguro: 0, taxa: 0, intermediaria: 0, extra: 0, extraRotulo: null, duvida: true, motivo: 'valor = parcela SEM seguro e taxa — confirmar' };
     }
     if (c.intermediariaValor != null && valor === c.intermediariaValor) {
       return sem('intermediaria', valor, { motivo: 'valor igual ao da parcela intermediária (cobrada à parte)' });
@@ -109,7 +189,7 @@ export function interpretarCobrancaLegada(params: {
   if (/parcela|semanal|semana/.test(d) || (!params.avulsa && p == null)) {
     const parcelamento = semItens(valor);
     return {
-      tipo: 'parcela', parcelamento: Math.max(parcelamento, 0), seguro: parcelamento > 0 ? seguro : 0, taxa: parcelamento > 0 ? taxa : 0, intermediaria: 0,
+      tipo: 'parcela', parcelamento: Math.max(parcelamento, 0), seguro: parcelamento > 0 ? seguro : 0, taxa: parcelamento > 0 ? taxa : 0, intermediaria: 0, extra: 0, extraRotulo: null,
       duvida: true,
       motivo: p == null ? 'parcela, mas os termos ainda não dizem o valor contratual' : `parcela com valor fora do padrão (${(valor / 100).toFixed(2)} ≠ ${((p + seguro + taxa) / 100).toFixed(2)})`,
     };

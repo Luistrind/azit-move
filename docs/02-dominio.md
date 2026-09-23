@@ -1916,8 +1916,16 @@ Azit quem paga a seguradora e o Asaas — o split ainda não foi implementado. Q
 seguro passa a apontar para a estrutura da Proteção; no legado, fica como é cobrado hoje.
 
 O que varia é o **prazo**, conforme a entrada — por vezes diluída nas parcelas —, e isso o
-cronograma absorve como número de parcelas. Valor fora do padrão é exceção tratada no caso, não
-regra nova.
+cronograma absorve como número de parcelas.
+
+**Vale o valor do CONTRATO (decisão Luís, 23/09).** 997/697 são só os valores mais comuns;
+vários contratos têm parcela própria, e o seguro (50) e a taxa (5) se mantêm. A conciliação usa
+sempre a parcela dos termos — nada fica preso ao padrão. Dois casos reais que a leitura das
+cobranças cobre: (a) **despesa repassada junto da parcela** ("Parcela semanal: R$ 942,00 /
+Proteção: R$ 50,00 / Taxa: R$ 5,00 / Manutenção Periódica R$ 225,75") — a cobrança é a parcela
+da semana, com a manutenção como componente extra (produto de reembolso), não divergência;
+(b) **entrada paga em várias transações** (reserva da placa 500 + 1.500 + complemento 500) — a
+conciliação soma as partes lidas como entrada e compara a soma com o contrato.
 
 ### 26.3 Acordos antigos
 

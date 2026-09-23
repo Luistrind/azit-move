@@ -14,6 +14,11 @@ export interface CobrancaConciliavel {
   classe: 'paga' | 'pendente' | 'vencida' | 'outra';
   tipo: TipoCobrancaLegada;
   intermediariaEmbutida: number; // centavos — quando a intermediária veio na mesma cobrança
+  // Composição lida da descrição (23/09): a parte de PARCELA do contrato dentro
+  // da cobrança e a despesa repassada junto dela (manutenção etc.).
+  parcelamento: number | null;
+  extra: number;
+  extraRotulo: string | null;
   descricao: string | null;
 }
 
@@ -48,6 +53,10 @@ export interface LinhaConciliacao {
   encargo: number; // pagoValor - cobradoValor quando positivo
   situacao: SituacaoLinha;
   divergencia: boolean;
+  // O que veio JUNTO na cobrança além da parcela do contrato (não é divergência).
+  componentes: { seguro: number; taxa: number; intermediaria: number; extra: number; extraRotulo: string | null } | null;
+  // Entrada paga em várias transações (23/09): as partes somadas.
+  partes: { cobrancaId: string; vencimento: string; valor: number; classe: CobrancaConciliavel['classe'] }[];
 }
 
 export interface ForaDoCronograma {
@@ -117,14 +126,16 @@ export function conciliarLegado(params: {
     for (let i = 0; i < inter.quantidade; i++) intermediariasPorData.set(isoMaisDias(inter.primeiraEm, 7 * i), i + 1);
   }
 
-  const procurar = (tipos: TipoCobrancaLegada[], data: string, valoresAceitos: number[]) => {
+  const procurar = (tipos: TipoCobrancaLegada[], data: string, valoresAceitos: number[], parcelaAceita: number | null = null) => {
     let melhor: CobrancaConciliavel | null = null;
     let melhorDist = Infinity;
     for (const c of cobrancas) {
       if (usadas.has(c.id) || !tipos.includes(c.tipo)) continue;
       const dist = Math.abs(difDias(c.vencimento, data));
       if (dist > tol) continue;
-      const bateValor = valoresAceitos.includes(c.valorOriginal);
+      // Bate pelo TOTAL ou pela parte de parcela lida da descrição (23/09): uma
+      // cobrança "942 + 50 + 5 + manutenção 225,75" é a parcela da semana.
+      const bateValor = valoresAceitos.includes(c.valorOriginal) || (c.parcelamento != null && parcelaAceita != null && c.parcelamento === parcelaAceita);
       // Prefere quem bate o valor; entre iguais, a data mais próxima.
       const score = dist + (bateValor ? 0 : 100);
       if (score < melhorDist) { melhorDist = score; melhor = c; }
@@ -132,12 +143,13 @@ export function conciliarLegado(params: {
     return melhor;
   };
 
-  const montar = (serie: LinhaConciliacao['serie'], numero: number, esperadoEm: string, esperadoValor: number, c: CobrancaConciliavel | null): LinhaConciliacao => {
+  const montar = (serie: LinhaConciliacao['serie'], numero: number, esperadoEm: string, esperadoValor: number, c: CobrancaConciliavel | null, parcelaEsperada: number | null = null): LinhaConciliacao => {
     let situacao: SituacaoLinha;
     let encargo = 0;
+    const bateComposicao = !!c && parcelaEsperada != null && c.parcelamento != null && c.parcelamento === parcelaEsperada;
     if (!c) {
       situacao = esperadoEm > hoje ? 'futura' : 'nao_cobrada';
-    } else if (c.valorOriginal !== esperadoValor) {
+    } else if (c.valorOriginal !== esperadoValor && !bateComposicao) {
       situacao = 'valor_diverge';
     } else if (c.classe === 'paga') {
       encargo = c.valorPago != null && c.valorPago > c.valorOriginal ? c.valorPago - c.valorOriginal : 0;
@@ -157,19 +169,44 @@ export function conciliarLegado(params: {
       encargo,
       situacao,
       divergencia: situacao === 'valor_diverge' || situacao === 'nao_cobrada',
+      componentes: c && (c.extra > 0 || c.intermediariaEmbutida > 0 || bateComposicao)
+        ? { seguro: 0, taxa: 0, intermediaria: c.intermediariaEmbutida, extra: c.extra, extraRotulo: c.extraRotulo }
+        : null,
+      partes: [],
     };
   };
 
-  // Entrada no ato
+  // Entrada no ato — pode ter sido paga em VÁRIAS transações (caso real 23/09:
+  // reserva 500 + 1.500 + complemento 500). Soma todas as cobranças lidas como
+  // entrada; bate se a soma é o valor do contrato.
   let entradaPaga: boolean | null = null;
   if (termos.entradaValor != null && termos.entradaValor > 0) {
-    const c = procurar(['entrada'], p.primeiraEm, [termos.entradaValor]) ?? cobrancas.find((x) => !usadas.has(x.id) && x.tipo === 'entrada') ?? null;
-    if (c) usadas.add(c.id);
-    const linha = montar('entrada', 0, c?.vencimento ?? p.primeiraEm, termos.entradaValor, c);
-    // Entrada sem cobrança no Asaas é comum (paga no ato, fora do boleto): não é divergência.
-    if (!c) { linha.situacao = 'nao_cobrada'; linha.divergencia = false; }
-    linhas.push(linha);
-    entradaPaga = c ? c.classe === 'paga' : null;
+    const partes = cobrancas.filter((x) => !usadas.has(x.id) && x.tipo === 'entrada').sort((a, b) => a.vencimento.localeCompare(b.vencimento));
+    for (const x of partes) usadas.add(x.id);
+    const soma = partes.reduce((s, x) => s + x.valorOriginal, 0);
+    const pagas = partes.filter((x) => x.classe === 'paga');
+    const somaPaga = pagas.reduce((s, x) => s + (x.valorPago ?? x.valorOriginal), 0);
+    let situacao: SituacaoLinha;
+    if (partes.length === 0) situacao = 'nao_cobrada';
+    else if (soma !== termos.entradaValor) situacao = 'valor_diverge';
+    else if (pagas.length === partes.length) situacao = 'paga';
+    else situacao = partes.some((x) => x.classe === 'vencida') ? 'vencida' : 'pendente';
+    linhas.push({
+      chave: 'entrada', serie: 'entrada', numero: 0,
+      esperadoEm: partes[0]?.vencimento ?? p.primeiraEm, esperadoValor: termos.entradaValor,
+      cobrancaId: partes.length === 1 ? partes[0].id : null,
+      cobradoEm: partes[0]?.vencimento ?? null,
+      cobradoValor: partes.length ? soma : null,
+      pagoEm: pagas.length ? pagas[pagas.length - 1].pagoEm : null,
+      pagoValor: pagas.length ? somaPaga : null,
+      encargo: 0,
+      situacao,
+      // Entrada sem cobrança no Asaas é comum (paga no ato, fora do boleto): não é divergência.
+      divergencia: situacao === 'valor_diverge',
+      componentes: null,
+      partes: partes.map((x) => ({ cobrancaId: x.id, vencimento: x.vencimento, valor: x.valorOriginal, classe: x.classe })),
+    });
+    entradaPaga = partes.length ? situacao === 'paga' : null;
   }
 
   // Parcelas semanais
@@ -181,14 +218,14 @@ export function conciliarLegado(params: {
     const numInter = [...intermediariasPorData.entries()].find(([d]) => Math.abs(difDias(d, data)) <= tol)?.[1];
     const aceitos = [valorCobranca];
     if (numInter && inter?.valor != null) aceitos.push(valorCobranca + inter.valor);
-    const c = procurar(['parcela'], data, aceitos);
+    const c = procurar(['parcela'], data, aceitos, p.valor);
     if (c) usadas.add(c.id);
     let esperado = valorCobranca;
     if (c && numInter && inter?.valor != null && (c.valorOriginal === valorCobranca + inter.valor || c.intermediariaEmbutida > 0)) {
       esperado = valorCobranca + inter.valor;
       intermediariasCasadas.add(numInter);
     }
-    linhas.push(montar('parcela', n, data, esperado, c));
+    linhas.push(montar('parcela', n, data, esperado, c, p.valor));
   }
 
   // Intermediárias cobradas à parte
