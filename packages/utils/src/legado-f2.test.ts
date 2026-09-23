@@ -325,3 +325,16 @@ describe('parcela reemitida por atraso', () => {
     expect(r.resumo).toMatchObject({ parcelasPagas: 3, divergencias: 0, encargosPagos: 2_991 });
   });
 });
+
+// Caso real 23/09 (parcela 37): reemitida com juros no valor, SEM aviso na descrição.
+describe('juros embutidos sem aviso na descrição', () => {
+  const ctx = contextoDosTermos({ parcelas: { valor: 94_200 }, intermediarias: null, entradaValor: null, seguroSemanal: 5_000, taxaSemanal: 500 }, null);
+  const desc = 'Contrato - Parcela semanal: R$ 942,00 / Proteção Veicular - Repasse: R$ 50,00 / Taxas Boleto Pix - Repasse: R$ 5,00.';
+  it('1.017,27 com partes de 997: parcela, juros 20,27, sem dúvida', () => {
+    expect(interpretarCobrancaLegada({ descricao: desc, valorOriginal: 101_727, avulsa: false, contexto: ctx })).toMatchObject({ tipo: 'parcela', parcelamento: 94_200, encargo: 2_027, duvida: false });
+  });
+  it('resto acima de 20% das partes não vira juros de graça: fica em dúvida', () => {
+    const r = interpretarCobrancaLegada({ descricao: desc, valorOriginal: 150_000, avulsa: false, contexto: ctx });
+    expect(r.duvida).toBe(true);
+  });
+});

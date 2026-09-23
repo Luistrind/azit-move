@@ -479,7 +479,7 @@ export function MigracaoLegadoCasoPage() {
         </div>
       </div>
 
-      {ajuste && <AjusteModal p={ajuste} tipos={c.tiposCobranca} onClose={() => setAjuste(null)} salvar={(corpo) => rodar(() => svc.definirInterpretacao(id, ajuste.id, corpo), 'Leitura ajustada').then(() => setAjuste(null))} />}
+      {ajuste && <AjusteModal p={ajuste} tipos={c.tiposCobranca} parcelaContrato={c.termos?.parcelas.valor ?? null} onClose={() => setAjuste(null)} salvar={(corpo) => rodar(() => svc.definirInterpretacao(id, ajuste.id, corpo), 'Leitura ajustada').then(() => setAjuste(null))} />}
     </div>
   );
 }
@@ -533,7 +533,7 @@ function LinhaConc({ l, reconhecida, editavel, nota, setNota, reconhecer, desfaz
   );
 }
 
-function AjusteModal({ p, tipos, onClose, salvar }: { p: CobrancaLegada; tipos: { valor: TipoCobrancaLegada; rotulo: string }[]; onClose: () => void; salvar: (corpo: { tipo: TipoCobrancaLegada; parcelamento: number; seguro: number; taxa: number; intermediaria: number; extra: number; extraRotulo?: string; encargo: number; observacao?: string }) => void }) {
+function AjusteModal({ p, tipos, parcelaContrato, onClose, salvar }: { p: CobrancaLegada; tipos: { valor: TipoCobrancaLegada; rotulo: string }[]; parcelaContrato: number | null; onClose: () => void; salvar: (corpo: { tipo: TipoCobrancaLegada; parcelamento: number; seguro: number; taxa: number; intermediaria: number; extra: number; extraRotulo?: string; encargo: number; observacao?: string }) => void }) {
   const i = p.interpretacao;
   const [tipo, setTipo] = useState<TipoCobrancaLegada>(i?.tipo ?? 'parcela');
   const [seguro, setSeguro] = useState(reaisTxt(i?.seguro ?? 0));
@@ -563,7 +563,15 @@ function AjusteModal({ p, tipos, onClose, salvar }: { p: CobrancaLegada; tipos: 
           <Campo rotulo="Qual despesa"><input className={inputCls} style={inputStyle} value={extraRotulo} onChange={(e) => setExtraRotulo(e.target.value)} placeholder="ex.: Manutenção periódica" /></Campo>
         </div>
         <Campo rotulo="Juros/multa embutidos (R$) — parcela reemitida por atraso"><input className={inputCls} style={inputStyle} value={encargo} onChange={(e) => setEncargo(e.target.value)} placeholder="0,00" /></Campo>
-        <div>Parcelamento (o resto): <b className="tabular-nums" style={{ color: parcelamento < 0 ? SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg : 'var(--text-primary)' }}>{formatCurrency(parcelamento)}</b></div>
+        <div>Parcelamento (o resto): <b className="tabular-nums" style={{ color: parcelamento < 0 ? SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg : 'var(--text-primary)' }}>{formatCurrency(parcelamento)}</b>
+          {/* Caso real 23/09: o operador punha o resto em "juros" e a parcela ficava 940 em vez de 942. */}
+          {tipo === 'parcela' && parcelaContrato != null && parcelamento !== parcelaContrato && parcelamento - parcelaContrato + j >= 0 && (
+            <button className="ml-[8px] text-[11px] underline" style={{ color: 'var(--accent)' }}
+              onClick={() => setEncargo(reaisTxt(parcelamento - parcelaContrato + j))}>
+              fechar com a parcela do contrato ({formatCurrency(parcelaContrato)}) e jogar a diferença em juros
+            </button>
+          )}
+        </div>
         <Campo rotulo="Observação"><input className={inputCls} style={inputStyle} value={obs} onChange={(e) => setObs(e.target.value)} placeholder="ex.: seguro veio a mais nesta semana" /></Campo>
         <div className="flex justify-end gap-[8px]">
           <button className={btn} style={btnSec} onClick={onClose}>Cancelar</button>

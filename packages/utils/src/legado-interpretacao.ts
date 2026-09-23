@@ -125,7 +125,13 @@ export function interpretarCobrancaLegada(params: {
   // Encargo embutido: partes com valor somam MENOS que a cobrança e a descrição
   // avisa "multa e juros" — a diferença é o encargo.
   const temAvisoEncargo = partes.some((x) => x.papel === 'encargo');
-  const encargoEmbutido = temAvisoEncargo && somaPartes < valor ? valor - somaPartes : 0;
+  const temParcelamento = partes.some((x) => x.papel === 'parcelamento');
+  // Sem aviso (caso real 23/09: reemitida com 1.017,27 e a descrição só com
+  // as partes de 997): a descrição estruturada é a composição inteira, então
+  // o que sobra numa cobrança de PARCELA só pode ser juros/multa — aceito até
+  // 20% das partes; acima disso fica em dúvida para o operador olhar.
+  const residual = somaPartes < valor ? valor - somaPartes : 0;
+  const encargoEmbutido = residual > 0 && (temAvisoEncargo || (temParcelamento && residual <= Math.round(somaPartes * 0.2))) ? residual : 0;
   if (partes.length >= 2 && (somaPartes === valor || encargoEmbutido > 0)) {
     const soma = (papel: ParteRotulada['papel']) => partes.filter((x) => x.papel === papel).reduce((s, x) => s + x.valor, 0);
     const parcelamento = soma('parcelamento');
@@ -145,7 +151,7 @@ export function interpretarCobrancaLegada(params: {
         encargo: encargoEmbutido,
         duvida: !bate,
         motivo: bate
-          ? `composição lida da descrição${extras.length ? ` (com ${extras.map((x) => x.rotulo).join(', ')})` : ''}${encargoEmbutido ? ` (juros/multa embutidos: ${(encargoEmbutido / 100).toFixed(2)})` : ''}`
+          ? `composição lida da descrição${extras.length ? ` (com ${extras.map((x) => x.rotulo).join(', ')})` : ''}${encargoEmbutido ? ` (juros/multa embutidos: ${(encargoEmbutido / 100).toFixed(2)}${temAvisoEncargo ? '' : ', sem aviso na descrição'})` : ''}`
           : `composição lida da descrição, mas a parcela (${(parcelamento / 100).toFixed(2)}) difere do contrato (${((p0 ?? 0) / 100).toFixed(2)})`,
       };
     }
