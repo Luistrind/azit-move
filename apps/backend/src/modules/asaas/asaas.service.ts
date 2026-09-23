@@ -138,7 +138,9 @@ export class AsaasService {
     // com o encargo embutido.
     const data = await this.call<{ id: string; status: string }>('/payments', {
       customer: params.customerId,
-      billingType: 'UNDEFINED',
+      // PIX (decisão Luís 23/09, doc 02 §11.2): toda cobrança do sistema nasce
+      // PIX. Antes era UNDEFINED — o cliente escolhia boleto/PIX/cartão na fatura.
+      billingType: 'PIX',
       value: Number(centavosParaReaisString(params.valor)),
       dueDate: params.vencimento.toISOString().slice(0, 10),
       externalReference: params.externalReference,

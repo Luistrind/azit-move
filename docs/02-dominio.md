@@ -1246,6 +1246,7 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 - **Fluxo de ativação:** a primeira cobrança (entrada) é **avulsa** — o cliente só é cadastrado no Asaas **após** a confirmação do pagamento que ativa o contrato. O `asaas_charge_id` da cobrança avulsa é vinculado ao Titular para não perder a referência no espelho de pagamento.
 - **Regra:** uma cobrança ativa por contrato por vez, gerada em D-5
 - **Juros/multas:** calculados automaticamente pelo Asaas no momento do pagamento; sistema recalcula internamente para conciliação
+- **Forma de pagamento: PIX** (decisão Luís, 2026-09-23). Toda cobrança que o sistema cria no Asaas — entrada, faturas, crédito avulso, entrada de acordo e recebimento da novação — nasce com `billingType: PIX`. Antes saía `UNDEFINED` (o cliente escolhia boleto/PIX/cartão na fatura). Ponto único: `AsaasService.criarCobranca`.
 
 ### 11.3 WhatsApp / Z-API (Comunicação)
 - **Direção:** Azit → Cliente
