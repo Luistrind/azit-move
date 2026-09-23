@@ -53,7 +53,7 @@ export interface CobrancaLegada {
   encargoPago: number | null;
   tipoInterpretado: TipoCobrancaLegada | null;
   tipoRotulo: string | null;
-  interpretacao: { tipo: TipoCobrancaLegada; parcelamento: number; seguro: number; taxa: number; intermediaria: number; extra: number; extraRotulo: string | null; duvida: boolean; motivo: string } | null;
+  interpretacao: { tipo: TipoCobrancaLegada; parcelamento: number; seguro: number; taxa: number; intermediaria: number; extra: number; extraRotulo: string | null; encargo: number; duvida: boolean; motivo: string } | null;
   interpretadoPor: 'regra' | 'ia' | 'operador' | null;
   duvida: boolean;
   interpretacaoObs: string | null;
@@ -92,6 +92,7 @@ export interface LinhaConciliacao {
   componentes: { seguro: number; taxa: number; intermediaria: number; extra: number; extraRotulo: string | null } | null;
   // Entrada paga em várias transações: as partes somadas.
   partes: { cobrancaId: string; vencimento: string; valor: number; classe: string }[];
+  observacao: string | null; // ex.: cobrança reemitida por atraso
 }
 export interface ForaDoCronograma {
   cobrancaId: string; vencimento: string; valorOriginal: number; tipo: TipoCobrancaLegada; classe: string; descricao: string | null; motivo: string; divergencia: boolean;
@@ -178,7 +179,7 @@ export const migracaoLegadoService = {
     const { data } = await api.post(`/api/v1/migracao-legado/casos/${id}/interpretar`, {});
     return data;
   },
-  async definirInterpretacao(id: string, cobrancaId: string, corpo: { tipo: TipoCobrancaLegada; parcelamento?: number; seguro?: number; taxa?: number; intermediaria?: number; extra?: number; extraRotulo?: string; observacao?: string }): Promise<CobrancaLegada> {
+  async definirInterpretacao(id: string, cobrancaId: string, corpo: { tipo: TipoCobrancaLegada; parcelamento?: number; seguro?: number; taxa?: number; intermediaria?: number; extra?: number; extraRotulo?: string; encargo?: number; observacao?: string }): Promise<CobrancaLegada> {
     const { data } = await api.put(`/api/v1/migracao-legado/casos/${id}/cobrancas/${cobrancaId}/interpretacao`, corpo);
     return data;
   },

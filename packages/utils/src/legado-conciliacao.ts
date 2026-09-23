@@ -19,6 +19,7 @@ export interface CobrancaConciliavel {
   parcelamento: number | null;
   extra: number;
   extraRotulo: string | null;
+  encargoEmbutido: number; // juros/multa dentro do valor (parcela reemitida por atraso)
   descricao: string | null;
 }
 
@@ -57,6 +58,8 @@ export interface LinhaConciliacao {
   componentes: { seguro: number; taxa: number; intermediaria: number; extra: number; extraRotulo: string | null } | null;
   // Entrada paga em várias transações (23/09): as partes somadas.
   partes: { cobrancaId: string; vencimento: string; valor: number; classe: CobrancaConciliavel['classe'] }[];
+  // Cobrança reemitida por atraso (vencimento depois do esperado): explica a data.
+  observacao: string | null;
 }
 
 export interface ForaDoCronograma {
@@ -135,9 +138,11 @@ export function conciliarLegado(params: {
       if (dist > tol) continue;
       // Bate pelo TOTAL ou pela parte de parcela lida da descrição (23/09): uma
       // cobrança "942 + 50 + 5 + manutenção 225,75" é a parcela da semana.
-      const bateValor = valoresAceitos.includes(c.valorOriginal) || (c.parcelamento != null && parcelaAceita != null && c.parcelamento === parcelaAceita);
-      // Prefere quem bate o valor; entre iguais, a data mais próxima.
-      const score = dist + (bateValor ? 0 : 100);
+      const exato = valoresAceitos.includes(c.valorOriginal);
+      const porComposicao = !exato && c.parcelamento != null && parcelaAceita != null && c.parcelamento === parcelaAceita;
+      // Prefere o total exato; depois quem bate só pela composição (ex.: reemitida
+      // com juros, que deve sobrar para a semana vazia); entre iguais, a data mais próxima.
+      const score = dist + (exato ? 0 : porComposicao ? 1 : 100);
       if (score < melhorDist) { melhorDist = score; melhor = c; }
     }
     return melhor;
@@ -145,14 +150,14 @@ export function conciliarLegado(params: {
 
   const montar = (serie: LinhaConciliacao['serie'], numero: number, esperadoEm: string, esperadoValor: number, c: CobrancaConciliavel | null, parcelaEsperada: number | null = null): LinhaConciliacao => {
     let situacao: SituacaoLinha;
-    let encargo = 0;
+    let encargo = c?.encargoEmbutido ?? 0;
     const bateComposicao = !!c && parcelaEsperada != null && c.parcelamento != null && c.parcelamento === parcelaEsperada;
     if (!c) {
       situacao = esperadoEm > hoje ? 'futura' : 'nao_cobrada';
     } else if (c.valorOriginal !== esperadoValor && !bateComposicao) {
       situacao = 'valor_diverge';
     } else if (c.classe === 'paga') {
-      encargo = c.valorPago != null && c.valorPago > c.valorOriginal ? c.valorPago - c.valorOriginal : 0;
+      encargo += c.valorPago != null && c.valorPago > c.valorOriginal ? c.valorPago - c.valorOriginal : 0;
       situacao = encargo > 0 || (c.pagoEm != null && c.pagoEm > c.vencimento) ? 'paga_com_encargo' : 'paga';
     } else {
       // "outra" já foi filtrada antes; aqui só chega pendente/vencida.
@@ -173,6 +178,7 @@ export function conciliarLegado(params: {
         ? { seguro: 0, taxa: 0, intermediaria: c.intermediariaEmbutida, extra: c.extra, extraRotulo: c.extraRotulo }
         : null,
       partes: [],
+      observacao: c && Math.abs(difDias(c.vencimento, esperadoEm)) > tol ? `cobrança reemitida para ${c.vencimento.split('-').reverse().join('/')} (atraso)` : null,
     };
   };
 
@@ -205,6 +211,7 @@ export function conciliarLegado(params: {
       divergencia: situacao === 'valor_diverge',
       componentes: null,
       partes: partes.map((x) => ({ cobrancaId: x.id, vencimento: x.vencimento, valor: x.valorOriginal, classe: x.classe })),
+      observacao: null,
     });
     entradaPaga = partes.length ? situacao === 'paga' : null;
   }
@@ -226,6 +233,28 @@ export function conciliarLegado(params: {
       intermediariasCasadas.add(numInter);
     }
     linhas.push(montar('parcela', n, data, esperado, c, p.valor));
+  }
+
+  // Segundo passe (caso real 23/09): parcela sem cobrança na semana pode ter
+  // sido REEMITIDA com vencimento depois (atraso, juros embutidos). Só aqui —
+  // depois de todas as pontuais estarem casadas — uma cobrança de parcela que
+  // sobrou, com a mesma parte de parcela e vencimento até 45 dias DEPOIS da
+  // data esperada, é aceita para a linha vazia mais antiga.
+  for (const linha of linhas) {
+    if (linha.serie !== 'parcela' || linha.situacao !== 'nao_cobrada') continue;
+    let melhor: CobrancaConciliavel | null = null;
+    for (const c of cobrancas) {
+      if (usadas.has(c.id) || c.tipo !== 'parcela') continue;
+      const dias = difDias(c.vencimento, linha.esperadoEm);
+      if (dias <= tol || dias > 45) continue;
+      const bate = (c.parcelamento != null && c.parcelamento === p.valor) || c.valorOriginal === linha.esperadoValor;
+      if (!bate) continue;
+      if (!melhor || c.vencimento < melhor.vencimento) melhor = c;
+    }
+    if (!melhor) continue;
+    usadas.add(melhor.id);
+    const nova = montar('parcela', linha.numero, linha.esperadoEm, linha.esperadoValor, melhor, p.valor);
+    linhas[linhas.indexOf(linha)] = nova;
   }
 
   // Intermediárias cobradas à parte

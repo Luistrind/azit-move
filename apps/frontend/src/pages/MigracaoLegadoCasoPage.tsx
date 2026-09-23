@@ -187,7 +187,7 @@ export function MigracaoLegadoCasoPage() {
   function confirmarProposta(p: CobrancaLegada) {
     const i = p.interpretacao;
     if (!i) return;
-    return rodar(() => svc.definirInterpretacao(id, p.id, { tipo: i.tipo, parcelamento: i.parcelamento, seguro: i.seguro, taxa: i.taxa, intermediaria: i.intermediaria, extra: i.extra, extraRotulo: i.extraRotulo ?? undefined }), '');
+    return rodar(() => svc.definirInterpretacao(id, p.id, { tipo: i.tipo, parcelamento: i.parcelamento, seguro: i.seguro, taxa: i.taxa, intermediaria: i.intermediaria, extra: i.extra, extraRotulo: i.extraRotulo ?? undefined, encargo: i.encargo }), '');
   }
 
   const reconhecidas = useMemo(() => new Map((c?.divergenciasReconhecidas ?? []).map((d) => [d.chave, d])), [c?.divergenciasReconhecidas]);
@@ -457,7 +457,7 @@ export function MigracaoLegadoCasoPage() {
                     ) : <span>{p.tipoRotulo ?? '—'}</span>}
                   </td>
                   <td className={`${td} tabular-nums`} style={{ color: 'var(--text-secondary)' }}>
-                    {p.interpretacao ? <>{formatCurrency(p.interpretacao.parcelamento)}{p.interpretacao.seguro ? ` + seg ${formatCurrency(p.interpretacao.seguro)}` : ''}{p.interpretacao.taxa ? ` + taxa ${formatCurrency(p.interpretacao.taxa)}` : ''}{p.interpretacao.intermediaria ? ` + inter ${formatCurrency(p.interpretacao.intermediaria)}` : ''}{p.interpretacao.extra ? ` + ${p.interpretacao.extraRotulo ?? 'despesa'} ${formatCurrency(p.interpretacao.extra)}` : ''}</> : '—'}
+                    {p.interpretacao ? <>{formatCurrency(p.interpretacao.parcelamento)}{p.interpretacao.seguro ? ` + seg ${formatCurrency(p.interpretacao.seguro)}` : ''}{p.interpretacao.taxa ? ` + taxa ${formatCurrency(p.interpretacao.taxa)}` : ''}{p.interpretacao.intermediaria ? ` + inter ${formatCurrency(p.interpretacao.intermediaria)}` : ''}{p.interpretacao.extra ? ` + ${p.interpretacao.extraRotulo ?? 'despesa'} ${formatCurrency(p.interpretacao.extra)}` : ''}{p.interpretacao.encargo ? ` + juros/multa ${formatCurrency(p.interpretacao.encargo)}` : ''}</> : '—'}
                   </td>
                   <td className={td}>
                     {p.duvida && <span className="mr-[4px] rounded-full px-[6px] py-[1px] text-[10px] font-bold" style={{ background: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.fg, color: '#fff' }}>dúvida</span>}
@@ -504,6 +504,7 @@ function LinhaConc({ l, reconhecida, editavel, nota, setNota, reconhecer, desfaz
       <td className={`${td} tabular-nums`}>
         {dataBR(l.cobradoEm)}
         {l.partes.length > 1 && <div className="text-[10.5px]" style={{ color: 'var(--text-muted)' }}>{l.partes.length} transações</div>}
+        {l.observacao && <div className="text-[10.5px]" style={{ color: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.fg }}>{l.observacao}</div>}
       </td>
       <td className={`${td} text-right tabular-nums`} style={{ color: l.situacao === 'valor_diverge' ? SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg : undefined }}>
         {l.cobradoValor == null ? '—' : formatCurrency(l.cobradoValor)}
@@ -532,7 +533,7 @@ function LinhaConc({ l, reconhecida, editavel, nota, setNota, reconhecer, desfaz
   );
 }
 
-function AjusteModal({ p, tipos, onClose, salvar }: { p: CobrancaLegada; tipos: { valor: TipoCobrancaLegada; rotulo: string }[]; onClose: () => void; salvar: (corpo: { tipo: TipoCobrancaLegada; parcelamento: number; seguro: number; taxa: number; intermediaria: number; extra: number; extraRotulo?: string; observacao?: string }) => void }) {
+function AjusteModal({ p, tipos, onClose, salvar }: { p: CobrancaLegada; tipos: { valor: TipoCobrancaLegada; rotulo: string }[]; onClose: () => void; salvar: (corpo: { tipo: TipoCobrancaLegada; parcelamento: number; seguro: number; taxa: number; intermediaria: number; extra: number; extraRotulo?: string; encargo: number; observacao?: string }) => void }) {
   const i = p.interpretacao;
   const [tipo, setTipo] = useState<TipoCobrancaLegada>(i?.tipo ?? 'parcela');
   const [seguro, setSeguro] = useState(reaisTxt(i?.seguro ?? 0));
@@ -540,10 +541,12 @@ function AjusteModal({ p, tipos, onClose, salvar }: { p: CobrancaLegada; tipos: 
   const [inter, setInter] = useState(reaisTxt(i?.intermediaria ?? 0));
   const [extra, setExtra] = useState(reaisTxt(i?.extra ?? 0));
   const [extraRotulo, setExtraRotulo] = useState(i?.extraRotulo ?? '');
+  const [encargo, setEncargo] = useState(reaisTxt(i?.encargo ?? 0));
   const [obs, setObs] = useState(p.interpretacaoObs ?? '');
   const s = reaisParaCentavos(seguro || '0'); const t = reaisParaCentavos(taxa || '0'); const n = reaisParaCentavos(inter || '0');
   const x = reaisParaCentavos(extra || '0');
-  const parcelamento = p.valorOriginal - s - t - n - x;
+  const j = reaisParaCentavos(encargo || '0');
+  const parcelamento = p.valorOriginal - s - t - n - x - j;
   return (
     <Modal open onClose={onClose} title={`Ajustar leitura — ${dataBR(p.vencimento)} · ${formatCurrency(p.valorOriginal)}`} largura={520}>
       <div className="flex flex-col gap-[10px] text-[12.5px]" style={{ color: 'var(--text-body)' }}>
@@ -559,11 +562,12 @@ function AjusteModal({ p, tipos, onClose, salvar }: { p: CobrancaLegada; tipos: 
           <Campo rotulo="Despesa junto (R$)"><input className={inputCls} style={inputStyle} value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="0,00" /></Campo>
           <Campo rotulo="Qual despesa"><input className={inputCls} style={inputStyle} value={extraRotulo} onChange={(e) => setExtraRotulo(e.target.value)} placeholder="ex.: Manutenção periódica" /></Campo>
         </div>
+        <Campo rotulo="Juros/multa embutidos (R$) — parcela reemitida por atraso"><input className={inputCls} style={inputStyle} value={encargo} onChange={(e) => setEncargo(e.target.value)} placeholder="0,00" /></Campo>
         <div>Parcelamento (o resto): <b className="tabular-nums" style={{ color: parcelamento < 0 ? SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg : 'var(--text-primary)' }}>{formatCurrency(parcelamento)}</b></div>
         <Campo rotulo="Observação"><input className={inputCls} style={inputStyle} value={obs} onChange={(e) => setObs(e.target.value)} placeholder="ex.: seguro veio a mais nesta semana" /></Campo>
         <div className="flex justify-end gap-[8px]">
           <button className={btn} style={btnSec} onClick={onClose}>Cancelar</button>
-          <button className={btn} style={btnPri} disabled={parcelamento < 0} onClick={() => salvar({ tipo, parcelamento, seguro: s, taxa: t, intermediaria: n, extra: x, extraRotulo: extraRotulo || undefined, observacao: obs })}>Salvar leitura</button>
+          <button className={btn} style={btnPri} disabled={parcelamento < 0} onClick={() => salvar({ tipo, parcelamento, seguro: s, taxa: t, intermediaria: n, extra: x, extraRotulo: extraRotulo || undefined, encargo: j, observacao: obs })}>Salvar leitura</button>
         </div>
       </div>
     </Modal>

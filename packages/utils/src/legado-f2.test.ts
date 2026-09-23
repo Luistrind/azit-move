@@ -263,7 +263,7 @@ describe('casos reais 23/09 — composição e entrada composta', () => {
 
   it('conciliação: entrada em 3 transações soma 2.500 = paga, sem divergência; parcela com manutenção casa pela composição', () => {
     const termos = { parcelas: { quantidade: 3, valor: 94_200, primeiraEm: '2025-09-09' }, intermediarias: null, entradaValor: 250_000, seguroSemanal: 5_000, taxaSemanal: 500 };
-    const base = { valorPago: null as number | null, pagoEm: null as string | null, classe: 'paga' as const, intermediariaEmbutida: 0, parcelamento: null as number | null, extra: 0, extraRotulo: null as string | null, descricao: null as string | null };
+    const base = { valorPago: null as number | null, pagoEm: null as string | null, classe: 'paga' as const, intermediariaEmbutida: 0, parcelamento: null as number | null, extra: 0, extraRotulo: null as string | null, encargoEmbutido: 0, descricao: null as string | null };
     const r = conciliarLegado({
       termos, hoje: '2025-10-01',
       cobrancas: [
@@ -287,10 +287,41 @@ describe('casos reais 23/09 — composição e entrada composta', () => {
 
   it('conciliação: entrada que soma menos que o contrato diverge, e as partes ficam visíveis', () => {
     const termos = { parcelas: { quantidade: 1, valor: 94_200, primeiraEm: '2025-09-09' }, intermediarias: null, entradaValor: 250_000, seguroSemanal: 5_000, taxaSemanal: 500 };
-    const base = { valorPago: null as number | null, pagoEm: null as string | null, classe: 'paga' as const, intermediariaEmbutida: 0, parcelamento: null as number | null, extra: 0, extraRotulo: null as string | null, descricao: null as string | null };
+    const base = { valorPago: null as number | null, pagoEm: null as string | null, classe: 'paga' as const, intermediariaEmbutida: 0, parcelamento: null as number | null, extra: 0, extraRotulo: null as string | null, encargoEmbutido: 0, descricao: null as string | null };
     const r = conciliarLegado({ termos, hoje: '2025-10-01', cobrancas: [{ ...base, id: 'e1', vencimento: '2025-09-01', valorOriginal: 150_000, valorPago: 150_000, pagoEm: '2025-09-01', tipo: 'entrada' }] });
     const entrada = r.linhas.find((l) => l.chave === 'entrada')!;
     expect(entrada).toMatchObject({ situacao: 'valor_diverge', divergencia: true, cobradoValor: 150_000 });
     expect(entrada.partes).toHaveLength(1);
+  });
+});
+
+// Caso real 23/09: parcela reemitida por atraso, com juros embutidos no valor
+// e "Multa e juros por atraso" sem valor na descrição.
+describe('parcela reemitida por atraso', () => {
+  const ctx = contextoDosTermos({ parcelas: { valor: 94_200 }, intermediarias: null, entradaValor: null, seguroSemanal: 5_000, taxaSemanal: 500 }, null);
+  it('leitura: é PARCELA com o encargo embutido (não reembolso)', () => {
+    const r = interpretarCobrancaLegada({ descricao: 'Contrato - Parcela semanal: R$ 942,00 / Proteção Veicular - Repasse: R$ 50,00 / Taxas Boleto Pix - Repasse: R$ 5,00 / Multa e juros por atraso.', valorOriginal: 102_691, avulsa: false, contexto: ctx });
+    expect(r).toMatchObject({ tipo: 'parcela', parcelamento: 94_200, seguro: 5_000, taxa: 500, extra: 0, encargo: 2_991, duvida: false });
+  });
+  it('conciliação: a reemitida (venc. +7 dias) fecha a parcela vazia da semana anterior; a paga adiantada fica na sua', () => {
+    const termos = { parcelas: { quantidade: 3, valor: 94_200, primeiraEm: '2026-01-29' }, intermediarias: null, entradaValor: null, seguroSemanal: 5_000, taxaSemanal: 500 };
+    const base = { valorPago: null as number | null, pagoEm: null as string | null, classe: 'paga' as const, intermediariaEmbutida: 0, parcelamento: 94_200 as number | null, extra: 0, extraRotulo: null as string | null, encargoEmbutido: 0, descricao: null as string | null, tipo: 'parcela' as const };
+    const r = conciliarLegado({
+      termos, hoje: '2026-03-01',
+      cobrancas: [
+        { ...base, id: 'p16', vencimento: '2026-01-29', valorOriginal: 99_700, valorPago: 99_700, pagoEm: '2026-01-29' },
+        // parcela 17 (05/02) não foi paga; reemitida em 12/02 com juros
+        { ...base, id: 'p17r', vencimento: '2026-02-12', valorOriginal: 102_691, valorPago: 102_691, pagoEm: '2026-02-12', encargoEmbutido: 2_991 },
+        // parcela 18 (12/02) paga adiantada em 06/02
+        { ...base, id: 'p18', vencimento: '2026-02-12', valorOriginal: 99_700, valorPago: 99_700, pagoEm: '2026-02-06' },
+      ],
+    });
+    const l = Object.fromEntries(r.linhas.map((x) => [x.chave, x]));
+    expect(l['parcela:1'].situacao).toBe('paga');
+    expect(l['parcela:2']).toMatchObject({ cobrancaId: 'p17r', situacao: 'paga_com_encargo', encargo: 2_991, divergencia: false });
+    expect(l['parcela:2'].observacao).toContain('reemitida');
+    expect(l['parcela:3']).toMatchObject({ cobrancaId: 'p18', situacao: 'paga' });
+    expect(r.fora).toHaveLength(0);
+    expect(r.resumo).toMatchObject({ parcelasPagas: 3, divergencias: 0, encargosPagos: 2_991 });
   });
 });
