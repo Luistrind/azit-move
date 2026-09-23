@@ -131,8 +131,14 @@ export class AnaliseService implements OnModuleInit {
   // O job de consultas dispara o resumo ao final (consultarBiroCamada2Todas).
   async dispararConsultasEResumo(analiseId: string) {
     try {
+      // jobId fixo (sem ':' — o BullMQ recusa): a fila recusa um 'consultar'
+      // repetido da mesma análise enquanto o primeiro existir. A marca
+      // consultasAutomaticasEm (23/09) é gravada DEPOIS de enfileirar — se a
+      // fila falhar, a análise não fica marcada sem consulta nenhuma — e é ela,
+      // não a contagem de consultas, que impede um segundo disparo depois.
       await this.assistente.marcarGerando(analiseId);
-      await this.filaResumo.add('consultar', { analiseId }, { removeOnComplete: true, attempts: 2 });
+      await this.filaResumo.add('consultar', { analiseId }, { jobId: `consultar-${analiseId}`, removeOnComplete: true, attempts: 2 });
+      await this.prisma.db.analiseCadastro.update({ where: { id: analiseId }, data: { consultasAutomaticasEm: new Date() } });
     } catch (e) {
       console.error(`dispararConsultasEResumo(${analiseId}): ${(e as Error).message}`);
     }
@@ -163,7 +169,7 @@ export class AnaliseService implements OnModuleInit {
 
   // --- ciclo de vida -------------------------------------------------------
 
-  async iniciar(propostaId: string, usuarioId?: string) {
+  async iniciar(propostaId: string, usuarioId?: string, documentosConferidos = false) {
     const proposta = await this.prisma.db.proposta.findFirst({
       where: { id: propostaId },
       include: { vinculos: true, analiseCadastro: true },
@@ -173,7 +179,7 @@ export class AnaliseService implements OnModuleInit {
       // Caso real 22/09: análise aberta pela página da proposta nascia sem a
       // Camada 1 e sem as consultas. Se ainda está vazia, faz a ponte agora —
       // idempotente, então reabrir uma análise completa não muda nada.
-      await this.ponteDaProposta(proposta.analiseCadastro.id, usuarioId, false);
+      await this.ponteDaProposta(proposta.analiseCadastro.id, usuarioId, documentosConferidos);
       return this.dossie(proposta.analiseCadastro.id);
     }
 
@@ -209,7 +215,7 @@ export class AnaliseService implements OnModuleInit {
     await this.auditar(usuarioId, 'analise_iniciada', analise.id, undefined, { propostaId, politicaVersao: versao.politicaVersao });
     // A ponte com a proposta (Camada 1 + consultas automáticas) vale para QUALQUER
     // caminho de abertura — não só o "Enviar proposta" do atendimento (22/09).
-    await this.ponteDaProposta(analise.id, usuarioId, false);
+    await this.ponteDaProposta(analise.id, usuarioId, documentosConferidos);
     return this.dossie(analise.id);
   }
 
@@ -219,11 +225,11 @@ export class AnaliseService implements OnModuleInit {
   // da Camada 1 na trilha OFICIAL (ConsultaExterna) e copia as rendas declarada
   // e presumida para o participante — nada fica em campo paralelo.
   async abrirDaJornada(propostaId: string, usuarioId?: string) {
-    // iniciar() já faz a ponte; aqui só se garante o passo dos documentos, que
-    // no atendimento é certo (a CNH foi exigida antes de enviar).
-    await this.iniciar(propostaId, usuarioId);
-    const analise = await this.prisma.db.analiseCadastro.findFirst({ where: { propostaId }, select: { id: true } });
-    if (analise) await this.ponteDaProposta(analise.id, usuarioId, true);
+    // A ponte roda UMA vez, dentro de iniciar(). No atendimento os documentos
+    // são certos (a CNH foi exigida antes de enviar). Caso real 23/09: chamar a
+    // ponte duas vezes disparou as 7 consultas em dobro — a segunda passagem
+    // não via as da primeira, ainda na fila.
+    await this.iniciar(propostaId, usuarioId, true);
   }
 
   // Ponte proposta → análise (doc 02 §20), IDEMPOTENTE: injeta a Camada 1 que
@@ -235,7 +241,7 @@ export class AnaliseService implements OnModuleInit {
   private async ponteDaProposta(analiseId: string, usuarioId: string | undefined, documentosConferidos: boolean) {
     const analiseAtual = await this.prisma.db.analiseCadastro.findFirst({
       where: { id: analiseId },
-      select: { id: true, status: true, propostaId: true, resumoIa: true, _count: { select: { consultas: true } } },
+      select: { id: true, status: true, propostaId: true, resumoIa: true, consultasAutomaticasEm: true },
     });
     if (!analiseAtual) return;
     const proposta = await this.prisma.db.proposta.findFirst({
@@ -332,11 +338,13 @@ export class AnaliseService implements OnModuleInit {
     // Consultas da 2ª camada + resumo do assistente, AUTOMÁTICOS no envio
     // (decisão Luís 14/09: sem botão — o worker roda as 7 consultas, pulando
     // as já válidas, e o resumo nasce completo de uma só vez). Só dispara uma
-    // vez: se já há consulta além da Camada 1, pula. (Um resumo já concluído
-    // pelo connector é preservado pelo assistente quando não há chave da IA.)
-    const consultasAlemDaCamada1 = await this.prisma.db.consultaExterna.count({ where: { analiseId, tipo: { not: 'CAMADA1' } } });
-    if (consultasAlemDaCamada1 === 0) {
-      await this.dispararConsultasEResumo(analiseId);
+    // vez: a marca consultasAutomaticasEm é gravada no disparo (23/09) — contar
+    // consultas não servia, elas ainda estavam na fila. Análises anteriores à
+    // marca: só se ainda não têm nenhuma consulta além da Camada 1. (Um resumo
+    // já concluído pelo connector é preservado pelo assistente sem chave da IA.)
+    if (!analiseAtual.consultasAutomaticasEm) {
+      const consultasAlemDaCamada1 = await this.prisma.db.consultaExterna.count({ where: { analiseId, tipo: { not: 'CAMADA1' } } });
+      if (consultasAlemDaCamada1 === 0) await this.dispararConsultasEResumo(analiseId);
     }
   }
 

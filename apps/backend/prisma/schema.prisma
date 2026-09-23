@@ -1654,6 +1654,9 @@ model AnaliseCadastro {
   // {status: 'gerando'|'concluido'|'falha'|'nao_configurado', texto, modelo,
   //  geradoEm, erro?} — APOIO ao analista; nunca decide nem transita status.
   resumoIa                   Json?
+  // Consultas automaticas da 2a camada ja DISPARADAS (23/09): marca gravada
+  // antes de enfileirar — contar consultas nao serve, elas ainda estao na fila.
+  consultasAutomaticasEm     DateTime?
 
   proposta        Proposta                @relation(fields: [propostaId], references: [id])
   parametroVersao VersaoParametrosAnalise @relation(fields: [parametroVersaoId], references: [id])
