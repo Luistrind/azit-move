@@ -2033,8 +2033,7 @@ Asaas, e dentro dela **ItemFatura** de origens diferentes. A cobrança legada de
 | parcelamento (942) | `ItemFatura` **PRINCIPAL** ligado à `Parcela` N do contrato |
 | seguro (50) e taxa (5) | `ItemFatura` dos itens recorrentes do contrato (seguro, repasse da taxa) |
 | intermediária embutida (500) | `ItemFatura` **INTERMEDIARIA** (parcela-balão da entrada, §4-A.3) |
-| despesa avulsa junto (manutenção periódica 225,75) | `ItemFatura` **SERVICO** — o mesmo item que o repasse de multa cria hoje (§25.3) |
-| despesa **parcelada** junto ("Manutenção Corretiva 331,36 — 01/04 … 04/04") | contrato de **Reembolso Parcelado** (§18.5) de 4 parcelas; cada parcela é um item nas faturas correspondentes |
+| despesa junto da parcela — única (manutenção periódica 225,75) OU parcelada ("Manutenção Corretiva 331,36 — 01/04 … 04/04") | contrato de **Reembolso Parcelado** (§18.5) com 1 ou N parcelas, **sem a taxa do produto e sem reprecificar**: os valores são exatamente os cobrados (decisão Luís 23/09 — "o que é passado, respeitamos como foi feito; senão diverge"). Cada parcela é um item nas faturas correspondentes |
 
 A fatura nasce **PAGA** (com data e valor do Asaas, encargo separado quando houve), e a parcela
 do contrato nasce PAGA — o histórico fica inteiro, "como foi cobrado" (§26.3), e nenhuma regra
