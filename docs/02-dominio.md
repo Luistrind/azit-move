@@ -2017,3 +2017,34 @@ MIGRADO. A F3 (que cria contrato) **não será usada por enquanto**.
   divergências.
 - **Validar** (EM_REVISAO → VALIDADO) exige: termos completos, PDF anexado, nenhuma cobrança
   em dúvida e cada divergência **reconhecida** com nota. VALIDADO pode voltar a EM_REVISAO.
+
+### 26.8 O que o caso validado vira no sistema (F3 — desenho, pergunta do Luís 23/09)
+
+A dúvida: uma cobrança do Asaas que paga **duas coisas** (parcela + reembolso, parcela +
+intermediária) recebe UM tipo na bancada — o que acontece com a outra parte na migração?
+
+**Nada se perde: o tipo é a natureza principal da cobrança; a DECOMPOSIÇÃO é o que a F3
+materializa.** O modelo do sistema já é exatamente esse (§4.12): uma **Fatura** = uma cobrança no
+Asaas, e dentro dela **ItemFatura** de origens diferentes. A cobrança legada de 18/11/2025
+(942 + 50 + 5 + manutenção 225,75) vira UMA fatura com quatro itens:
+
+| parte lida da descrição | vira no sistema |
+|---|---|
+| parcelamento (942) | `ItemFatura` **PRINCIPAL** ligado à `Parcela` N do contrato |
+| seguro (50) e taxa (5) | `ItemFatura` dos itens recorrentes do contrato (seguro, repasse da taxa) |
+| intermediária embutida (500) | `ItemFatura` **INTERMEDIARIA** (parcela-balão da entrada, §4-A.3) |
+| despesa avulsa junto (manutenção periódica 225,75) | `ItemFatura` **SERVICO** — o mesmo item que o repasse de multa cria hoje (§25.3) |
+| despesa **parcelada** junto ("Manutenção Corretiva 331,36 — 01/04 … 04/04") | contrato de **Reembolso Parcelado** (§18.5) de 4 parcelas; cada parcela é um item nas faturas correspondentes |
+
+A fatura nasce **PAGA** (com data e valor do Asaas, encargo separado quando houve), e a parcela
+do contrato nasce PAGA — o histórico fica inteiro, "como foi cobrado" (§26.3), e nenhuma regra
+do sistema (régua, D+3, acordo, novação) precisa de caso especial para o legado.
+
+**Entrada em várias transações** (§26.2): a entrada vira o lançamento de entrada do contrato
+(§4-A.3) com o valor do contrato, pago; as transações que a compuseram ficam registradas no
+caso como prova, não viram itens separados.
+
+**Consequência para a bancada:** ao confirmar a leitura de uma cobrança composta, o operador
+escolhe o tipo **principal** (parcela) e confere a decomposição — é ela que conta. Uma
+cobrança marcada como "reembolso" mas cuja descrição é "parcela + manutenção" está lida
+errado: a parcela daquela semana ficaria "não cobrada".
