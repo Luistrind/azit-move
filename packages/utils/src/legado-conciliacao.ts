@@ -105,8 +105,13 @@ export function conciliarLegado(params: {
   cobrancas: CobrancaConciliavel[];
   hoje: string; // YYYY-MM-DD
   toleranciaDias?: number;
+  // Vínculos MANUAIS (decisão do operador, caso real 23/09): cobrança → linha
+  // do cronograma. Acordos e arranjos que regra nenhuma adivinha.
+  vinculosManuais?: { cobrancaId: string; chave: string }[];
 }): ResultadoConciliacao {
   const { termos, hoje } = params;
+  const manuais = new Map<string, string[]>(); // chave → cobrancaIds
+  for (const v of params.vinculosManuais ?? []) manuais.set(v.chave, [...(manuais.get(v.chave) ?? []), v.cobrancaId]);
   const tol = params.toleranciaDias ?? 3;
   const p = termos.parcelas;
   if (!p.quantidade || p.valor == null || !p.primeiraEm) {
@@ -120,6 +125,41 @@ export function conciliarLegado(params: {
   const usadas = new Set<string>();
   const cobrancas = params.cobrancas.filter((c) => c.classe !== 'outra');
   const linhas: LinhaConciliacao[] = [];
+  const porId = new Map(cobrancas.map((c) => [c.id, c]));
+  for (const ids of manuais.values()) for (const id of ids) if (porId.has(id)) usadas.add(id);
+
+  // Linha composta por VÁRIAS cobranças (parcela paga em partes, ou vínculo
+  // manual): soma os originais, o pago e os encargos; a situação sai das classes.
+  const montarComposta = (serie: LinhaConciliacao['serie'], numero: number, esperadoEm: string, esperadoValor: number, partes: CobrancaConciliavel[], manual: boolean): LinhaConciliacao => {
+    const ordenadas = [...partes].sort((a, b) => a.vencimento.localeCompare(b.vencimento));
+    const soma = ordenadas.reduce((s, x) => s + x.valorOriginal, 0);
+    const pagas = ordenadas.filter((x) => x.classe === 'paga');
+    const somaPaga = pagas.reduce((s, x) => s + (x.valorPago ?? x.valorOriginal), 0);
+    const encargo = ordenadas.reduce((s, x) => s + x.encargoEmbutido + (x.classe === 'paga' && x.valorPago != null && x.valorPago > x.valorOriginal ? x.valorPago - x.valorOriginal : 0), 0);
+    let situacao: SituacaoLinha;
+    if (pagas.length === ordenadas.length) situacao = encargo > 0 ? 'paga_com_encargo' : 'paga';
+    else situacao = ordenadas.some((x) => x.classe === 'vencida') ? 'vencida' : 'pendente';
+    // Manual: o operador decidiu que estas cobranças quitam a linha — não é divergência
+    // mesmo que a soma difira (acordo com desconto, por exemplo). Automática: só vale se soma.
+    const diverge = !manual && soma !== esperadoValor;
+    return {
+      chave: serie === 'entrada' ? 'entrada' : `${serie}:${numero}`,
+      serie, numero, esperadoEm, esperadoValor,
+      cobrancaId: ordenadas.length === 1 ? ordenadas[0].id : null,
+      cobradoEm: ordenadas[0]?.vencimento ?? null,
+      cobradoValor: soma,
+      pagoEm: pagas.length ? pagas[pagas.length - 1].pagoEm : null,
+      pagoValor: pagas.length ? somaPaga : null,
+      encargo,
+      situacao: diverge ? 'valor_diverge' : situacao,
+      divergencia: diverge,
+      componentes: null,
+      partes: ordenadas.map((x) => ({ cobrancaId: x.id, vencimento: x.vencimento, valor: x.valorOriginal, classe: x.classe })),
+      observacao: manual
+        ? `vínculo manual (${ordenadas.length} cobrança${ordenadas.length > 1 ? 's' : ''})${soma !== esperadoValor ? ` — soma ${(soma / 100).toFixed(2)} ≠ esperado ${(esperadoValor / 100).toFixed(2)}` : ''}`
+        : `paga em ${ordenadas.length} transações`,
+    };
+  };
 
   // Intermediárias por data: quando caem na mesma semana da parcela, o Asaas
   // pode ter cobrado junto (valor = parcela + seguro + taxa + intermediária).
@@ -232,6 +272,27 @@ export function conciliarLegado(params: {
       esperado = valorCobranca + inter.valor;
       intermediariasCasadas.add(numInter);
     }
+    // Parcela paga em PARTES (caso real 23/09): a cobrança da semana vale menos
+    // que a parcela e outra(s) da mesma semana — inclusive "Acordo semana do
+    // dia 26/02" — completam o valor. Só fecha se a soma bate exatamente.
+    if (c && c.valorOriginal < esperado && !(c.parcelamento != null && c.parcelamento === p.valor)) {
+      const complemento: CobrancaConciliavel[] = [];
+      let soma = c.valorOriginal;
+      const candidatas = cobrancas
+        .filter((x) => !usadas.has(x.id) && (x.tipo === 'parcela' || x.tipo === 'acordo' || x.tipo === 'outra') && Math.abs(difDias(x.vencimento, c.vencimento)) <= tol + 1)
+        .sort((a, b) => a.vencimento.localeCompare(b.vencimento));
+      for (const x of candidatas) {
+        if (soma + x.valorOriginal > esperado) continue;
+        complemento.push(x);
+        soma += x.valorOriginal;
+        if (soma === esperado) break;
+      }
+      if (soma === esperado && complemento.length) {
+        for (const x of complemento) usadas.add(x.id);
+        linhas.push(montarComposta('parcela', n, data, esperado, [c, ...complemento], false));
+        continue;
+      }
+    }
     linhas.push(montar('parcela', n, data, esperado, c, p.valor));
   }
 
@@ -266,6 +327,18 @@ export function conciliarLegado(params: {
       if (c) usadas.add(c.id);
       linhas.push(montar('intermediaria', i, data, inter.valor, c));
     }
+  }
+
+  // Vínculos manuais: a linha passa a ser composta pelas cobranças que o
+  // operador apontou (mais o que a regra já tinha casado nela).
+  for (const [chave, ids] of manuais) {
+    const idx = linhas.findIndex((l) => l.chave === chave);
+    if (idx < 0) continue;
+    const linha = linhas[idx];
+    const jaNaLinha = linha.partes.length ? linha.partes.map((x) => porId.get(x.cobrancaId)).filter((x): x is CobrancaConciliavel => !!x) : linha.cobrancaId ? [porId.get(linha.cobrancaId)].filter((x): x is CobrancaConciliavel => !!x) : [];
+    const apontadas = ids.map((id) => porId.get(id)).filter((x): x is CobrancaConciliavel => !!x);
+    if (apontadas.length === 0) continue;
+    linhas[idx] = montarComposta(linha.serie, linha.numero, linha.esperadoEm, linha.esperadoValor, [...jaNaLinha, ...apontadas], true);
   }
 
   // Fora do cronograma

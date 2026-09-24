@@ -2448,6 +2448,7 @@ model CasoMigracaoLegado {
   contratoPdfEm        DateTime?
   extracaoPdf          Json? // o que a leitura do PDF achou (prova do pré-preenchimento)
   divergenciasReconhecidas Json? // [{ chave, nota, em, por }]
+  vinculosManuais          Json? // [{ cobrancaId, chave, em, por }] — cobrança apontada à mão para uma linha do cronograma
   validadoEm           DateTime?
   validadoPor          String?
 

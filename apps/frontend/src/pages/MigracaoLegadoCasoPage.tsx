@@ -192,6 +192,7 @@ export function MigracaoLegadoCasoPage() {
 
   const reconhecidas = useMemo(() => new Map((c?.divergenciasReconhecidas ?? []).map((d) => [d.chave, d])), [c?.divergenciasReconhecidas]);
   const cobrancaPorId = useMemo(() => new Map((c?.cobrancas ?? []).map((p) => [p.id, p])), [c?.cobrancas]);
+  const vinculoPorCobranca = useMemo(() => new Map((c?.vinculosManuais ?? []).map((v) => [v.cobrancaId, v])), [c?.vinculosManuais]);
 
   if (!c) return <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>{caso.isError ? mensagemErro(caso.error) : 'Carregando…'}</div>;
 
@@ -390,7 +391,9 @@ export function MigracaoLegadoCasoPage() {
               <tbody>
                 {linhas.map((l) => <LinhaConc key={l.chave} l={l} reconhecida={reconhecidas.get(l.chave)?.nota ?? null} editavel={!!editavel} nota={notaDiv[l.chave] ?? ''} setNota={(v) => setNotaDiv({ ...notaDiv, [l.chave]: v })}
                   reconhecer={() => rodar(() => svc.reconhecerDivergencia(id, l.chave, notaDiv[l.chave] ?? ''), 'Divergência reconhecida')}
-                  desfazer={() => rodar(() => svc.desfazerReconhecimento(id, l.chave), '')} />)}
+                  desfazer={() => rodar(() => svc.desfazerReconhecimento(id, l.chave), '')}
+                  vinculadas={[...(l.partes.length ? l.partes.map((x) => x.cobrancaId) : l.cobrancaId ? [l.cobrancaId] : [])].filter((cid) => vinculoPorCobranca.has(cid))}
+                  desvincular={(cid) => rodar(() => svc.desvincular(id, cid), 'Vínculo desfeito')} />)}
                 {linhas.length === 0 && <tr><td className={td} colSpan={10} style={{ color: 'var(--text-muted)' }}>Nenhuma linha{soDivergencias ? ' divergente' : ''}.</td></tr>}
               </tbody>
             </table>
@@ -409,6 +412,15 @@ export function MigracaoLegadoCasoPage() {
                       <StatusBadge label={f.classe} colors={COBRANCA_LEGADA_COLORS} />
                       <span style={{ color: 'var(--text-secondary)' }}>{cobrancaPorId.get(f.cobrancaId)?.tipoRotulo ?? f.tipo} — {f.motivo}</span>
                       {f.descricao && <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>“{f.descricao}”</span>}
+                      {/* Vínculo manual (23/09): o operador aponta a cobrança para a linha que ela quita. */}
+                      {editavel && !rec && (
+                        <select className="rounded-[6px] px-[6px] py-[3px] text-[11px]" style={inputStyle} value="" onChange={(e) => { if (e.target.value) void rodar(() => svc.vincular(id, f.cobrancaId, e.target.value), 'Cobrança vinculada à linha'); }}>
+                          <option value="">→ vincular a…</option>
+                          {conc.linhas.filter((l) => l.situacao !== 'paga' && l.situacao !== 'paga_com_encargo').map((l) => (
+                            <option key={l.chave} value={l.chave}>{l.serie === 'entrada' ? 'Entrada' : l.serie === 'parcela' ? `Parcela ${l.numero}` : `Intermediária ${l.numero}`} · {dataBR(l.esperadoEm)} · {formatCurrency(l.esperadoValor)}</option>
+                          ))}
+                        </select>
+                      )}
                       {f.divergencia && (rec
                         ? <span className="text-[11px]" style={{ color: CASO_LEGADO_STATUS_COLORS.MIGRADO.fg }}>reconhecida: {rec.nota}{editavel && <button className="ml-[6px] underline" onClick={() => rodar(() => svc.desfazerReconhecimento(id, chave), '')}>desfazer</button>}</span>
                         : editavel && <span className="flex items-center gap-[4px]"><input className="rounded-[6px] px-[6px] py-[3px] text-[11px]" style={inputStyle} placeholder="por quê?" value={notaDiv[chave] ?? ''} onChange={(e) => setNotaDiv({ ...notaDiv, [chave]: e.target.value })} /><button className="text-[11px] underline" disabled={!(notaDiv[chave] ?? '').trim()} onClick={() => rodar(() => svc.reconhecerDivergencia(id, chave, notaDiv[chave] ?? ''), 'Divergência reconhecida')}>reconhecer</button></span>)}
@@ -493,7 +505,7 @@ function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode
   );
 }
 
-function LinhaConc({ l, reconhecida, editavel, nota, setNota, reconhecer, desfazer }: { l: LinhaConciliacao; reconhecida: string | null; editavel: boolean; nota: string; setNota: (v: string) => void; reconhecer: () => void; desfazer: () => void }) {
+function LinhaConc({ l, reconhecida, editavel, nota, setNota, reconhecer, desfazer, vinculadas, desvincular }: { l: LinhaConciliacao; reconhecida: string | null; editavel: boolean; nota: string; setNota: (v: string) => void; reconhecer: () => void; desfazer: () => void; vinculadas: string[]; desvincular: (cobrancaId: string) => void }) {
   const cor = CONCILIACAO_LINHA_COLORS[l.situacao];
   const rotuloItem = l.serie === 'entrada' ? 'Entrada' : l.serie === 'parcela' ? `Parcela ${l.numero}` : `Intermediária ${l.numero}`;
   return (
@@ -505,6 +517,7 @@ function LinhaConc({ l, reconhecida, editavel, nota, setNota, reconhecer, desfaz
         {dataBR(l.cobradoEm)}
         {l.partes.length > 1 && <div className="text-[10.5px]" style={{ color: 'var(--text-muted)' }}>{l.partes.length} transações</div>}
         {l.observacao && <div className="text-[10.5px]" style={{ color: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.fg }}>{l.observacao}</div>}
+        {editavel && vinculadas.length > 0 && <div className="text-[10.5px]">{vinculadas.map((cid) => <button key={cid} className="mr-[6px] underline" style={{ color: 'var(--text-muted)' }} onClick={() => desvincular(cid)}>desvincular</button>)}</div>}
       </td>
       <td className={`${td} text-right tabular-nums`} style={{ color: l.situacao === 'valor_diverge' ? SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg : undefined }}>
         {l.cobradoValor == null ? '—' : formatCurrency(l.cobradoValor)}

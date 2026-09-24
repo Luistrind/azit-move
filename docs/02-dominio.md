@@ -2014,7 +2014,17 @@ MIGRADO. A F3 (que cria contrato) **não será usada por enquanto**.
 - **Conciliação:** o cronograma esperado (dos termos) contra as cobranças reais, por data
   (±3 dias) e valor: parcela esperada × cobrada × paga, diferenças de valor, cobranças que não
   casam com parcela (entrada, acordo, avulsa). Resumo: pagas de N, em aberto, vencidas,
-  divergências.
+  divergências. Casos reais que a conciliação reconhece sozinha (validação 23/09): parcela
+  **reemitida** por atraso (juros no valor, com ou sem aviso na descrição) fecha a semana
+  vazia anterior; parcela **paga em partes** (duas transações da mesma semana que somam a
+  parcela — o "Acordo semana do dia X" era isso) fecha a linha sem divergência; despesa
+  junto da parcela (cota do IPVA, manutenção parcelada) lida da descrição, inclusive quando
+  o valor escrito é o total do parcelamento ou não há valor.
+- **Vínculo manual:** o que regra nenhuma adivinha (acordo com desconto, cobrança de outra
+  data que quita uma parcela) o operador aponta na tela — cobrança fora do cronograma
+  "→ Parcela N". A linha passa a ser composta por ela, sem divergência mesmo com soma
+  diferente (a observação avisa), e a decisão fica registrada com autor e data
+  (`vinculosManuais`, auditoria). Desfazer é livre enquanto o caso está editável.
 - **Validar** (EM_REVISAO → VALIDADO) exige: termos completos, PDF anexado, nenhuma cobrança
   em dúvida e cada divergência **reconhecida** com nota. VALIDADO pode voltar a EM_REVISAO.
 

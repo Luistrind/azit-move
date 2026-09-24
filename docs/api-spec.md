@@ -1066,6 +1066,8 @@ não o status do Asaas.
 | DELETE | `…/cobrancas/:cobrancaId/interpretacao` | Desfaz a decisão e volta à regra |
 | PUT | `/migracao-legado/casos/:id/divergencias/:chave` | `{ nota }` — reconhece uma divergência da conciliação (`parcela:N`, `intermediaria:N`, `entrada`, `cobranca:<id>`) |
 | DELETE | `/migracao-legado/casos/:id/divergencias/:chave` | Desfaz o reconhecimento |
+| PUT | `/migracao-legado/casos/:id/vinculos/:cobrancaId` | `{ chave }` — vínculo MANUAL: a cobrança passa a compor a linha `parcela:N` / `intermediaria:N` / `entrada` (sem divergência; a observação avisa se a soma difere). 422 `cobranca_invalida` / `linha_invalida` |
+| DELETE | `/migracao-legado/casos/:id/vinculos/:cobrancaId` | Desfaz o vínculo manual |
 | POST | `/migracao-legado/casos/:id/validar` | EM_REVISAO → VALIDADO. 422 `pendencias` com a lista: termos incompletos, PDF ausente, cobrança em dúvida ou sem leitura, divergência sem reconhecimento. VALIDADO → EM_REVISAO é pelo `PATCH …/status` (reabrir) |
 
 O `GET /migracao-legado/casos/:id` passa a devolver `termos`, `termosFaltantes`, `pdf`, `extracaoPdf`,

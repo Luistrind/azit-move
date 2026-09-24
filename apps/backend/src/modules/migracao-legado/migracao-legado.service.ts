@@ -310,6 +310,7 @@ export class MigracaoLegadoService {
       cobrancas: c.cobrancas.map((p) => this.conciliacao.cobrancaParaApi(p)),
       conciliacao: { linhas: conc.linhas, fora: conc.fora, resumo: conc.resumo, incompleta: conc.incompleta },
       divergenciasReconhecidas: conc.reconhecidas,
+      vinculosManuais: conc.vinculos,
       pendenciasParaValidar: this.conciliacao.pendenciasParaValidar(c),
       validadoEm: c.validadoEm?.toISOString() ?? null,
       tiposCobranca: Object.entries(ROTULO_TIPO_COBRANCA).map(([valor, rotulo]) => ({ valor, rotulo })),

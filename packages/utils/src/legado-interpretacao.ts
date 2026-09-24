@@ -53,20 +53,25 @@ export function partesRotuladas(descricao: string): ParteRotulada[] {
   // Só o formato por segmentos ("A: R$ x / B: R$ y / C R$ z"), com exatamente
   // UM valor em cada segmento. Formatos soltos ("R$ 50 seguro + R$ 5 taxa")
   // ficam para as regras por palavra, que leem o rótulo depois do valor.
-  // Separador é " / " com espaços — uma data "01/04" no fim do rótulo não corta.
-  const segmentos = descricao.split(/\s+\/\s+/).map((s) => s.trim()).filter(Boolean);
+  // Separador é " / " com espaços ou "//" (caso real 23/09: "… R$ 5,00// 1ª
+  // Cota do IPVA 2026") — uma data "01/04" no fim do rótulo não corta.
+  const segmentos = descricao.split(/\s*\/\/\s*|\s+\/\s+/).map((s) => s.trim()).filter(Boolean);
   if (segmentos.length < 2) return [];
   const partes: ParteRotulada[] = [];
   for (const seg of segmentos) {
-    const valores = [...seg.matchAll(/R\$\s*([\d.]+,\d{2})/g)];
-    // Segmento SEM valor só é aceito se for o aviso de encargo ("Multa e juros
-    // por atraso"): o valor dele é o que sobrar da cobrança.
+    // Valores como "R$ 942,00", "$1.320.00" ou "$323,00" (a operação escrevia dos dois jeitos).
+    const valores = [...seg.matchAll(/R?\$\s*([\d.]+(?:[,.]\d{2})?)/g)];
     if (valores.length === 0) {
-      if (/juros|multa|atraso|encargo|mora/i.test(seg)) { partes.push({ rotulo: seg.replace(/[.\s]+$/g, ''), valor: 0, papel: 'encargo' }); continue; }
-      return [];
+      // Segmento SEM valor: aviso de encargo ("Multa e juros por atraso") vale o
+      // que sobrar; qualquer outro ("1ª Cota do IPVA 2026") é despesa junto da
+      // parcela e também recebe o que sobrar (papel extra, valor 0 = a definir).
+      const rot = seg.replace(/[.\s]+$/g, '');
+      if (/juros|multa|atraso|encargo|mora/i.test(seg)) { partes.push({ rotulo: rot, valor: 0, papel: 'encargo' }); continue; }
+      partes.push({ rotulo: rot, valor: 0, papel: 'extra' });
+      continue;
     }
     if (valores.length !== 1) return [];
-    const valor = reais(valores[0][1]);
+    const valor = valorMonetario(valores[0][1]);
     if (valor == null) return [];
     const rotulo = seg.slice(0, valores[0].index).replace(/[\s\-–:]+$/g, '').trim() || 'valor';
     const r = rotulo.toLowerCase();
@@ -75,11 +80,25 @@ export function partesRotuladas(descricao: string): ParteRotulada[] {
         : /entrada|sinal|reserva/.test(r) ? 'entrada'
           : /prote[çc][ãa]o|seguro/.test(r) ? 'seguro'
             : /taxa|boleto|pix|mensag/.test(r) ? 'taxa'
-              : /parcela|semanal|contrato|financiamento/.test(r) ? 'parcelamento'
-                : 'extra';
+              // 'Parcelamento'/'Parcelamenti' é despesa parcelada (repasse), não a
+              // parcela do contrato; e só existe UMA parcela do contrato por cobrança.
+              : /parcelament/.test(r) ? 'extra'
+                : /parcela|semanal|contrato|financiamento/.test(r) && !partes.some((x) => x.papel === 'parcelamento') ? 'parcelamento'
+                  : 'extra';
     partes.push({ rotulo, valor, papel });
   }
   return partes;
+}
+
+// "942,00" · "1.320,00" · "1.320.00" (ponto como decimal, jeito da operação) · "323,00"
+export function valorMonetario(s: string): number | null {
+  const limpo = s.trim();
+  let n: number;
+  if (/,\d{2}$/.test(limpo)) n = parseFloat(limpo.replace(/\./g, '').replace(',', '.'));
+  else if (/\.\d{2}$/.test(limpo) && (limpo.match(/\./g) ?? []).length >= 1) n = parseFloat(limpo.replace(/\.(?=\d{3}\b)/g, ''));
+  else n = parseFloat(limpo.replace(/\./g, '').replace(',', '.'));
+  const c = Math.round(n * 100);
+  return Number.isFinite(c) ? c : null;
 }
 
 const reais = (s: string) => {
@@ -117,27 +136,48 @@ export function interpretarCobrancaLegada(params: {
     tipo, parcelamento, seguro: 0, taxa: 0, intermediaria: 0, extra: 0, extraRotulo: null, encargo: 0, duvida: false, ...extra,
   });
 
-  // 0. Descrição ESTRUTURADA (rótulo: R$ valor / rótulo: R$ valor …): quando as
-  //    partes somam o valor da cobrança, a composição vem da própria descrição —
-  //    inclusive despesa repassada junto da parcela (caso real 23/09).
+  // 0. Descrição ESTRUTURADA (rótulo: R$ valor / rótulo: R$ valor …): a
+  //    composição vem da própria descrição — inclusive despesa repassada junto
+  //    da parcela (caso real 23/09). Partes CONHECIDAS (parcela, seguro, taxa,
+  //    intermediária, entrada) têm valor escrito; o que sobra da cobrança vai
+  //    para a despesa junto (cota do IPVA, manutenção parcelada — o valor
+  //    escrito nela às vezes é o TOTAL do parcelamento, "$1.320.00 (1/5)") ou,
+  //    sem despesa, para juros/multa embutidos (parcela reemitida por atraso).
   const partes = partesRotuladas(desc);
-  const somaPartes = partes.reduce((s, x) => s + x.valor, 0);
-  // Encargo embutido: partes com valor somam MENOS que a cobrança e a descrição
-  // avisa "multa e juros" — a diferença é o encargo.
+  const conhecidas = partes.filter((x) => x.papel !== 'extra' && x.papel !== 'encargo');
+  const somaConhecidas = conhecidas.reduce((s, x) => s + x.valor, 0);
+  const extras = partes.filter((x) => x.papel === 'extra');
   const temAvisoEncargo = partes.some((x) => x.papel === 'encargo');
   const temParcelamento = partes.some((x) => x.papel === 'parcelamento');
-  // Sem aviso (caso real 23/09: reemitida com 1.017,27 e a descrição só com
-  // as partes de 997): a descrição estruturada é a composição inteira, então
-  // o que sobra numa cobrança de PARCELA só pode ser juros/multa — aceito até
-  // 20% das partes; acima disso fica em dúvida para o operador olhar.
-  const residual = somaPartes < valor ? valor - somaPartes : 0;
-  const encargoEmbutido = residual > 0 && (temAvisoEncargo || (temParcelamento && residual <= Math.round(somaPartes * 0.2))) ? residual : 0;
-  if (partes.length >= 2 && (somaPartes === valor || encargoEmbutido > 0)) {
+  if (partes.length >= 2 && somaConhecidas > 0 && valor >= somaConhecidas) {
+    let residual = valor - somaConhecidas;
+    let extraValor = 0;
+    let encargoEmbutido = 0;
+    if (extras.length) {
+      const somaExtras = extras.reduce((s, x) => s + x.valor, 0);
+      // Valor escrito nas despesas fecha com o que sobra (ou fecha e ainda sobram
+      // juros avisados)? Usa o escrito. Senão, a despesa é o que sobra.
+      if (somaExtras > 0 && somaExtras <= residual && (somaExtras === residual || temAvisoEncargo)) {
+        extraValor = somaExtras;
+      } else {
+        extraValor = residual;
+      }
+      residual -= extraValor;
+    }
+    if (residual > 0) {
+      // Juros/multa embutidos: com aviso, o que sobrar; sem aviso, só até 20%
+      // das partes conhecidas (acima disso fica em dúvida para o operador).
+      if (temAvisoEncargo || (temParcelamento && residual <= Math.round(somaConhecidas * 0.2))) {
+        encargoEmbutido = residual;
+        residual = 0;
+      }
+    }
+    const fechou = residual === 0;
     const soma = (papel: ParteRotulada['papel']) => partes.filter((x) => x.papel === papel).reduce((s, x) => s + x.valor, 0);
     const parcelamento = soma('parcelamento');
-    const extras = partes.filter((x) => x.papel === 'extra');
     const entradaParte = soma('entrada');
-    if (parcelamento > 0) {
+    const rotuloExtras = extras.length ? extras.map((x) => x.rotulo).join(' + ') : null;
+    if (parcelamento > 0 && fechou) {
       const p0 = c.parcelaContratual;
       const bate = p0 == null || parcelamento === p0;
       return {
@@ -146,20 +186,20 @@ export function interpretarCobrancaLegada(params: {
         seguro: soma('seguro'),
         taxa: soma('taxa'),
         intermediaria: soma('intermediaria') + entradaParte,
-        extra: soma('extra'),
-        extraRotulo: extras.length ? extras.map((x) => x.rotulo).join(' + ') : null,
+        extra: extraValor,
+        extraRotulo: extraValor > 0 ? rotuloExtras : null,
         encargo: encargoEmbutido,
         duvida: !bate,
         motivo: bate
-          ? `composição lida da descrição${extras.length ? ` (com ${extras.map((x) => x.rotulo).join(', ')})` : ''}${encargoEmbutido ? ` (juros/multa embutidos: ${(encargoEmbutido / 100).toFixed(2)}${temAvisoEncargo ? '' : ', sem aviso na descrição'})` : ''}`
+          ? `composição lida da descrição${extraValor ? ` (com ${rotuloExtras} ${(extraValor / 100).toFixed(2)})` : ''}${encargoEmbutido ? ` (juros/multa embutidos: ${(encargoEmbutido / 100).toFixed(2)}${temAvisoEncargo ? '' : ', sem aviso na descrição'})` : ''}`
           : `composição lida da descrição, mas a parcela (${(parcelamento / 100).toFixed(2)}) difere do contrato (${((p0 ?? 0) / 100).toFixed(2)})`,
       };
     }
-    if (entradaParte > 0 && entradaParte === valor) {
+    if (parcelamento === 0 && entradaParte > 0 && fechou && extraValor === 0) {
       return sem('entrada', valor, { motivo: 'entrada, pela descrição' });
     }
-    if (extras.length && soma('extra') === valor) {
-      return sem('reembolso', valor, { extra: valor, extraRotulo: extras.map((x) => x.rotulo).join(' + '), motivo: 'despesa repassada, pela descrição' });
+    if (parcelamento === 0 && extras.length && fechou) {
+      return sem('reembolso', valor, { extra: valor, extraRotulo: rotuloExtras, motivo: 'despesa repassada, pela descrição' });
     }
   }
 

@@ -105,6 +105,16 @@ export class MigracaoLegadoController {
     return this.conciliacao.desfazerReconhecimento(id, decodeURIComponent(chave), user.id);
   }
 
+  @Put('casos/:id/vinculos/:cobrancaId')
+  vincular(@Param('id') id: string, @Param('cobrancaId') cobrancaId: string, @Body() body: { chave: string }, @CurrentUser() user: UsuarioAutenticado) {
+    return this.conciliacao.vincular(id, cobrancaId, body?.chave ?? '', user.id);
+  }
+
+  @Delete('casos/:id/vinculos/:cobrancaId')
+  desvincular(@Param('id') id: string, @Param('cobrancaId') cobrancaId: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.conciliacao.desvincular(id, cobrancaId, user.id);
+  }
+
   @Post('casos/:id/validar')
   @HttpCode(200)
   validar(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {

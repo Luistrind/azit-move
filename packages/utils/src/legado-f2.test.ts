@@ -338,3 +338,65 @@ describe('juros embutidos sem aviso na descrição', () => {
     expect(r.duvida).toBe(true);
   });
 });
+
+// Caso real 23/09 (José Luiz): separador "//", "$1.320.00", cota sem valor,
+// parcela paga em duas transações ("Acordo semana do dia 26/02") e vínculo manual.
+describe('caso José Luiz — //, $1.320.00, cota sem valor, parcela em partes, vínculo manual', () => {
+  const ctx = contextoDosTermos({ parcelas: { valor: 94_200 }, intermediarias: null, entradaValor: null, seguroSemanal: 5_000, taxaSemanal: 500 }, null);
+  const cabeca = 'Contrato - Parcela semanal: R$ 942,00 / Proteção Veicular - Repasse: R$ 50,00 / Taxas Boleto Pix - Repasse: R$ 5,00';
+  const interp = (descricao: string, valorOriginal: number) => interpretarCobrancaLegada({ descricao, valorOriginal, avulsa: false, contexto: ctx });
+
+  it('"// 1ª Cota do IPVA 2026" sem valor: a cota é o que sobra (260)', () => {
+    expect(interp(`${cabeca}// 1ª Cota do IPVA 2026`, 125_700)).toMatchObject({ tipo: 'parcela', parcelamento: 94_200, seguro: 5_000, taxa: 500, extra: 26_000, encargo: 0, duvida: false });
+    expect(interp(`${cabeca}// 1ª Cota do IPVA 2026`, 125_700).extraRotulo).toMatch(/IPVA/);
+  });
+  it('"// Manutenção $1.320.00 (1/5)": o valor escrito é o total do parcelamento, a cota é o que sobra (310)', () => {
+    expect(interp(`${cabeca}// Manutenção $1.320.00 (1/5)`, 130_700)).toMatchObject({ tipo: 'parcela', parcelamento: 94_200, extra: 31_000, encargo: 0, duvida: false });
+  });
+  it('"// Parcelamenti $323,00": valor escrito fecha com o que sobra', () => {
+    expect(interp(`${cabeca}// Parcelamenti $323,00`, 132_000)).toMatchObject({ tipo: 'parcela', parcelamento: 94_200, extra: 32_300, encargo: 0, duvida: false });
+  });
+  it('partesRotuladas lê "$1.320.00" como 1.320,00 e "//" como separador', () => {
+    const p = partesRotuladas(`${cabeca}// Manutenção $1.320.00 (1/5)`);
+    expect(p.map((x) => [x.papel, x.valor])).toEqual([['parcelamento', 94_200], ['seguro', 5_000], ['taxa', 500], ['extra', 132_000]]);
+  });
+
+  const termos = { parcelas: { quantidade: 3, valor: 94_200, primeiraEm: '2026-02-19' }, intermediarias: null, entradaValor: null, seguroSemanal: 5_000, taxaSemanal: 500 };
+  const base = { valorPago: null as number | null, pagoEm: null as string | null, classe: 'paga' as const, intermediariaEmbutida: 0, parcelamento: null as number | null, extra: 0, extraRotulo: null as string | null, encargoEmbutido: 0, descricao: null as string | null, tipo: 'parcela' as const };
+  const cobrancas: CobrancaConciliavel[] = [
+    { ...base, id: 'p12', vencimento: '2026-02-19', valorOriginal: 99_700, valorPago: 99_700, pagoEm: '2026-02-19', parcelamento: 94_200 },
+    // parcela 13 (26/02) paga em duas transações: 498,50 no dia + "Acordo semana do dia 26/02" 498,50 no dia seguinte
+    { ...base, id: 'p13a', vencimento: '2026-02-26', valorOriginal: 49_850, valorPago: 49_850, pagoEm: '2026-02-26' },
+    { ...base, id: 'p13b', vencimento: '2026-02-27', valorOriginal: 49_850, valorPago: 49_850, pagoEm: '2026-02-27', tipo: 'acordo' as const, descricao: 'Acordo semana do dia 26/02' },
+    // parcela 14 (05/03) não cobrada; cobrança avulsa de 997 em 20/03 que só o operador sabe que é a 14
+    { ...base, id: 'p14x', vencimento: '2026-03-20', valorOriginal: 99_700, valorPago: 99_700, pagoEm: '2026-03-20', tipo: 'outra' as const },
+  ];
+
+  it('conciliação: parcela 13 fecha com as duas partes, sem divergência', () => {
+    const r = conciliarLegado({ termos, hoje: '2026-04-01', cobrancas });
+    const l = Object.fromEntries(r.linhas.map((x) => [x.chave, x]));
+    expect(l['parcela:1']).toMatchObject({ cobrancaId: 'p12', situacao: 'paga' });
+    expect(l['parcela:2']).toMatchObject({ cobradoValor: 99_700, pagoValor: 99_700, situacao: 'paga', divergencia: false, cobrancaId: null });
+    expect(l['parcela:2'].partes.map((x) => x.cobrancaId)).toEqual(['p13a', 'p13b']);
+    expect(l['parcela:2'].observacao).toContain('2 transações');
+    // a 14 continua sem cobrança; a de 20/03 (tipo outra) fica fora
+    expect(l['parcela:3'].situacao).not.toBe('paga');
+    expect(r.fora.map((x) => x.cobrancaId)).toEqual(['p14x']);
+  });
+
+  it('vínculo manual: a cobrança de 20/03 apontada para a parcela 14 fecha a linha, sem divergência', () => {
+    const r = conciliarLegado({ termos, hoje: '2026-04-01', cobrancas, vinculosManuais: [{ cobrancaId: 'p14x', chave: 'parcela:3' }] });
+    const l = Object.fromEntries(r.linhas.map((x) => [x.chave, x]));
+    expect(l['parcela:3']).toMatchObject({ cobrancaId: 'p14x', cobradoValor: 99_700, situacao: 'paga', divergencia: false });
+    expect(l['parcela:3'].observacao).toContain('vínculo manual');
+    expect(r.fora).toHaveLength(0);
+    expect(r.resumo.parcelasPagas).toBe(3);
+  });
+
+  it('vínculo manual com soma diferente do esperado: fecha mesmo assim, mas a observação avisa', () => {
+    const cobs: CobrancaConciliavel[] = [{ ...base, id: 'd', vencimento: '2026-02-19', valorOriginal: 90_000, valorPago: 90_000, pagoEm: '2026-02-19', tipo: 'acordo' as const }];
+    const r = conciliarLegado({ termos: { ...termos, parcelas: { ...termos.parcelas, quantidade: 1 } }, hoje: '2026-04-01', cobrancas: cobs, vinculosManuais: [{ cobrancaId: 'd', chave: 'parcela:1' }] });
+    expect(r.linhas[0]).toMatchObject({ cobrancaId: 'd', situacao: 'paga', divergencia: false });
+    expect(r.linhas[0].observacao).toContain('≠');
+  });
+});

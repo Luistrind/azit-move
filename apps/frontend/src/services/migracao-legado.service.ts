@@ -103,6 +103,7 @@ export interface ResumoConciliacao {
   divergencias: number; cobrancasForaDoCronograma: number;
 }
 export interface DivergenciaReconhecida { chave: string; nota: string; em: string; por: string }
+export interface VinculoManual { cobrancaId: string; chave: string; em: string; por: string }
 
 export interface CasoLegadoDetalhe extends CasoLegado {
   email: string | null;
@@ -118,6 +119,7 @@ export interface CasoLegadoDetalhe extends CasoLegado {
   extracaoPdf: { modeloReconhecido: boolean; extraidos: string[]; faltantes: string[]; cpfDiverge: boolean; erro: string | null } | null;
   conciliacao: { linhas: LinhaConciliacao[]; fora: ForaDoCronograma[]; resumo: ResumoConciliacao; incompleta: boolean };
   divergenciasReconhecidas: DivergenciaReconhecida[];
+  vinculosManuais: VinculoManual[];
   pendenciasParaValidar: string[];
   validadoEm: string | null;
   tiposCobranca: { valor: TipoCobrancaLegada; rotulo: string }[];
@@ -191,6 +193,12 @@ export const migracaoLegadoService = {
   },
   async desfazerReconhecimento(id: string, chave: string): Promise<void> {
     await api.delete(`/api/v1/migracao-legado/casos/${id}/divergencias/${encodeURIComponent(chave)}`);
+  },
+  async vincular(id: string, cobrancaId: string, chave: string): Promise<void> {
+    await api.put(`/api/v1/migracao-legado/casos/${id}/vinculos/${cobrancaId}`, { chave });
+  },
+  async desvincular(id: string, cobrancaId: string): Promise<void> {
+    await api.delete(`/api/v1/migracao-legado/casos/${id}/vinculos/${cobrancaId}`);
   },
   async validar(id: string): Promise<{ validado: boolean }> {
     const { data } = await api.post(`/api/v1/migracao-legado/casos/${id}/validar`, {});

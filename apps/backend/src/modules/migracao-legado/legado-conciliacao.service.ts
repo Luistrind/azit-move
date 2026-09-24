@@ -80,6 +80,8 @@ const reais = (c: number) => new Prisma.Decimal(centavosParaReaisString(c));
 const iso = (d: Date | null | undefined) => d?.toISOString().slice(0, 10) ?? null;
 
 type CobrancaBanco = Prisma.CobrancaLegadaGetPayload<object>;
+export interface VinculoManual { cobrancaId: string; chave: string; em: string; por: string }
+type CasoConciliavel = { termos: unknown; cobrancas: CobrancaBanco[]; divergenciasReconhecidas: unknown; vinculosManuais: unknown };
 
 @Injectable()
 export class LegadoConciliacaoService {
@@ -258,7 +260,8 @@ export class LegadoConciliacaoService {
 
   // ---------------- Conciliação ----------------
 
-  conciliar(caso: { termos: unknown; cobrancas: CobrancaBanco[]; divergenciasReconhecidas: unknown }): ResultadoConciliacao & { reconhecidas: DivergenciaReconhecida[] } {
+  conciliar(caso: CasoConciliavel): ResultadoConciliacao & { reconhecidas: DivergenciaReconhecida[]; vinculos: VinculoManual[] } {
+    const vinculos = ((caso.vinculosManuais as VinculoManual[] | null) ?? []);
     const termos = caso.termos as TermosContratoLegado | null;
     const hoje = dataHojeBrasil();
     const conciliaveis: CobrancaConciliavel[] = caso.cobrancas.map((c) => {
@@ -288,9 +291,10 @@ export class LegadoConciliacaoService {
         : { parcelas: { quantidade: null, valor: null, primeiraEm: null }, intermediarias: null, entradaValor: null, seguroSemanal: 5_000, taxaSemanal: 500 },
       cobrancas: conciliaveis,
       hoje,
+      vinculosManuais: vinculos.map((v) => ({ cobrancaId: v.cobrancaId, chave: v.chave })),
     });
     const reconhecidas = ((caso.divergenciasReconhecidas as DivergenciaReconhecida[] | null) ?? []);
-    return { ...r, reconhecidas };
+    return { ...r, reconhecidas, vinculos };
   }
 
   async reconhecerDivergencia(casoId: string, chave: string, nota: string, usuarioId: string) {
@@ -313,10 +317,37 @@ export class LegadoConciliacaoService {
     return { reconhecidas: lista };
   }
 
+  // ---------------- Vínculo manual (caso real 23/09) ----------------
+  // O operador aponta uma cobrança fora do cronograma para uma linha
+  // ("→ parcela 14"). Acordos e arranjos que regra nenhuma adivinha.
+
+  async vincular(casoId: string, cobrancaId: string, chave: string, usuarioId: string) {
+    const caso = await this.carregar(casoId);
+    this.exigirEditavel(caso.status);
+    const cobranca = caso.cobrancas.find((c) => c.id === cobrancaId && !c.deletada);
+    if (!cobranca) throw new UnprocessableEntityException({ erro: 'cobranca_invalida', mensagem: 'Cobrança não pertence a este caso' });
+    const r = this.conciliar({ ...caso, vinculosManuais: [] });
+    if (!r.linhas.some((l) => l.chave === chave)) throw new UnprocessableEntityException({ erro: 'linha_invalida', mensagem: 'Linha do cronograma não existe' });
+    const lista = ((caso.vinculosManuais as VinculoManual[] | null) ?? []).filter((v) => v.cobrancaId !== cobrancaId);
+    lista.push({ cobrancaId, chave, em: new Date().toISOString(), por: usuarioId });
+    await this.prisma.db.casoMigracaoLegado.update({ where: { id: casoId }, data: { vinculosManuais: lista as unknown as Prisma.InputJsonValue } });
+    await this.prisma.db.logAuditoria.create({ data: { usuarioId, acao: 'legado_cobranca_vinculada', entidade: 'caso_migracao_legado', entidadeId: casoId, depois: { cobrancaId, chave } } });
+    return { vinculos: lista };
+  }
+
+  async desvincular(casoId: string, cobrancaId: string, usuarioId: string) {
+    const caso = await this.carregar(casoId);
+    this.exigirEditavel(caso.status);
+    const lista = ((caso.vinculosManuais as VinculoManual[] | null) ?? []).filter((v) => v.cobrancaId !== cobrancaId);
+    await this.prisma.db.casoMigracaoLegado.update({ where: { id: casoId }, data: { vinculosManuais: lista as unknown as Prisma.InputJsonValue } });
+    await this.prisma.db.logAuditoria.create({ data: { usuarioId, acao: 'legado_cobranca_desvinculada', entidade: 'caso_migracao_legado', entidadeId: casoId, depois: { cobrancaId } } });
+    return { vinculos: lista };
+  }
+
   // ---------------- Validação ----------------
 
   // O que ainda impede validar — a tela mostra a lista, o botão só libera vazio.
-  pendenciasParaValidar(caso: { termos: unknown; contratoPdfRef: string | null; cobrancas: CobrancaBanco[]; divergenciasReconhecidas: unknown }): string[] {
+  pendenciasParaValidar(caso: CasoConciliavel & { contratoPdfRef: string | null }): string[] {
     const p: string[] = [];
     const termos = caso.termos as TermosContratoLegado | null;
     if (!termos) p.push('Termos do contrato não preenchidos');
