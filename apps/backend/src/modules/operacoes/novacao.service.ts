@@ -638,7 +638,7 @@ export class NovacaoService implements OnModuleInit {
       recebimentoLinha:
         recebimento > 0
           ? `O CLIENTE pagará, como recebimento inicial, **R$ ${reais(recebimento)} (${valorPorExtenso(recebimento)})**, sendo a taxa inicial de processamento apropriada primeiro e o restante amortizado do saldo novado.`
-          : 'Não há recebimento inicial nesta operação — a taxa inicial de processamento é financiada nas parcelas.',
+          : 'Não há recebimento inicial nesta operação — a taxa inicial de processamento é diluída nas parcelas.',
       condicaoRecebimento: recebimento > 0 ? 'e com a confirmação do pagamento do recebimento inicial, no prazo máximo de 5 dias' : '',
       dataAssinaturaLinha: `VITÓRIA/ES, ${dataPorExtenso(new Date())}.`,
       testemunha1Linha: linhaTest(params.testemunha1Nome, params.testemunha1Cpf),

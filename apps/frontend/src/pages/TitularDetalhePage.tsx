@@ -662,7 +662,7 @@ export function TitularDetalhePage() {
               </div>
               {previa.data.produto === 'reembolso_parcelado' && (
                 <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
-                  Taxa inicial de processamento {formatCurrency(previa.data.taxaInicial)} (financiada) · encargo {(previa.data.encargoMensal * 100).toFixed(2).replace('.', ',')}% ao mês
+                  Taxa inicial de processamento {formatCurrency(previa.data.taxaInicial)} (diluída nas parcelas) · encargo {(previa.data.encargoMensal * 100).toFixed(2).replace('.', ',')}% ao mês
                   {previa.data.limiteParcela !== null && ` · limite da parcela: ${formatCurrency(previa.data.limiteParcela)}`}
                 </div>
               )}

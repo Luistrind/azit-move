@@ -389,7 +389,7 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
                 {sim.saldoNovado !== sim.saldoBase && <LinhaValor label="Saldo novado (após desconto)" valor={sim.saldoNovado} />}
                 <LinhaValor label="Taxa inicial de processamento" valor={sim.taxaInicial} />
                 {sim.amortizacaoInicial > 0 && <LinhaValor label="Recebimento que amortiza" valor={sim.amortizacaoInicial} />}
-                {sim.tpFinanciada > 0 && <LinhaValor label="Taxa financiada nas parcelas" valor={sim.tpFinanciada} />}
+                {sim.tpFinanciada > 0 && <LinhaValor label="Taxa diluída nas parcelas" valor={sim.tpFinanciada} />}
                 <div className="my-[3px]" style={{ borderTop: '1px solid var(--border)' }} />
                 <LinhaValor label="Saldo a parcelar do veículo" valor={sim.saldoAParcelarVeiculo} forte />
               </div>

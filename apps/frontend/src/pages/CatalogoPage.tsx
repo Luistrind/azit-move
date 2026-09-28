@@ -46,7 +46,7 @@ export function CatalogoPage() {
         <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
           Produto → Variante → Versão. Mudança de parâmetro cria versão nova (contratos ficam presos à
           versão contratada); só produto <b>Ativo</b> aparece para simulação e venda — o Catálogo é a
-          fonte única de precificação do simulador, da proteção embutida e do crédito avulso.
+          fonte única de precificação do simulador, da proteção veicular e do crédito avulso.
         </p>
       </div>
 

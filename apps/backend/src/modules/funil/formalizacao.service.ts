@@ -67,7 +67,7 @@ CONTRATANTE: {{cliente}}, CPF/CNPJ {{cpf}}.
 CONTRATADA: Azit Move (na qualidade de {{credor}}).
 
 OBJETO: {{produto}} — contrato apartado, vinculado à compra do veículo mas com
-existência jurídica própria (independe do financiamento).
+existência jurídica própria (independe da compra parcelada do veículo).
 
 CONDIÇÕES:
 - Valor total: {{valorTotal}} ({{valorTotalExtenso}}).
@@ -75,7 +75,7 @@ CONDIÇÕES:
 - Primeira cobrança em {{dataPrimeiraParcela}}.
 
 Este instrumento não transfere domínio de veículo e não se confunde com o contrato
-de financiamento. Documento gerado automaticamente para assinatura digital.`;
+de compra parcelada do veículo. Documento gerado automaticamente para assinatura digital.`;
 
 // 7.10 Formalização + 7.11 Ativação. A proposta aprovada vira ContratoCredito em
 // AGUARDANDO_ASSINATURA, com snapshot congelado e documento gerado por template.
@@ -256,7 +256,9 @@ export class FormalizacaoService {
         valorParcelaInicial: valorParcela,
         periodicidade: periodicidadeApi,
         entradaParcelada: proposta.simulacao?.ofertas.find((o) => o.selecionada)?.entradaParcelada ?? false,
-        descricaoFinanciamento: `Financiamento ${proposta.ativo.descricao}`,
+        // Doc 02 §4-A.4 (27/09): o produto é COMPRA PARCELADA — o termo
+        // "financiamento" nunca aparece para o cliente (fatura, cobrança, instrumento).
+        descricaoFinanciamento: `Compra Parcelada ${proposta.ativo.descricao}`,
         credor: 'azit',
         itensRecorrentes,
       },

@@ -290,7 +290,7 @@ export function RenegociacaoWizard({
                 <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Entrada</span><span className="font-bold tabular-nums">− {formatCurrency(entradaCent)}</span></div>
                 {p?.motor === 'catalogo' && (
                   <>
-                    <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Taxa de processamento (TP{(p.tpFinanciada ?? 0) > 0 ? ' — parte financiada' : ', dentro da entrada'})</span><span className="font-bold tabular-nums">{formatCurrency(p.taxaInicial)}</span></div>
+                    <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Taxa de processamento (TP{(p.tpFinanciada ?? 0) > 0 ? ' — parte diluída nas parcelas' : ', dentro da entrada'})</span><span className="font-bold tabular-nums">{formatCurrency(p.taxaInicial)}</span></div>
                     <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Amortiza as faturas de origem</span><span className="font-bold tabular-nums">{formatCurrency(p.amortizacaoEntrada ?? 0)}</span></div>
                     <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Saldo a parcelar (com TR {((p.encargoMensal ?? 0) * 100).toFixed(2)}% a.m.)</span><span className="font-bold tabular-nums">{formatCurrency(p.saldoAParcelar)}</span></div>
                   </>

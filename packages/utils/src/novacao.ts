@@ -212,7 +212,7 @@ export function decomporSaldoNovacao(input: {
     if (c.situacao === 'futuro' && crEmbutida > 0) {
       nominal -= crEmbutida;
       ignorados.push({
-        origem: `Comissão embutida · ${c.origem}`,
+        origem: `Comissão recorrente · ${c.origem}`,
         produto: c.produto,
         motivo: 'comissão futura não é dívida do cliente (A4.1) — o contrato novado contrata comissão própria',
         valorNominal: crEmbutida,

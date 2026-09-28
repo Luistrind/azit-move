@@ -52,6 +52,8 @@ divergência é sinalizada, nunca resolvida em silêncio.
 | Entrada | Pagamento inicial (contrato ou acordo) | A data-limite da entrada do acordo é `dataLimiteEntrada` (é vencimento, não pagamento) |
 | Conta | Visão de relacionamento do titular (Regra 11) | Conta BANCÁRIA (financeiro) sempre por extenso em tela |
 | Ativo (entidade) | O bem/veículo | ⚠️ Colide com o status "Ativo" de 9 enums — convivência aceita por ora (decisão Luís 07/09: mudar depois); não criar NOVOS usos ambíguos |
+| Compra Parcelada | O produto principal (veículo com reserva de domínio) em TODO texto que o cliente vê: fatura, cobrança do Asaas, instrumento, termo | **Nunca "financiamento"/"financiado(a)"** (risco regulatório — decisão Luís 27/09, reforça 05/07 e 22/07). Taxa não coberta pela entrada é "diluída nas parcelas". Nomes internos de variável (`valorFinanciado`) não aparecem para ninguém e ficam |
+| Proteção veicular | Produto DISTINTO da compra parcelada, cobrado na mesma fatura como item próprio | **Nunca "embutida"** em descrição de fatura, cobrança ou documento (evidência de venda casada — decisão Luís 27/09). O cálculo por período dentro da parcela é detalhe interno de precificação |
 
 ---
 

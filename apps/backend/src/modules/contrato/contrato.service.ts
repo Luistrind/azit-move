@@ -473,7 +473,9 @@ export class ContratoService {
             faturaId: fatura.id,
             parcelaId: pc.id,
             tipo: 'SERVICO',
-            descricao: `Proteção veicular (embutida) · ${cron.display}`,
+            // Doc 02 §4-A.4 (27/09): sem "embutida" — a proteção é produto distinto
+            // da compra parcelada; o termo sugeria venda casada.
+            descricao: `Proteção veicular · ${cron.display}`,
             valor: reais(prot),
             credor: 'AZIT',
           },
@@ -589,7 +591,7 @@ export class ContratoService {
     const jaTem = await this.prisma.db.parcela.count({ where: { contratoId } });
     if (jaTem > 0) return; // idempotente: cronograma já existe
     const item = contrato.itensContratados[0];
-    if (!item) throw new UnprocessableEntityException({ erro: 'sem_item', mensagem: 'Contrato sem item de financiamento' });
+    if (!item) throw new UnprocessableEntityException({ erro: 'sem_item', mensagem: 'Contrato sem item principal (compra parcelada)' });
 
     // Recebível nasce sem origem de capital (doc 02 §19, 20/09): o lastro é a
     // estrutura jurídica — do ativo, quando há veículo, ou do produto (RP).

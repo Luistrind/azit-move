@@ -221,7 +221,7 @@ export class NovacaoDecomposicaoService {
         comissaoEmbutida: infoOrigem.get(p.contratoId)?.crPorParcela ?? 0,
       });
       if (protecao > 0) {
-        componentes.push({ ...base, produto: 'seguro', origem: `Proteção embutida · ${p.display}`, valorNominal: protecao });
+        componentes.push({ ...base, produto: 'seguro', origem: `Proteção veicular · ${p.display}`, valorNominal: protecao });
       }
     }
 

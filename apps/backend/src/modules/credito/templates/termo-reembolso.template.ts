@@ -22,7 +22,7 @@ referente a: {{finalidade}}.
 
 Em contrapartida, o CLIENTE pagará à CREDORA o valor total de **{{valorTotal}}
 ({{valorTotalExtenso}})**, composto do principal acrescido da taxa inicial de processamento de
-{{taxaInicial}} (financiada) e dos encargos de {{encargoMensal}} ao mês, em
+{{taxaInicial}} (diluída nas parcelas) e dos encargos de {{encargoMensal}} ao mês, em
 **{{qtdeParcelas}} ({{qtdeParcelasExtenso}}) parcelas {{periodicidadePlural}} de {{valorParcela}}
 ({{valorParcelaExtenso}})**, lançadas nas faturas já existentes da sua conta, a partir de
 {{dataPrimeiraParcela}}.
@@ -33,7 +33,7 @@ Em contrapartida, o CLIENTE pagará à CREDORA o valor total de **{{valorTotal}}
    todas as partes, pela esteira normal do financeiro da CREDORA.
 2. O não pagamento das parcelas sujeita o CLIENTE à régua de cobrança do contrato, com multa
    e juros de mora da regra geral, sem prejuízo das demais medidas contratuais.
-3. Este termo vincula-se à conta do CLIENTE junto à CREDORA e independe do veículo financiado.
+3. Este termo vincula-se à conta do CLIENTE junto à CREDORA e independe do veículo adquirido.
 
 {{dataAssinaturaLinha}}
 
