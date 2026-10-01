@@ -136,6 +136,13 @@ export class MigracaoLegadoController {
     return this.migracaoF3.migrar(id, user.id);
   }
 
+  @Post('casos/:id/limpar-cobrancas-orfas')
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  @HttpCode(200)
+  limparOrfas(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.migracaoF3.limparCobrancasOrfas(id, user.id);
+  }
+
   @Post('casos/:id/parar-assinatura')
   @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
   @HttpCode(200)

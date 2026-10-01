@@ -386,7 +386,38 @@ export class LegadoMigracaoService {
     // as cobranças emitidas. Falha não desfaz a migração: fica visível e repetível.
     const corte = await this.pararAssinatura(casoId, usuarioId);
     const substituicao = await this.substituirCobrancas(casoId, resultado.substituicoes);
-    return { titularId: resultado.titularId, contaId: resultado.contaId, contratoId: resultado.contratoId, contratoNumero: resultado.contratoNumero, resumo: resultado.resumo, assinatura: corte, substituicao };
+    const orfas = await this.limparCobrancasOrfas(casoId, usuarioId).catch((e) => ({ apagadas: 0, erro: (e as Error).message.slice(0, 200) }));
+    return { titularId: resultado.titularId, contaId: resultado.contaId, contratoId: resultado.contratoId, contratoNumero: resultado.contratoNumero, resumo: resultado.resumo, assinatura: corte, substituicao, orfas };
+  }
+
+  // Cobranças ÓRFÃS da assinatura (caso real 01/10, Ezequias): entre a coleta
+  // da bancada e a migração, a assinatura emitiu mais uma cobrança — ela não
+  // estava no caso, logo não foi substituída. Lê as cobranças do cliente AO
+  // VIVO e apaga as pendentes A VENCER sem externalReference (as do sistema
+  // sempre têm). A fatura daquela semana já existe ABERTA; o sistema emite.
+  async limparCobrancasOrfas(casoId: string, usuarioId: string) {
+    const caso = await this.prisma.db.casoMigracaoLegado.findUnique({ where: { id: casoId }, select: { id: true, status: true, asaasCustomerId: true, nome: true, migracaoResumo: true } });
+    if (!caso) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Caso não encontrado' });
+    if (caso.status !== 'MIGRADO') throw new UnprocessableEntityException({ erro: 'nao_migrado', mensagem: 'Só um caso migrado tem cobranças órfãs para limpar' });
+    if (this.asaasLeitura.ambiente === 'simulado') return { apagadas: 0, erro: null as string | null, vencimentos: [] as string[] };
+    const hoje = new Date().toISOString().slice(0, 10);
+    const cobrancas = await this.asaasLeitura.listarCobrancas(caso.asaasCustomerId);
+    const orfas = cobrancas.filter((c) => !c.deleted && c.status === 'PENDING' && !c.externalReference && c.dueDate >= hoje);
+    const vencimentos: string[] = [];
+    let erro: string | null = null;
+    for (const c of orfas) {
+      try {
+        await this.asaasLeitura.requisicao('DELETE', `/payments/${c.id}`);
+        vencimentos.push(c.dueDate);
+      } catch (e) {
+        erro = (e as Error).message.slice(0, 200);
+        this.logger.warn(`caso ${casoId}: órfã ${c.id} não apagada (${erro})`);
+      }
+    }
+    const resumo = { ...((caso.migracaoResumo as Record<string, unknown> | null) ?? {}), orfasApagadas: ((caso.migracaoResumo as { orfasApagadas?: number } | null)?.orfasApagadas ?? 0) + vencimentos.length, orfasErro: erro };
+    await this.prisma.db.casoMigracaoLegado.update({ where: { id: casoId }, data: { migracaoResumo: resumo as Prisma.InputJsonValue } });
+    if (vencimentos.length) await this.prisma.db.logAuditoria.create({ data: { usuarioId, acao: 'legado_cobrancas_orfas_apagadas', entidade: 'caso_migracao_legado', entidadeId: casoId, depois: { vencimentos } } });
+    return { apagadas: vencimentos.length, erro, vencimentos };
   }
 
   // Apaga no Asaas as cobranças A VENCER da assinatura antiga e emite as do
@@ -556,8 +587,13 @@ export class LegadoMigracaoService {
       const taxV = comp?.taxa || taxa;
       const inter = comp?.intermediaria ?? 0;
       const extra = comp?.extra ?? 0;
-      const principal = cobrado != null && comp ? Math.max(0, cobrado - segV - taxV - inter - extra) : valorParcela;
       const encargo = st.status === 'PAGA' || st.status === 'PAGA_EM_ATRASO' ? Math.max(0, l.encargo) : 0;
+      // Cobrança REEMITIDA por atraso traz juros/multa dentro do valor original
+      // (encargo embutido = encargo total − o que o Asaas somou no pagamento).
+      // Esse pedaço é ENCARGO, não principal — senão a parcela "pagaria" a mais.
+      const somadoNoPagamento = Math.max(0, (l.pagoValor ?? cobrado ?? 0) - (cobrado ?? 0));
+      const embutido = Math.max(0, encargo - somadoNoPagamento);
+      const principal = cobrado != null && comp ? Math.max(0, cobrado - segV - taxV - inter - extra - embutido) : valorParcela;
       const itens: ItemPlano[] = [{ tipo: 'PRINCIPAL', descricao: `Parcela ${l.numero}/${qtd} · Compra Parcelada ${descricaoVeiculo}`, valor: principal, parcela: 'veiculo' }];
       if (segV > 0) itens.push({ tipo: 'SERVICO', descricao: `Proteção veicular · ${l.numero}/${qtd}`, valor: segV, parcela: null });
       if (taxV > 0) itens.push({ tipo: 'SERVICO', descricao: `Taxa de boleto e PIX · ${l.numero}/${qtd}`, valor: taxV, parcela: null });

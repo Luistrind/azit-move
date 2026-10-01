@@ -270,6 +270,10 @@ export function MigracaoLegadoCasoPage() {
             {c.contratoId && <Link to={`/contratos/${c.contratoId}`} className="underline">contrato {c.migracao.resumo?.contratoNumero ?? ''}</Link>}
             {c.titularId && <> · <Link to={`/titulares/${c.titularId}`} className="underline">titular</Link></>}
             {c.migracao.resumo && <> · {c.migracao.resumo.faturas ?? 0} faturas ({c.migracao.resumo.faturasPagas ?? 0} pagas, {c.migracao.resumo.faturasFechadas ?? 0} vencidas mantidas, {c.migracao.resumo.faturasAbertas ?? 0} a emitir) · {c.migracao.resumo.reembolsos ?? 0} reembolso(s) · {c.migracao.resumo.avulsas ?? 0} avulsa(s){c.migracao.resumo.pdfCopiado === false ? ' · PDF não copiado' : ''}{c.migracao.resumo.cobrancasApagadas != null && <> · {c.migracao.resumo.cobrancasApagadas} cobrança(s) antiga(s) apagada(s), {c.migracao.resumo.emitidasAgora ?? 0} emitida(s) na hora</>}</>}
+            <div className="mt-[4px]">
+              {(c.migracao.resumo?.orfasApagadas ?? 0) > 0 && <>{c.migracao.resumo?.orfasApagadas} cobrança(s) órfã(s) da assinatura apagada(s). </>}
+              {podeMigrar && <button className="underline" disabled={ocupado} title="Apaga no Asaas cobranças a vencer que a assinatura antiga emitiu depois da coleta (sem referência do sistema)" onClick={() => rodar(async () => { const r = await svc.limparCobrancasOrfas(id); if (r.erro) toast.erro(`Falha ao apagar órfã: ${r.erro}`); return r; }, 'Cobranças órfãs verificadas')}>Verificar cobranças órfãs no Asaas</button>}
+            </div>
             {c.migracao.resumo?.cobrancasMantidas && c.migracao.resumo.cobrancasMantidas.length > 0 && <div className="mt-[4px]" style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}><b>{c.migracao.resumo.cobrancasMantidas.length} cobrança(s) a vencer não foram apagadas</b> e continuam amarradas à cobrança antiga: {c.migracao.resumo.cobrancasMantidas.map((m) => dataBR(m.vencimento)).join(', ')}.</div>}
             <div className="mt-[4px]">
               {!c.migracao.assinaturaId ? 'Sem assinatura no Asaas para parar.'
