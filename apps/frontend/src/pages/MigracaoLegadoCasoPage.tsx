@@ -8,6 +8,9 @@ import {
   type LinhaConciliacao,
   type TermosContratoLegado,
   type TipoCobrancaLegada,
+  type DesfechoDivergencia,
+  type DivergenciaReconhecida,
+  type ModoVencimentos,
 } from '../services/migracao-legado.service';
 import { Modal } from '../components/Modal';
 import { Metrica } from '../components/Metrica';
@@ -112,6 +115,8 @@ export function MigracaoLegadoCasoPage() {
   const [motivo, setMotivo] = useState('');
   const [descartando, setDescartando] = useState(false);
   const [notaDiv, setNotaDiv] = useState<Record<string, string>>({});
+  // Desfecho da divergência (doc 02 §26.9 item 6) — o que a F3 gera; a nota explica.
+  const [desfechoDiv, setDesfechoDiv] = useState<Record<string, DesfechoDivergencia | ''>>({});
   const [ajuste, setAjuste] = useState<CobrancaLegada | null>(null);
   const [soDivergencias, setSoDivergencias] = useState(false);
   const [soDuvidas, setSoDuvidas] = useState(false);
@@ -361,6 +366,18 @@ export function MigracaoLegadoCasoPage() {
                 <Metrica label="Fora do cronograma" valor={r.cobrancasForaDoCronograma} />
               </div>
             )}
+            {/* Doc 02 §26.9 item 4: vencimentos do contrato ou das cobranças reais — escolha POR CASO, sem regra. */}
+            {!conc.incompleta && (
+              <div className="mt-[10px] flex flex-wrap items-center gap-[8px] text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                <span className="font-semibold">Vencimentos na migração:</span>
+                <select className="rounded-[6px] px-[6px] py-[3px] text-[12px]" style={inputStyle} disabled={!editavel} value={c.modoVencimentos}
+                  onChange={(e) => rodar(() => svc.definirModoVencimentos(id, e.target.value as ModoVencimentos), 'Vencimentos definidos')}>
+                  <option value="CONTRATO">do contrato (parcela na data do cronograma; fatura na data real)</option>
+                  <option value="ASAAS">das cobranças do Asaas (parcela na data real; futuras seguem o dia da semana da última)</option>
+                </select>
+                <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Use "das cobranças" quando o dia da semana foi mudado com o cliente e o cronograma do contrato pareceria atrasado.</span>
+              </div>
+            )}
           </div>
           <div className="rounded-[12px] p-[14px]" style={bloco}>
             <div className={tituloBloco} style={{ color: 'var(--text-muted)' }}>Anotações do caso</div>
@@ -389,8 +406,9 @@ export function MigracaoLegadoCasoPage() {
                 </tr>
               </thead>
               <tbody>
-                {linhas.map((l) => <LinhaConc key={l.chave} l={l} reconhecida={reconhecidas.get(l.chave)?.nota ?? null} editavel={!!editavel} nota={notaDiv[l.chave] ?? ''} setNota={(v) => setNotaDiv({ ...notaDiv, [l.chave]: v })}
-                  reconhecer={() => rodar(() => svc.reconhecerDivergencia(id, l.chave, notaDiv[l.chave] ?? ''), 'Divergência reconhecida')}
+                {linhas.map((l) => <LinhaConc key={l.chave} l={l} reconhecida={reconhecidas.get(l.chave) ?? null} editavel={!!editavel} nota={notaDiv[l.chave] ?? ''} setNota={(v) => setNotaDiv({ ...notaDiv, [l.chave]: v })}
+                  desfecho={desfechoDiv[l.chave] ?? ''} setDesfecho={(v) => setDesfechoDiv({ ...desfechoDiv, [l.chave]: v })} desfechos={c.desfechosDivergencia.filter((d) => d.valor !== 'COBRANCA_AVULSA')}
+                  reconhecer={() => rodar(() => svc.reconhecerDivergencia(id, l.chave, notaDiv[l.chave] ?? '', desfechoDiv[l.chave] ?? ''), 'Divergência reconhecida')}
                   desfazer={() => rodar(() => svc.desfazerReconhecimento(id, l.chave), '')}
                   vinculadas={[...(l.partes.length ? l.partes.map((x) => x.cobrancaId) : l.cobrancaId ? [l.cobrancaId] : [])].filter((cid) => vinculoPorCobranca.has(cid))}
                   desvincular={(cid) => rodar(() => svc.desvincular(id, cid), 'Vínculo desfeito')} />)}
@@ -422,8 +440,8 @@ export function MigracaoLegadoCasoPage() {
                         </select>
                       )}
                       {f.divergencia && (rec
-                        ? <span className="text-[11px]" style={{ color: CASO_LEGADO_STATUS_COLORS.MIGRADO.fg }}>reconhecida: {rec.nota}{editavel && <button className="ml-[6px] underline" onClick={() => rodar(() => svc.desfazerReconhecimento(id, chave), '')}>desfazer</button>}</span>
-                        : editavel && <span className="flex items-center gap-[4px]"><input className="rounded-[6px] px-[6px] py-[3px] text-[11px]" style={inputStyle} placeholder="por quê?" value={notaDiv[chave] ?? ''} onChange={(e) => setNotaDiv({ ...notaDiv, [chave]: e.target.value })} /><button className="text-[11px] underline" disabled={!(notaDiv[chave] ?? '').trim()} onClick={() => rodar(() => svc.reconhecerDivergencia(id, chave, notaDiv[chave] ?? ''), 'Divergência reconhecida')}>reconhecer</button></span>)}
+                        ? <span className="text-[11px]" style={{ color: rec.desfecho ? CASO_LEGADO_STATUS_COLORS.MIGRADO.fg : SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>reconhecida{rec.desfecho ? ' · cobrança avulsa' : ' · sem desfecho, reconheça de novo'}: {rec.nota}{editavel && <button className="ml-[6px] underline" onClick={() => rodar(() => svc.desfazerReconhecimento(id, chave), '')}>desfazer</button>}</span>
+                        : editavel && <span className="flex items-center gap-[4px]"><input className="rounded-[6px] px-[6px] py-[3px] text-[11px]" style={inputStyle} placeholder="por quê?" value={notaDiv[chave] ?? ''} onChange={(e) => setNotaDiv({ ...notaDiv, [chave]: e.target.value })} /><button className="text-[11px] underline" disabled={!(notaDiv[chave] ?? '').trim()} onClick={() => rodar(() => svc.reconhecerDivergencia(id, chave, notaDiv[chave] ?? '', 'COBRANCA_AVULSA'), 'Divergência reconhecida')}>reconhecer como cobrança avulsa</button></span>)}
                     </li>
                   );
                 })}
@@ -505,7 +523,7 @@ function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode
   );
 }
 
-function LinhaConc({ l, reconhecida, editavel, nota, setNota, reconhecer, desfazer, vinculadas, desvincular }: { l: LinhaConciliacao; reconhecida: string | null; editavel: boolean; nota: string; setNota: (v: string) => void; reconhecer: () => void; desfazer: () => void; vinculadas: string[]; desvincular: (cobrancaId: string) => void }) {
+function LinhaConc({ l, reconhecida, editavel, nota, setNota, desfecho, setDesfecho, desfechos, reconhecer, desfazer, vinculadas, desvincular }: { l: LinhaConciliacao; reconhecida: DivergenciaReconhecida | null; editavel: boolean; nota: string; setNota: (v: string) => void; desfecho: DesfechoDivergencia | ''; setDesfecho: (v: DesfechoDivergencia | '') => void; desfechos: { valor: DesfechoDivergencia; rotulo: string }[]; reconhecer: () => void; desfazer: () => void; vinculadas: string[]; desvincular: (cobrancaId: string) => void }) {
   const cor = CONCILIACAO_LINHA_COLORS[l.situacao];
   const rotuloItem = l.serie === 'entrada' ? 'Entrada' : l.serie === 'parcela' ? `Parcela ${l.numero}` : `Intermediária ${l.numero}`;
   return (
@@ -537,9 +555,19 @@ function LinhaConc({ l, reconhecida, editavel, nota, setNota, reconhecer, desfaz
       <td className={td}><span className="inline-flex items-center rounded-[6px] px-[7px] py-[2px] text-[10.5px] font-semibold" style={{ background: cor.bg, color: cor.fg }}>{SITUACAO_LINHA_ROTULO[l.situacao]}</span></td>
       <td className={td}>
         {!l.divergencia ? <span style={{ color: 'var(--text-muted)' }}>—</span> : reconhecida
-          ? <span className="text-[11px]" style={{ color: CASO_LEGADO_STATUS_COLORS.MIGRADO.fg }}>reconhecida: {reconhecida}{editavel && <button className="ml-[6px] underline" onClick={desfazer}>desfazer</button>}</span>
+          ? <span className="text-[11px]" style={{ color: reconhecida.desfecho ? CASO_LEGADO_STATUS_COLORS.MIGRADO.fg : SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>
+              {reconhecida.desfecho ? `${desfechos.find((d) => d.valor === reconhecida.desfecho)?.rotulo ?? reconhecida.desfecho}: ` : 'reconhecida sem desfecho, reconheça de novo: '}{reconhecida.nota}
+              {editavel && <button className="ml-[6px] underline" onClick={desfazer}>desfazer</button>}
+            </span>
           : editavel
-            ? <span className="flex items-center gap-[4px]"><input className="w-[180px] rounded-[6px] px-[6px] py-[3px] text-[11px]" style={inputStyle} placeholder="por quê? (ex.: pago em dinheiro)" value={nota} onChange={(e) => setNota(e.target.value)} /><button className="text-[11px] underline" disabled={!nota.trim()} onClick={reconhecer}>reconhecer</button></span>
+            ? <span className="flex flex-wrap items-center gap-[4px]">
+                <select className="rounded-[6px] px-[6px] py-[3px] text-[11px]" style={inputStyle} value={desfecho} onChange={(e) => setDesfecho(e.target.value as DesfechoDivergencia | '')}>
+                  <option value="">desfecho na migração…</option>
+                  {desfechos.map((d) => <option key={d.valor} value={d.valor}>{d.rotulo}</option>)}
+                </select>
+                <input className="w-[180px] rounded-[6px] px-[6px] py-[3px] text-[11px]" style={inputStyle} placeholder="por quê? (ex.: pago em dinheiro)" value={nota} onChange={(e) => setNota(e.target.value)} />
+                <button className="text-[11px] underline" disabled={!nota.trim() || !desfecho} onClick={reconhecer}>reconhecer</button>
+              </span>
             : <span className="text-[11px]" style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>sem reconhecimento</span>}
       </td>
     </tr>

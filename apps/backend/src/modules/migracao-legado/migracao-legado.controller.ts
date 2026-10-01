@@ -96,8 +96,13 @@ export class MigracaoLegadoController {
   }
 
   @Put('casos/:id/divergencias/:chave')
-  reconhecer(@Param('id') id: string, @Param('chave') chave: string, @Body() body: { nota: string }, @CurrentUser() user: UsuarioAutenticado) {
-    return this.conciliacao.reconhecerDivergencia(id, decodeURIComponent(chave), body?.nota ?? '', user.id);
+  reconhecer(@Param('id') id: string, @Param('chave') chave: string, @Body() body: { nota: string; desfecho?: string }, @CurrentUser() user: UsuarioAutenticado) {
+    return this.conciliacao.reconhecerDivergencia(id, decodeURIComponent(chave), body?.nota ?? '', body?.desfecho, user.id);
+  }
+
+  @Put('casos/:id/vencimentos')
+  definirModoVencimentos(@Param('id') id: string, @Body() body: { modo: string }, @CurrentUser() user: UsuarioAutenticado) {
+    return this.conciliacao.definirModoVencimentos(id, body?.modo ?? '', user.id);
   }
 
   @Delete('casos/:id/divergencias/:chave')

@@ -102,7 +102,9 @@ export interface ResumoConciliacao {
   intermediariasPagas: number; intermediariasEsperadas: number; entradaPaga: boolean | null; encargosPagos: number; saldoContratualRestante: number;
   divergencias: number; cobrancasForaDoCronograma: number;
 }
-export interface DivergenciaReconhecida { chave: string; nota: string; em: string; por: string }
+export type DesfechoDivergencia = 'PAGA_FORA_ASAAS' | 'VALOR_ACEITO' | 'COBRANCA_AVULSA';
+export type ModoVencimentos = 'CONTRATO' | 'ASAAS';
+export interface DivergenciaReconhecida { chave: string; nota: string; desfecho?: DesfechoDivergencia; em: string; por: string }
 export interface VinculoManual { cobrancaId: string; chave: string; em: string; por: string }
 
 export interface CasoLegadoDetalhe extends CasoLegado {
@@ -120,6 +122,8 @@ export interface CasoLegadoDetalhe extends CasoLegado {
   conciliacao: { linhas: LinhaConciliacao[]; fora: ForaDoCronograma[]; resumo: ResumoConciliacao; incompleta: boolean };
   divergenciasReconhecidas: DivergenciaReconhecida[];
   vinculosManuais: VinculoManual[];
+  modoVencimentos: ModoVencimentos;
+  desfechosDivergencia: { valor: DesfechoDivergencia; rotulo: string }[];
   pendenciasParaValidar: string[];
   validadoEm: string | null;
   tiposCobranca: { valor: TipoCobrancaLegada; rotulo: string }[];
@@ -188,8 +192,11 @@ export const migracaoLegadoService = {
   async desfazerInterpretacao(id: string, cobrancaId: string): Promise<void> {
     await api.delete(`/api/v1/migracao-legado/casos/${id}/cobrancas/${cobrancaId}/interpretacao`);
   },
-  async reconhecerDivergencia(id: string, chave: string, nota: string): Promise<void> {
-    await api.put(`/api/v1/migracao-legado/casos/${id}/divergencias/${encodeURIComponent(chave)}`, { nota });
+  async reconhecerDivergencia(id: string, chave: string, nota: string, desfecho: DesfechoDivergencia | ''): Promise<void> {
+    await api.put(`/api/v1/migracao-legado/casos/${id}/divergencias/${encodeURIComponent(chave)}`, { nota, desfecho: desfecho || undefined });
+  },
+  async definirModoVencimentos(id: string, modo: ModoVencimentos): Promise<void> {
+    await api.put(`/api/v1/migracao-legado/casos/${id}/vencimentos`, { modo });
   },
   async desfazerReconhecimento(id: string, chave: string): Promise<void> {
     await api.delete(`/api/v1/migracao-legado/casos/${id}/divergencias/${encodeURIComponent(chave)}`);

@@ -1064,7 +1064,8 @@ não o status do Asaas.
 | POST | `/migracao-legado/casos/:id/interpretar` | Reaplica as regras de leitura nas cobranças que o operador não decidiu |
 | PUT | `/migracao-legado/casos/:id/cobrancas/:cobrancaId/interpretacao` | Decisão do operador: `{ tipo, parcelamento?, seguro?, taxa?, intermediaria?, observacao? }`. A decomposição precisa somar o valor original (422 `decomposicao_nao_fecha`). Fica `interpretadoPor: operador` e nenhuma releitura sobrescreve |
 | DELETE | `…/cobrancas/:cobrancaId/interpretacao` | Desfaz a decisão e volta à regra |
-| PUT | `/migracao-legado/casos/:id/divergencias/:chave` | `{ nota }` — reconhece uma divergência da conciliação (`parcela:N`, `intermediaria:N`, `entrada`, `cobranca:<id>`) |
+| PUT | `/migracao-legado/casos/:id/divergencias/:chave` | `{ nota, desfecho }` — reconhece uma divergência da conciliação (`parcela:N`, `intermediaria:N`, `entrada`, `cobranca:<id>`). `desfecho` (doc 02 §26.9 item 6) é o que a F3 gera: `PAGA_FORA_ASAAS` \| `VALOR_ACEITO` para linhas do cronograma, `COBRANCA_AVULSA` para `cobranca:<id>`. 422 `nota_obrigatoria` / `desfecho_obrigatorio` |
+| PUT | `/migracao-legado/casos/:id/vencimentos` | `{ modo: 'CONTRATO' \| 'ASAAS' }` — vencimentos na migração, escolha por caso (doc 02 §26.9 item 4). 422 `modo_invalido` |
 | DELETE | `/migracao-legado/casos/:id/divergencias/:chave` | Desfaz o reconhecimento |
 | PUT | `/migracao-legado/casos/:id/vinculos/:cobrancaId` | `{ chave }` — vínculo MANUAL: a cobrança passa a compor a linha `parcela:N` / `intermediaria:N` / `entrada` (sem divergência; a observação avisa se a soma difere). 422 `cobranca_invalida` / `linha_invalida` |
 | DELETE | `/migracao-legado/casos/:id/vinculos/:cobrancaId` | Desfaz o vínculo manual |

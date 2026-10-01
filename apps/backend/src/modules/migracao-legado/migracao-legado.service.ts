@@ -20,7 +20,7 @@ import {
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasLeituraService, CobrancaAsaasLida } from '../asaas/asaas-leitura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
-import { LegadoConciliacaoService, ROTULO_TIPO_COBRANCA } from './legado-conciliacao.service';
+import { LegadoConciliacaoService, ROTULO_DESFECHO, ROTULO_TIPO_COBRANCA } from './legado-conciliacao.service';
 
 // Migração do legado — F1 (doc 02 §26): lê o Asaas, monta um CASO por
 // cliente, tria (sem vencida primeiro) e expõe a bancada. Nada aqui cria
@@ -311,6 +311,8 @@ export class MigracaoLegadoService {
       conciliacao: { linhas: conc.linhas, fora: conc.fora, resumo: conc.resumo, incompleta: conc.incompleta },
       divergenciasReconhecidas: conc.reconhecidas,
       vinculosManuais: conc.vinculos,
+      modoVencimentos: c.modoVencimentos,
+      desfechosDivergencia: Object.entries(ROTULO_DESFECHO).map(([valor, rotulo]) => ({ valor, rotulo })),
       pendenciasParaValidar: this.conciliacao.pendenciasParaValidar(c),
       validadoEm: c.validadoEm?.toISOString() ?? null,
       tiposCobranca: Object.entries(ROTULO_TIPO_COBRANCA).map(([valor, rotulo]) => ({ valor, rotulo })),

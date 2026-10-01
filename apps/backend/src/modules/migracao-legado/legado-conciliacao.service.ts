@@ -297,15 +297,33 @@ export class LegadoConciliacaoService {
     return { ...r, reconhecidas, vinculos };
   }
 
-  async reconhecerDivergencia(casoId: string, chave: string, nota: string, usuarioId: string) {
+  async reconhecerDivergencia(casoId: string, chave: string, nota: string, desfecho: string | undefined, usuarioId: string) {
     const caso = await this.carregar(casoId);
     this.exigirEditavel(caso.status);
     if (!nota?.trim()) throw new UnprocessableEntityException({ erro: 'nota_obrigatoria', mensagem: 'Explique a divergência para reconhecê-la' });
+    // Doc 02 §26.9 item 6: a nota é texto livre; o DESFECHO é o que a F3 obedece.
+    const permitidos = desfechosPermitidos(chave);
+    if (!desfecho || !(permitidos as string[]).includes(desfecho)) {
+      throw new UnprocessableEntityException({ erro: 'desfecho_obrigatorio', mensagem: `Escolha o desfecho da divergência: ${permitidos.map((d) => ROTULO_DESFECHO[d]).join(' ou ')}` });
+    }
     const lista = ((caso.divergenciasReconhecidas as DivergenciaReconhecida[] | null) ?? []).filter((d) => d.chave !== chave);
-    lista.push({ chave, nota: nota.trim(), em: new Date().toISOString(), por: usuarioId });
+    lista.push({ chave, nota: nota.trim(), desfecho: desfecho as DesfechoDivergencia, em: new Date().toISOString(), por: usuarioId });
     await this.prisma.db.casoMigracaoLegado.update({ where: { id: casoId }, data: { divergenciasReconhecidas: lista as unknown as Prisma.InputJsonValue } });
-    await this.prisma.db.logAuditoria.create({ data: { usuarioId, acao: 'legado_divergencia_reconhecida', entidade: 'caso_migracao_legado', entidadeId: casoId, depois: { chave, nota } } });
+    await this.prisma.db.logAuditoria.create({ data: { usuarioId, acao: 'legado_divergencia_reconhecida', entidade: 'caso_migracao_legado', entidadeId: casoId, depois: { chave, nota, desfecho } } });
     return { reconhecidas: lista };
+  }
+
+  // Doc 02 §26.9 item 4: vencimentos do contrato ou das cobranças do Asaas —
+  // escolha POR CASO, sem regra; a F3 lê daqui qual data cada parcela recebe.
+  async definirModoVencimentos(casoId: string, modo: string, usuarioId: string) {
+    const caso = await this.carregar(casoId);
+    this.exigirEditavel(caso.status);
+    if (!(MODOS_VENCIMENTO as readonly string[]).includes(modo)) {
+      throw new UnprocessableEntityException({ erro: 'modo_invalido', mensagem: 'Vencimentos: CONTRATO ou ASAAS' });
+    }
+    await this.prisma.db.casoMigracaoLegado.update({ where: { id: casoId }, data: { modoVencimentos: modo } });
+    await this.prisma.db.logAuditoria.create({ data: { usuarioId, acao: 'legado_modo_vencimentos', entidade: 'caso_migracao_legado', entidadeId: casoId, antes: { modo: caso.modoVencimentos }, depois: { modo } } });
+    return { modoVencimentos: modo };
   }
 
   async desfazerReconhecimento(casoId: string, chave: string, usuarioId: string) {
@@ -363,6 +381,8 @@ export class LegadoConciliacaoService {
     if (termos && camposFaltantesTermos(termos).length === 0) {
       const r = this.conciliar(caso);
       const reconhecidas = new Set(r.reconhecidas.map((d) => d.chave));
+      const semDesfecho = r.reconhecidas.filter((d) => !d.desfecho).length;
+      if (semDesfecho) p.push(`${semDesfecho} divergência(s) reconhecida(s) sem desfecho — reconheça de novo escolhendo o desfecho`);
       const abertas = [
         ...r.linhas.filter((l) => l.divergencia && !reconhecidas.has(l.chave)).map((l) => l.chave),
         ...r.fora.filter((f) => f.divergencia && !reconhecidas.has(`cobranca:${f.cobrancaId}`)).map((f) => `cobranca:${f.cobrancaId}`),
@@ -435,9 +455,28 @@ export class LegadoConciliacaoService {
 export interface DivergenciaReconhecida {
   chave: string; // parcela:N | intermediaria:N | entrada | cobranca:<id>
   nota: string;
+  // Desfecho (doc 02 §26.9 item 6): o que a F3 gera para esta divergência.
+  // Ausente nas reconhecidas antes de 30/09 — a validação exige que seja escolhido.
+  desfecho?: DesfechoDivergencia;
   em: string;
   por: string;
 }
+
+export const DESFECHOS_DIVERGENCIA = ['PAGA_FORA_ASAAS', 'VALOR_ACEITO', 'COBRANCA_AVULSA'] as const;
+export type DesfechoDivergencia = (typeof DESFECHOS_DIVERGENCIA)[number];
+export const ROTULO_DESFECHO: Record<DesfechoDivergencia, string> = {
+  PAGA_FORA_ASAAS: 'Paga fora do Asaas (dinheiro, transferência)',
+  VALOR_ACEITO: 'Valor diferente aceito (desconto, arredondamento)',
+  COBRANCA_AVULSA: 'Cobrança avulsa (não é parcela de nada)',
+};
+// Linha do cronograma (parcela/intermediária/entrada) admite os dois primeiros;
+// cobrança fora do cronograma admite só o terceiro.
+export function desfechosPermitidos(chave: string): DesfechoDivergencia[] {
+  return chave.startsWith('cobranca:') ? ['COBRANCA_AVULSA'] : ['PAGA_FORA_ASAAS', 'VALOR_ACEITO'];
+}
+
+export const MODOS_VENCIMENTO = ['CONTRATO', 'ASAAS'] as const;
+export type ModoVencimentos = (typeof MODOS_VENCIMENTO)[number];
 
 // Preenche só o que está vazio nos termos já gravados.
 function mesclarTermos(atual: TermosContratoLegado | null, extraido: TermosContratoLegado): TermosContratoLegado {
