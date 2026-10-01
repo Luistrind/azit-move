@@ -400,3 +400,18 @@ describe('caso José Luiz — //, $1.320.00, cota sem valor, parcela em partes, 
     expect(r.linhas[0].observacao).toContain('≠');
   });
 });
+
+// Caso real 01/10 (Ezequias): o carimbo da assinatura digital caiu dentro do
+// trecho do modelo no texto extraído — o modelo vem do contrato, não do carimbo.
+describe('modelo do veículo sem o carimbo da assinatura', () => {
+  it('corta "Assinatura verificada • SuperSign" na mesma linha', () => {
+    const texto = TEXTO_MOD06.replace('Marca/Modelo: HYUNDAI/HB20S 1.0 COMFORT', 'Marca/Modelo: HYUNDAI/HB20S 1.0 COMFORT Assinatura verificada • SuperSign 2024');
+    const r = extrairTermosDoTexto(texto);
+    expect(r.termos.veiculo.marca).toBe('HYUNDAI');
+    expect(r.termos.veiculo.modelo).toBe('HB20S 1.0 COMFORT');
+  });
+  it('carimbo em linha própria, abaixo do modelo', () => {
+    const texto = TEXTO_MOD06.replace('Marca/Modelo: HYUNDAI/HB20S 1.0 COMFORT', 'Marca/Modelo: HYUNDAI/HB20S 1.0 COMFORT\nBruna Gonçalves Brito Assinatura verificada • SuperSign 2024');
+    expect(extrairTermosDoTexto(texto).termos.veiculo.modelo).toBe('HB20S 1.0 COMFORT');
+  });
+});

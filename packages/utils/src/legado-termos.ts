@@ -160,7 +160,20 @@ export function extrairTermosDoTexto(textoBruto: string): ExtracaoTermos {
   }
 
   // Veículo
-  const marcaModelo = pega(t, /Marca\/Modelo:\s*([^:]+?)\s+Ano de Fabrica/i);
+  // O modelo vem do CONTRATO: só a linha do campo. O carimbo da assinatura
+  // digital ("Assinatura verificada • SuperSign …") às vezes cai dentro do
+  // mesmo trecho no texto extraído (caso real 01/10) e não é modelo de nada.
+  const marcaModeloBruto = pega(t, /Marca\/Modelo:\s*([^:]+?)\s+Ano de Fabrica/i);
+  const CARIMBO = /\s*(?:•|Assinatura verificada|SuperSign|Assinado (?:eletronicamente|digitalmente)|Documento assinado)/i;
+  let marcaModelo = marcaModeloBruto;
+  if (marcaModelo && CARIMBO.test(marcaModelo)) {
+    marcaModelo = marcaModelo.split(CARIMBO)[0].trim();
+    // O carimbo vem precedido do nome do signatário (Título Caso); o modelo no
+    // Mod06 é em MAIÚSCULAS/dígitos — corta as palavras em título do fim.
+    const palavras = marcaModelo.split(/\s+/);
+    while (palavras.length > 1 && /^[A-ZÀ-Ú][a-zà-ú]+$/.test(palavras[palavras.length - 1])) palavras.pop();
+    marcaModelo = palavras.join(' ');
+  }
   if (marcaModelo) {
     const [m, ...resto] = marcaModelo.split('/');
     termos.veiculo.marca = m.trim();
