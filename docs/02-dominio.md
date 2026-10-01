@@ -1958,8 +1958,14 @@ A migração é **gradual, um cliente por vez** — a assinatura no Asaas é ind
 caso validado pode ser cortado sozinho. Ao migrar um caso, atomicamente:
 
 1. **parar a assinatura** no Asaas (senão ela continua emitindo em paralelo ao sistema);
-2. **amarrar as cobranças já emitidas e pendentes** às faturas novas (`asaasChargeId`) — o
-   cliente segue com o boleto/PIX que já recebeu; o fechamento já pula fatura com cobrança;
+2. **cobranças já emitidas e A VENCER são APAGADAS no Asaas** (`DELETE /payments/{id}`, uma a
+   uma) e as faturas nascem ABERTAS: o sistema emite as suas, e a fatura aceita item novo
+   (reembolso, acordo) como qualquer outra. A que já estaria no D-5 (vence em até 5 dias) é
+   emitida NA HORA. Cobrança **vencida** fica amarrada à fatura (`asaasChargeId`): o Asaas não
+   emite com vencimento no passado, e é ela que um acordo cobre. **Decisão Luís 01/10**, que
+   revoga o "amarrar as pendentes" de 21/09: com a assinatura emitindo 4 semanas à frente, o
+   cliente migrado ficaria um mês sem poder receber item novo na fatura. Se um DELETE falhar,
+   aquela fatura volta a ficar amarrada à cobrança antiga (FECHADA) e a carteira é avisada;
 3. o sistema **assume a emissão do ciclo seguinte**.
 
 A **data de corte** o Luís define depois, caso a caso; não se crava agora. Como as cobranças são
@@ -2119,9 +2125,9 @@ Pedido do Luís (30/09): depois de validar, um botão **Migrar**, visível só e
   com os termos do PDF, item principal "Compra Parcelada <veículo>" e itens recorrentes de
   proteção e taxa (credor Azit); entrada materializada como lançamento pago; o cronograma
   inteiro — parcela, recebível, fatura e itens (PRINCIPAL / SERVICO / INTERMEDIARIA /
-  ENCARGO) — com as faturas passadas já PAGAS (data e valor do Asaas), as com cobrança
-  emitida e não paga FECHADAS e amarradas pelo `asaasChargeId`, e as futuras ABERTAS para o
-  sistema emitir; despesas cobradas junto da parcela viram Reembolso Parcelado (1 ou N, sem
+  ENCARGO) — com as faturas passadas já PAGAS (data e valor do Asaas), as **vencidas** com
+  cobrança FECHADAS e amarradas pelo `asaasChargeId`, e as **a vencer** (cobrança antiga
+  apagada — §26.5 item 2) e futuras ABERTAS para o sistema emitir, as do D-5 na hora; despesas cobradas junto da parcela viram Reembolso Parcelado (1 ou N, sem
   taxa, valores exatos, parcela na MESMA fatura); cobranças fora do cronograma viram fatura
   avulsa com um item (nada se perde); o PDF do PopHub vira o documento assinado do contrato
   (provedor "legado", assinado fora do sistema). O caso vira MIGRADO e aponta titular e

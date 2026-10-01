@@ -114,11 +114,11 @@ export interface PlanoMigracao {
   entrada: { valor: number; pagoEm: string; asaasChargeId: string | null } | null;
   faturas: { origem: string; vencimento: string; status: string; valorTotal: number; valorPago: number | null; pagoEm: string | null; asaasChargeId: string | null }[];
   rps: { rotulo: string; parcelas: { n: number; valor: number }[] }[];
-  resumo: { faturasPagas: number; faturasFechadas: number; faturasAbertas: number; parcelasPagas: number; reembolsos: number; avulsas: number; encargos: number; assinaturaId: string | null };
+  resumo: { faturasPagas: number; faturasFechadas: number; faturasAbertas: number; parcelasPagas: number; reembolsos: number; avulsas: number; encargos: number; assinaturaId: string | null; substituidas: number; emitidasAgora: number };
 }
 export interface MigracaoFeita {
   em: string; por: string | null; assinaturaParadaEm: string | null; assinaturaParadaErro: string | null; assinaturaId: string | null;
-  resumo: { contratoNumero?: string; faturas?: number; faturasPagas?: number; faturasFechadas?: number; faturasAbertas?: number; reembolsos?: number; avulsas?: number; pdfCopiado?: boolean } | null;
+  resumo: { contratoNumero?: string; faturas?: number; faturasPagas?: number; faturasFechadas?: number; faturasAbertas?: number; reembolsos?: number; avulsas?: number; pdfCopiado?: boolean; cobrancasApagadas?: number; emitidasAgora?: number; cobrancasMantidas?: { vencimento: string; chargeId: string; erro: string }[] } | null;
 }
 
 export interface CasoLegadoDetalhe extends CasoLegado {
@@ -226,7 +226,7 @@ export const migracaoLegadoService = {
     const { data } = await api.get<PlanoMigracao>(`/api/v1/migracao-legado/casos/${id}/migracao/previa`);
     return data;
   },
-  async migrar(id: string): Promise<{ contratoId: string; titularId: string; contratoNumero: string; assinatura: { parada: boolean; motivo: string } }> {
+  async migrar(id: string): Promise<{ contratoId: string; titularId: string; contratoNumero: string; assinatura: { parada: boolean; motivo: string }; substituicao: { apagadas: number; emitidasAgora: number; mantidas: { vencimento: string; erro: string }[] } }> {
     const { data } = await api.post(`/api/v1/migracao-legado/casos/${id}/migrar`);
     return data;
   },
