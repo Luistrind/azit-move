@@ -226,6 +226,11 @@ O Asaas envia webhooks para o sistema em eventos de pagamento. O sistema deve pr
 
 Endpoint receptor de todos os webhooks do Asaas.
 
+> **Cobrança legada (doc 02 §26.5/§26.10):** quando `payment.externalReference` vem vazio, o
+> handler procura `Fatura.asaasChargeId = payment.id` (as faturas migradas são amarradas à
+> cobrança antiga) e, se achar, segue o fluxo normal de fatura. Só ignora (202) se não houver
+> fatura amarrada.
+
 #### Headers Esperados
 ```
 asaas-access-token: {token-configurado-no-asaas}
@@ -1066,6 +1071,9 @@ não o status do Asaas.
 | DELETE | `…/cobrancas/:cobrancaId/interpretacao` | Desfaz a decisão e volta à regra |
 | PUT | `/migracao-legado/casos/:id/divergencias/:chave` | `{ nota, desfecho }` — reconhece uma divergência da conciliação (`parcela:N`, `intermediaria:N`, `entrada`, `cobranca:<id>`). `desfecho` (doc 02 §26.9 item 6) é o que a F3 gera: `PAGA_FORA_ASAAS` \| `VALOR_ACEITO` para linhas do cronograma, `COBRANCA_AVULSA` para `cobranca:<id>`. 422 `nota_obrigatoria` / `desfecho_obrigatorio` |
 | PUT | `/migracao-legado/casos/:id/vencimentos` | `{ modo: 'CONTRATO' \| 'ASAAS' }` — vencimentos na migração, escolha por caso (doc 02 §26.9 item 4). 422 `modo_invalido` |
+| GET | `/migracao-legado/casos/:id/migracao/previa` | ADMIN/DIRETOR. Plano da F3 (doc 02 §26.10) sem gravar nada: titular (novo/existente), veículo, contrato, entrada, faturas por situação, RPs, avulsas, assinatura a parar. 422 `nao_validado` / `ja_migrado` / `pendencias` / `cpf_ausente` / `estrutura_azit_ausente` / `titular_excluido` / `veiculo_em_contrato` |
+| POST | `/migracao-legado/casos/:id/migrar` | ADMIN/DIRETOR. Executa o plano numa transação (caso → MIGRADO, `titularId`/`contratoId` preenchidos) e DEPOIS para a assinatura no Asaas (PUT INACTIVE). Retorna `{ titularId, contaId, contratoId, contratoNumero, resumo, assinatura: { parada, motivo } }` — `parada:false` = contrato criado, assinatura ainda ativa (repetir abaixo) |
+| POST | `/migracao-legado/casos/:id/parar-assinatura` | ADMIN/DIRETOR. Repete o PUT INACTIVE de um caso MIGRADO cuja assinatura não foi parada |
 | DELETE | `/migracao-legado/casos/:id/divergencias/:chave` | Desfaz o reconhecimento |
 | PUT | `/migracao-legado/casos/:id/vinculos/:cobrancaId` | `{ chave }` — vínculo MANUAL: a cobrança passa a compor a linha `parcela:N` / `intermediaria:N` / `entrada` (sem divergência; a observação avisa se a soma difere). 422 `cobranca_invalida` / `linha_invalida` |
 | DELETE | `/migracao-legado/casos/:id/vinculos/:cobrancaId` | Desfaz o vínculo manual |

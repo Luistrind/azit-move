@@ -2105,3 +2105,45 @@ Fecham as pendências de domínio levantadas antes de construir a migração do 
 
 Construção: o desfecho da divergência entra na bancada (F2) antes da F3, porque os casos
 difíceis ainda vão ser validados e precisam dele.
+
+### 26.10 F3 construída — o botão "Migrar para o sistema" (2026-10-01)
+
+Pedido do Luís (30/09): depois de validar, um botão **Migrar**, visível só em caso VALIDADO,
+é a liberação para o sistema incorporar aquele contrato em produção — um a um. Construído:
+
+- **Quem:** ADMIN ou DIRETOR. Antes de gravar, uma **prévia** mostra o que vai nascer
+  (titular novo ou reaproveitado pelo CPF, veículo, contrato, entrada, faturas por situação,
+  Reembolsos Parcelados, avulsas, encargos, assinatura a parar). Nada é gravado na prévia.
+- **O que nasce, numa transação só:** titular (pelo CPF, cadastro único) + conta; veículo sob
+  a estrutura Azit (reaproveitado se a placa já existir sem contrato ativo); contrato ATIVO
+  com os termos do PDF, item principal "Compra Parcelada <veículo>" e itens recorrentes de
+  proteção e taxa (credor Azit); entrada materializada como lançamento pago; o cronograma
+  inteiro — parcela, recebível, fatura e itens (PRINCIPAL / SERVICO / INTERMEDIARIA /
+  ENCARGO) — com as faturas passadas já PAGAS (data e valor do Asaas), as com cobrança
+  emitida e não paga FECHADAS e amarradas pelo `asaasChargeId`, e as futuras ABERTAS para o
+  sistema emitir; despesas cobradas junto da parcela viram Reembolso Parcelado (1 ou N, sem
+  taxa, valores exatos, parcela na MESMA fatura); cobranças fora do cronograma viram fatura
+  avulsa com um item (nada se perde); o PDF do PopHub vira o documento assinado do contrato
+  (provedor "legado", assinado fora do sistema). O caso vira MIGRADO e aponta titular e
+  contrato; o contrato aponta o caso (`legadoCasoId`).
+- **Identificação do legado (adaptação do §26.9 item 2):** criar linhas de versão no
+  Catálogo fecharia a vigência da versão atual para as vendas novas (o endpoint de versão
+  encerra a vigente). Por isso a "versão Legado" é a **referência congelada no contrato**
+  (`catalogoVersaoRef = {legado:1, protS, taxaS}`) mais o vínculo ao caso. O sistema já
+  trata referência sem variante como pré-catálogo (quitação pelo caminho antigo, CR = 0),
+  que é exatamente o comportamento desejado. Um filtro por `legado` isola esses contratos.
+- **Corte (§26.5), DEPOIS do commit:** `PUT /subscriptions/{id} {status: INACTIVE}` —
+  preserva as cobranças emitidas. Se o Asaas falhar, a migração NÃO é desfeita: o caso
+  mostra "assinatura AINDA ATIVA" com o erro e o botão **Parar assinatura agora** repete.
+  Notificação no sino avisa a carteira.
+- **Webhook:** cobrança legada não tem `externalReference`; o webhook passa a resolver
+  `payment.id → Fatura.asaasChargeId` antes de ignorar o evento. Pagamento de cobrança antiga
+  concilia a fatura migrada pelo fluxo normal.
+- **Desfechos (§26.9 item 6) na migração:** *paga fora do Asaas* → fatura e parcela PAGAS sem
+  cobrança, pelo valor esperado; *valor aceito* → PAGA pelo valor pago; *cobrança avulsa* →
+  fatura avulsa paga. *Vencimentos das cobranças do Asaas* (item 4): parcela recebe a data
+  real; as futuras seguem o dia da semana da última cobrança, e `dataPrimeiraParcela` do
+  contrato é a da primeira cobrança real.
+- **Pré-requisitos que a prévia cobra:** CPF do comprador; estrutura jurídica "Azit"
+  cadastrada em Capital; titular com esse CPF não pode estar excluído; placa não pode ter
+  contrato ativo.

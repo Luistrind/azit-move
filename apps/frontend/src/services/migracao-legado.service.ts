@@ -107,6 +107,20 @@ export type ModoVencimentos = 'CONTRATO' | 'ASAAS';
 export interface DivergenciaReconhecida { chave: string; nota: string; desfecho?: DesfechoDivergencia; em: string; por: string }
 export interface VinculoManual { cobrancaId: string; chave: string; em: string; por: string }
 
+export interface PlanoMigracao {
+  titular: { cpfCnpj: string; nome: string; existente: { id: string; nome: string } | null };
+  veiculo: { descricao: string; placa: string | null; existente: { id: string; descricao: string } | null };
+  contrato: { numero: string; dataAssinatura: string; dataPrimeiraParcela: string; numeroParcelas: number; valorParcela: number; valorTotal: number; valorEntrada: number; modoVencimentos: string };
+  entrada: { valor: number; pagoEm: string; asaasChargeId: string | null } | null;
+  faturas: { origem: string; vencimento: string; status: string; valorTotal: number; valorPago: number | null; pagoEm: string | null; asaasChargeId: string | null }[];
+  rps: { rotulo: string; parcelas: { n: number; valor: number }[] }[];
+  resumo: { faturasPagas: number; faturasFechadas: number; faturasAbertas: number; parcelasPagas: number; reembolsos: number; avulsas: number; encargos: number; assinaturaId: string | null };
+}
+export interface MigracaoFeita {
+  em: string; por: string | null; assinaturaParadaEm: string | null; assinaturaParadaErro: string | null; assinaturaId: string | null;
+  resumo: { contratoNumero?: string; faturas?: number; faturasPagas?: number; faturasFechadas?: number; faturasAbertas?: number; reembolsos?: number; avulsas?: number; pdfCopiado?: boolean } | null;
+}
+
 export interface CasoLegadoDetalhe extends CasoLegado {
   email: string | null;
   telefone: string | null;
@@ -123,6 +137,7 @@ export interface CasoLegadoDetalhe extends CasoLegado {
   divergenciasReconhecidas: DivergenciaReconhecida[];
   vinculosManuais: VinculoManual[];
   modoVencimentos: ModoVencimentos;
+  migracao: MigracaoFeita | null;
   desfechosDivergencia: { valor: DesfechoDivergencia; rotulo: string }[];
   pendenciasParaValidar: string[];
   validadoEm: string | null;
@@ -206,6 +221,18 @@ export const migracaoLegadoService = {
   },
   async desvincular(id: string, cobrancaId: string): Promise<void> {
     await api.delete(`/api/v1/migracao-legado/casos/${id}/vinculos/${cobrancaId}`);
+  },
+  async previaMigracao(id: string): Promise<PlanoMigracao> {
+    const { data } = await api.get<PlanoMigracao>(`/api/v1/migracao-legado/casos/${id}/migracao/previa`);
+    return data;
+  },
+  async migrar(id: string): Promise<{ contratoId: string; titularId: string; contratoNumero: string; assinatura: { parada: boolean; motivo: string } }> {
+    const { data } = await api.post(`/api/v1/migracao-legado/casos/${id}/migrar`);
+    return data;
+  },
+  async pararAssinatura(id: string): Promise<{ parada: boolean; motivo: string }> {
+    const { data } = await api.post(`/api/v1/migracao-legado/casos/${id}/parar-assinatura`);
+    return data;
   },
   async validar(id: string): Promise<{ validado: boolean }> {
     const { data } = await api.post(`/api/v1/migracao-legado/casos/${id}/validar`, {});

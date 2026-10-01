@@ -1056,6 +1056,7 @@ model ContratoCredito {
   asaasSubscriptionId  String?
   propostaPacoteId     String? // contrato pertence ao pacote de uma proposta (carrinho)
   novacaoOrigemId      String? // novação que EXTINGUIU este contrato (14/09)
+  legadoCasoId         String? @unique // contrato nascido da migração do legado (doc 02 §26.9) — aponta o caso/prova
 
   conta             Conta            @relation(fields: [contaId], references: [id])
   ativo             Ativo?           @relation(fields: [ativoId], references: [id])
@@ -2450,6 +2451,12 @@ model CasoMigracaoLegado {
   divergenciasReconhecidas Json? // [{ chave, nota, em, por }]
   vinculosManuais          Json? // [{ cobrancaId, chave, em, por }] — cobrança apontada à mão para uma linha do cronograma
   modoVencimentos          String @default("CONTRATO") // CONTRATO | ASAAS — doc 02 §26.9 item 4 (escolha por caso, na validação)
+  // F3 (doc 02 §26.5): o que a migração gerou e o corte da assinatura no Asaas
+  migradoEm            DateTime?
+  migradoPor           String?
+  migracaoResumo       Json?
+  assinaturaParadaEm   DateTime? // PUT INACTIVE confirmado
+  assinaturaParadaErro String?   // última falha ao parar (repetível pelo botão)
   validadoEm           DateTime?
   validadoPor          String?
 

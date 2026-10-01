@@ -4,6 +4,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { MigracaoLegadoService } from './migracao-legado.service';
 import { LegadoConciliacaoService } from './legado-conciliacao.service';
+import { LegadoMigracaoService } from './legado-migracao.service';
 
 type Resposta = { header: (k: string, v: string) => Resposta; send: (b: Buffer) => void };
 
@@ -15,6 +16,7 @@ export class MigracaoLegadoController {
   constructor(
     private readonly migracao: MigracaoLegadoService,
     private readonly conciliacao: LegadoConciliacaoService,
+    private readonly migracaoF3: LegadoMigracaoService,
   ) {}
 
   // ---- F1: leitura, fila e caso ----
@@ -118,6 +120,27 @@ export class MigracaoLegadoController {
   @Delete('casos/:id/vinculos/:cobrancaId')
   desvincular(@Param('id') id: string, @Param('cobrancaId') cobrancaId: string, @CurrentUser() user: UsuarioAutenticado) {
     return this.conciliacao.desvincular(id, cobrancaId, user.id);
+  }
+
+  // ---- F3 (doc 02 §26.5/§26.8/§26.9): prévia e migração do caso VALIDADO ----
+  @Get('casos/:id/migracao/previa')
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  previaMigracao(@Param('id') id: string) {
+    return this.migracaoF3.previa(id);
+  }
+
+  @Post('casos/:id/migrar')
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  @HttpCode(200)
+  migrar(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.migracaoF3.migrar(id, user.id);
+  }
+
+  @Post('casos/:id/parar-assinatura')
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  @HttpCode(200)
+  pararAssinatura(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.migracaoF3.pararAssinatura(id, user.id);
   }
 
   @Post('casos/:id/validar')

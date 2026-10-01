@@ -14,12 +14,14 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { webhookAsaasSchema, WebhookAsaasDto } from './dto/webhook-asaas.dto';
 import { IntegracoesService } from '../integracoes/integracoes.service';
+import { PrismaService } from '../../database/prisma.service';
 
 @Controller('webhooks')
 export class WebhookController {
   constructor(
     private readonly config: ConfigService,
     private readonly integracoes: IntegracoesService,
+    private readonly prisma: PrismaService,
     @InjectQueue(QUEUE_NAMES.PAGAMENTO_RECEBIDO)
     private readonly filaRecebido: Queue,
     @InjectQueue(QUEUE_NAMES.PAGAMENTO_VENCIDO)
@@ -55,7 +57,14 @@ export class WebhookController {
     // Sem payment/externalReference (eventos de teste ou cobranças fora do nosso
     // fluxo) → ACK 202 e ignora. Nunca devolver erro: o Asaas pausa a fila após falhas.
     const pg = dto.payment;
-    const ref = pg?.externalReference;
+    let ref = pg?.externalReference ?? null;
+    // Cobrança LEGADA (doc 02 §26.5): emitida pela assinatura antiga do Asaas,
+    // não tem externalReference — mas a migração amarrou o id dela à fatura
+    // (asaasChargeId). Fallback payment.id → fatura, e segue o fluxo normal.
+    if (pg?.id && !ref) {
+      const fatura = await this.prisma.db.fatura.findFirst({ where: { asaasChargeId: pg.id, deletedAt: null }, select: { id: true } });
+      if (fatura) ref = fatura.id;
+    }
     if (!pg || !ref) {
       return { received: true, ignored: true };
     }

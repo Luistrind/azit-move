@@ -11,6 +11,7 @@ import {
   type DesfechoDivergencia,
   type DivergenciaReconhecida,
   type ModoVencimentos,
+  type PlanoMigracao,
 } from '../services/migracao-legado.service';
 import { Modal } from '../components/Modal';
 import { Metrica } from '../components/Metrica';
@@ -38,6 +39,8 @@ const intOuNull = (s: string) => (s.trim() === '' ? null : parseInt(s.replace(/\
 const txtOuNull = (s: string) => (s.trim() === '' ? null : s.trim());
 
 const ROLE_LEGADO = ['ADMIN', 'DIRETOR', 'OPERADOR', 'FINANCEIRO'];
+// Migrar (F3) é a liberação para produção: só ADMIN/DIRETOR, caso a caso.
+const ROLE_MIGRAR = ['ADMIN', 'DIRETOR'];
 const btn = 'h-[32px] rounded-[8px] px-[12px] text-[12px] font-semibold disabled:opacity-50';
 const btnPri = { background: 'var(--accent)', color: '#fff' } as const;
 const btnSec = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-body)' } as const;
@@ -114,6 +117,9 @@ export function MigracaoLegadoCasoPage() {
   const [ocupado, setOcupado] = useState(false);
   const [motivo, setMotivo] = useState('');
   const [descartando, setDescartando] = useState(false);
+  const podeMigrar = pode(ROLE_MIGRAR);
+  const [previa, setPrevia] = useState<PlanoMigracao | null>(null);
+  const [carregandoPrevia, setCarregandoPrevia] = useState(false);
   const [notaDiv, setNotaDiv] = useState<Record<string, string>>({});
   // Desfecho da divergência (doc 02 §26.9 item 6) — o que a F3 gera; a nota explica.
   const [desfechoDiv, setDesfechoDiv] = useState<Record<string, DesfechoDivergencia | ''>>({});
@@ -232,6 +238,12 @@ export function MigracaoLegadoCasoPage() {
                   onClick={() => rodar(() => svc.validar(id), 'Caso validado')}>Validar caso</button>
               )}
               {c.status === 'EM_REVISAO' && <button className={btn} style={btnSec} disabled={ocupado} onClick={() => rodar(() => svc.mudarStatus(id, 'COLETADO'), 'Caso devolvido à fila')}>Devolver à fila</button>}
+              {c.status === 'VALIDADO' && podeMigrar && (
+                <button className={btn} style={btnPri} disabled={ocupado || carregandoPrevia} title="Gera titular, veículo, contrato e cronograma no sistema e para a assinatura no Asaas"
+                  onClick={async () => { setCarregandoPrevia(true); try { setPrevia(await svc.previaMigracao(id)); } catch (e) { toast.erro(mensagemErro(e)); } finally { setCarregandoPrevia(false); } }}>
+                  {carregandoPrevia ? 'Preparando prévia…' : 'Migrar para o sistema'}
+                </button>
+              )}
               {c.status === 'VALIDADO' && <button className={btn} style={btnSec} disabled={ocupado} onClick={() => rodar(() => svc.mudarStatus(id, 'EM_REVISAO'), 'Caso reaberto')}>Reabrir (voltar à revisão)</button>}
               {(c.status === 'COLETADO' || c.status === 'EM_REVISAO') && !descartando && <button className={btn} style={btnSec} disabled={ocupado} onClick={() => setDescartando(true)}>Descartar</button>}
               {c.status === 'DESCARTADO' && <button className={btn} style={btnSec} disabled={ocupado} onClick={() => rodar(() => svc.mudarStatus(id, 'COLETADO'), 'Caso de volta à fila')}>Voltar para a fila</button>}
@@ -251,8 +263,46 @@ export function MigracaoLegadoCasoPage() {
             <ul className="mt-[3px] list-disc pl-[18px]">{c.pendenciasParaValidar.map((p) => <li key={p}>{p}</li>)}</ul>
           </div>
         )}
-        {c.status === 'VALIDADO' && <div className="mt-[10px] text-[12px]" style={{ color: CASO_LEGADO_STATUS_COLORS.MIGRADO.fg }}>Validado em {dataHoraBR(c.validadoEm)}. A migração (F3) não está ligada ainda — o caso fica pronto, esperando.</div>}
+        {c.status === 'VALIDADO' && <div className="mt-[10px] text-[12px]" style={{ color: CASO_LEGADO_STATUS_COLORS.MIGRADO.fg }}>Validado em {dataHoraBR(c.validadoEm)}. "Migrar para o sistema" cria o contrato em produção e para a assinatura no Asaas — um caso por vez.</div>}
+        {c.status === 'MIGRADO' && c.migracao && (
+          <div className="mt-[10px] rounded-[10px] p-[10px] text-[12px]" style={{ background: CASO_LEGADO_STATUS_COLORS.MIGRADO.bg, color: CASO_LEGADO_STATUS_COLORS.MIGRADO.fg }}>
+            <b>Migrado em {dataHoraBR(c.migracao.em)}.</b>{' '}
+            {c.contratoId && <Link to={`/contratos/${c.contratoId}`} className="underline">contrato {c.migracao.resumo?.contratoNumero ?? ''}</Link>}
+            {c.titularId && <> · <Link to={`/titulares/${c.titularId}`} className="underline">titular</Link></>}
+            {c.migracao.resumo && <> · {c.migracao.resumo.faturas ?? 0} faturas ({c.migracao.resumo.faturasPagas ?? 0} pagas, {c.migracao.resumo.faturasFechadas ?? 0} com cobrança no Asaas, {c.migracao.resumo.faturasAbertas ?? 0} futuras) · {c.migracao.resumo.reembolsos ?? 0} reembolso(s) · {c.migracao.resumo.avulsas ?? 0} avulsa(s){c.migracao.resumo.pdfCopiado === false ? ' · PDF não copiado' : ''}</>}
+            <div className="mt-[4px]">
+              {!c.migracao.assinaturaId ? 'Sem assinatura no Asaas para parar.'
+                : c.migracao.assinaturaParadaEm ? `Assinatura do Asaas parada em ${dataHoraBR(c.migracao.assinaturaParadaEm)} — o sistema assume a emissão.`
+                : <span style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}><b>Assinatura do Asaas AINDA ATIVA</b>{c.migracao.assinaturaParadaErro ? ` — ${c.migracao.assinaturaParadaErro}` : ''}. {podeMigrar && <button className="underline" disabled={ocupado} onClick={() => rodar(() => svc.pararAssinatura(id), 'Assinatura parada')}>Parar assinatura agora</button>}</span>}
+            </div>
+          </div>
+        )}
       </div>
+
+      {previa && (
+        <Modal open onClose={() => setPrevia(null)} title={`Migrar para o sistema — ${c.nome}`} largura={640}>
+          <div className="flex flex-col gap-[8px] text-[12.5px]" style={{ color: 'var(--text-body)' }}>
+            <div>Nada foi gravado ainda. Confira o que vai nascer e confirme. A operação é uma só e, no fim, a assinatura do Asaas é parada (as cobranças já emitidas são preservadas).</div>
+            <table className="w-full border-collapse text-[12px]">
+              <tbody>
+                <tr><td className={td}>Titular</td><td className={td}>{previa.titular.existente ? <>já existe: <b>{previa.titular.existente.nome}</b> (reaproveitado)</> : <>novo: <b>{previa.titular.nome}</b> · {cpfBR(previa.titular.cpfCnpj)}</>}</td></tr>
+                <tr><td className={td}>Veículo</td><td className={td}>{previa.veiculo.existente ? <>já cadastrado: <b>{previa.veiculo.existente.descricao}</b></> : <>novo: <b>{previa.veiculo.descricao}</b>{previa.veiculo.placa ? ` · ${previa.veiculo.placa}` : ''}</>} · estrutura Azit</td></tr>
+                <tr><td className={td}>Contrato</td><td className={td}><b>{previa.contrato.numero}</b> · assinado em {dataBR(previa.contrato.dataAssinatura)} · {previa.contrato.numeroParcelas}× {formatCurrency(previa.contrato.valorParcela)} a partir de {dataBR(previa.contrato.dataPrimeiraParcela)} · total {formatCurrency(previa.contrato.valorTotal)} · vencimentos {previa.contrato.modoVencimentos === 'ASAAS' ? 'das cobranças do Asaas' : 'do contrato'}</td></tr>
+                <tr><td className={td}>Entrada</td><td className={td}>{previa.entrada ? <>{formatCurrency(previa.entrada.valor)} paga em {dataBR(previa.entrada.pagoEm)}</> : 'sem entrada'}</td></tr>
+                <tr><td className={td}>Faturas</td><td className={td}>{previa.faturas.length} no total: <b>{previa.resumo.faturasPagas}</b> pagas, <b>{previa.resumo.faturasFechadas}</b> com cobrança já emitida no Asaas, <b>{previa.resumo.faturasAbertas}</b> futuras (o sistema emite)</td></tr>
+                <tr><td className={td}>Reembolsos Parcelados</td><td className={td}>{previa.rps.length === 0 ? 'nenhum' : previa.rps.map((r) => `${r.rotulo} (${r.parcelas.length}×)`).join(' · ')}</td></tr>
+                <tr><td className={td}>Cobranças avulsas</td><td className={td}>{previa.resumo.avulsas}</td></tr>
+                <tr><td className={td}>Encargos já pagos</td><td className={td}>{formatCurrency(previa.resumo.encargos)}</td></tr>
+                <tr><td className={td}>Assinatura do Asaas</td><td className={td}>{previa.resumo.assinaturaId ? `${previa.resumo.assinaturaId} será PARADA (INACTIVE)` : 'nenhuma'}</td></tr>
+              </tbody>
+            </table>
+            <div className="flex justify-end gap-[8px]">
+              <button className={btn} style={btnSec} onClick={() => setPrevia(null)}>Cancelar</button>
+              <button className={btn} style={btnPri} disabled={ocupado} onClick={() => { const p = previa; setPrevia(null); void rodar(async () => { const r = await svc.migrar(id); if (!r.assinatura.parada) toast.erro(`Contrato ${r.contratoNumero} criado, mas a assinatura do Asaas não foi parada: ${r.assinatura.motivo}`); return r; }, `Caso migrado — contrato ${p.contrato.numero}`); }}>Confirmar migração</button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Termos + Asaas */}
       <div className="grid grid-cols-1 gap-[14px] xl:grid-cols-[3fr_2fr]">
