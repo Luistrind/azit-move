@@ -2059,3 +2059,49 @@ caso como prova, não viram itens separados.
 escolhe o tipo **principal** (parcela) e confere a decomposição — é ela que conta. Uma
 cobrança marcada como "reembolso" mas cuja descrição é "parcela + manutenção" está lida
 errado: a parcela daquela semana ficaria "não cobrada".
+
+### 26.9 Decisões para a F3 (Luís, 2026-09-30)
+
+Fecham as pendências de domínio levantadas antes de construir a migração do caso validado.
+
+1. **Sem estrutura jurídica própria para o legado.** A estrutura é a dona do capital do
+   veículo (§19) e todos os carros legados foram comprados pela Azit com o mesmo capital dos
+   novos. O contrato legado nasce sob a estrutura Azit, como qualquer outro. Legado é origem de
+   contrato, não origem de capital.
+2. **O legado é identificado por VERSÃO no Catálogo, não por produto novo.** Produto é o que
+   se vende; versão é como foi precificado (§17: contrato preso à versão contratada). Nascem
+   três versões "Legado": Compra Parcelada (valores vêm do contrato, sem motor de preço, sem CI
+   nem CR; taxa de desconto de antecipação é a do próprio contrato — comportamento já previsto
+   em §7.4 para contrato sem versão de parâmetros), Proteção Veicular (valor fixo lido do caso —
+   R$ 50/semana no padrão) e Taxa de serviço (R$ 5 por parcela, repasse das mensagens do Asaas).
+   Tudo que agrupa por produto (carteira, alçadas, consolidação da novação) continua enxergando
+   um produto só; o filtro por versão isola o legado.
+3. **Sem assinatura digital.** O PDF assinado no papel é o instrumento. O contrato entra direto
+   em ATIVO, com o PDF anexado como documento e a marca "assinado fora do sistema".
+4. **Vencimentos: escolha POR CASO, na validação — não há regra.** A operação mudou o dia da
+   semana de alguns clientes no passado (ex.: segunda → quinta) sem padrão; pelo cronograma do
+   contrato essas parcelas pareceriam atrasadas e não estão. O operador escolhe no caso:
+   - **do contrato** — parcela com a data do cronograma do PDF; fatura com a data real da
+     cobrança (é o tratamento normal de um atraso);
+   - **das cobranças do Asaas** — cada parcela já cobrada recebe a data real da cobrança que a
+     pagou; as parcelas futuras seguem o DIA DA SEMANA da última cobrança real, e é nesse dia
+     que o sistema passa a emitir após o corte (§26.5). Cobre sozinho o contrato cujo dia mudou
+     no meio.
+   O que não cabe em nenhum dos dois, o operador ajusta linha a linha (vínculo manual).
+5. **Reajuste por IPCA ignorado no legado.** O contrato entra com as parcelas originais e sem
+   evento de reajuste pendente, mesmo com mais de 12 meses. Decisão de negócio; revisável.
+6. **Vínculo manual e divergência reconhecida na migração.**
+   - *Vínculo manual* (cobrança apontada a uma linha): a parcela nasce PAGA por aquela
+     cobrança, igual às casadas pela regra. Sem decisão adicional.
+   - *Divergência reconhecida* deixa de ser só nota: ao reconhecer, o operador escolhe o
+     **desfecho**, e a F3 obedece —
+     | Desfecho | O que a F3 gera |
+     |---|---|
+     | **Paga fora do Asaas** (dinheiro, transferência) | parcela e fatura nascem PAGAS com baixa manual, sem `asaasChargeId`, com a nota como justificativa |
+     | **Valor diferente aceito** (desconto combinado, arredondamento) | parcela nasce PAGA pelo valor efetivamente pago; a diferença fica registrada na fatura como desconto (ou encargo, se maior) |
+     | **Cobrança avulsa** (não é parcela de nada) | item avulso PAGO na conta, sem vínculo com parcela |
+     A nota continua obrigatória. O desfecho é gravado no caso junto dela e é o que a validação
+     exige (divergência sem desfecho = pendência).
+
+Construção: o desfecho da divergência entra na bancada (F2) antes da F3, porque os casos
+difíceis ainda vão ser validados e precisam dele.
