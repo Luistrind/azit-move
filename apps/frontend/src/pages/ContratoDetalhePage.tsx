@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
-import { formatCurrency } from '@azit/utils';
+import { rotuloAtivo, formatCurrency } from '@azit/utils';
 import { contratoService } from '../services/contrato.service';
 import { operacoesService, SimulacaoQuitacao } from '../services/operacoes.service';
 import { StatusBadge } from '../components/StatusBadge';
@@ -236,7 +236,7 @@ export function ContratoDetalhePage() {
                   {c.titular.nome}
                 </div>
                 <div className="mt-[2px] text-[12px]" style={{ color: 'var(--navy-text-body)' }}>
-                  {c.ativo?.descricao ?? 'Reembolso Parcelado'} · origem {fmtData(c.dataAssinatura)}
+                  {c.ativo ? rotuloAtivo(c.ativo) : 'Reembolso Parcelado'} · origem {fmtData(c.dataAssinatura)}
                 </div>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-[6px]">

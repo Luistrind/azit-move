@@ -166,7 +166,7 @@ export function PropostaDetalhePage() {
         <div className="mb-[14px] flex items-center justify-between">
           <div>
             <div className="font-display text-[18px] font-bold">{p.titular.nome}</div>
-            <div className="text-[12px]" style={{ color: 'var(--text-body)' }}>{p.ativo.descricao} · CPF {p.titular.cpfCnpj}</div>
+            <div className="text-[12px]" style={{ color: 'var(--text-body)' }}>{p.ativo.rotulo} · CPF {p.titular.cpfCnpj}</div>
           </div>
           <StatusBadge label={LABEL_STATUS[p.status] ?? p.status} colors={PROPOSTA_STATUS_COLORS} />
         </div>
@@ -580,7 +580,7 @@ export function PropostaDetalhePage() {
         <div className="rounded-card p-[18px]" style={card}>
           <div className="mb-[10px] font-display text-[13px] font-bold">Revisão</div>
           <div className="grid grid-cols-2 gap-[14px] text-[12.5px]">
-            <div><Lbl>Ativo</Lbl><div>{p.ativo.descricao}</div></div>
+            <div><Lbl>Ativo</Lbl><div>{p.ativo.rotulo}</div></div>
             <div><Lbl>Condições</Lbl><div>{formatCurrency(p.valorEntrada)} + {p.numeroParcelas}× {formatCurrency(p.valorParcela)}</div></div>
             <div className="col-span-2"><Lbl>Papéis</Lbl><div>{p.papeis.map((v) => `${PAPEL_LABEL[v.papel]}: ${v.titular.nome}`).join(' · ')}</div></div>
             <div className="col-span-2"><Lbl>Parecer</Lbl><div>{p.parecer ? `${p.parecer.resultado}${p.parecer.exigeGarantidor ? ' (exige garantidor)' : ''}` : '—'}</div></div>

@@ -4,7 +4,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, Periodicidade as PeriodicidadePrisma } from '@prisma/client';
-import { precificarSimulacao, FrequenciaSimulacao } from '@azit/utils';
+import { rotuloAtivo, precificarSimulacao, FrequenciaSimulacao } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { ParametrosService, ParametrosVigentes } from '../simulador/parametros.service';
 import { OfertaFixaService } from '../simulador/oferta-fixa.service';
@@ -477,7 +477,7 @@ export class SimulacaoService {
       include: {
         lead: { select: { nome: true } },
         titular: { select: { nome: true } },
-        ativo: { select: { descricao: true } },
+        ativo: { select: { descricao: true, placa: true } },
         ofertas: { where: { selecionada: true }, take: 1 },
         proposta: { select: { id: true, status: true } },
       },
@@ -487,7 +487,7 @@ export class SimulacaoService {
       return {
         id: s.id,
         cliente: s.titular?.nome ?? s.lead?.nome ?? '—',
-        ativo: s.ativo?.descricao ?? 'Valor manual',
+        ativo: s.ativo ? rotuloAtivo(s.ativo) : 'Valor manual',
         valorAvista: cent(s.valorAvista),
         valorEntrada: cent(s.valorEntrada),
         status: this.expirada(s) ? 'expirada' : s.status.toLowerCase(),

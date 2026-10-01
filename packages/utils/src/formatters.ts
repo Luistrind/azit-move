@@ -32,3 +32,10 @@ export function formatPlaca(placa: string): string {
 export function formatParcela(atual: number, total: number): string {
   return `${atual}/${total}`;
 }
+
+// Rótulo do veículo com a placa (decisão Luís 01/10): a proposta e o contrato
+// são de um carro ESPECÍFICO — onde o carro aparecer, a placa vai junto.
+// "Hyundai HB20s 2024 · SIV8C81"; sem placa, só a descrição.
+export function rotuloAtivo(a: { descricao: string; placa?: string | null }): string {
+  return a.placa ? `${a.descricao} · ${a.placa}` : a.descricao;
+}

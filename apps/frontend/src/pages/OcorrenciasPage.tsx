@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatCurrency } from '@azit/utils';
+import { rotuloAtivo, formatCurrency } from '@azit/utils';
 import { frotaService as svc, type Ocorrencia, type ResumoImportacao } from '../services/frota.service';
 import { Modal } from '../components/Modal';
 import { toast } from '../components/Toast';
@@ -209,7 +209,7 @@ export function OcorrenciasPage() {
               {detalhe.origem !== 'manual' && <span className="rounded-full px-[9px] py-[2px] text-[11px]" style={{ background: 'var(--surface-input)', color: 'var(--text-muted)' }}>origem: {detalhe.origem}</span>}
             </div>
             <div className="grid grid-cols-2 gap-x-[16px] gap-y-[4px]" style={{ color: 'var(--text-body)' }}>
-              <span>Veículo: <b>{detalhe.ativo.descricao}</b></span>
+              <span>Veículo: <b>{rotuloAtivo(detalhe.ativo)}</b></span>
               <span>Valor: <b className="tabular-nums">{formatCurrency(detalhe.valorComDesconto ?? detalhe.valor)}</b></span>
               <span>Data do fato: <b className="tabular-nums">{dataBR(detalhe.dataFato)}</b></span>
               <span>Vencimento: <b className="tabular-nums">{dataBR(detalhe.dataVencimento)}</b></span>

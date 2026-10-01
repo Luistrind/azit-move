@@ -57,7 +57,7 @@ export interface PropostaDetalhe {
   id: string;
   status: string;
   modalidade: string;
-  ativo: { id: string; descricao: string };
+  ativo: { id: string; descricao: string; placa: string | null; rotulo: string };
   titular: { id: string; nome: string; cpfCnpj: string; whatsapp: string };
   valorEntrada: number;
   valorParcela: number;

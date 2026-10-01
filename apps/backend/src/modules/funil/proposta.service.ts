@@ -13,7 +13,7 @@ import {
 } from '@prisma/client';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { limparDocumento, reaisParaCentavos, centavosParaReaisString , formatCurrency} from '@azit/utils';
+import { rotuloAtivo, limparDocumento, reaisParaCentavos, centavosParaReaisString , formatCurrency} from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { TitularService } from '../titular/titular.service';
 import { ContaService } from '../conta/conta.service';
@@ -627,7 +627,7 @@ export class PropostaService {
       orderBy: { createdAt: 'desc' },
       include: {
         titular: { select: { nome: true } },
-        ativo: { select: { descricao: true } },
+        ativo: { select: { descricao: true, placa: true } },
       },
     });
     return propostas.map((p) => ({
@@ -635,7 +635,7 @@ export class PropostaService {
       status: p.status.toLowerCase(),
       modalidade: p.modalidade.toLowerCase(),
       titular: p.titular.nome,
-      ativo: p.ativo.descricao,
+      ativo: rotuloAtivo(p.ativo),
       valorEntrada: cent(p.valorEntrada),
       valorParcela: cent(p.valorParcela),
       numeroParcelas: p.numeroParcelas,
@@ -686,7 +686,7 @@ export class PropostaService {
       where: { id },
       include: {
         titular: { select: { id: true, nome: true, cpfCnpj: true, whatsapp: true } },
-        ativo: { select: { id: true, descricao: true, valorVenda: true } },
+        ativo: { select: { id: true, descricao: true, placa: true, valorVenda: true } },
         vinculos: { include: { titular: { select: { id: true, nome: true, cpfCnpj: true } } } },
         documentos: true,
         parecer: true,
@@ -706,7 +706,7 @@ export class PropostaService {
       id: p.id,
       status: p.status.toLowerCase(),
       modalidade: p.modalidade.toLowerCase(),
-      ativo: { id: p.ativo.id, descricao: p.ativo.descricao },
+      ativo: { id: p.ativo.id, descricao: p.ativo.descricao, placa: p.ativo.placa, rotulo: rotuloAtivo(p.ativo) },
       titular: p.titular,
       valorEntrada: cent(p.valorEntrada),
       valorParcela: cent(p.valorParcela),

@@ -1,3 +1,4 @@
+import { rotuloAtivo } from '@azit/utils';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -724,7 +725,7 @@ export function AtendimentoPage() {
       {passo === 3 && simulacao && (
         <div className="flex flex-col gap-[14px]">
           <div className="rounded-[12px] p-[12px] text-[14px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-            <b>{simulacao.ativo?.descricao ?? 'Ativo a definir'}</b>
+            <b>{simulacao.ativo ? rotuloAtivo(simulacao.ativo) : 'Ativo a definir'}</b>
             <span style={{ color: 'var(--text-muted)' }}> · à vista {reais(simulacao.valorAvista)}</span>
           </div>
 
@@ -1070,7 +1071,7 @@ export function AtendimentoPage() {
           <div className="mx-auto flex w-full max-w-[520px] flex-1 flex-col gap-[14px]">
             <div className="mt-[10px] text-center">
               <div className="text-[16px] font-semibold" style={{ color: 'var(--accent)' }}>
-                {simulacao.ativo?.descricao ?? ''}
+                {simulacao.ativo ? rotuloAtivo(simulacao.ativo) : ''}
               </div>
               <div className="text-[13px]" style={{ color: 'rgba(255,255,255,.6)' }}>
                 Condições para você
