@@ -8,6 +8,8 @@ import { AsaasLeituraService } from '../asaas/asaas-leitura.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
 import { LegadoConciliacaoService, type DivergenciaReconhecida } from './legado-conciliacao.service';
 import { FaturaService } from '../cobranca/fatura.service';
+import { FipeService, type ConsultaFipe } from '../fipe/fipe.service';
+import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 
 // ============================================================
 // Migração do legado — F3 (doc 02 §26.5, §26.8, §26.9): o caso VALIDADO vira
@@ -69,9 +71,9 @@ interface RpPlano {
 
 export interface PlanoMigracao {
   titular: { cpfCnpj: string; nome: string; existente: { id: string; nome: string } | null };
-  veiculo: { descricao: string; placa: string | null; existente: { id: string; descricao: string } | null };
+  veiculo: { descricao: string; placa: string | null; existente: { id: string; descricao: string } | null; fipe: ConsultaFipe | null; fipeMotivo: string | null };
   estruturaId: string;
-  contrato: { numero: string; dataAssinatura: string; dataPrimeiraParcela: string; numeroParcelas: number; valorParcela: number; valorTotal: number; valorEntrada: number; modoVencimentos: string };
+  contrato: { numero: string; dataAssinatura: string; dataPrimeiraParcela: string; numeroParcelas: number; valorParcela: number; valorTotal: number; valorEntrada: number; modoVencimentos: string; taxaDescontoMensal: number | null };
   entrada: { valor: number; pagoEm: string; asaasChargeId: string | null } | null;
   faturas: FaturaPlano[];
   rps: RpPlano[];
@@ -84,6 +86,12 @@ const addDias = (iso: string, n: number) => isoDe(new Date(d(iso).getTime() + n 
 const difDias = (a: string, b: string) => Math.round((d(a).getTime() - d(b).getTime()) / DIA_MS);
 const reais = (c: number) => centavosParaReaisString(c);
 
+// Campos do ativo gravados a partir da consulta FIPE (valor de venda = FIPE).
+function dadosFipe(f: ConsultaFipe | null) {
+  if (!f) return {};
+  return { valorVenda: reais(f.valor), fipeCodigo: f.codigoFipe, fipeModelo: f.modeloFipe, fipeReferencia: f.referencia, fipeConsultadaEm: new Date() };
+}
+
 @Injectable()
 export class LegadoMigracaoService {
   private readonly logger = new Logger(LegadoMigracaoService.name);
@@ -94,6 +102,8 @@ export class LegadoMigracaoService {
     private readonly asaasLeitura: AsaasLeituraService,
     private readonly notificacao: NotificacaoService,
     private readonly fatura: FaturaService,
+    private readonly fipe: FipeService,
+    private readonly catalogoFonte: CatalogoFonteService,
   ) {}
 
   // ---------------- Prévia (nada é gravado) ----------------
@@ -141,7 +151,7 @@ export class LegadoMigracaoService {
       // 2. Veículo sob a estrutura Azit (§26.9 item 1)
       let ativoId = plano.veiculo.existente?.id ?? null;
       if (ativoId) {
-        await tx.ativo.update({ where: { id: ativoId }, data: { status: 'EM_CONTRATO', estruturaJuridicaId: plano.estruturaId } });
+        await tx.ativo.update({ where: { id: ativoId }, data: { status: 'EM_CONTRATO', estruturaJuridicaId: plano.estruturaId, ...dadosFipe(plano.veiculo.fipe) } });
       } else {
         const v = termos.veiculo;
         const criado = await tx.ativo.create({
@@ -154,6 +164,7 @@ export class LegadoMigracaoService {
             quilometragemEntrada: v.quilometragem,
             status: 'EM_CONTRATO',
             observacao: `Importado do legado (caso ${caso.id}, contrato ${termos.numeroOrigem ?? 'sem número'})`,
+            ...dadosFipe(plano.veiculo.fipe),
           },
           select: { id: true },
         });
@@ -189,6 +200,8 @@ export class LegadoMigracaoService {
           indiceReajuste: null, // §26.9 item 5: reajuste ignorado no legado
           taxaMultaAtraso: termos.multaAtrasoPct ?? 2,
           taxaJurosAtraso: termos.jurosMensalPct ?? 1,
+          // Taxa de desconto de antecipação/novação (§26.11): a MESMA dos contratos gerados hoje.
+          taxaDescontoQuitacao: plano.contrato.taxaDescontoMensal,
           status: todasPagas ? 'ENCERRADO' : 'ATIVO',
           motivoEncerramento: todasPagas ? 'QUITACAO' : null,
           dataEncerramento: todasPagas ? new Date() : null,
@@ -462,6 +475,64 @@ export class LegadoMigracaoService {
 
   // PUT /subscriptions/{id} { status: INACTIVE } — preserva as cobranças emitidas
   // (DELETE as apagaria — verificado no sandbox 21/09). Repetível pelo botão.
+  // Taxa mensal (fração) que o sistema usa HOJE nos contratos novos: Compra
+  // Parcelada vigente no Catálogo; sem Catálogo ativo, a última versão de
+  // parâmetros da simulação. Decisão Luís 01/10: o legado desconta por ela.
+  private async taxaVigente(): Promise<number | null> {
+    const cat = await this.catalogoFonte.compraParcelada('carro').catch(() => null);
+    if (cat && cat.taxaMensal > 0) return cat.taxaMensal;
+    const v = await this.prisma.db.versaoParametrosSimulacao.findFirst({ orderBy: { createdAt: 'desc' }, select: { taxaMensal: true } }).catch(() => null);
+    const t = v ? Number(v.taxaMensal.toString()) : 0;
+    return t > 0 ? t : null;
+  }
+
+  // Ao subir a aplicação: completa sozinho os casos migrados ANTES desta
+  // versão (sem taxa de desconto ou sem FIPE) — o Luís não edita cadastro à
+  // mão. Roda em segundo plano, não segura a subida, e só toca o que está vazio.
+  onApplicationBootstrap(): void {
+    void this.completarPendentes().catch((e) => this.logger.warn(`completar pendentes do legado falhou: ${(e as Error).message}`));
+  }
+
+  private async completarPendentes(): Promise<void> {
+    const casos = await this.prisma.db.casoMigracaoLegado.findMany({
+      where: { status: 'MIGRADO', contratoId: { not: null } },
+      select: { id: true, contratoId: true, migradoPor: true },
+      take: 200,
+    });
+    for (const c of casos) {
+      const contrato = await this.prisma.db.contratoCredito.findUnique({ where: { id: c.contratoId! }, select: { taxaDescontoQuitacao: true, ativo: { select: { valorVenda: true } } } });
+      if (!contrato) continue;
+      const semTaxa = !contrato.taxaDescontoQuitacao || Number(contrato.taxaDescontoQuitacao.toString()) <= 0;
+      const semFipe = !!contrato.ativo && !contrato.ativo.valorVenda;
+      if (!semTaxa && !semFipe) continue;
+      if (!c.migradoPor) continue;
+      const r = await this.completar(c.id, c.migradoPor).catch((e) => ({ erro: (e as Error).message }));
+      this.logger.log(`legado: caso ${c.id} completado no boot — ${JSON.stringify(r).slice(0, 200)}`);
+    }
+  }
+
+  // Completa um caso JÁ migrado (os primeiros nasceram sem taxa e sem FIPE):
+  // taxa de desconto no contrato e FIPE no veículo, só onde está vazio.
+  async completar(casoId: string, usuarioId: string) {
+    const caso = await this.prisma.db.casoMigracaoLegado.findUnique({ where: { id: casoId }, select: { id: true, status: true, contratoId: true } });
+    if (!caso) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Caso não encontrado' });
+    if (caso.status !== 'MIGRADO' || !caso.contratoId) throw new UnprocessableEntityException({ erro: 'nao_migrado', mensagem: 'Só um caso migrado pode ser completado' });
+    const contrato = await this.prisma.db.contratoCredito.findUnique({ where: { id: caso.contratoId }, select: { id: true, taxaDescontoQuitacao: true, ativo: { select: { id: true, marca: true, modelo: true, anoModelo: true, anoFabricacao: true, valorVenda: true } } } });
+    if (!contrato) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Contrato do caso não encontrado' });
+    const r: { taxa: number | null; taxaGravada: boolean; fipe: ConsultaFipe | null; fipeGravada: boolean; fipeMotivo: string | null } = { taxa: null, taxaGravada: false, fipe: null, fipeGravada: false, fipeMotivo: null };
+    if (!contrato.taxaDescontoQuitacao || Number(contrato.taxaDescontoQuitacao.toString()) <= 0) {
+      r.taxa = await this.taxaVigente();
+      if (r.taxa) { await this.prisma.db.contratoCredito.update({ where: { id: contrato.id }, data: { taxaDescontoQuitacao: r.taxa } }); r.taxaGravada = true; }
+    }
+    if (contrato.ativo && !contrato.ativo.valorVenda) {
+      const f = await this.fipe.consultar({ marca: contrato.ativo.marca, modelo: contrato.ativo.modelo, anoModelo: contrato.ativo.anoModelo ?? contrato.ativo.anoFabricacao });
+      if (f.ok) { await this.prisma.db.ativo.update({ where: { id: contrato.ativo.id }, data: dadosFipe(f.fipe) }); r.fipe = f.fipe; r.fipeGravada = true; }
+      else r.fipeMotivo = f.motivo;
+    }
+    if (r.taxaGravada || r.fipeGravada) await this.prisma.db.logAuditoria.create({ data: { usuarioId, acao: 'legado_caso_completado', entidade: 'caso_migracao_legado', entidadeId: casoId, depois: { taxa: r.taxa, fipe: r.fipe ? { valor: r.fipe.valor, codigo: r.fipe.codigoFipe, modelo: r.fipe.modeloFipe, referencia: r.fipe.referencia } : null } as Prisma.InputJsonValue } });
+    return r;
+  }
+
   async pararAssinatura(casoId: string, usuarioId: string) {
     const caso = await this.prisma.db.casoMigracaoLegado.findUnique({ where: { id: casoId }, select: { id: true, status: true, assinaturaId: true, assinaturaParadaEm: true, nome: true, contratoId: true } });
     if (!caso) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Caso não encontrado' });
@@ -523,6 +594,17 @@ export class LegadoMigracaoService {
         veiculoExistente = { id: a.id, descricao: a.descricao };
       }
     }
+
+    // FIPE oficial (§26.11): valor de venda do veículo migrado, preenchido pelo
+    // sistema. Só consulta quando o veículo ainda não tem valor.
+    let fipe: ConsultaFipe | null = null;
+    let fipeMotivo: string | null = null;
+    const jaTemValor = veiculoExistente ? !!(await this.prisma.db.ativo.findUnique({ where: { id: veiculoExistente.id }, select: { valorVenda: true } }))?.valorVenda : false;
+    if (!jaTemValor) {
+      const r = await this.fipe.consultar({ marca: v.marca, modelo: v.modelo, anoModelo: v.anoModelo ?? v.anoFabricacao });
+      if (r.ok) fipe = r.fipe; else fipeMotivo = r.motivo;
+    }
+    const taxaDescontoMensal = await this.taxaVigente();
 
     // Termos essenciais
     const qtd = termos.parcelas.quantidade ?? 0;
@@ -671,9 +753,9 @@ export class LegadoMigracaoService {
 
     return {
       titular: { cpfCnpj: cpf, nome: termos.compradorNome ?? caso.nome, existente: titularExistente ? { id: titularExistente.id, nome: titularExistente.nome } : null },
-      veiculo: { descricao: descricaoVeiculo, placa, existente: veiculoExistente },
+      veiculo: { descricao: descricaoVeiculo, placa, existente: veiculoExistente, fipe, fipeMotivo },
       estruturaId: estrutura.id,
-      contrato: { numero, dataAssinatura, dataPrimeiraParcela: modo === 'ASAAS' ? (linhasParcela[0]?.cobradoEm ?? primeiraEm) : primeiraEm, numeroParcelas: qtd, valorParcela, valorTotal, valorEntrada: termos.entradaValor ?? 0, modoVencimentos: modo },
+      contrato: { numero, dataAssinatura, dataPrimeiraParcela: modo === 'ASAAS' ? (linhasParcela[0]?.cobradoEm ?? primeiraEm) : primeiraEm, numeroParcelas: qtd, valorParcela, valorTotal, valorEntrada: termos.entradaValor ?? 0, modoVencimentos: modo, taxaDescontoMensal },
       entrada,
       faturas,
       rps,

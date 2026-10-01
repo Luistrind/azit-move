@@ -109,8 +109,8 @@ export interface VinculoManual { cobrancaId: string; chave: string; em: string; 
 
 export interface PlanoMigracao {
   titular: { cpfCnpj: string; nome: string; existente: { id: string; nome: string } | null };
-  veiculo: { descricao: string; placa: string | null; existente: { id: string; descricao: string } | null };
-  contrato: { numero: string; dataAssinatura: string; dataPrimeiraParcela: string; numeroParcelas: number; valorParcela: number; valorTotal: number; valorEntrada: number; modoVencimentos: string };
+  veiculo: { descricao: string; placa: string | null; existente: { id: string; descricao: string } | null; fipe: { valor: number; codigoFipe: string; modeloFipe: string; anoModelo: number; referencia: string; alternativas: string[] } | null; fipeMotivo: string | null };
+  contrato: { numero: string; dataAssinatura: string; dataPrimeiraParcela: string; numeroParcelas: number; valorParcela: number; valorTotal: number; valorEntrada: number; modoVencimentos: string; taxaDescontoMensal: number | null };
   entrada: { valor: number; pagoEm: string; asaasChargeId: string | null } | null;
   faturas: { origem: string; vencimento: string; status: string; valorTotal: number; valorPago: number | null; pagoEm: string | null; asaasChargeId: string | null }[];
   rps: { rotulo: string; parcelas: { n: number; valor: number }[] }[];
@@ -228,6 +228,10 @@ export const migracaoLegadoService = {
   },
   async migrar(id: string): Promise<{ contratoId: string; titularId: string; contratoNumero: string; assinatura: { parada: boolean; motivo: string }; substituicao: { apagadas: number; emitidasAgora: number; mantidas: { vencimento: string; erro: string }[] } }> {
     const { data } = await api.post(`/api/v1/migracao-legado/casos/${id}/migrar`);
+    return data;
+  },
+  async completar(id: string): Promise<{ taxa: number | null; taxaGravada: boolean; fipe: { valor: number; modeloFipe: string; referencia: string } | null; fipeGravada: boolean; fipeMotivo: string | null }> {
+    const { data } = await api.post(`/api/v1/migracao-legado/casos/${id}/completar`);
     return data;
   },
   async limparCobrancasOrfas(id: string): Promise<{ apagadas: number; erro: string | null; vencimentos: string[] }> {

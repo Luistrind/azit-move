@@ -136,6 +136,13 @@ export class MigracaoLegadoController {
     return this.migracaoF3.migrar(id, user.id);
   }
 
+  @Post('casos/:id/completar')
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  @HttpCode(200)
+  completar(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.migracaoF3.completar(id, user.id);
+  }
+
   @Post('casos/:id/limpar-cobrancas-orfas')
   @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
   @HttpCode(200)

@@ -2153,3 +2153,28 @@ Pedido do Luís (30/09): depois de validar, um botão **Migrar**, visível só e
 - **Pré-requisitos que a prévia cobra:** CPF do comprador; estrutura jurídica "Azit"
   cadastrada em Capital; titular com esse CPF não pode estar excluído; placa não pode ter
   contrato ativo.
+
+### 26.11 Taxa de desconto e FIPE do contrato migrado (decisão Luís, 2026-10-01)
+
+Caso real: a novação de um cliente migrado trouxe o saldo no NOMINAL (115 × R$ 942,00 =
+R$ 108.330,00) e sem proteção. Duas causas, duas decisões:
+
+1. **Taxa de desconto = a mesma dos contratos gerados hoje.** O contrato Mod06 não declara
+   taxa mensal; sem ela, antecipação e novação não trazem os vincendos a valor presente. A
+   migração grava em `ContratoCredito.taxaDescontoQuitacao` a taxa mensal da Compra Parcelada
+   VIGENTE no Catálogo (sem Catálogo ativo, a última versão de parâmetros da simulação). É o
+   campo que quitação (§7.4) e novação já leem para contrato sem versão de parâmetros — nada
+   muda no caminho dos contratos nativos.
+2. **FIPE preenchida pelo sistema, da fonte oficial.** Valor de venda do veículo = FIPE. A
+   migração consulta a API da Fundação (`veiculos.fipe.org.br`): mês de referência vigente →
+   marca → modelo → ano → valor. O modelo é casado pelo nome SEM chute: a família tem que ser
+   a mesma ("HB20S" ≠ "HB20"), todas as palavras do nosso cadastro têm que estar no nome da
+   FIPE, e só a família não basta para escolher versão. Não casou → a FIPE fica vazia e a
+   prévia diz o motivo (corrige-se marca/modelo/ano nos termos). Gravados no ativo:
+   `valorVenda`, `fipeCodigo`, `fipeModelo`, `fipeReferencia`, `fipeConsultadaEm`. A prévia
+   mostra valor, modelo casado, código, mês e os modelos próximos, para conferência.
+3. **Proteção na novação do legado:** cálculo NOVO do Catálogo sobre a FIPE. Seguro e taxa do
+   Asaas não entram na base: a parcela do contrato migrado é só o parcelamento (§26.10), e os
+   dois são itens de serviço da fatura — futuros ficam fora, vencidos entram como débito.
+4. **Casos já migrados** são completados sozinhos na subida da aplicação (taxa e FIPE, só
+   onde está vazio) e há o botão "Completar taxa e FIPE" no caso.

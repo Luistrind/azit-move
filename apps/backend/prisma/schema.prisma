@@ -728,6 +728,11 @@ model Ativo {
   // SOZINHO com o contrato; o que a operação anota à mão é uma observação
   // livre (usada sobretudo nos veículos disponíveis — ex.: "na oficina").
   observacao           String?
+  // Tabela FIPE oficial (doc 02 §26.11): valorVenda = FIPE; aqui fica a prova da consulta
+  fipeCodigo           String?
+  fipeModelo           String?
+  fipeReferencia       String? // "outubro de 2026"
+  fipeConsultadaEm     DateTime?
 
   origemCapital    OrigemCapital?
   estruturaJuridica EstruturaJuridica?   @relation(fields: [estruturaJuridicaId], references: [id])
