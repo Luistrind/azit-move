@@ -595,8 +595,8 @@ export class LegadoMigracaoService {
       const embutido = Math.max(0, encargo - somadoNoPagamento);
       const principal = cobrado != null && comp ? Math.max(0, cobrado - segV - taxV - inter - extra - embutido) : valorParcela;
       const itens: ItemPlano[] = [{ tipo: 'PRINCIPAL', descricao: `Parcela ${l.numero}/${qtd} · Compra Parcelada ${descricaoVeiculo}`, valor: principal, parcela: 'veiculo' }];
-      if (segV > 0) itens.push({ tipo: 'SERVICO', descricao: `Proteção veicular · ${l.numero}/${qtd}`, valor: segV, parcela: null });
-      if (taxV > 0) itens.push({ tipo: 'SERVICO', descricao: `Taxa de boleto e PIX · ${l.numero}/${qtd}`, valor: taxV, parcela: null });
+      if (segV > 0) itens.push({ tipo: 'SERVICO', descricao: 'Proteção veicular', valor: segV, parcela: null });
+      if (taxV > 0) itens.push({ tipo: 'SERVICO', descricao: 'Taxa de boleto e PIX', valor: taxV, parcela: null });
       if (inter > 0) itens.push({ tipo: 'INTERMEDIARIA', descricao: `Intermediária (entrada diluída) · ${l.numero}/${qtd}`, valor: inter, parcela: null });
       if (encargo > 0) { itens.push({ tipo: 'ENCARGO', descricao: 'Multa e juros de atraso (legado)', valor: encargo, parcela: 'veiculo' }); resumo.encargos += encargo; }
       const idx = faturas.length;

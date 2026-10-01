@@ -475,7 +475,7 @@ export class ContratoService {
             tipo: 'SERVICO',
             // Doc 02 §4-A.4 (27/09): sem "embutida" — a proteção é produto distinto
             // da compra parcelada; o termo sugeria venda casada.
-            descricao: `Proteção veicular · ${cron.display}`,
+            descricao: 'Proteção veicular', // item recorrente: sem contador de parcela (pedido Luís 01/10)
             valor: reais(prot),
             credor: 'AZIT',
           },
