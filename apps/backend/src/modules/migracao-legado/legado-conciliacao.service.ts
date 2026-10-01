@@ -381,7 +381,14 @@ export class LegadoConciliacaoService {
     if (termos && camposFaltantesTermos(termos).length === 0) {
       const r = this.conciliar(caso);
       const reconhecidas = new Set(r.reconhecidas.map((d) => d.chave));
-      const semDesfecho = r.reconhecidas.filter((d) => !d.desfecho).length;
+      // Só conta reconhecimento de linha que AINDA diverge: uma regra nova pode
+      // ter passado a casar a linha e o reconhecimento antigo vira letra morta
+      // (caso real 01/10 — a tela não tinha onde refazer).
+      const aindaDivergem = new Set([
+        ...r.linhas.filter((l) => l.divergencia).map((l) => l.chave),
+        ...r.fora.filter((f) => f.divergencia).map((f) => `cobranca:${f.cobrancaId}`),
+      ]);
+      const semDesfecho = r.reconhecidas.filter((d) => !d.desfecho && aindaDivergem.has(d.chave)).length;
       if (semDesfecho) p.push(`${semDesfecho} divergência(s) reconhecida(s) sem desfecho — reconheça de novo escolhendo o desfecho`);
       const abertas = [
         ...r.linhas.filter((l) => l.divergencia && !reconhecidas.has(l.chave)).map((l) => l.chave),
