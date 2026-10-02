@@ -37,6 +37,8 @@ const reaisTxt = (c: number | null | undefined) => (c == null ? '' : (c / 100).t
 const centavosOuNull = (s: string) => (s.trim() === '' ? null : reaisParaCentavos(s));
 const intOuNull = (s: string) => (s.trim() === '' ? null : parseInt(s.replace(/\D/g, ''), 10) || null);
 const txtOuNull = (s: string) => (s.trim() === '' ? null : s.trim());
+// Ano digitado com dois dígitos ("24") vira 2024.
+const anoOuNull = (s: string) => { const n = intOuNull(s); return n != null && n < 100 ? 2000 + n : n; };
 
 const ROLE_LEGADO = ['ADMIN', 'DIRETOR', 'OPERADOR', 'FINANCEIRO'];
 // Migrar (F3) é a liberação para produção: só ADMIN/DIRETOR, caso a caso.
@@ -88,7 +90,7 @@ function termosDoForm(f: FormTermos): TermosContratoLegado {
     numeroOrigem: txtOuNull(f.numeroOrigem), dataAssinatura: txtOuNull(f.dataAssinatura), compradorNome: txtOuNull(f.compradorNome), compradorCpf: txtOuNull(f.compradorCpf),
     garantidorNome: txtOuNull(f.garantidorNome), garantidorCpf: txtOuNull(f.garantidorCpf),
     veiculo: {
-      marca: txtOuNull(f.marca), modelo: txtOuNull(f.modelo), anoFabricacao: intOuNull(f.anoFabricacao), anoModelo: intOuNull(f.anoModelo), cor: txtOuNull(f.cor),
+      marca: txtOuNull(f.marca), modelo: txtOuNull(f.modelo), anoFabricacao: anoOuNull(f.anoFabricacao), anoModelo: anoOuNull(f.anoModelo), cor: txtOuNull(f.cor),
       placa: txtOuNull(f.placa), chassi: txtOuNull(f.chassi), renavam: txtOuNull(f.renavam), origem: txtOuNull(f.origem), combustivel: txtOuNull(f.combustivel), quilometragem: intOuNull(f.quilometragem),
     },
     valorTotal: centavosOuNull(f.valorTotal), entradaValor: centavosOuNull(f.entradaValor),

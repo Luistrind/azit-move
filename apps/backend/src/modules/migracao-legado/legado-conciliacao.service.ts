@@ -38,6 +38,16 @@ export const ROTULO_TIPO_COBRANCA: Record<TipoCobrancaLegada, string> = {
   outra: 'Outra',
 };
 
+const anoQuatroDigitos = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 100 ? 2000 + v : v);
+
+// Nome do campo como o operador vê na tela — para a mensagem de erro dizer ONDE está o problema.
+const ROTULO_CAMPO_TERMOS: Record<string, string> = {
+  numeroOrigem: 'Nº do contrato', dataAssinatura: 'Assinatura', compradorCpf: 'CPF do comprador', garantidorCpf: 'CPF do garantidor',
+  'veiculo.anoFabricacao': 'Ano fab.', 'veiculo.anoModelo': 'Ano modelo', 'veiculo.placa': 'Placa', 'veiculo.chassi': 'Chassi', 'veiculo.quilometragem': 'Km',
+  valorTotal: 'Valor total', entradaValor: 'Entrada no ato', 'parcelas.quantidade': 'Nº de parcelas', 'parcelas.valor': 'Valor da parcela', 'parcelas.primeiraEm': '1ª parcela', 'parcelas.total': 'Total parcelado',
+  seguroSemanal: 'Seguro / semana', taxaSemanal: 'Taxa mensagens / semana', multaAtrasoPct: 'Multa atraso %', jurosMensalPct: 'Juros % a.m.', garantiaDias: 'Garantia (dias)',
+};
+
 const serieSchema = z.object({
   total: z.number().int().min(0).nullable(),
   quantidade: z.number().int().min(1).nullable(),
@@ -54,8 +64,9 @@ export const termosSchema = z.object({
   garantidorCpf: z.string().transform((s) => s.replace(/\D/g, '') || null).nullable(),
   veiculo: z.object({
     marca: texto, modelo: texto,
-    anoFabricacao: z.number().int().min(1990).max(2100).nullable(),
-    anoModelo: z.number().int().min(1990).max(2100).nullable(),
+    // Ano com dois dígitos ("24", como no contrato "2023/24") vira 2024 (caso real 01/10).
+    anoFabricacao: z.preprocess(anoQuatroDigitos, z.number().int().min(1990).max(2100).nullable()),
+    anoModelo: z.preprocess(anoQuatroDigitos, z.number().int().min(1990).max(2100).nullable()),
     cor: texto,
     placa: z.string().transform((s) => s.replace(/[\s-]/g, '').toUpperCase() || null).nullable(),
     chassi: z.string().transform((s) => s.trim().toUpperCase() || null).nullable(),
@@ -95,7 +106,9 @@ export class LegadoConciliacaoService {
     this.exigirEditavel(caso.status);
     const parsed = termosSchema.safeParse(corpo);
     if (!parsed.success) {
-      throw new UnprocessableEntityException({ erro: 'termos_invalidos', mensagem: 'Termos com campo inválido', campos: parsed.error.issues.map((i) => ({ campo: i.path.join('.'), mensagem: i.message })) });
+      const campos = parsed.error.issues.map((i) => ({ campo: i.path.join('.'), mensagem: i.message }));
+      const nomes = [...new Set(campos.map((c) => ROTULO_CAMPO_TERMOS[c.campo] ?? c.campo))];
+      throw new UnprocessableEntityException({ erro: 'termos_invalidos', mensagem: `Confira ${nomes.length > 1 ? 'os campos' : 'o campo'}: ${nomes.join(', ')}. Nada foi salvo.`, campos });
     }
     const termos = parsed.data as TermosContratoLegado;
     await this.prisma.db.casoMigracaoLegado.update({

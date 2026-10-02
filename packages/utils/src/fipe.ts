@@ -10,7 +10,8 @@ export interface ModeloFipe { Label: string; Value: string | number }
 
 const norm = (s: string) =>
   s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9. ]/g, ' ').replace(/\s+/g, ' ').trim();
-const palavras = (s: string) => norm(s).split(' ').filter(Boolean);
+// O ano às vezes vem colado no modelo ("HB20s 2024") — não é parte do nome na FIPE.
+const palavras = (s: string) => norm(s).split(' ').filter(Boolean).filter((p) => !/^(19|20)\d{2}$/.test(p));
 
 export function escolherModeloFipe(nossoModelo: string, candidatos: ModeloFipe[]): { modelo: ModeloFipe; sobras: number; alternativas: ModeloFipe[] } | null {
   const nossas = palavras(nossoModelo);

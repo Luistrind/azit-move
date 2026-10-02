@@ -26,3 +26,13 @@ describe('escolherModeloFipe', () => {
     expect(valorFipeParaCentavos('')).toBeNull();
   });
 });
+
+describe('modelo com o ano junto', () => {
+  const HB20S = ['HB20S Comfort 1.0  Flex 12V Mec.', 'HB20S Vision 1.0 Flex 12V Mec.'].map((Label, i) => ({ Label, Value: String(i) }));
+  it('"HB20S 1.0 COMFORT 2024": o ano não atrapalha o casamento', () => {
+    expect(escolherModeloFipe('HB20S 1.0 COMFORT 2024', HB20S)?.modelo.Label).toBe('HB20S Comfort 1.0  Flex 12V Mec.');
+  });
+  it('"HB20s 2024": só família + ano não escolhe versão', () => {
+    expect(escolherModeloFipe('HB20s 2024', HB20S)).toBeNull();
+  });
+});

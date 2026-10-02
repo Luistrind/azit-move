@@ -74,7 +74,15 @@ export class FipeService {
         this.cacheModelos.set(chaveModelos, modelos);
       }
       const escolha = escolherModeloFipe(veiculo.modelo, modelos);
-      if (!escolha) return { ok: false, motivo: `modelo "${veiculo.modelo}" não casou com nenhum modelo ${marca.Label} da FIPE` };
+      if (!escolha) {
+        const semVersao = veiculo.modelo.trim().split(/\s+/).filter((p) => !/^(19|20)\d{2}$/.test(p)).length < 2;
+        return {
+          ok: false,
+          motivo: semVersao
+            ? `o modelo "${veiculo.modelo}" não diz a versão — informe como no documento do veículo (ex.: "HB20S 1.0 COMFORT")`
+            : `modelo "${veiculo.modelo}" não casou com nenhum modelo ${marca.Label} da FIPE`,
+        };
+      }
 
       // O modelo escolhido pode não existir naquele ano — tenta as alternativas na ordem.
       for (const m of [escolha.modelo, ...escolha.alternativas]) {

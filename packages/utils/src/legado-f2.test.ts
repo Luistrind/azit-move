@@ -415,3 +415,12 @@ describe('modelo do veículo sem o carimbo da assinatura', () => {
     expect(extrairTermosDoTexto(texto).termos.veiculo.modelo).toBe('HB20S 1.0 COMFORT');
   });
 });
+
+// Caso real 01/10 (Rubens): "Ano de Fabricação/Modelo: 2023/24".
+describe('ano modelo com dois dígitos', () => {
+  it('2023/24 vira 2023 e 2024', () => {
+    const r = extrairTermosDoTexto(TEXTO_MOD06.replace('2023/2024', '2023/24'));
+    expect(r.termos.veiculo.anoFabricacao).toBe(2023);
+    expect(r.termos.veiculo.anoModelo).toBe(2024);
+  });
+});

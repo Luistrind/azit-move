@@ -179,8 +179,9 @@ export function extrairTermosDoTexto(textoBruto: string): ExtracaoTermos {
     termos.veiculo.marca = m.trim();
     termos.veiculo.modelo = resto.join('/').trim() || null;
   }
-  const anos = t.match(/Ano de Fabrica[çc][ãa]o\/Modelo:\s*(\d{4})\/(\d{4})/i);
-  if (anos) { termos.veiculo.anoFabricacao = +anos[1]; termos.veiculo.anoModelo = +anos[2]; }
+  // "2023/2024" ou "2023/24" (caso real 01/10): ano modelo com dois dígitos vira 20xx.
+  const anos = t.match(/Ano de Fabrica[çc][ãa]o\/Modelo:\s*(\d{4})\s*\/\s*(\d{4}|\d{2})\b/i);
+  if (anos) { termos.veiculo.anoFabricacao = +anos[1]; termos.veiculo.anoModelo = anos[2].length === 2 ? 2000 + +anos[2] : +anos[2]; }
   termos.veiculo.cor = pega(t, /Cor:\s*([A-Za-zÀ-ú ]+?)\s+(?:Placa|Chassi|RENAVAM)/i);
   termos.veiculo.placa = pega(t, /Placa:\s*([A-Z]{3}\s?-?\s?\d[A-Z0-9]\d{2})/i)?.replace(/[\s-]/g, '').toUpperCase() ?? null;
   termos.veiculo.chassi = pega(t, /Chassi:\s*([A-HJ-NPR-Z0-9]{17})/i)?.toUpperCase() ?? null;
