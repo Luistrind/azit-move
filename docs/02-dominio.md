@@ -2207,3 +2207,23 @@ R$ 108.330,00) e sem proteção. Duas causas, duas decisões:
    multa e mora, como em qualquer contrato.
    - A taxa gravada em `taxaDescontoQuitacao` (§26.11) segue valendo para a **antecipação e
      quitação** do migrado; a novação usa a taxa do próprio produto.
+
+### 26.13 Contrato anexado no caso errado (definição Luís, 2026-10-02)
+
+O caso da bancada **é** o cliente do Asaas: nome, CPF, assinatura e cobranças vêm do cadastro
+de lá. O contrato (PDF + termos) é anexado pelo operador. Quando o CPF do comprador no
+contrato não é **exatamente** o CPF do cliente do caso, são duas pessoas diferentes — e migrar
+assim criaria o titular de um com as cobranças do outro.
+
+1. **A comparação é por CPF exato** (só dígitos), feita na hora sobre os termos atuais, nunca
+   por nome.
+2. **Trava a validação**: caso com CPF divergente não valida. Deixou de ser só aviso.
+3. **A tela mostra para onde o contrato deveria ir**: os casos cujo cliente no Asaas tem
+   exatamente o CPF do contrato (pode haver mais de um cadastro no Asaas para o mesmo CPF).
+4. **"Mover o contrato para este caso"** leva PDF e termos ao caso certo e deixa o de origem
+   sem contrato — os reconhecimentos de divergência e vínculos manuais da origem são apagados,
+   porque foram feitos contra o cronograma do contrato errado. O destino precisa estar sem
+   contrato e não pode estar validado nem migrado.
+5. **"Retirar o contrato deste caso"** limpa o caso quando o cliente certo ainda não está na
+   fila (CPF errado no cadastro do Asaas: corrige-se lá e lê-se o Asaas de novo).
+6. As cobranças lidas do Asaas nunca mudam de caso. Tudo fica na auditoria.

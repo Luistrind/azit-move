@@ -338,7 +338,38 @@ export function MigracaoLegadoCasoPage() {
           {c.extracaoPdf && (
             <div className="mt-[6px] text-[11px]" style={{ color: c.extracaoPdf.cpfDiverge ? CASO_LEGADO_STATUS_COLORS.DESCARTADO.fg : 'var(--text-muted)' }}>
               {c.extracaoPdf.erro ? `Leitura do PDF falhou: ${c.extracaoPdf.erro}` : c.extracaoPdf.modeloReconhecido ? `Modelo Mod06 reconhecido — ${c.extracaoPdf.extraidos.length} campo(s) lidos do PDF.` : 'PDF de outro modelo — termos preenchidos à mão.'}
-              {c.extracaoPdf.cpfDiverge && ' ATENÇÃO: o CPF do comprador no contrato é diferente do CPF do cliente no Asaas.'}
+            </div>
+          )}
+          {c.contratoDeOutroCliente && (
+            <div className="mt-[8px] rounded-[10px] p-[10px] text-[12px]" style={{ background: CASO_LEGADO_STATUS_COLORS.DESCARTADO.bg, color: CASO_LEGADO_STATUS_COLORS.DESCARTADO.fg }}>
+              <div className="font-bold">Este contrato é de outro cliente</div>
+              <div className="mt-[2px]">
+                O contrato é de <b>{c.contratoDeOutroCliente.nomeContrato ?? 'comprador sem nome'}</b> (CPF {cpfBR(c.contratoDeOutroCliente.cpfContrato)}), mas as cobranças deste caso são de <b>{c.nome}</b> (CPF {cpfBR(c.cpfCnpj)}) no Asaas. O caso não pode ser validado assim.
+              </div>
+              {c.contratoDeOutroCliente.casos.length === 0 && (
+                <div className="mt-[6px]">Nenhum cliente lido do Asaas tem exatamente o CPF {cpfBR(c.contratoDeOutroCliente.cpfContrato)}. Confira o CPF no cadastro do Asaas e leia o Asaas de novo na fila — ou retire o contrato deste caso.</div>
+              )}
+              {c.contratoDeOutroCliente.casos.map((d) => (
+                <div key={d.id} className="mt-[6px] flex flex-wrap items-center gap-[8px]">
+                  <span>Cliente do Asaas com este CPF: <Link to={`/migracao-legado/${d.id}`} className="font-bold underline">{d.nome}</Link> · {d.asaasCustomerId} · {d.cobrancasPagas} paga(s) de {d.totalCobrancas} cobrança(s)</span>
+                  {editavel && !d.temContrato && !d.fechado && (
+                    <button className={btn} style={btnPri} disabled={ocupado}
+                      onClick={() => { if (window.confirm(`Mover o PDF e os termos para o caso de ${d.nome}? Este caso fica sem contrato.`)) void rodar(() => svc.moverContrato(id, d.id), `Contrato movido para o caso de ${d.nome}`); }}>
+                      Mover o contrato para este caso
+                    </button>
+                  )}
+                  {d.temContrato && <span>— já tem contrato anexado; abra e confira.</span>}
+                  {!d.temContrato && d.fechado && <span>— caso já validado ou migrado.</span>}
+                </div>
+              ))}
+              {editavel && (
+                <div className="mt-[8px]">
+                  <button className={btn} style={btnSec} disabled={ocupado}
+                    onClick={() => { if (window.confirm('Retirar o PDF e os termos deste caso? As cobranças lidas do Asaas ficam.')) void rodar(() => svc.retirarContrato(id), 'Contrato retirado deste caso'); }}>
+                    Retirar o contrato deste caso
+                  </button>
+                </div>
+              )}
             </div>
           )}
           <fieldset disabled={!editavel} className="mt-[10px] grid grid-cols-2 gap-[8px] sm:grid-cols-3 lg:grid-cols-4">

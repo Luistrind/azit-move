@@ -283,6 +283,7 @@ export class MigracaoLegadoService {
     const termos = (c.termos as TermosContratoLegado | null) ?? null;
     const extracao = c.extracaoPdf as { modeloReconhecido?: boolean; extraidos?: string[]; faltantes?: string[]; cpfDiverge?: boolean; erro?: string } | null;
     const conc = this.conciliacao.conciliar(c);
+    const contratoDeOutroCliente = await this.conciliacao.contratoDeOutroCliente(c);
     return {
       ...this.casoParaApi(c),
       email: c.email,
@@ -305,8 +306,10 @@ export class MigracaoLegadoService {
       termosAtualizadosEm: c.termosAtualizadosEm?.toISOString() ?? null,
       pdf: c.contratoPdfRef ? { nome: c.contratoPdfNome, em: c.contratoPdfEm?.toISOString() ?? null } : null,
       extracaoPdf: extracao
-        ? { modeloReconhecido: !!extracao.modeloReconhecido, extraidos: extracao.extraidos ?? [], faltantes: extracao.faltantes ?? [], cpfDiverge: !!extracao.cpfDiverge, erro: extracao.erro ?? null }
+        ? { modeloReconhecido: !!extracao.modeloReconhecido, extraidos: extracao.extraidos ?? [], faltantes: extracao.faltantes ?? [], cpfDiverge: !!contratoDeOutroCliente, erro: extracao.erro ?? null }
         : null,
+      // Contrato de outro CPF anexado aqui (02/10): para onde ele deveria ir.
+      contratoDeOutroCliente,
       cobrancas: c.cobrancas.map((p) => this.conciliacao.cobrancaParaApi(p)),
       conciliacao: { linhas: conc.linhas, fora: conc.fora, resumo: conc.resumo, incompleta: conc.incompleta },
       divergenciasReconhecidas: conc.reconhecidas,

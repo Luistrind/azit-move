@@ -69,6 +69,19 @@ export class MigracaoLegadoController {
     return this.conciliacao.anexarPdf(id, body, user.id);
   }
 
+  // Contrato anexado no caso errado (02/10): leva PDF + termos ao caso do CPF
+  // certo, ou só retira daqui.
+  @Post('casos/:id/contrato/mover')
+  @HttpCode(200)
+  moverContrato(@Param('id') id: string, @Body() body: { destinoId: string }, @CurrentUser() user: UsuarioAutenticado) {
+    return this.conciliacao.moverContrato(id, body?.destinoId ?? '', user.id);
+  }
+
+  @Delete('casos/:id/contrato')
+  retirarContrato(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.conciliacao.retirarContrato(id, user.id);
+  }
+
   @Get('casos/:id/pdf')
   async baixarPdf(@Param('id') id: string, @Res() res: Resposta) {
     const { nome, buffer } = await this.conciliacao.baixarPdf(id);

@@ -134,6 +134,10 @@ export interface CasoLegadoDetalhe extends CasoLegado {
   termosAtualizadosEm: string | null;
   pdf: { nome: string | null; em: string | null } | null;
   extracaoPdf: { modeloReconhecido: boolean; extraidos: string[]; faltantes: string[]; cpfDiverge: boolean; erro: string | null } | null;
+  contratoDeOutroCliente: {
+    cpfContrato: string; nomeContrato: string | null;
+    casos: { id: string; nome: string; status: string; asaasCustomerId: string; totalCobrancas: number; cobrancasPagas: number; temContrato: boolean; fechado: boolean }[];
+  } | null;
   conciliacao: { linhas: LinhaConciliacao[]; fora: ForaDoCronograma[]; resumo: ResumoConciliacao; incompleta: boolean };
   divergenciasReconhecidas: DivergenciaReconhecida[];
   vinculosManuais: VinculoManual[];
@@ -188,6 +192,14 @@ export const migracaoLegadoService = {
   // ---- F2 ----
   async salvarTermos(id: string, termos: TermosContratoLegado): Promise<{ salvo: boolean; faltantes: string[] }> {
     const { data } = await api.put(`/api/v1/migracao-legado/casos/${id}/termos`, termos);
+    return data;
+  },
+  async moverContrato(id: string, destinoId: string): Promise<{ movido: boolean; destinoId: string; destinoNome: string }> {
+    const { data } = await api.post(`/api/v1/migracao-legado/casos/${id}/contrato/mover`, { destinoId });
+    return data;
+  },
+  async retirarContrato(id: string): Promise<{ retirado: boolean }> {
+    const { data } = await api.delete(`/api/v1/migracao-legado/casos/${id}/contrato`);
     return data;
   },
   async anexarPdf(id: string, nome: string, conteudo: string): Promise<{ anexado: boolean; modeloReconhecido: boolean; extraidos: string[]; faltantes: string[]; cpfDiverge: boolean; preenchido: boolean; erroLeitura: string | null }> {

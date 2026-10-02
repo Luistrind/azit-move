@@ -95,6 +95,14 @@ const iso = (d: Date | null | undefined) => d?.toISOString().slice(0, 10) ?? nul
 type CobrancaBanco = Prisma.CobrancaLegadaGetPayload<object>;
 export interface VinculoManual { cobrancaId: string; chave: string; em: string; por: string }
 type CasoConciliavel = { termos: unknown; cobrancas: CobrancaBanco[]; divergenciasReconhecidas: unknown; vinculosManuais: unknown };
+const soDigitos = (v: string | null | undefined) => (v ?? '').replace(/\D/g, '');
+// CPF do comprador no contrato × CPF do cliente no Asaas (comparação EXATA, só
+// dígitos). Calculado na hora, sobre os termos atuais — não o que o PDF dizia.
+export const cpfDoContratoDiverge = (caso: { cpfCnpj: string | null; termos: unknown }) => {
+  const doContrato = soDigitos((caso.termos as TermosContratoLegado | null)?.compradorCpf);
+  const doAsaas = soDigitos(caso.cpfCnpj);
+  return !!doContrato && !!doAsaas && doContrato !== doAsaas;
+};
 
 @Injectable()
 export class LegadoConciliacaoService {
@@ -200,6 +208,112 @@ export class LegadoConciliacaoService {
       preenchido,
       erroLeitura,
     };
+  }
+
+  // ---------------- Contrato anexado no caso errado (02/10) ----------------
+
+  // O caso É o cliente do Asaas (cobranças, assinatura). Quando o contrato
+  // anexado é de outro CPF, mostra os casos cujo cliente no Asaas tem
+  // EXATAMENTE o CPF do contrato — para onde o contrato deveria ir.
+  async contratoDeOutroCliente(caso: { id: string; cpfCnpj: string | null; termos: unknown }) {
+    if (!cpfDoContratoDiverge(caso)) return null;
+    const termos = caso.termos as TermosContratoLegado;
+    const cpf = soDigitos(termos.compradorCpf);
+    const casos = await this.prisma.db.casoMigracaoLegado.findMany({
+      where: { cpfCnpj: cpf, id: { not: caso.id } },
+      select: { id: true, nome: true, status: true, asaasCustomerId: true, contratoPdfRef: true, termos: true, totalCobrancas: true, cobrancasPagas: true },
+      orderBy: { totalCobrancas: 'desc' },
+    });
+    return {
+      cpfContrato: cpf,
+      nomeContrato: termos.compradorNome ?? null,
+      casos: casos.map((d) => ({
+        id: d.id,
+        nome: d.nome,
+        status: d.status,
+        asaasCustomerId: d.asaasCustomerId,
+        totalCobrancas: d.totalCobrancas,
+        cobrancasPagas: d.cobrancasPagas,
+        temContrato: !!d.contratoPdfRef || !!d.termos,
+        fechado: d.status === 'MIGRADO' || d.status === 'VALIDADO',
+      })),
+    };
+  }
+
+  // Leva PDF + termos para o caso do CPF certo e deixa este limpo (sem
+  // contrato, sem reconhecimentos nem vínculos — eram de outro cronograma).
+  async moverContrato(origemId: string, destinoId: string, usuarioId: string) {
+    const origem = await this.carregar(origemId);
+    this.exigirEditavel(origem.status);
+    if (!origem.contratoPdfRef && !origem.termos) throw new UnprocessableEntityException({ erro: 'sem_contrato', mensagem: 'Este caso não tem contrato para mover' });
+    if (origemId === destinoId) throw new UnprocessableEntityException({ erro: 'mesmo_caso', mensagem: 'O destino é o próprio caso' });
+    const destino = await this.carregar(destinoId);
+    this.exigirEditavel(destino.status);
+    const termos = origem.termos as TermosContratoLegado | null;
+    const cpf = soDigitos(termos?.compradorCpf);
+    if (!cpf || cpf !== soDigitos(destino.cpfCnpj)) {
+      throw new UnprocessableEntityException({ erro: 'cpf_nao_confere', mensagem: 'O CPF do comprador no contrato não é o CPF do cliente do caso de destino' });
+    }
+    if (destino.contratoPdfRef || destino.termos) {
+      throw new UnprocessableEntityException({ erro: 'destino_com_contrato', mensagem: `O caso de ${destino.nome} já tem contrato — abra-o e confira antes de mover` });
+    }
+    let novoRef: string | null = null;
+    if (origem.contratoPdfRef) {
+      novoRef = `${destinoId}.pdf`;
+      await fs.mkdir(UPLOADS_DIR, { recursive: true });
+      await fs.copyFile(join(UPLOADS_DIR, origem.contratoPdfRef), join(UPLOADS_DIR, novoRef));
+    }
+    // "Parcela já inclui seguro e taxa" foi sugerido contra o valor cobrado do
+    // caso de origem: refaz a sugestão contra o valor cobrado do destino.
+    let termosDestino = termos;
+    if (termosDestino) {
+      const cobrada = centavos(destino.valorParcelaPadrao);
+      const { parcelaIncluiServicos: _descartada, ...semMarca } = termosDestino;
+      const cheia = cobrada != null && semMarca.parcelas.valor === cobrada && (semMarca.seguroSemanal + semMarca.taxaSemanal) > 0;
+      termosDestino = (cheia ? { ...semMarca, parcelaIncluiServicos: true } : semMarca) as TermosContratoLegado;
+    }
+    const extracao = origem.extracaoPdf as Record<string, unknown> | null;
+    await this.prisma.db.$transaction([
+      this.prisma.db.casoMigracaoLegado.update({
+        where: { id: destinoId },
+        data: {
+          contratoPdfRef: novoRef,
+          contratoPdfNome: origem.contratoPdfNome,
+          contratoPdfEm: origem.contratoPdfEm,
+          extracaoPdf: (extracao ? { ...extracao, cpfDiverge: false } : Prisma.JsonNull) as Prisma.InputJsonValue,
+          termos: (termosDestino ?? Prisma.JsonNull) as unknown as Prisma.InputJsonValue,
+          termosAtualizadosEm: termosDestino ? new Date() : null,
+        },
+      }),
+      this.prisma.db.casoMigracaoLegado.update({ where: { id: origemId }, data: CONTRATO_LIMPO }),
+      this.prisma.db.logAuditoria.create({
+        data: { usuarioId, acao: 'legado_contrato_movido', entidade: 'caso_migracao_legado', entidadeId: origemId, antes: { pdf: origem.contratoPdfNome, cpfContrato: cpf }, depois: { destinoId, destinoNome: destino.nome } },
+      }),
+      this.prisma.db.logAuditoria.create({
+        data: { usuarioId, acao: 'legado_contrato_recebido', entidade: 'caso_migracao_legado', entidadeId: destinoId, depois: { origemId, origemNome: origem.nome, pdf: origem.contratoPdfNome } },
+      }),
+    ]);
+    if (origem.contratoPdfRef) await fs.unlink(join(UPLOADS_DIR, origem.contratoPdfRef)).catch(() => undefined);
+    await this.interpretarCobrancasDoCaso(origemId, 'regra');
+    await this.interpretarCobrancasDoCaso(destinoId, 'regra');
+    return { movido: true, destinoId, destinoNome: destino.nome };
+  }
+
+  // Tira o contrato do caso (PDF + termos) sem levar a lugar nenhum — para
+  // quando o cliente certo ainda não está na fila.
+  async retirarContrato(casoId: string, usuarioId: string) {
+    const caso = await this.carregar(casoId);
+    this.exigirEditavel(caso.status);
+    if (!caso.contratoPdfRef && !caso.termos) throw new UnprocessableEntityException({ erro: 'sem_contrato', mensagem: 'Este caso não tem contrato para retirar' });
+    await this.prisma.db.$transaction([
+      this.prisma.db.casoMigracaoLegado.update({ where: { id: casoId }, data: CONTRATO_LIMPO }),
+      this.prisma.db.logAuditoria.create({
+        data: { usuarioId, acao: 'legado_contrato_retirado', entidade: 'caso_migracao_legado', entidadeId: casoId, antes: { pdf: caso.contratoPdfNome, termos: (caso.termos ?? Prisma.JsonNull) as Prisma.InputJsonValue } },
+      }),
+    ]);
+    if (caso.contratoPdfRef) await fs.unlink(join(UPLOADS_DIR, caso.contratoPdfRef)).catch(() => undefined);
+    await this.interpretarCobrancasDoCaso(casoId, 'regra');
+    return { retirado: true };
   }
 
   async baixarPdf(casoId: string) {
@@ -387,8 +501,11 @@ export class LegadoConciliacaoService {
   // ---------------- Validação ----------------
 
   // O que ainda impede validar — a tela mostra a lista, o botão só libera vazio.
-  pendenciasParaValidar(caso: CasoConciliavel & { contratoPdfRef: string | null }): string[] {
+  pendenciasParaValidar(caso: CasoConciliavel & { contratoPdfRef: string | null; cpfCnpj: string | null }): string[] {
     const p: string[] = [];
+    // Contrato de um CPF nas cobranças de outro mistura duas pessoas na migração
+    // (definição Luís 02/10: o cliente do caso é o CPF EXATO do Asaas).
+    if (cpfDoContratoDiverge(caso)) p.push('O CPF do comprador no contrato é diferente do CPF do cliente no Asaas — mova o contrato para o caso certo ou corrija o CPF');
     const termos = termosEfetivos(caso.termos as TermosContratoLegado | null);
     if (!termos) p.push('Termos do contrato não preenchidos');
     else {
@@ -480,6 +597,18 @@ export class LegadoConciliacaoService {
     }
   }
 }
+
+// Caso sem contrato: some o lado PopHub e tudo o que foi decidido sobre ele.
+const CONTRATO_LIMPO = {
+  contratoPdfRef: null,
+  contratoPdfNome: null,
+  contratoPdfEm: null,
+  extracaoPdf: Prisma.JsonNull,
+  termos: Prisma.JsonNull,
+  termosAtualizadosEm: null,
+  divergenciasReconhecidas: Prisma.JsonNull,
+  vinculosManuais: Prisma.JsonNull,
+} as const;
 
 export interface DivergenciaReconhecida {
   chave: string; // parcela:N | intermediaria:N | entrada | cobranca:<id>

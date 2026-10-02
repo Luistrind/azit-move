@@ -1069,7 +1069,9 @@ não o status do Asaas.
 | Método | Rota | O que faz |
 |---|---|---|
 | PUT | `/migracao-legado/casos/:id/termos` | Grava os termos do contrato (`TermosContratoLegado`, valores em centavos). 422 `termos_invalidos` com `campos`. Reaplica a leitura por regra nas cobranças não decididas pelo operador |
-| POST | `/migracao-legado/casos/:id/pdf` | `{ nome, conteudo }` (base64). Guarda em `uploads/legado`, lê o texto (pdf-parse) e, se for o modelo Mod06, **pré-preenche** os termos vazios. Devolve `modeloReconhecido`, `extraidos`, `faltantes`, `cpfDiverge` (CPF do contrato ≠ CPF do cliente no Asaas — aviso, não trava) |
+| POST | `/migracao-legado/casos/:id/pdf` | `{ nome, conteudo }` (base64). Guarda em `uploads/legado`, lê o texto (pdf-parse) e, se for o modelo Mod06, **pré-preenche** os termos vazios. Devolve `modeloReconhecido`, `extraidos`, `faltantes`, `cpfDiverge` (CPF do contrato ≠ CPF do cliente no Asaas — **trava a validação**, doc 02 §26.13) |
+| POST | `/migracao-legado/casos/:id/contrato/mover` | `{ destinoId }` — leva PDF + termos ao caso cujo cliente no Asaas tem exatamente o CPF do contrato; a origem fica sem contrato, reconhecimentos e vínculos. 422 `cpf_nao_confere` / `destino_com_contrato` / `caso_fechado` / `sem_contrato`. O detalhe do caso traz `contratoDeOutroCliente: { cpfContrato, nomeContrato, casos[] } \| null` |
+| DELETE | `/migracao-legado/casos/:id/contrato` | Retira PDF + termos do caso (as cobranças ficam) |
 | GET | `/migracao-legado/casos/:id/pdf` | O PDF anexado (`application/pdf`, inline) |
 | POST | `/migracao-legado/casos/:id/interpretar` | Reaplica as regras de leitura nas cobranças que o operador não decidiu |
 | PUT | `/migracao-legado/casos/:id/cobrancas/:cobrancaId/interpretacao` | Decisão do operador: `{ tipo, parcelamento?, seguro?, taxa?, intermediaria?, observacao? }`. A decomposição precisa somar o valor original (422 `decomposicao_nao_fecha`). Fica `interpretadoPor: operador` e nenhuma releitura sobrescreve |
