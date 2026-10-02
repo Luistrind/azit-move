@@ -7,6 +7,7 @@ import {
   Param,
   Post,
   Query,
+  UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
@@ -19,6 +20,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { PrismaService } from '../../database/prisma.service';
 import { FaturaService } from './fatura.service';
+import { AsaasLeituraService } from '../asaas/asaas-leitura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
 
 @Controller()
@@ -26,6 +28,7 @@ export class CobrancaController {
   constructor(
     private readonly fatura: FaturaService,
     private readonly prisma: PrismaService,
+    private readonly asaasLeitura: AsaasLeituraService,
     @InjectQueue(QUEUE_NAMES.PAGAMENTO_RECEBIDO)
     private readonly filaRecebido: Queue,
   ) {}
@@ -97,6 +100,33 @@ export class CobrancaController {
     return this.fatura.emitirCobrancaManual(id, dto);
   }
 
+  // Conferir pagamento no Asaas (02/10): a fatura tem cobrança e segue em aberto
+  // no sistema — consulta a cobrança AO VIVO e, se o Asaas diz que foi paga,
+  // enfileira a MESMA conciliação do webhook (valor e data reais). Serve para
+  // pagamento que o webhook não entregou (fila pausada, servidor fora) ou que
+  // ficou como parcial por defeito já corrigido. Nunca baixa nada sem o Asaas
+  // confirmar o recebimento.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.FINANCEIRO, RoleUsuario.DIRETOR)
+  @Post('faturas/:id/conferir-pagamento')
+  @HttpCode(200)
+  async conferirPagamento(@Param('id') id: string) {
+    const fatura = await this.prisma.db.fatura.findFirst({ where: { id }, select: { id: true, status: true, asaasChargeId: true, dataVencimento: true } });
+    if (!fatura) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Fatura não encontrada' });
+    if (fatura.status === 'PAGA' || fatura.status === 'PAGA_EM_ATRASO') return { enfileirado: false, statusAsaas: null, motivo: 'A fatura já está paga no sistema' };
+    if (!fatura.asaasChargeId) throw new UnprocessableEntityException({ erro: 'sem_cobranca', mensagem: 'Esta fatura não tem cobrança no Asaas' });
+    if (this.asaasLeitura.ambiente === 'simulado') throw new UnprocessableEntityException({ erro: 'asaas_simulado', mensagem: 'Asaas em modo simulado — não há o que conferir' });
+    const pg = await this.asaasLeitura.requisicao<{ status: string; value: number; paymentDate?: string | null; clientPaymentDate?: string | null; confirmedDate?: string | null; dueDate: string }>('GET', `/payments/${fatura.asaasChargeId}`);
+    const recebida = ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'].includes(pg.status);
+    if (!recebida) return { enfileirado: false, statusAsaas: pg.status, motivo: 'O Asaas ainda não registra o recebimento desta cobrança' };
+    await this.filaRecebido.add('conciliar', {
+      faturaId: fatura.id,
+      paymentDate: pg.clientPaymentDate ?? pg.paymentDate ?? pg.confirmedDate ?? dataHojeBrasil(),
+      dueDate: pg.dueDate,
+      valor: Math.round(pg.value * 100),
+    });
+    return { enfileirado: true, statusAsaas: pg.status, motivo: null };
+  }
+
   // Dev: simula o pagamento de UMA fatura (o que o cliente paga é a fatura, não a
   // parcela) — enfileira o MESMO job do webhook do Asaas (conciliação real).
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
@@ -106,7 +136,7 @@ export class CobrancaController {
   async simularPagamentoFatura(@Param('faturaId') faturaId: string) {
     const fatura = await this.prisma.db.fatura.findFirst({
       where: { id: faturaId },
-      select: { id: true, status: true, dataVencimento: true },
+      select: { id: true, status: true, dataVencimento: true, valorTotal: true },
     });
     if (!fatura) {
       throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Fatura não encontrada' });
@@ -118,7 +148,9 @@ export class CobrancaController {
       faturaId: fatura.id,
       paymentDate: dataHojeBrasil(),
       dueDate: fatura.dataVencimento.toISOString().slice(0, 10),
-      valor: 0,
+      // Valor REAL da fatura (02/10): com 0 a simulação pulava a checagem de
+      // pagamento parcial e escondeu o defeito da proteção somada em dobro.
+      valor: Math.round(Number(fatura.valorTotal.toString()) * 100),
     });
     return { enfileirado: true, faturaId };
   }

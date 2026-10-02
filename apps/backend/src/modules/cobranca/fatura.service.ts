@@ -219,7 +219,12 @@ export class FaturaService {
     // Pré-cálculo (read-only): encargo por parcela + itens-extra (intermediárias da
     // entrada parcelada + serviços recorrentes da cesta) → total devido.
     const extras = await this.prisma.db.itemFatura.findMany({
-      where: { faturaId: fatura.id, tipo: { in: ['INTERMEDIARIA', 'SERVICO'] } },
+      // parcelaId NULL: só o que é cobrado ALÉM da parcela (intermediária, serviço
+      // recorrente). O item SERVICO ligado a uma parcela é a proteção que já está
+      // DENTRO do valor nominal dela (o split é só a composição da fatura, desde
+      // 28/08) — somá-lo de novo fazia o pagamento exato parecer PARCIAL
+      // (caso real 02/10, Vinicius: pagou R$ 1.096,64 e a fatura não baixou).
+      where: { faturaId: fatura.id, parcelaId: null, tipo: { in: ['INTERMEDIARIA', 'SERVICO'] } },
       select: { id: true, valor: true, tipo: true },
     });
     const calc = fatura.parcelas.map((parcela) => {

@@ -116,7 +116,7 @@ function CasoModal({ item, onClose, onRenegociar }: { item: ReguaItem; onClose: 
               {faturas.map((f) => (
                 <div key={f.faturaId} className="rounded-[10px] px-[12px] py-[8px]" style={{ background: 'var(--surface-input)' }}>
                   <div className="flex items-center justify-between text-[12.5px] font-bold">
-                    <span>Fatura {f.numero ?? '—'}{f.dataVencimento ? ` · venc. ${new Date(f.dataVencimento).toLocaleDateString('pt-BR')}` : ''}</span>
+                    <span>Fatura {f.numero ?? '—'}{f.dataVencimento ? ` · venc. ${new Date(f.dataVencimento).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}` : ''}</span>
                     <span className="tabular-nums">{formatCurrency(f.valorAtualizado)}</span>
                   </div>
                   <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>

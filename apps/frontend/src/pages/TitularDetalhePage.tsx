@@ -200,6 +200,22 @@ export function TitularDetalhePage() {
   }
   // Contingência (08/09): fatura fechada cuja cobrança automática falhou — o
   // sistema reemite mantendo o vínculo (o webhook concilia sozinho).
+  // Cobrança existe no Asaas e a fatura segue em aberto: pergunta ao Asaas se
+  // foi paga e reprocessa a conciliação (webhook perdido ou parcial indevido).
+  async function conferirPagamento(faturaId: string) {
+    setOcupado(true);
+    try {
+      const r = await faturaService.conferirPagamento(faturaId);
+      if (r.enfileirado) { await new Promise((ok) => setTimeout(ok, 2500)); await recarregar(); }
+      else window.alert(r.motivo ?? 'Nada a conferir.');
+    } catch (e) {
+      const msg = (e as { response?: { data?: { mensagem?: string } } })?.response?.data?.mensagem;
+      window.alert(msg ?? 'Não foi possível consultar o Asaas — tente de novo.');
+    } finally {
+      setOcupado(false);
+    }
+  }
+
   async function gerarCobrancaManual(faturaId: string, vencimento: string, incluirEncargo: boolean) {
     setOcupado(true);
     try {
@@ -511,6 +527,13 @@ export function TitularDetalhePage() {
               <span>Total {faturaDet.data.valorPago > 0 ? `· pago ${formatCurrency(faturaDet.data.valorPago)}` : ''}</span>
               <span className="tabular-nums">{formatCurrency(faturaDet.data.valorTotal)}</span>
             </div>
+
+            {faturaDet.data.temCobrancaAsaas && faturaDet.data.status !== 'paga' && faturaDet.data.status !== 'paga_em_atraso' && (
+              <div className="flex flex-wrap items-center gap-[8px] border-t pt-[10px] text-[12px]" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
+                <span>O cliente pagou e a fatura não baixou?</span>
+                <button className="rounded-[8px] px-[10px] py-[5px] text-[12px] font-bold" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }} disabled={ocupado} onClick={() => conferirPagamento(faturaDet.data!.id)}>Conferir pagamento no Asaas</button>
+              </div>
+            )}
 
             {faturaDet.data.status === 'fechada' && !faturaDet.data.temCobrancaAsaas && (
               <BlocoReemissao fd={faturaDet.data} ocupado={ocupado} emitir={gerarCobrancaManual} />

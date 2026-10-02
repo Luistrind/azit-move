@@ -857,6 +857,10 @@ Quando o valor pago é insuficiente para cobrir todos os itens, a aplicação se
 2. **Serviço** — itens recorrentes (proteção, rastreador, taxa)
 3. **Principal** — amortização do parcelamento do veículo
 
+**Base do "pagamento insuficiente" (correção 02/10).** O devido da fatura é a soma do valor nominal das parcelas mais os itens cobrados **além** da parcela (intermediária da entrada, serviço recorrente sem parcela). A proteção veicular que aparece como linha própria na fatura **já está dentro do valor nominal da parcela** — a linha é só a composição exibida ao cliente — e por isso nunca é somada de novo. Somá-la duas vezes fazia o pagamento exato parecer parcial e a fatura não baixava (caso real: fatura de R$ 1.096,64 paga integralmente no Asaas e mantida em aberto no sistema).
+
+**Conferir pagamento no Asaas.** Fatura com cobrança emitida e ainda em aberto no sistema tem, no detalhe, o botão **"Conferir pagamento no Asaas"**: o sistema consulta a cobrança ao vivo e, se o Asaas registra o recebimento, roda a mesma conciliação do webhook com o valor e a data reais. Cobre o webhook que não chegou (fila pausada, servidor fora do ar) e a fatura que ficou como parcial indevidamente. Nada é baixado sem o Asaas confirmar — não é baixa manual.
+
 ### 7.4 Fórmula de Quitação Antecipada
 
 > **Decisão 2026-07-11, Vicente (planilha "Extrato parcelas") — antecipação com duas taxas.** Cada parcela em aberto é decomposta em **CR** (comissão recorrente — serviço) e **PS** (capital + remuneração). Cada componente desconta com sua própria taxa; o desconto forte do CR (20% a.m.) é a forma prática de "isentar" o serviço das parcelas distantes, mantendo o capital + TR integrais.

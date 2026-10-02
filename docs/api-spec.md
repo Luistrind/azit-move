@@ -446,6 +446,11 @@ Lista faturas com filtros.
 
 **Query params:** `status`, `conta_id`, `contrato_id`, `data_vencimento_inicio`, `data_vencimento_fim`, `page`, `limit`
 
+#### POST `/api/v1/faturas/:id/conferir-pagamento`
+Consulta a cobrança da fatura no Asaas (`GET /payments/{asaasChargeId}`) e, se estiver recebida (`RECEIVED`, `CONFIRMED`, `RECEIVED_IN_CASH`), enfileira a mesma conciliação do webhook com valor e data reais (doc 02 §7.3, 02/10). Papéis: admin, operador, financeiro, diretor.
+
+**Response:** `{ enfileirado: boolean, statusAsaas: string | null, motivo: string | null }` — `enfileirado: false` traz o motivo (fatura já paga; Asaas ainda sem recebimento). 422 `sem_cobranca` (fatura sem cobrança no Asaas) / `asaas_simulado`.
+
 #### GET `/api/v1/faturas/:id`
 Detalhes de uma fatura com todos os itens.
 

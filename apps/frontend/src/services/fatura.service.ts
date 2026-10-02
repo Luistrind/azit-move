@@ -74,6 +74,11 @@ export const faturaService = {
     const { data } = await api.post(`/api/v1/faturas/${faturaId}/gerar-cobranca`, body);
     return data;
   },
+  // Consulta a cobrança no Asaas e, se paga, reprocessa a conciliação (02/10).
+  async conferirPagamento(faturaId: string): Promise<{ enfileirado: boolean; statusAsaas: string | null; motivo: string | null }> {
+    const { data } = await api.post(`/api/v1/faturas/${faturaId}/conferir-pagamento`);
+    return data;
+  },
   // Dev: paga a fatura (enfileira a conciliação, como o webhook do Asaas).
   async simularPagamento(faturaId: string): Promise<void> {
     await api.post(`/api/v1/dev/simular-pagamento-fatura/${faturaId}`);
