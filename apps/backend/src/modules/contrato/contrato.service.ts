@@ -794,7 +794,7 @@ export class ContratoService {
       }),
       this.prisma.db.parcela.aggregate({
         where: { contratoId: id, status: { in: PARCELA_PAGA } },
-        _sum: { valorPago: true },
+        _sum: { valorPago: true, valorEncargo: true },
       }),
       // Situação financeira CALCULADA (doc 02 §5.2, camada 2).
       this.prisma.db.parcela.aggregate({
@@ -837,7 +837,10 @@ export class ContratoService {
         totalParcelas: contrato.numeroParcelas,
         // Entrada materializada (doc 02 §4-A.3): o valor pago do contrato inclui a
         // entrada — antes só somava parcelas e a entrada "sumia" (R$ 0,00 pago).
-        valorPago: this.cent(pagoAgg._sum.valorPago) + this.cent(contrato.valorEntradaPago),
+        // Decisão Luís 02/10: juros e multa NÃO são "valor pago" — não abatem o
+        // saldo devedor. Saem do pago e aparecem em linha própria.
+        valorPago: this.cent(pagoAgg._sum.valorPago) - this.cent(pagoAgg._sum.valorEncargo) + this.cent(contrato.valorEntradaPago),
+        encargosPagos: this.cent(pagoAgg._sum.valorEncargo),
         // Mesmo fallback da listagem (correção 03/09): pré-dia zero (sem
         // cronograma) mostra o previsto de origem, não R$ 0,00.
         saldoDevedorAtual: contrato.cronogramaGeradoEm

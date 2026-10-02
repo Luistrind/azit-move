@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException, UnprocessableEntityException } f
 import { Prisma } from '@prisma/client';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { centavosParaReaisString, type LinhaConciliacao, type ForaDoCronograma, type TermosContratoLegado } from '@azit/utils';
+import { centavosParaReaisString, termosEfetivos, type LinhaConciliacao, type ForaDoCronograma, type TermosContratoLegado } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasLeituraService } from '../asaas/asaas-leitura.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
@@ -118,7 +118,7 @@ export class LegadoMigracaoService {
   async migrar(casoId: string, usuarioId: string) {
     const caso = await this.carregarValidado(casoId);
     const plano = await this.planejar(caso);
-    const termos = caso.termos as unknown as TermosContratoLegado;
+    const termos = termosEfetivos(caso.termos as unknown as TermosContratoLegado);
     const reconhecidas = (caso.divergenciasReconhecidas as DivergenciaReconhecida[] | null) ?? [];
 
     const resultado = await this.prisma.db.$transaction(async (tx) => {
@@ -565,7 +565,7 @@ export class LegadoMigracaoService {
   // ---------------- Planejador (puro sobre o caso validado) ----------------
 
   private async planejar(caso: CasoValidado): Promise<PlanoMigracao> {
-    const termos = caso.termos as unknown as TermosContratoLegado;
+    const termos = termosEfetivos(caso.termos as unknown as TermosContratoLegado);
     const conc = this.conciliacao.conciliar(caso);
     const reconhecidas = new Map(conc.reconhecidas.map((r) => [r.chave, r]));
     const cobrancas = new Map(caso.cobrancas.map((c) => [c.id, c]));

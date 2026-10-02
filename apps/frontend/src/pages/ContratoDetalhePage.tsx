@@ -338,6 +338,12 @@ export function ContratoDetalhePage() {
               <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>Valor pago</div>
               <div className="mt-[3px] font-display text-[16px] font-bold tabular-nums" style={{ color: '#1f9d5b' }}>{formatCurrency(c.resumo.valorPago)}</div>
             </div>
+            {(c.resumo.encargosPagos ?? 0) > 0 && (
+              <div title="Juros e multa de atraso pagos. Não abatem o saldo devedor.">
+                <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>Juros e multa pagos</div>
+                <div className="mt-[3px] font-display text-[16px] font-bold tabular-nums" style={{ color: 'var(--text-secondary)' }}>{formatCurrency(c.resumo.encargosPagos ?? 0)}</div>
+              </div>
+            )}
             <div>
               <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>Em aberto</div>
               <div className="mt-[3px] font-display text-[16px] font-bold tabular-nums">{formatCurrency(c.resumo.saldoDevedorAtual)}</div>

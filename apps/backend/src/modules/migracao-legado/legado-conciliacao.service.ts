@@ -13,6 +13,7 @@ import {
   extrairTermosDoTexto,
   interpretarCobrancaLegada,
   TERMOS_VAZIOS,
+  termosEfetivos,
   type CobrancaConciliavel,
   type InterpretacaoCobranca,
   type ResultadoConciliacao,
@@ -79,6 +80,7 @@ export const termosSchema = z.object({
   intermediarias: serieSchema.nullable(),
   seguroSemanal: z.number().int().min(0),
   taxaSemanal: z.number().int().min(0),
+  parcelaIncluiServicos: z.boolean().optional(),
   indiceReajuste: texto,
   multaAtrasoPct: z.number().min(0).nullable(),
   jurosMensalPct: z.number().min(0).nullable(),
@@ -165,6 +167,13 @@ export class LegadoConciliacaoService {
     if (extracao && (!termosGravados || camposFaltantesTermos(termosGravados).length > 0)) {
       termosGravados = mesclarTermos(termosGravados, extracao.termos);
       preenchido = true;
+      // Contrato cuja parcela já vem CHEIA (decisão Luís 02/10): se o valor lido
+      // do PDF é igual ao que o Asaas cobra (ex.: R$ 997,00), ele já inclui
+      // seguro e taxa — marca para o parcelamento ser o valor menos os dois.
+      const cobrada = centavos(caso.valorParcelaPadrao);
+      if (termosGravados.parcelaIncluiServicos === undefined && cobrada != null && termosGravados.parcelas.valor === cobrada && (termosGravados.seguroSemanal + termosGravados.taxaSemanal) > 0) {
+        termosGravados = { ...termosGravados, parcelaIncluiServicos: true };
+      }
     }
     await this.prisma.db.casoMigracaoLegado.update({
       where: { id: casoId },
@@ -205,7 +214,7 @@ export class LegadoConciliacaoService {
   async interpretarCobrancasDoCaso(casoId: string, fonte: 'regra' | 'ia' = 'regra') {
     const caso = await this.prisma.db.casoMigracaoLegado.findUnique({ where: { id: casoId }, include: { cobrancas: true } });
     if (!caso) return { interpretadas: 0 };
-    const termos = caso.termos as TermosContratoLegado | null;
+    const termos = termosEfetivos(caso.termos as TermosContratoLegado | null);
     const contexto = contextoDosTermos(termos, centavos(caso.valorParcelaPadrao));
     let n = 0;
     for (const c of caso.cobrancas) {
@@ -275,7 +284,7 @@ export class LegadoConciliacaoService {
 
   conciliar(caso: CasoConciliavel): ResultadoConciliacao & { reconhecidas: DivergenciaReconhecida[]; vinculos: VinculoManual[] } {
     const vinculos = ((caso.vinculosManuais as VinculoManual[] | null) ?? []);
-    const termos = caso.termos as TermosContratoLegado | null;
+    const termos = termosEfetivos(caso.termos as TermosContratoLegado | null);
     const hoje = dataHojeBrasil();
     const conciliaveis: CobrancaConciliavel[] = caso.cobrancas.map((c) => {
       const interp = c.interpretacao as InterpretacaoCobranca | null;
@@ -380,7 +389,7 @@ export class LegadoConciliacaoService {
   // O que ainda impede validar — a tela mostra a lista, o botão só libera vazio.
   pendenciasParaValidar(caso: CasoConciliavel & { contratoPdfRef: string | null }): string[] {
     const p: string[] = [];
-    const termos = caso.termos as TermosContratoLegado | null;
+    const termos = termosEfetivos(caso.termos as TermosContratoLegado | null);
     if (!termos) p.push('Termos do contrato não preenchidos');
     else {
       const faltam = camposFaltantesTermos(termos);

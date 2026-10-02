@@ -76,6 +76,7 @@ export interface TermosContratoLegado {
   intermediarias: SerieParcelas | null;
   seguroSemanal: number;
   taxaSemanal: number;
+  parcelaIncluiServicos?: boolean;
   indiceReajuste: string | null;
   multaAtrasoPct: number | null;
   jurosMensalPct: number | null;

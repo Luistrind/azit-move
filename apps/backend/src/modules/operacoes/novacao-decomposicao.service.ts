@@ -70,7 +70,22 @@ export class NovacaoDecomposicaoService {
       // própria ref — uma SEGUNDA novação/decomposição exclui a CR dele igual.
       if (c.catalogoVersaoRef) {
         try {
-          const ref = JSON.parse(c.catalogoVersaoRef) as { nv?: number; crP?: number; taxaM?: number };
+          const ref = JSON.parse(c.catalogoVersaoRef) as { nv?: number; crP?: number; taxaM?: number; legado?: number };
+          // Contrato MIGRADO do legado (ref {legado:1}) — decisão Luís 02/10
+          // (doc 02 §26.12): a parcela antiga carrega uma taxa embutida maior.
+          // SÓ para migrados: de cada parcela futura sai a comissão recorrente
+          // da Novação (R$ 799,96/mês → R$ 199,99 na semanal) e o restante vem a
+          // valor presente pela TAXA DA NOVAÇÃO. Seguro e taxa do Asaas já estão
+          // fora da parcela migrada (§26.10).
+          if (ref.legado && c.ativoId) {
+            const nv = await this.catalogoFonte.novacao();
+            const fatorValor = c.periodicidade === 'SEMANAL' ? 4 : c.periodicidade === 'QUINZENAL' ? 2 : 1;
+            infos.set(c.id, {
+              taxa: nv?.taxaMensal ?? frac(c.taxaDescontoQuitacao),
+              crPorParcela: nv ? Math.max(0, Math.round(nv.comissaoRecorrenteMensal / fatorValor)) : 0,
+            });
+            continue;
+          }
           if (ref.nv) {
             infos.set(c.id, {
               taxa: ref.taxaM ?? frac(c.taxaDescontoQuitacao),

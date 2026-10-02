@@ -2178,3 +2178,28 @@ R$ 108.330,00) e sem proteção. Duas causas, duas decisões:
    dois são itens de serviço da fatura — futuros ficam fora, vencidos entram como débito.
 4. **Casos já migrados** são completados sozinhos na subida da aplicação (taxa e FIPE, só
    onde está vazio) e há o botão "Completar taxa e FIPE" no caso.
+
+### 26.12 Definições de 02/10 (Luís): valor pago, parcela cheia e base da novação do migrado
+
+1. **Juros e multa não são "valor pago".** Em toda tela, "valor pago" / "pago até o momento"
+   é o que abateu obrigação (entrada, principal, intermediárias, serviços). Encargo de atraso
+   aparece em linha própria ("Juros e multa pagos") e nunca abate saldo devedor. O saldo
+   devedor continua sendo a soma do nominal das parcelas em aberto — é ele que a novação lê.
+   Vale para contrato nativo e migrado (detalhe do contrato e ficha do titular).
+2. **Contrato cuja parcela já vem cheia** (ex.: R$ 997,00). Alguns contratos trazem no PDF a
+   parcela JÁ com os R$ 50,00 de seguro e os R$ 5,00 de repasse — mesmo padrão dos demais. Nos
+   termos da bancada há a marca **"o valor da parcela já inclui seguro e taxa"**
+   (`parcelaIncluiServicos`), sugerida sozinha quando o valor lido do PDF é igual ao que o
+   Asaas cobra. Com ela, conciliação e migração usam os **termos efetivos**: parcela = valor −
+   seguro − taxa, e o total parcelado e o valor total do contrato perdem a mesma diferença. O
+   contrato migrado nunca carrega serviço dentro do principal.
+3. **Base da novação do contrato MIGRADO** — exclusivo de migração, porque a parcela antiga
+   embute uma taxa maior. De cada parcela FUTURA, além de seguro e taxa (que já estão fora da
+   parcela migrada), sai a **comissão recorrente da Novação** (parâmetro do produto: R$ 799,96
+   ao mês → R$ 199,99 na parcela semanal; quinzenal ÷ 2; mensal ÷ 1), e só o restante é trazido
+   a valor presente pela **taxa da Novação** (a mesma já usada no produto). É o mesmo trilho
+   dos nativos (comissão recorrente futura não é dívida — A4.1): a referência `{legado:1}` do
+   contrato dá ao motor a taxa e a comissão por parcela. Parcela VENCIDA entra cheia, com
+   multa e mora, como em qualquer contrato.
+   - A taxa gravada em `taxaDescontoQuitacao` (§26.11) segue valendo para a **antecipação e
+     quitação** do migrado; a novação usa a taxa do próprio produto.

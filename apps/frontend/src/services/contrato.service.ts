@@ -66,6 +66,7 @@ export interface ContratoDetalhe {
     parcelasPagas: number;
     totalParcelas: number;
     valorPago: number;
+    encargosPagos?: number; // juros e multa pagos — fora do valor pago (02/10)
     saldoDevedorAtual: number;
     proximaParcela: { numero: number; dataVencimento: string; valorNominal: number } | null;
   };

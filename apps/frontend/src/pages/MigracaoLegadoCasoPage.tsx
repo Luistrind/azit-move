@@ -68,7 +68,7 @@ type FormTermos = {
   valorTotal: string; entradaValor: string;
   parcQuantidade: string; parcValor: string; parcPrimeiraEm: string; parcTotal: string;
   temIntermediarias: boolean; interQuantidade: string; interValor: string; interPrimeiraEm: string; interTotal: string;
-  seguroSemanal: string; taxaSemanal: string; indiceReajuste: string; multaAtrasoPct: string; jurosMensalPct: string; garantiaDias: string; observacoes: string;
+  seguroSemanal: string; taxaSemanal: string; parcelaIncluiServicos: boolean; indiceReajuste: string; multaAtrasoPct: string; jurosMensalPct: string; garantiaDias: string; observacoes: string;
 };
 function formDosTermos(t: TermosContratoLegado | null): FormTermos {
   return {
@@ -80,7 +80,7 @@ function formDosTermos(t: TermosContratoLegado | null): FormTermos {
     valorTotal: reaisTxt(t?.valorTotal), entradaValor: reaisTxt(t?.entradaValor),
     parcQuantidade: t?.parcelas.quantidade?.toString() ?? '', parcValor: reaisTxt(t?.parcelas.valor), parcPrimeiraEm: t?.parcelas.primeiraEm ?? '', parcTotal: reaisTxt(t?.parcelas.total),
     temIntermediarias: !!t?.intermediarias, interQuantidade: t?.intermediarias?.quantidade?.toString() ?? '', interValor: reaisTxt(t?.intermediarias?.valor), interPrimeiraEm: t?.intermediarias?.primeiraEm ?? '', interTotal: reaisTxt(t?.intermediarias?.total),
-    seguroSemanal: reaisTxt(t?.seguroSemanal ?? 5000), taxaSemanal: reaisTxt(t?.taxaSemanal ?? 500),
+    seguroSemanal: reaisTxt(t?.seguroSemanal ?? 5000), taxaSemanal: reaisTxt(t?.taxaSemanal ?? 500), parcelaIncluiServicos: !!t?.parcelaIncluiServicos,
     indiceReajuste: t?.indiceReajuste ?? '', multaAtrasoPct: t?.multaAtrasoPct?.toString() ?? '', jurosMensalPct: t?.jurosMensalPct?.toString() ?? '', garantiaDias: t?.garantiaDias?.toString() ?? '',
     observacoes: t?.observacoes ?? '',
   };
@@ -96,7 +96,7 @@ function termosDoForm(f: FormTermos): TermosContratoLegado {
     valorTotal: centavosOuNull(f.valorTotal), entradaValor: centavosOuNull(f.entradaValor),
     parcelas: { total: centavosOuNull(f.parcTotal), quantidade: intOuNull(f.parcQuantidade), valor: centavosOuNull(f.parcValor), primeiraEm: txtOuNull(f.parcPrimeiraEm) },
     intermediarias: f.temIntermediarias ? { total: centavosOuNull(f.interTotal), quantidade: intOuNull(f.interQuantidade), valor: centavosOuNull(f.interValor), primeiraEm: txtOuNull(f.interPrimeiraEm) } : null,
-    seguroSemanal: reaisParaCentavos(f.seguroSemanal || '0'), taxaSemanal: reaisParaCentavos(f.taxaSemanal || '0'),
+    seguroSemanal: reaisParaCentavos(f.seguroSemanal || '0'), taxaSemanal: reaisParaCentavos(f.taxaSemanal || '0'), parcelaIncluiServicos: f.parcelaIncluiServicos,
     indiceReajuste: txtOuNull(f.indiceReajuste),
     multaAtrasoPct: f.multaAtrasoPct.trim() === '' ? null : parseFloat(f.multaAtrasoPct.replace(',', '.')),
     jurosMensalPct: f.jurosMensalPct.trim() === '' ? null : parseFloat(f.jurosMensalPct.replace(',', '.')),
@@ -369,6 +369,10 @@ export function MigracaoLegadoCasoPage() {
             <Campo rotulo="Total parcelado"><input className={inputCls} style={inputStyle} value={form.parcTotal} onChange={set('parcTotal')} placeholder="0,00" /></Campo>
             <label className="col-span-2 flex items-center gap-[6px] self-end pb-[6px] text-[12px]" style={{ color: 'var(--text-body)' }}>
               <input type="checkbox" checked={form.temIntermediarias} onChange={set('temIntermediarias')} /> tem parcelas intermediárias (entrada diluída, 3.2 c)
+            </label>
+            {/* Contrato cuja parcela já vem cheia (decisão 02/10): 997 = 942 + 50 + 5. */}
+            <label className="col-span-full flex items-center gap-[6px] text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+              <input type="checkbox" checked={form.parcelaIncluiServicos} onChange={set('parcelaIncluiServicos')} /> o valor da parcela do contrato <b>já inclui</b> seguro e taxa (ex.: R$ 997,00) — o parcelamento passa a ser o valor menos os dois
             </label>
             {form.temIntermediarias && (
               <>

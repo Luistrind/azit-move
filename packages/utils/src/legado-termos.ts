@@ -42,11 +42,37 @@ export interface TermosContratoLegado {
   // Itens cobrados junto da parcela (doc 02 §26.2), confirmados pelo operador.
   seguroSemanal: number; // centavos
   taxaSemanal: number; // centavos
+  // Contrato cujo valor de parcela JÁ VEM cheio (ex.: R$ 997,00 = 942 + 50 + 5 —
+  // decisão Luís 02/10): o parcelamento é o valor menos seguro e taxa. Ausente = false.
+  parcelaIncluiServicos?: boolean;
   indiceReajuste: string | null; // IPCA
   multaAtrasoPct: number | null; // 2
   jurosMensalPct: number | null; // 1
   garantiaDias: number | null; // 90
   observacoes: string | null;
+}
+
+// Parcelamento (só a parte do veículo) da parcela do contrato.
+export function parcelamentoDosTermos(t: Pick<TermosContratoLegado, 'parcelas' | 'seguroSemanal' | 'taxaSemanal' | 'parcelaIncluiServicos'>): number | null {
+  const v = t.parcelas.valor;
+  if (v == null) return null;
+  return t.parcelaIncluiServicos ? Math.max(0, v - (t.seguroSemanal ?? 0) - (t.taxaSemanal ?? 0)) : v;
+}
+
+// Termos como o resto do sistema os consome: parcela = SÓ o parcelamento.
+// Para contrato de parcela cheia, tira seguro e taxa da parcela, do total
+// parcelado e do valor total — o contrato migrado nunca carrega serviço dentro
+// do principal (é o que antecipação e novação descontam).
+export function termosEfetivos<T extends TermosContratoLegado | null>(t: T): T {
+  if (!t || !t.parcelaIncluiServicos || t.parcelas.valor == null) return t;
+  const p = parcelamentoDosTermos(t) as number;
+  const dif = (t.parcelas.valor - p) * (t.parcelas.quantidade ?? 0);
+  return {
+    ...t,
+    parcelas: { ...t.parcelas, valor: p, total: t.parcelas.total != null ? t.parcelas.total - dif : null },
+    valorTotal: t.valorTotal != null ? t.valorTotal - dif : null,
+    parcelaIncluiServicos: false,
+  };
 }
 
 export const TERMOS_VAZIOS: TermosContratoLegado = {

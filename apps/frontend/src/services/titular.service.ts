@@ -35,6 +35,7 @@ export interface DetalheTitular {
   resumoFinanceiro: {
     valorEmContratoAtivo: number;
     valorPago: number;
+    encargosPagos?: number; // juros e multa pagos — fora do valor pago (02/10)
     saldoDevedor: number;
     valorEmAtraso: number;
     quantidadeAcordos: number;

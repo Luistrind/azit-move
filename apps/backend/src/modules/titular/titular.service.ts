@@ -185,7 +185,7 @@ export class TitularService {
     // Vigente = fase ATIVO (doc 02 §5.2, 07/09).
     const idsAtivos = contratos.filter((c) => c.status === 'ATIVO').map((c) => c.id);
     const hoje = inicioHojeBrasilUTC(); // fuso do negócio (A4, 04/09)
-    const [pago, lancado, saldo, saldosContrato, atrasoContrato, coberturaContrato, atraso, qAcordos, qNovacoes] = await Promise.all([
+    const [pago, lancado, saldo, saldosContrato, atrasoContrato, coberturaContrato, atraso, qAcordos, qNovacoes, encargos] = await Promise.all([
       // Total recebido do cliente = faturas pagas (principal, encargos,
       // intermediárias, serviços) + lançamentos avulsos (entradas de contrato e
       // de acordo — doc 02 §4-A.3, revisão 2026-08-30). Visão fiel ao caixa.
@@ -204,6 +204,8 @@ export class TitularService {
       conta ? this.prisma.db.acordo.count({ where: { OR: [{ contaId: conta.id }, { contratoId: { in: ids } }] } }) : 0,
       // Novação é CONTA-cêntrica desde 14/09 (F2) — conta pela conta.
       conta ? this.prisma.db.novacao.count({ where: { contaId: conta.id, deletedAt: null } }) : 0,
+      // Juros e multa pagos (decisão Luís 02/10): não são "valor pago".
+      ids.length ? this.prisma.db.parcela.aggregate({ where: { contratoId: { in: ids } }, _sum: { valorEncargo: true } }) : null,
     ]);
     const cent = (d: Prisma.Decimal | null | undefined) => (d ? reaisParaCentavos(d.toString()) : 0);
     const saldoPorContrato = new Map(saldosContrato.map((g) => [g.contratoId, g._sum.valorNominal]));
@@ -230,7 +232,8 @@ export class TitularService {
       documentos,
       resumoFinanceiro: {
         valorEmContratoAtivo,
-        valorPago: cent(pago?._sum.valorPago) + cent(lancado?._sum.valor) + entradaPaga,
+        valorPago: cent(pago?._sum.valorPago) + cent(lancado?._sum.valor) + entradaPaga - cent(encargos?._sum.valorEncargo),
+        encargosPagos: cent(encargos?._sum.valorEncargo),
         saldoDevedor: cent(saldo?._sum.valorNominal),
         valorEmAtraso: cent(atraso?._sum.valorNominal),
         quantidadeAcordos: qAcordos, // Vocabulário 07/09: novação NÃO soma (Regra 5)

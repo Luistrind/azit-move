@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { camposFaltantesTermos, extrairTermosDoTexto, reaisTextoParaCentavos, TERMOS_VAZIOS } from './legado-termos';
+import { camposFaltantesTermos, extrairTermosDoTexto, parcelamentoDosTermos, reaisTextoParaCentavos, termosEfetivos, TERMOS_VAZIOS } from './legado-termos';
 import { contextoDosTermos, interpretarCobrancaLegada, partesRotuladas } from './legado-interpretacao';
 import { conciliarLegado, type CobrancaConciliavel } from './legado-conciliacao';
 
@@ -422,5 +422,22 @@ describe('ano modelo com dois dígitos', () => {
     const r = extrairTermosDoTexto(TEXTO_MOD06.replace('2023/2024', '2023/24'));
     expect(r.termos.veiculo.anoFabricacao).toBe(2023);
     expect(r.termos.veiculo.anoModelo).toBe(2024);
+  });
+});
+
+// Decisão Luís 02/10: contrato cuja parcela já vem CHEIA (997 = 942 + 50 + 5).
+describe('parcela do contrato que já inclui seguro e taxa', () => {
+  const base = { ...TERMOS_VAZIOS, valorTotal: 2_500_00 + 165 * 997_00, entradaValor: 2_500_00, parcelas: { total: 165 * 997_00, quantidade: 165, valor: 997_00, primeiraEm: '2025-10-16' }, seguroSemanal: 50_00, taxaSemanal: 5_00 };
+  it('sem a marca: a parcela vale como está', () => {
+    expect(parcelamentoDosTermos(base)).toBe(997_00);
+    expect(termosEfetivos(base)).toBe(base);
+  });
+  it('com a marca: parcelamento 942, total parcelado e valor total sem os serviços', () => {
+    const t = termosEfetivos({ ...base, parcelaIncluiServicos: true });
+    expect(t.parcelas.valor).toBe(942_00);
+    expect(t.parcelas.total).toBe(165 * 942_00);
+    expect(t.valorTotal).toBe(2_500_00 + 165 * 942_00);
+    expect(t.seguroSemanal).toBe(50_00);
+    expect(t.parcelaIncluiServicos).toBe(false);
   });
 });
