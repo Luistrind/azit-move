@@ -1528,6 +1528,45 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 >    críticos congelam pós-aprovação; correção só por devolução/reabertura autorizada (RCPG021-022).
 > 7. Fora do MVP (deliberado): DRE/contábil, API bancária, OCR, portal de fornecedores (RCPG033).
 
+### 18.6 Plano de categorias, fornecedor no título e centro de custo opcional (decisões Luís, 2026-10-05)
+
+**O que o Luís precisa ver no fim do dia:** cada título a pagar classificado igual ao relatório
+gerencial que a operação já usa (plano do Manda Pro Financeiro: grupo → categoria, com código).
+
+1. **A natureza financeira É o plano de categorias.** Não há campo paralelo: a natureza ganhou
+   **grupo** (00. Lançamentos a identificar, 01. Receita Operacional Bruta, 02. Deduções da
+   Receita, 03. Custos, 04. Despesas com Vendas, 05. Despesas gerais e administrativas, 06.
+   Atividades de Investimento, 07. Atividades de Financiamento) e **código e nome iguais aos do
+   Manda** (3.01 Preparação de Veículos, 5.14 Serviços contratados…). Os buracos de numeração
+   (3.04, 5.03–5.05, 5.07–5.09, 5.18, 7.01, 7.04) são **falta de atualização, não ocultação** —
+   ficam como estão até a operação criar a categoria.
+2. **No título, o operador escolhe o grupo e só então vê as categorias dele** (dois selects em
+   cascata). As marcações por categoria continuam valendo (exige veículo, exige cotação,
+   Diretoria sempre, exige justificativa).
+3. **Receita fica no plano, mas não entra em título a pagar** (`saida = false`: 1.01, 1.02,
+   7.02 Rendimentos, 7.05 Captação). Serão exploradas em outro momento.
+4. **Remapeamento das naturezas antigas** (mesmo id — os títulos seguem apontando): NF01→3.01,
+   NF02→3.03, NF03→6.02, NF04→5.13, NF05→5.14, NF06→5.10, NF07→5.06, NF99→5.15. NF08 (jurídico)
+   não existe no Manda: títulos foram para 5.14 e a natureza ficou inativa. NF09 (contrato
+   recorrente) e NF10 (adiantamento) saem de uso — não são "o que foi pago" (o adiantamento já é
+   o prazo de prestação de contas do título).
+5. ⚠️ **Desembolso do Reembolso Parcelado (NF11) ainda não tem lugar no plano** — é dinheiro que
+   sai para o fornecedor do cliente, não despesa da Azit. Fica no grupo provisório
+   **99. Fora do plano** até o Luís decidir (categoria própria em 06 ou fora da DRE). Placeholder
+   funcional: o título do RP continua nascendo e aparecendo no quadro.
+6. **Centro de custo passa a ser opcional** no título e no orçamento convertido. É conceito que
+   a operação vai usar, mas está em desuso hoje; o cadastro (CC01–CC07) fica para quando voltar.
+7. **Fornecedor nasce dentro do modal do título**: nome + CPF/CNPJ + chave PIX, sem sair da tela
+   ("+ Cadastrar" ao lado do seletor). CPF/CNPJ repetido é recusado e o sistema diz qual cadastro
+   já existe. A chave PIX segue a esteira normal: vai para aprovação da Diretoria antes de o
+   pagamento sair (RCPG008). Mesmo cadastro rápido vale na conversão de orçamento.
+8. **Plano editável na Configuração do financeiro**: criar grupo e categoria, renomear, marcar
+   (veículo/cotação/Diretoria/justificativa), inativar/reativar. Categoria inativa some do título
+   novo; os antigos continuam apontando para ela. O código não muda — é a chave que o operador
+   reconhece do Manda. Não substitui o plano contábil do BPO (RCPG030/031).
+9. **Quadro "Por categoria"** na tela de Contas a pagar: o mês (pelo vencimento) por grupo →
+   categoria, com em aberto × pago; cancelados ficam fora. É o espelho do relatório do Manda.
+
 ---
 
 ## 19. Estrutura Jurídica como TAG (MVP do capital — homologação 2026-08-04)

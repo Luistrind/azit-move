@@ -4,8 +4,18 @@ import { api } from '../lib/api';
 
 export interface ConfiguracaoFinanceiro {
   entidades: { id: string; razaoSocial: string; cnpj: string | null; unidadeNegocio: string | null; estruturaId?: string | null; estruturaNome?: string | null; ativo: boolean; contas: { id: string; banco: string; agencia: string | null; conta: string | null; tipo: string | null; ativo: boolean }[] }[];
-  naturezas: { id: string; codigo: string; nome: string; exigeAtivo: boolean; exigeCotacao: boolean; especial: boolean; exigeJustificativa: boolean; ativo: boolean }[];
+  // Plano de categorias (doc 02 §18.6): grupo → categoria, códigos do Manda.
+  grupos: { id: string; codigo: string; nome: string; ordem: number; ativo: boolean }[];
+  naturezas: { id: string; codigo: string; nome: string; grupoId: string | null; saida: boolean; exigeAtivo: boolean; exigeCotacao: boolean; especial: boolean; exigeJustificativa: boolean; ativo: boolean }[];
   centros: { id: string; codigo: string; nome: string; responsavelUsuarioId: string | null; ativo: boolean }[];
+}
+
+export interface LinhaCategoria { id: string; codigo: string; nome: string; saida: boolean; ativo: boolean; aberto: number; pago: number; cancelado: number; quantidade: number }
+export interface QuadroPorCategoria {
+  mes: string;
+  total: { aberto: number; pago: number; cancelado: number; quantidade: number };
+  grupos: (LinhaCategoria & { categorias: LinhaCategoria[] })[];
+  semGrupo: LinhaCategoria[];
 }
 
 export interface FornecedorFinanceiro {
@@ -43,8 +53,8 @@ export interface TituloPagarApi {
   criadoEm: string;
   entidade: { id: string; nome: string };
   fornecedor: { id: string; nome: string; status: string; alertaProximoPagamento: boolean };
-  natureza: { id: string; codigo: string; nome: string };
-  centro: { id: string; codigo: string; nome: string };
+  natureza: { id: string; codigo: string; nome: string; grupo: { codigo: string; nome: string } | null };
+  centro: { id: string; codigo: string; nome: string } | null;
   documentos: { id: string; tipo: string; nome: string; versao: number }[];
   pagamentos: { id: string; dataEfetiva: string; valorEfetivo: number; identificador: string | null; comprovanteNome: string | null; divergencia: string | null; conciliacao: { id: string; status: string; dataSaida: string; valorExtrato: number } | null }[];
 }
@@ -88,7 +98,23 @@ export const financeiroService = {
     const { data } = await api.post(`/api/v1/financeiro/entidades/${entidadeId}/contas`, body);
     return data;
   },
-  async criarNatureza(body: { codigo: string; nome: string; exigeAtivo?: boolean; exigeCotacao?: boolean; especial?: boolean; exigeJustificativa?: boolean }) {
+  async criarGrupo(body: { codigo: string; nome: string; ordem?: number }) {
+    const { data } = await api.post('/api/v1/financeiro/grupos', body);
+    return data;
+  },
+  async editarGrupo(id: string, body: { nome?: string; ordem?: number; ativo?: boolean }) {
+    const { data } = await api.patch(`/api/v1/financeiro/grupos/${id}`, body);
+    return data;
+  },
+  async editarNatureza(id: string, body: { nome?: string; grupoId?: string; saida?: boolean; exigeAtivo?: boolean; exigeCotacao?: boolean; especial?: boolean; exigeJustificativa?: boolean; ativo?: boolean }) {
+    const { data } = await api.patch(`/api/v1/financeiro/naturezas/${id}`, body);
+    return data;
+  },
+  async porCategoria(mes: string): Promise<QuadroPorCategoria> {
+    const { data } = await api.get('/api/v1/financeiro/por-categoria', { params: { mes } });
+    return data;
+  },
+  async criarNatureza(body: { codigo: string; nome: string; grupoId: string; saida?: boolean; exigeAtivo?: boolean; exigeCotacao?: boolean; especial?: boolean; exigeJustificativa?: boolean }) {
     const { data } = await api.post('/api/v1/financeiro/naturezas', body);
     return data;
   },
@@ -126,7 +152,7 @@ export const financeiroService = {
     const { data } = await api.post(`/api/v1/financeiro/orcamentos/${id}/submeter`, { propostaId, motivoSelecao });
     return data;
   },
-  async converterOrcamento(id: string, body: { fornecedorId: string; vencimento: string; competencia?: string; naturezaId: string; centroCustoAreaId: string; formaPagamento?: string }) {
+  async converterOrcamento(id: string, body: { fornecedorId: string; vencimento: string; competencia?: string; naturezaId: string; centroCustoAreaId?: string; formaPagamento?: string }) {
     const { data } = await api.post(`/api/v1/financeiro/orcamentos/${id}/converter`, body);
     return data;
   },

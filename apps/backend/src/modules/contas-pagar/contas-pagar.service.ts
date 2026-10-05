@@ -90,7 +90,7 @@ export class ContasPagarService implements OnModuleInit {
   // ---------------------------------------------------------------------------
 
   async configuracao() {
-    const [entidades, naturezas, centros, estruturas] = await Promise.all([
+    const [entidades, naturezas, centros, estruturas, grupos] = await Promise.all([
       this.prisma.db.entidadeLegal.findMany({
         where: { deletedAt: null },
         include: { contas: { where: { deletedAt: null } } },
@@ -99,6 +99,7 @@ export class ContasPagarService implements OnModuleInit {
       this.prisma.db.naturezaFinanceira.findMany({ orderBy: { codigo: 'asc' } }),
       this.prisma.db.centroCustoArea.findMany({ orderBy: { codigo: 'asc' } }),
       this.prisma.db.estruturaJuridica.findMany({ where: { deletedAt: null }, select: { id: true, nome: true } }),
+      this.prisma.db.grupoFinanceiro.findMany({ orderBy: [{ ordem: 'asc' }, { codigo: 'asc' }] }),
     ]);
     const nomeEstrutura = new Map(estruturas.map((s) => [s.id, s.nome]));
     return {
@@ -114,8 +115,10 @@ export class ContasPagarService implements OnModuleInit {
         ativo: e.ativo,
         contas: e.contas.map((c) => ({ id: c.id, banco: c.banco, agencia: c.agencia, conta: c.conta, tipo: c.tipo, ativo: c.ativo })),
       })),
+      // Plano de categorias (doc 02 §18.6): grupo → categoria, códigos do Manda.
+      grupos: grupos.map((g) => ({ id: g.id, codigo: g.codigo, nome: g.nome, ordem: g.ordem, ativo: g.ativo })),
       naturezas: naturezas.map((n) => ({
-        id: n.id, codigo: n.codigo, nome: n.nome, exigeAtivo: n.exigeAtivo,
+        id: n.id, codigo: n.codigo, nome: n.nome, grupoId: n.grupoId, saida: n.saida, exigeAtivo: n.exigeAtivo,
         exigeCotacao: n.exigeCotacao, especial: n.especial, exigeJustificativa: n.exigeJustificativa, ativo: n.ativo,
       })),
       centros: centros.map((c) => ({ id: c.id, codigo: c.codigo, nome: c.nome, responsavelUsuarioId: c.responsavelUsuarioId, ativo: c.ativo })),
@@ -134,10 +137,41 @@ export class ContasPagarService implements OnModuleInit {
     return c;
   }
 
-  async criarNatureza(dto: { codigo: string; nome: string; exigeAtivo?: boolean; exigeCotacao?: boolean; especial?: boolean; exigeJustificativa?: boolean }, usuarioId?: string) {
-    const n = await this.prisma.db.naturezaFinanceira.create({ data: dto });
+  async criarNatureza(dto: { codigo: string; nome: string; grupoId: string; saida?: boolean; exigeAtivo?: boolean; exigeCotacao?: boolean; especial?: boolean; exigeJustificativa?: boolean }, usuarioId?: string) {
+    const grupo = await this.prisma.db.grupoFinanceiro.findFirst({ where: { id: dto.grupoId } });
+    if (!grupo) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Grupo não encontrado' });
+    const existente = await this.prisma.db.naturezaFinanceira.findFirst({ where: { codigo: dto.codigo.trim() } });
+    if (existente) throw new UnprocessableEntityException({ erro: 'codigo_duplicado', mensagem: `Já existe a categoria ${existente.codigo} ${existente.nome}` });
+    const n = await this.prisma.db.naturezaFinanceira.create({ data: { ...dto, codigo: dto.codigo.trim(), nome: dto.nome.trim() } });
     await this.auditar(usuarioId, 'cap_natureza_criada', n.id, undefined, dto);
     return n;
+  }
+
+  // Edição do plano (doc 02 §18.6): nome, grupo, marcações e ativo/inativo. O
+  // código não muda — é a chave que o operador reconhece do Manda. Categoria
+  // inativa some do título novo; os títulos antigos seguem apontando para ela.
+  async editarNatureza(id: string, dto: { nome?: string; grupoId?: string; saida?: boolean; exigeAtivo?: boolean; exigeCotacao?: boolean; especial?: boolean; exigeJustificativa?: boolean; ativo?: boolean }, usuarioId?: string) {
+    const antes = await this.prisma.db.naturezaFinanceira.findFirst({ where: { id } });
+    if (!antes) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Categoria não encontrada' });
+    const n = await this.prisma.db.naturezaFinanceira.update({ where: { id }, data: { ...dto, ...(dto.nome ? { nome: dto.nome.trim() } : {}) } });
+    await this.auditar(usuarioId, 'cap_natureza_editada', id, antes, dto);
+    return n;
+  }
+
+  async criarGrupo(dto: { codigo: string; nome: string; ordem?: number }, usuarioId?: string) {
+    const existente = await this.prisma.db.grupoFinanceiro.findFirst({ where: { codigo: dto.codigo.trim() } });
+    if (existente) throw new UnprocessableEntityException({ erro: 'codigo_duplicado', mensagem: `Já existe o grupo ${existente.codigo} ${existente.nome}` });
+    const g = await this.prisma.db.grupoFinanceiro.create({ data: { codigo: dto.codigo.trim(), nome: dto.nome.trim(), ordem: dto.ordem ?? (Number(dto.codigo) || 0) } });
+    await this.auditar(usuarioId, 'cap_grupo_criado', g.id, undefined, dto);
+    return g;
+  }
+
+  async editarGrupo(id: string, dto: { nome?: string; ordem?: number; ativo?: boolean }, usuarioId?: string) {
+    const antes = await this.prisma.db.grupoFinanceiro.findFirst({ where: { id } });
+    if (!antes) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Grupo não encontrado' });
+    const g = await this.prisma.db.grupoFinanceiro.update({ where: { id }, data: { ...dto, ...(dto.nome ? { nome: dto.nome.trim() } : {}) } });
+    await this.auditar(usuarioId, 'cap_grupo_editado', id, antes, dto);
+    return g;
   }
 
   async criarCentro(dto: { codigo: string; nome: string; responsavelUsuarioId?: string }, usuarioId?: string) {
@@ -384,7 +418,7 @@ export class ContasPagarService implements OnModuleInit {
   }
 
   // RF-06: conversão preserva o vínculo (origemSolicitacaoId).
-  async converterOrcamento(id: string, dto: { fornecedorId: string; vencimento: string; competencia?: string; naturezaId: string; centroCustoAreaId: string; formaPagamento?: string }, usuarioId: string) {
+  async converterOrcamento(id: string, dto: { fornecedorId: string; vencimento: string; competencia?: string; naturezaId: string; centroCustoAreaId?: string; formaPagamento?: string }, usuarioId: string) {
     const o = await this.prisma.db.solicitacaoOrcamento.findFirst({ where: { id }, include: { propostas: { where: { selecionado: true } } } });
     if (!o) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Solicitação não encontrada' });
     if (o.status !== 'APROVADO') {
@@ -422,7 +456,7 @@ export class ContasPagarService implements OnModuleInit {
     const ts = await this.prisma.db.tituloPagar.findMany({
       where: { deletedAt: null, ...(filtro?.status ? { status: filtro.status } : {}), ...(filtro?.entidadeId ? { entidadeId: filtro.entidadeId } : {}) },
       include: {
-        entidade: true, fornecedor: true, natureza: true, centro: true,
+        entidade: true, fornecedor: true, natureza: { include: { grupo: true } }, centro: true,
         pagamentos: { include: { conciliacao: true } }, documentos: { where: { ativo: true } },
         // Mão dupla do Reembolso Parcelado (doc 02 §18.5, 13/09): o título mostra
         // de qual contrato/cliente veio, com rota para a ficha.
@@ -441,7 +475,7 @@ export class ContasPagarService implements OnModuleInit {
     contratoCredito?: { numero: string; conta: { titularId: string; titular: { nome: string } } } | null;
     dataProgramada: Date | null; motivoDevolucao: string | null; motivoBloqueio: string | null; createdAt: Date;
     entidade: { id: string; razaoSocial: string }; fornecedor: { id: string; nome: string; status: string; alertaProximoPagamento: boolean };
-    natureza: { id: string; codigo: string; nome: string }; centro: { id: string; codigo: string; nome: string };
+    natureza: { id: string; codigo: string; nome: string; grupo?: { codigo: string; nome: string } | null }; centro: { id: string; codigo: string; nome: string } | null;
     pagamentos: { id: string; dataEfetiva: Date; valorEfetivo: Prisma.Decimal; identificador: string | null; comprovanteNome: string | null; divergencia: string | null; conciliacao: { id: string; status: string; dataSaida: Date; valorExtrato: Prisma.Decimal } | null }[];
     documentos: { id: string; tipo: string; nome: string; versao: number }[];
   }) {
@@ -469,8 +503,8 @@ export class ContasPagarService implements OnModuleInit {
       criadoEm: t.createdAt,
       entidade: { id: t.entidade.id, nome: t.entidade.razaoSocial },
       fornecedor: { id: t.fornecedor.id, nome: t.fornecedor.nome, status: t.fornecedor.status, alertaProximoPagamento: t.fornecedor.alertaProximoPagamento },
-      natureza: { id: t.natureza.id, codigo: t.natureza.codigo, nome: t.natureza.nome },
-      centro: { id: t.centro.id, codigo: t.centro.codigo, nome: t.centro.nome },
+      natureza: { id: t.natureza.id, codigo: t.natureza.codigo, nome: t.natureza.nome, grupo: t.natureza.grupo ? { codigo: t.natureza.grupo.codigo, nome: t.natureza.grupo.nome } : null },
+      centro: t.centro ? { id: t.centro.id, codigo: t.centro.codigo, nome: t.centro.nome } : null,
       documentos: t.documentos.map((d) => ({ id: d.id, tipo: d.tipo, nome: d.nome, versao: d.versao })),
       pagamentos: t.pagamentos.map((p) => ({
         id: p.id, dataEfetiva: p.dataEfetiva, valorEfetivo: cent(p.valorEfetivo), identificador: p.identificador,
@@ -484,7 +518,7 @@ export class ContasPagarService implements OnModuleInit {
   async criarTitulo(
     dto: {
       entidadeId: string; fornecedorId: string; descricao: string; valor: number; vencimento: string;
-      competencia?: string; naturezaId: string; centroCustoAreaId: string;
+      competencia?: string; naturezaId: string; centroCustoAreaId?: string;
       responsavelEconomico?: 'AZIT' | 'INVESTIDOR' | 'CLIENTE' | 'OUTRA_ENTIDADE';
       formaPagamento?: string; ativoId?: string; contratoCreditoId?: string; origemSolicitacaoId?: string;
       urgente?: boolean; justificativaUrgencia?: string; justificativaNatureza?: string;
@@ -493,7 +527,9 @@ export class ContasPagarService implements OnModuleInit {
     usuarioId?: string,
   ) {
     const natureza = await this.prisma.db.naturezaFinanceira.findFirst({ where: { id: dto.naturezaId } });
-    if (!natureza) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Natureza financeira não encontrada' });
+    if (!natureza) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Categoria não encontrada' });
+    if (!natureza.ativo) throw new UnprocessableEntityException({ erro: 'natureza_inativa', mensagem: `A categoria "${natureza.codigo} ${natureza.nome}" está inativa — escolha outra` });
+    if (!natureza.saida) throw new UnprocessableEntityException({ erro: 'natureza_de_entrada', mensagem: `"${natureza.codigo} ${natureza.nome}" é receita — não entra em título a pagar` });
     // RCPG005: despesa veicular exige ativo/placa.
     if (natureza.exigeAtivo && !dto.ativoId) {
       throw new UnprocessableEntityException({ erro: 'ativo_obrigatorio', mensagem: `A natureza "${natureza.nome}" exige o veículo/ativo vinculado` });
@@ -875,13 +911,13 @@ export class ContasPagarService implements OnModuleInit {
     const entidade = await this.prisma.db.entidadeLegal.findFirst({ where: { unidadeNegocio: 'Reembolso Parcelado' } });
     const natureza = await this.prisma.db.naturezaFinanceira.findFirst({ where: { codigo: 'NF11' } });
     const centro = await this.prisma.db.centroCustoArea.findFirst({ where: { codigo: 'CC05' } });
-    if (!entidade || !natureza || !centro) {
+    if (!entidade || !natureza) {
       // Fundação ausente não trava o RP, mas NUNCA em silêncio (correção 12/09
       // — mesmo padrão da cobrança): o financeiro precisa criar o título à mão.
       await this.notificacao
         .emitir({
           titulo: 'Desembolso do Reembolso Parcelado NÃO foi criado',
-          corpo: `Contrato ${contrato.numero} (${contrato.clienteNome}, ${formatCurrency(contrato.valorCentavos)}): falta fundação no contas a pagar (${[!entidade && 'entidade "Reembolso Parcelado"', !natureza && 'natureza NF11', !centro && 'centro CC05'].filter(Boolean).join(', ')}). Cadastre e crie o título manualmente.`,
+          corpo: `Contrato ${contrato.numero} (${contrato.clienteNome}, ${formatCurrency(contrato.valorCentavos)}): falta fundação no contas a pagar (${[!entidade && 'entidade "Reembolso Parcelado"', !natureza && 'categoria NF11'].filter(Boolean).join(', ')}). Cadastre e crie o título manualmente.`,
           rota: '/contas-a-pagar',
           tipo: 'FALHA',
           area: 'FINANCEIRO_ADMINISTRATIVO',
@@ -915,7 +951,7 @@ export class ContasPagarService implements OnModuleInit {
         valor: reais(contrato.valorCentavos),
         vencimento: this.proximaDataProgramada(),
         naturezaId: natureza.id,
-        centroCustoAreaId: centro.id,
+        centroCustoAreaId: centro?.id,
         responsavelEconomico: 'CLIENTE',
         ativoId: contrato.ativoId,
         contratoCreditoId: contrato.id,
@@ -928,6 +964,46 @@ export class ContasPagarService implements OnModuleInit {
   }
 
   // Painel para a fila do Início e a tela principal.
+  // Quadro por categoria (doc 02 §18.6): o mês visto pelo plano do Manda —
+  // grupo → categoria, com previsto (em aberto), pago e cancelado, pelo
+  // VENCIMENTO. É o que o Luís quer ver no fim do dia.
+  async porCategoria(mes: string) {
+    const m = /^\d{4}-\d{2}$/.test(mes) ? mes : new Date().toISOString().slice(0, 7);
+    const inicio = new Date(`${m}-01T00:00:00.000Z`);
+    const fim = new Date(Date.UTC(inicio.getUTCFullYear(), inicio.getUTCMonth() + 1, 1));
+    const [grupos, naturezas, titulos] = await Promise.all([
+      this.prisma.db.grupoFinanceiro.findMany({ orderBy: [{ ordem: 'asc' }, { codigo: 'asc' }] }),
+      this.prisma.db.naturezaFinanceira.findMany({ orderBy: { codigo: 'asc' } }),
+      this.prisma.db.tituloPagar.findMany({
+        where: { deletedAt: null, vencimento: { gte: inicio, lt: fim } },
+        select: { naturezaId: true, valor: true, status: true },
+      }),
+    ]);
+    const soma = new Map<string, { aberto: number; pago: number; cancelado: number; quantidade: number }>();
+    for (const t of titulos) {
+      const s = soma.get(t.naturezaId) ?? { aberto: 0, pago: 0, cancelado: 0, quantidade: 0 };
+      const v = cent(t.valor);
+      if (t.status === 'CANCELADO') s.cancelado += v;
+      else if (t.status === 'PAGO' || t.status === 'CONCILIADO') s.pago += v;
+      else s.aberto += v;
+      s.quantidade += 1;
+      soma.set(t.naturezaId, s);
+    }
+    const vazio = { aberto: 0, pago: 0, cancelado: 0, quantidade: 0 };
+    const linhas = grupos.map((g) => {
+      const cats = naturezas
+        .filter((n) => n.grupoId === g.id)
+        .map((n) => ({ id: n.id, codigo: n.codigo, nome: n.nome, saida: n.saida, ativo: n.ativo, ...(soma.get(n.id) ?? vazio) }))
+        // Categoria sem movimento e inativa não polui o quadro.
+        .filter((c) => c.ativo || c.quantidade > 0);
+      const tot = cats.reduce((a, c) => ({ aberto: a.aberto + c.aberto, pago: a.pago + c.pago, cancelado: a.cancelado + c.cancelado, quantidade: a.quantidade + c.quantidade }), { ...vazio });
+      return { id: g.id, codigo: g.codigo, nome: g.nome, ativo: g.ativo, ...tot, categorias: cats };
+    });
+    const semGrupo = naturezas.filter((n) => !n.grupoId && soma.has(n.id)).map((n) => ({ id: n.id, codigo: n.codigo, nome: n.nome, saida: n.saida, ativo: n.ativo, ...(soma.get(n.id) ?? vazio) }));
+    const total = [...soma.values()].reduce((a, c) => ({ aberto: a.aberto + c.aberto, pago: a.pago + c.pago, cancelado: a.cancelado + c.cancelado, quantidade: a.quantidade + c.quantidade }), { ...vazio });
+    return { mes: m, total, grupos: linhas, semGrupo };
+  }
+
   async painel() {
     const [porStatus, pagosNaoConciliados, urgentes] = await Promise.all([
       this.prisma.db.tituloPagar.groupBy({ by: ['status'], _count: { id: true }, where: { deletedAt: null } }),

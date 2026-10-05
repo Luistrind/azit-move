@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Res } from '@nestjs/common';
 import { RoleUsuario, StatusTituloPagar } from '@prisma/client';
 import { z } from 'zod';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -61,7 +61,7 @@ const criarTituloSchema = z.object({
   vencimento: z.string().min(8),
   competencia: z.string().optional(),
   naturezaId: z.string().min(1),
-  centroCustoAreaId: z.string().min(1),
+  centroCustoAreaId: z.string().optional(),
   responsavelEconomico: z.enum(['AZIT', 'INVESTIDOR', 'CLIENTE', 'OUTRA_ENTIDADE']).optional(),
   formaPagamento: z.string().optional(),
   ativoId: z.string().optional(),
@@ -138,11 +138,44 @@ export class ContasPagarController {
   @Post('naturezas')
   @HttpCode(201)
   criarNatureza(
-    @Body(new ZodValidationPipe(z.object({ codigo: z.string().min(2), nome: z.string().min(2), exigeAtivo: z.boolean().optional(), exigeCotacao: z.boolean().optional(), especial: z.boolean().optional(), exigeJustificativa: z.boolean().optional() })))
-    dto: { codigo: string; nome: string; exigeAtivo?: boolean; exigeCotacao?: boolean; especial?: boolean; exigeJustificativa?: boolean },
+    @Body(new ZodValidationPipe(z.object({ codigo: z.string().min(2), nome: z.string().min(2), grupoId: z.string().min(1), saida: z.boolean().optional(), exigeAtivo: z.boolean().optional(), exigeCotacao: z.boolean().optional(), especial: z.boolean().optional(), exigeJustificativa: z.boolean().optional() })))
+    dto: { codigo: string; nome: string; grupoId: string; saida?: boolean; exigeAtivo?: boolean; exigeCotacao?: boolean; especial?: boolean; exigeJustificativa?: boolean },
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.service.criarNatureza(dto, user.id);
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  @Patch('naturezas/:id')
+  editarNatureza(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(z.object({ nome: z.string().min(2).optional(), grupoId: z.string().min(1).optional(), saida: z.boolean().optional(), exigeAtivo: z.boolean().optional(), exigeCotacao: z.boolean().optional(), especial: z.boolean().optional(), exigeJustificativa: z.boolean().optional(), ativo: z.boolean().optional() })))
+    dto: { nome?: string; grupoId?: string; saida?: boolean; exigeAtivo?: boolean; exigeCotacao?: boolean; especial?: boolean; exigeJustificativa?: boolean; ativo?: boolean },
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.service.editarNatureza(id, dto, user.id);
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  @Post('grupos')
+  @HttpCode(201)
+  criarGrupo(
+    @Body(new ZodValidationPipe(z.object({ codigo: z.string().min(1), nome: z.string().min(2), ordem: z.number().int().optional() })))
+    dto: { codigo: string; nome: string; ordem?: number },
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.service.criarGrupo(dto, user.id);
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  @Patch('grupos/:id')
+  editarGrupo(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(z.object({ nome: z.string().min(2).optional(), ordem: z.number().int().optional(), ativo: z.boolean().optional() })))
+    dto: { nome?: string; ordem?: number; ativo?: boolean },
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.service.editarGrupo(id, dto, user.id);
   }
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
@@ -230,8 +263,8 @@ export class ContasPagarController {
   @HttpCode(201)
   converterOrcamento(
     @Param('id') id: string,
-    @Body(new ZodValidationPipe(z.object({ fornecedorId: z.string().min(1), vencimento: z.string().min(8), competencia: z.string().optional(), naturezaId: z.string().min(1), centroCustoAreaId: z.string().min(1), formaPagamento: z.string().optional() })))
-    dto: { fornecedorId: string; vencimento: string; competencia?: string; naturezaId: string; centroCustoAreaId: string; formaPagamento?: string },
+    @Body(new ZodValidationPipe(z.object({ fornecedorId: z.string().min(1), vencimento: z.string().min(8), competencia: z.string().optional(), naturezaId: z.string().min(1), centroCustoAreaId: z.string().optional(), formaPagamento: z.string().optional() })))
+    dto: { fornecedorId: string; vencimento: string; competencia?: string; naturezaId: string; centroCustoAreaId?: string; formaPagamento?: string },
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.service.converterOrcamento(id, dto, user.id);
@@ -366,5 +399,12 @@ export class ContasPagarController {
   @Get('painel')
   painel() {
     return this.service.painel();
+  }
+
+  // Quadro do mês por grupo → categoria (doc 02 §18.6).
+  @Roles(...SOLICITANTES)
+  @Get('por-categoria')
+  porCategoria(@Query('mes') mes?: string) {
+    return this.service.porCategoria(mes ?? '');
   }
 }

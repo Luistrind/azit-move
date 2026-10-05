@@ -1096,6 +1096,21 @@ cronograma esperado × cobranças, `fora` do cronograma, `resumo`), `divergencia
 entrada · acordo · reembolso (IPVA, multa, manutenção…) · outra. Motores puros em `@azit/utils`:
 `legado-termos` (extração do Mod06), `legado-interpretacao`, `legado-conciliacao` (±3 dias, valor exato).
 
+## 6-D. Contas a pagar — plano de categorias (doc 02 §18.6, 05/10)
+
+| Método | Rota | Descrição |
+|---|---|---|
+| GET | `/financeiro/configuracao` | Passa a trazer `grupos[]` e cada natureza com `grupoId` e `saida` |
+| POST | `/financeiro/grupos` | `{ codigo, nome, ordem? }` (ADMIN/DIRETOR). 422 `codigo_duplicado` |
+| PATCH | `/financeiro/grupos/:id` | `{ nome?, ordem?, ativo? }` |
+| POST | `/financeiro/naturezas` | Agora exige `grupoId`; aceita `saida` (false = receita, não entra em título). 422 `codigo_duplicado` |
+| PATCH | `/financeiro/naturezas/:id` | `{ nome?, grupoId?, saida?, exigeAtivo?, exigeCotacao?, especial?, exigeJustificativa?, ativo? }` — o código não muda |
+| POST | `/financeiro/titulos` | `centroCustoAreaId` passa a ser opcional. 422 `natureza_inativa` / `natureza_de_entrada` |
+| POST | `/financeiro/orcamentos/:id/converter` | `centroCustoAreaId` opcional |
+| GET | `/financeiro/por-categoria?mes=YYYY-MM` | Quadro do mês pelo vencimento: `{ mes, total, grupos[{…, categorias[{ codigo, nome, saida, ativo, aberto, pago, cancelado, quantidade }]}], semGrupo[] }` (centavos) |
+
+O título lista `natureza.grupo { codigo, nome }` e `centro` pode ser `null`.
+
 ## 7. Placeholders de API
 
 | Endpoint | Descrição | Bloqueio |

@@ -2179,17 +2179,39 @@ model FornecedorDadosBancarios {
   @@map("fornecedores_dados_bancarios")
 }
 
-// Natureza operacional (nao substitui plano contabil do BPO — RCPG030/031).
+// Plano de categorias do financeiro (doc 02 s.18.6, 05/10): GRUPO (00..07 do
+// Manda) -> CATEGORIA (natureza). O titulo aponta para a categoria; o grupo e o
+// corte do relatorio. Editavel na Configuracao do financeiro.
+model GrupoFinanceiro {
+  id     String  @id @default(cuid())
+  codigo String  @unique // "03"
+  nome   String // "Custos"
+  ordem  Int     @default(0)
+  ativo  Boolean @default(true)
+
+  naturezas NaturezaFinanceira[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("grupos_financeiros")
+}
+
+// Categoria do plano (natureza operacional — nao substitui plano contabil do
+// BPO, RCPG030/031). Codigo e nome sao os do Manda ("3.01 Preparacao de Veiculos").
 model NaturezaFinanceira {
   id                 String  @id @default(cuid())
   codigo             String  @unique
   nome               String
+  grupoId            String?
+  saida              Boolean @default(true) // false = receita/entrada: fica no plano, nao aparece no titulo a pagar
   exigeAtivo         Boolean @default(false) // RCPG005: despesas veiculares
   exigeCotacao       Boolean @default(false)
   especial           Boolean @default(false) // RCPG013: Diretor sempre
   exigeJustificativa Boolean @default(false) // RCPG031: despesas diversas
   ativo              Boolean @default(true)
 
+  grupo   GrupoFinanceiro? @relation(fields: [grupoId], references: [id])
   titulos TituloPagar[]
 
   createdAt DateTime @default(now())
@@ -2269,7 +2291,7 @@ model TituloPagar {
   vencimento           DateTime
   competencia          String?
   naturezaId           String
-  centroCustoAreaId    String
+  centroCustoAreaId    String? // opcional desde 05/10 (doc 02 s.18.6): dimensao em desuso, volta quando a operacao usar
   responsavelEconomico ResponsavelEconomico @default(AZIT)
   formaPagamento       String               @default("pix") // forma ≠ natureza (RCPG030)
   status               StatusTituloPagar    @default(RASCUNHO)
@@ -2292,7 +2314,7 @@ model TituloPagar {
   entidade   EntidadeLegal      @relation(fields: [entidadeId], references: [id])
   fornecedor FornecedorFin      @relation(fields: [fornecedorId], references: [id])
   natureza   NaturezaFinanceira @relation(fields: [naturezaId], references: [id])
-  centro     CentroCustoArea    @relation(fields: [centroCustoAreaId], references: [id])
+  centro     CentroCustoArea?   @relation(fields: [centroCustoAreaId], references: [id])
   lote       LotePagamento?     @relation(fields: [loteId], references: [id])
   // Mao dupla do RP (doc 02 sec.18.5, 13/09): titulo PODE vir de um reembolso;
   // todo reembolso TEM seu titulo — relacao formal, nao id solto.

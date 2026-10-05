@@ -14,6 +14,7 @@ const cardStyle = { background: 'var(--surface)', border: '1px solid var(--borde
 const inputCls = 'h-[32px] rounded-[8px] px-[10px] text-[12.5px]';
 const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' } as const;
 const btnP = 'rounded-[8px] bg-[var(--navy)] px-[12px] py-[7px] text-[12px] font-bold text-white disabled:opacity-40';
+const btnS = 'rounded-[8px] border border-[var(--border)] px-[12px] py-[7px] text-[12px] font-bold disabled:opacity-40';
 
 export function FinanceiroConfigPage() {
   const qc = useQueryClient();
@@ -23,7 +24,9 @@ export function FinanceiroConfigPage() {
   // 04/08: cada produto (PV, RP) vira estrutura própria com conta separada.
   const estruturas = useQuery({ queryKey: ['estruturas'], queryFn: () => capitalService.estruturas() });
   const [novaConta, setNovaConta] = useState({ entidadeId: '', banco: '', agencia: '', conta: '' });
-  const [novaNatureza, setNovaNatureza] = useState({ codigo: '', nome: '', exigeAtivo: false, especial: false });
+  const [novaNatureza, setNovaNatureza] = useState({ codigo: '', nome: '', grupoId: '', saida: true, exigeAtivo: false, especial: false });
+  const [novoGrupo, setNovoGrupo] = useState({ codigo: '', nome: '' });
+  const [editando, setEditando] = useState<{ id: string; nome: string } | null>(null);
   const [novoCentro, setNovoCentro] = useState({ codigo: '', nome: '' });
   const [ocupado, setOcupado] = useState(false);
 
@@ -96,37 +99,88 @@ export function FinanceiroConfigPage() {
           </div>
 
           <div className={card} style={cardStyle}>
-            <div className="mb-[8px] font-display text-[13px] font-bold">Naturezas financeiras (o que está sendo pago — não substitui o plano contábil do BPO)</div>
-            <table className="w-full min-w-[560px] border-collapse text-[12.5px]">
-              <thead><tr className="text-left" style={{ color: 'var(--text-muted)' }}>
-                <th className="pb-[6px] font-semibold">Código</th><th className="pb-[6px] font-semibold">Nome</th>
-                <th className="pb-[6px] font-semibold">Exige veículo</th><th className="pb-[6px] font-semibold">Exige cotação</th>
-                <th className="pb-[6px] font-semibold">Aprovação da Diretoria</th><th className="pb-[6px] font-semibold">Exige justificativa</th>
-              </tr></thead>
-              <tbody>
-                {c.naturezas.map((n) => (
-                  <tr key={n.id} style={{ borderTop: '1px solid var(--border-light)' }}>
-                    <td className="py-[6px]">{n.codigo}</td><td className="py-[6px] font-semibold">{n.nome}</td>
-                    <td className="py-[6px]">{n.exigeAtivo ? 'Sim' : '—'}</td><td className="py-[6px]">{n.exigeCotacao ? 'Sim' : '—'}</td>
-                    <td className="py-[6px]">{n.especial ? 'Sempre' : 'Por alçada'}</td><td className="py-[6px]">{n.exigeJustificativa ? 'Sim' : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="mb-[4px] font-display text-[13px] font-bold">Plano de categorias (grupo → categoria, igual ao relatório do Manda)</div>
+            <div className="mb-[8px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+              O título a pagar aponta para a categoria; o grupo é o corte do quadro "Por categoria". Receita fica no plano e não aparece no título. Categoria inativa some do título novo, os antigos continuam apontando para ela. Não substitui o plano contábil do BPO.
+            </div>
+            {c.grupos.map((g) => {
+              const cats = c.naturezas.filter((n) => n.grupoId === g.id);
+              return (
+                <div key={g.id} className="mb-[8px] rounded-[10px] p-[8px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', opacity: g.ativo ? 1 : 0.6 }}>
+                  <div className="flex flex-wrap items-center justify-between gap-[6px]">
+                    <div className="font-bold">{g.codigo}. {g.nome}{!g.ativo && ' (inativo)'}</div>
+                    <button className={btnS} disabled={ocupado} onClick={() => rodar(() => financeiroService.editarGrupo(g.id, { ativo: !g.ativo }), g.ativo ? 'Grupo inativado.' : 'Grupo reativado.')}>{g.ativo ? 'Inativar' : 'Reativar'}</button>
+                  </div>
+                  {cats.length > 0 && (
+                    <table className="mt-[6px] w-full min-w-[560px] border-collapse text-[12.5px]">
+                      <thead><tr className="text-left" style={{ color: 'var(--text-muted)' }}>
+                        <th className="pb-[4px] font-semibold">Código</th><th className="pb-[4px] font-semibold">Nome</th><th className="pb-[4px] font-semibold">Tipo</th>
+                        <th className="pb-[4px] font-semibold">Exige veículo</th><th className="pb-[4px] font-semibold">Exige cotação</th>
+                        <th className="pb-[4px] font-semibold">Diretoria</th><th className="pb-[4px] font-semibold">Justificativa</th><th className="pb-[4px] font-semibold"></th>
+                      </tr></thead>
+                      <tbody>
+                        {cats.map((n) => (
+                          <tr key={n.id} style={{ borderTop: '1px solid var(--border-light)', opacity: n.ativo ? 1 : 0.55 }}>
+                            <td className="py-[5px] tabular-nums">{n.codigo}</td>
+                            <td className="py-[5px] font-semibold">
+                              {editando?.id === n.id ? (
+                                <span className="flex gap-[4px]">
+                                  <input className={`${inputCls} w-[240px]`} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} value={editando.nome} onChange={(e) => setEditando({ id: n.id, nome: e.target.value })} />
+                                  <button className={btnP} disabled={ocupado || editando.nome.trim().length < 2} onClick={() => rodar(async () => { await financeiroService.editarNatureza(n.id, { nome: editando.nome }); setEditando(null); }, 'Categoria renomeada.')}>Salvar</button>
+                                  <button className={btnS} onClick={() => setEditando(null)}>Cancelar</button>
+                                </span>
+                              ) : n.nome}
+                            </td>
+                            <td className="py-[5px]">{n.saida ? 'Saída' : 'Receita'}</td>
+                            <td className="py-[5px]"><input type="checkbox" checked={n.exigeAtivo} disabled={ocupado} onChange={(e) => rodar(() => financeiroService.editarNatureza(n.id, { exigeAtivo: e.target.checked }), 'Categoria atualizada.')} /></td>
+                            <td className="py-[5px]"><input type="checkbox" checked={n.exigeCotacao} disabled={ocupado} onChange={(e) => rodar(() => financeiroService.editarNatureza(n.id, { exigeCotacao: e.target.checked }), 'Categoria atualizada.')} /></td>
+                            <td className="py-[5px]"><input type="checkbox" checked={n.especial} disabled={ocupado} onChange={(e) => rodar(() => financeiroService.editarNatureza(n.id, { especial: e.target.checked }), 'Categoria atualizada.')} title="Aprovação da Diretoria sempre, independente do valor" /></td>
+                            <td className="py-[5px]"><input type="checkbox" checked={n.exigeJustificativa} disabled={ocupado} onChange={(e) => rodar(() => financeiroService.editarNatureza(n.id, { exigeJustificativa: e.target.checked }), 'Categoria atualizada.')} /></td>
+                            <td className="py-[5px] text-right whitespace-nowrap">
+                              {editando?.id !== n.id && <button className="mr-[6px] text-[11.5px] underline" onClick={() => setEditando({ id: n.id, nome: n.nome })}>Renomear</button>}
+                              <button className="text-[11.5px] underline" disabled={ocupado} onClick={() => rodar(() => financeiroService.editarNatureza(n.id, { ativo: !n.ativo }), n.ativo ? 'Categoria inativada.' : 'Categoria reativada.')}>{n.ativo ? 'Inativar' : 'Reativar'}</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              );
+            })}
+            {c.naturezas.some((n) => !n.grupoId) && (
+              <div className="mb-[8px] text-[12px]" style={{ color: '#8a5a00' }}>
+                Sem grupo: {c.naturezas.filter((n) => !n.grupoId).map((n) => `${n.codigo} ${n.nome}`).join(', ')} — defina o grupo ao criar; categorias sem grupo não aparecem no título.
+              </div>
+            )}
             <div className="mt-[8px] flex flex-wrap items-end gap-[8px]">
+              <label className="text-[11px] font-semibold">Grupo
+                <select className={`${inputCls} block w-[220px]`} style={inputStyle} value={novaNatureza.grupoId} onChange={(e) => setNovaNatureza({ ...novaNatureza, grupoId: e.target.value })}>
+                  <option value="">Selecione…</option>
+                  {c.grupos.filter((g) => g.ativo).map((g) => <option key={g.id} value={g.id}>{g.codigo}. {g.nome}</option>)}
+                </select></label>
               <label className="text-[11px] font-semibold">Código
-                <input className={`${inputCls} block w-[80px]`} style={inputStyle} value={novaNatureza.codigo} onChange={(e) => setNovaNatureza({ ...novaNatureza, codigo: e.target.value.toUpperCase() })} /></label>
+                <input className={`${inputCls} block w-[80px]`} style={inputStyle} value={novaNatureza.codigo} placeholder="3.04" onChange={(e) => setNovaNatureza({ ...novaNatureza, codigo: e.target.value })} /></label>
               <label className="text-[11px] font-semibold">Nome
                 <input className={`${inputCls} block w-[240px]`} style={inputStyle} value={novaNatureza.nome} onChange={(e) => setNovaNatureza({ ...novaNatureza, nome: e.target.value })} /></label>
+              <label className="flex items-center gap-[4px] text-[11.5px]"><input type="checkbox" checked={!novaNatureza.saida} onChange={(e) => setNovaNatureza({ ...novaNatureza, saida: !e.target.checked })} />Receita (não entra em título)</label>
               <label className="flex items-center gap-[4px] text-[11.5px]"><input type="checkbox" checked={novaNatureza.exigeAtivo} onChange={(e) => setNovaNatureza({ ...novaNatureza, exigeAtivo: e.target.checked })} />Exige veículo</label>
               <label className="flex items-center gap-[4px] text-[11.5px]"><input type="checkbox" checked={novaNatureza.especial} onChange={(e) => setNovaNatureza({ ...novaNatureza, especial: e.target.checked })} />Diretoria sempre</label>
-              <button className={btnP} disabled={ocupado || !novaNatureza.codigo || novaNatureza.nome.trim().length < 2}
-                onClick={() => rodar(() => financeiroService.criarNatureza(novaNatureza), 'Natureza criada — homologar com o BPO.')}>+ Natureza</button>
+              <button className={btnP} disabled={ocupado || !novaNatureza.grupoId || !novaNatureza.codigo.trim() || novaNatureza.nome.trim().length < 2}
+                onClick={() => rodar(async () => { await financeiroService.criarNatureza({ ...novaNatureza, codigo: novaNatureza.codigo.trim() }); setNovaNatureza({ codigo: '', nome: '', grupoId: '', saida: true, exigeAtivo: false, especial: false }); }, 'Categoria criada.')}>+ Categoria</button>
+            </div>
+            <div className="mt-[8px] flex flex-wrap items-end gap-[8px]" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '8px' }}>
+              <label className="text-[11px] font-semibold">Novo grupo — código
+                <input className={`${inputCls} block w-[80px]`} style={inputStyle} value={novoGrupo.codigo} placeholder="08" onChange={(e) => setNovoGrupo({ ...novoGrupo, codigo: e.target.value })} /></label>
+              <label className="text-[11px] font-semibold">Nome
+                <input className={`${inputCls} block w-[240px]`} style={inputStyle} value={novoGrupo.nome} onChange={(e) => setNovoGrupo({ ...novoGrupo, nome: e.target.value })} /></label>
+              <button className={btnP} disabled={ocupado || !novoGrupo.codigo.trim() || novoGrupo.nome.trim().length < 2}
+                onClick={() => rodar(async () => { await financeiroService.criarGrupo({ codigo: novoGrupo.codigo.trim(), nome: novoGrupo.nome.trim() }); setNovoGrupo({ codigo: '', nome: '' }); }, 'Grupo criado.')}>+ Grupo</button>
             </div>
           </div>
 
           <div className={card} style={cardStyle}>
-            <div className="mb-[8px] font-display text-[13px] font-bold">Centros de custo (áreas responsáveis — veículo, investidor e produto são dimensões, não centros)</div>
+            <div className="mb-[8px] font-display text-[13px] font-bold">Centros de custo (opcional no título — áreas responsáveis; veículo, investidor e produto são dimensões, não centros)</div>
             <div className="flex flex-wrap gap-[6px]">
               {c.centros.map((cc) => (
                 <span key={cc.id} className="rounded-full px-[10px] py-[4px] text-[12px] font-semibold" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>

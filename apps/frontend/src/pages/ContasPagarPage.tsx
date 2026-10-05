@@ -7,9 +7,10 @@ import {
   OrcamentoApi,
   LotePagamentoApi,
   ConfiguracaoFinanceiro,
+  LinhaCategoria,
 } from '../services/financeiro.service';
 import { rotuloStatus, ROTULO_RESPONSAVEL_ECONOMICO, ROTULO_STATUS_LOTE } from '../lib/rotulos';
-import { mascararDinheiro, dinheiroParaCentavos } from '../lib/mascaras';
+import { mascararDinheiro, dinheiroParaCentavos, mascararCpfCnpj } from '../lib/mascaras';
 import { Modal } from '../components/Modal';
 import { toast } from '../components/Toast';
 import { CONTAS_PAGAR_STATUS_COLORS } from '../config/statusColors';
@@ -30,8 +31,10 @@ const btnS = `${btn} border border-[var(--border)]`;
 function reais(c: number): string {
   return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
+// Vencimento é data civil gravada à meia-noite UTC: sem o fuso fixo, aparecia
+// um dia antes (20/10 virava 19/10) — mesma correção da régua (02/10).
 function dataBR(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
+  return iso ? new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—';
 }
 
 function Chip({ status, deLote }: { status: string; deLote?: boolean }) {
@@ -55,7 +58,7 @@ const MOMENTOS: { chave: string; rotulo: string; status: string[] }[] = [
 
 export function ContasPagarPage() {
   const qc = useQueryClient();
-  const [aba, setAba] = useState<'titulos' | 'orcamentos' | 'lotes'>('titulos');
+  const [aba, setAba] = useState<'titulos' | 'orcamentos' | 'lotes' | 'categorias'>('titulos');
   const [momento, setMomento] = useState('validar');
   const [criandoTitulo, setCriandoTitulo] = useState(false);
   const [criandoOrcamento, setCriandoOrcamento] = useState(false);
@@ -103,6 +106,7 @@ export function ContasPagarPage() {
             ['titulos', 'Títulos'],
             ['orcamentos', 'Orçamentos'],
             ['lotes', 'Lotes de pagamento'],
+            ['categorias', 'Por categoria'],
           ] as const
         ).map(([k, rotulo]) => (
           <button
@@ -149,6 +153,8 @@ export function ContasPagarPage() {
           <ListaLotes lotes={lotes.data ?? []} carregando={lotes.isLoading} onMudou={recarregar} />
         </>
       )}
+
+      {aba === 'categorias' && <QuadroCategorias />}
 
       {criandoTitulo && config.data && (
         <ModalNovaDespesa config={config.data} fechar={() => setCriandoTitulo(false)} onCriou={async () => { setCriandoTitulo(false); await recarregar(); }} />
@@ -214,7 +220,7 @@ function ListaTitulos({ titulos, carregando, onMudou }: { titulos: TituloPagarAp
                 )}
               </div>
               <div className="mt-[4px] text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
-                {t.fornecedor.nome} · {t.entidade.nome} · {t.natureza.nome} · {t.centro.nome} ·
+                {t.fornecedor.nome} · {t.entidade.nome} · {t.natureza.codigo} {t.natureza.nome}{t.centro ? ` · ${t.centro.nome}` : ''} ·
                 {' '}responsável econômico: {ROTULO_RESPONSAVEL_ECONOMICO[t.responsavelEconomico] ?? t.responsavelEconomico} ·
                 {' '}vence {dataBR(t.vencimento)}{t.dataProgramada ? ` · programado ${dataBR(t.dataProgramada)}` : ''}
                 {t.documentos.length > 0 && ` · ${t.documentos.length} documento(s)`}
@@ -376,11 +382,96 @@ function ModalConciliacao({ titulo, ocupado, fechar, confirmar }: { titulo: Titu
 // Nova despesa (dimensões condicionais por natureza)
 // ---------------------------------------------------------------------------
 
-function ModalNovaDespesa({ config, fechar, onCriou }: { config: ConfiguracaoFinanceiro; fechar: () => void; onCriou: () => Promise<void> }) {
+// Categorias que podem entrar num título: ativas e de saída (receita fica no
+// plano, mas não aparece aqui — doc 02 §18.6).
+function categoriasDeSaida(config: ConfiguracaoFinanceiro) {
+  return config.naturezas.filter((n) => n.ativo && n.saida && n.grupoId);
+}
+function gruposComSaida(config: ConfiguracaoFinanceiro) {
+  const ids = new Set(categoriasDeSaida(config).map((n) => n.grupoId));
+  return config.grupos.filter((g) => g.ativo && ids.has(g.id));
+}
+
+// Grupo → categoria em dois selects (o operador escolhe "03. Custos" e só então
+// vê 3.01…3.05), como o Luís pediu em 05/10.
+function SeletorCategoria({ config, naturezaId, onChange, disabled }: { config: ConfiguracaoFinanceiro; naturezaId: string; onChange: (id: string) => void; disabled?: boolean }) {
+  const grupos = gruposComSaida(config);
+  const atual = config.naturezas.find((n) => n.id === naturezaId);
+  const [grupoId, setGrupoId] = useState(atual?.grupoId ?? '');
+  const categorias = categoriasDeSaida(config).filter((n) => n.grupoId === grupoId);
+  return (
+    <div className="grid grid-cols-2 gap-[8px]">
+      <label className="text-[12px] font-semibold">Grupo (plano do financeiro)
+        <select className={inputCls} style={inputStyle} value={grupoId} disabled={disabled} onChange={(e) => { setGrupoId(e.target.value); onChange(''); }}>
+          <option value="">Selecione…</option>
+          {grupos.map((g) => <option key={g.id} value={g.id}>{g.codigo}. {g.nome}</option>)}
+        </select></label>
+      <label className="text-[12px] font-semibold">Categoria (o que está sendo pago)
+        <select className={inputCls} style={inputStyle} value={naturezaId} disabled={disabled || !grupoId} onChange={(e) => onChange(e.target.value)}>
+          <option value="">{grupoId ? 'Selecione…' : 'Escolha o grupo'}</option>
+          {categorias.map((n) => <option key={n.id} value={n.id}>{n.codigo} {n.nome}{n.especial ? ' — aprovação da Diretoria' : ''}</option>)}
+        </select></label>
+    </div>
+  );
+}
+
+// Fornecedor escolhido no título, com cadastro rápido no próprio modal (nome +
+// CPF/CNPJ + chave PIX) — o operador não sai da tela para cadastrar (05/10).
+function SeletorFornecedor({ fornecedorId, onChange, rotulo }: { fornecedorId: string; onChange: (id: string) => void; rotulo: string }) {
+  const qc = useQueryClient();
   const fornecedores = useQuery({ queryKey: ['fin-fornecedores'], queryFn: () => financeiroService.fornecedores() });
+  const [novo, setNovo] = useState(false);
+  const [nf, setNf] = useState({ nome: '', cpfCnpj: '', chavePix: '' });
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  async function cadastrar() {
+    setSalvando(true);
+    setErro(null);
+    try {
+      const r = await financeiroService.criarFornecedor({ nome: nf.nome.trim(), cpfCnpj: nf.cpfCnpj.replace(/\D/g, ''), chavePix: nf.chavePix.trim() || undefined });
+      await qc.invalidateQueries({ queryKey: ['fin-fornecedores'] });
+      onChange(r.id);
+      setNovo(false);
+      setNf({ nome: '', cpfCnpj: '', chavePix: '' });
+      toast.sucesso('Fornecedor cadastrado e selecionado — a chave PIX vai para aprovação da Diretoria antes do pagamento sair.');
+    } catch (e) { setErro(mensagemErro(e)); } finally { setSalvando(false); }
+  }
+  return (
+    <div className="flex flex-col gap-[6px]">
+      <label className="text-[12px] font-semibold">{rotulo}
+        <div className="flex gap-[6px]">
+          <select className={inputCls} style={inputStyle} value={fornecedorId} onChange={(e) => onChange(e.target.value)}>
+            <option value="">Selecione…</option>
+            {(fornecedores.data ?? []).map((x) => <option key={x.id} value={x.id}>{x.nome} ({rotuloStatus(x.status)})</option>)}
+          </select>
+          <button type="button" className={`${btnS} whitespace-nowrap`} onClick={() => setNovo((v) => !v)}>{novo ? 'Cancelar' : '+ Cadastrar'}</button>
+        </div>
+      </label>
+      {novo && (
+        <div className="rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+          <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-3">
+            <label className="text-[11.5px] font-semibold">Nome
+              <input className={inputCls} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} value={nf.nome} onChange={(e) => setNf({ ...nf, nome: e.target.value })} placeholder="ex.: Auto Center X" /></label>
+            <label className="text-[11.5px] font-semibold">CPF/CNPJ
+              <input className={inputCls} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} inputMode="numeric" value={nf.cpfCnpj} onChange={(e) => setNf({ ...nf, cpfCnpj: mascararCpfCnpj(e.target.value) })} /></label>
+            <label className="text-[11.5px] font-semibold">Chave PIX
+              <input className={inputCls} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} value={nf.chavePix} onChange={(e) => setNf({ ...nf, chavePix: e.target.value })} placeholder="CPF/CNPJ, e-mail, telefone ou aleatória" /></label>
+          </div>
+          {erro && <div className="mt-[6px] text-[12px]" style={{ color: '#a12622' }}>{erro}</div>}
+          <div className="mt-[8px] flex items-center justify-between gap-[8px]">
+            <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>CPF/CNPJ repetido é recusado — o sistema aponta o cadastro que já existe.</span>
+            <button type="button" className={btnP} disabled={salvando || nf.nome.trim().length < 2 || nf.cpfCnpj.replace(/\D/g, '').length < 11} onClick={cadastrar}>{salvando ? 'Salvando…' : 'Salvar e selecionar'}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModalNovaDespesa({ config, fechar, onCriou }: { config: ConfiguracaoFinanceiro; fechar: () => void; onCriou: () => Promise<void> }) {
   const [f, setF] = useState({
     entidadeId: config.entidades[0]?.id ?? '', fornecedorId: '', descricao: '', valor: '', vencimento: '',
-    competencia: '', naturezaId: config.naturezas[0]?.id ?? '', centroCustoAreaId: config.centros[0]?.id ?? '',
+    competencia: '', naturezaId: '', centroCustoAreaId: '',
     responsavelEconomico: 'AZIT', formaPagamento: 'pix', ativoId: '', urgente: false, justificativaUrgencia: '',
     justificativaNatureza: '', documentoNome: '',
   });
@@ -400,7 +491,7 @@ function ModalNovaDespesa({ config, fechar, onCriou }: { config: ConfiguracaoFin
         vencimento: f.vencimento,
         competencia: f.competencia || undefined,
         naturezaId: f.naturezaId,
-        centroCustoAreaId: f.centroCustoAreaId,
+        centroCustoAreaId: f.centroCustoAreaId || undefined,
         responsavelEconomico: f.responsavelEconomico,
         formaPagamento: f.formaPagamento,
         ativoId: f.ativoId || undefined,
@@ -423,11 +514,7 @@ function ModalNovaDespesa({ config, fechar, onCriou }: { config: ConfiguracaoFin
           <select className={inputCls} style={inputStyle} value={f.entidadeId} onChange={set('entidadeId')}>
             {config.entidades.map((e) => <option key={e.id} value={e.id}>{e.razaoSocial}{e.unidadeNegocio ? ` — ${e.unidadeNegocio}` : ''}</option>)}
           </select></label>
-        <label className="text-[12px] font-semibold">Fornecedor (precisa estar ativo para pagar)
-          <select className={inputCls} style={inputStyle} value={f.fornecedorId} onChange={set('fornecedorId')}>
-            <option value="">Selecione…</option>
-            {(fornecedores.data ?? []).map((x) => <option key={x.id} value={x.id}>{x.nome} ({rotuloStatus(x.status)})</option>)}
-          </select></label>
+        <SeletorFornecedor rotulo="Fornecedor (precisa estar ativo para pagar)" fornecedorId={f.fornecedorId} onChange={(id) => setF({ ...f, fornecedorId: id })} />
         <label className="text-[12px] font-semibold">Descrição (objeto, ativo e fornecedor quando aplicável)
           <input className={inputCls} style={inputStyle} value={f.descricao} onChange={set('descricao')} placeholder="ex.: Troca de pneus — HB20S ABC1D23 — Auto Center X" /></label>
         <div className="grid grid-cols-2 gap-[8px]">
@@ -442,20 +529,18 @@ function ModalNovaDespesa({ config, fechar, onCriou }: { config: ConfiguracaoFin
               <option value="pix">PIX</option><option value="boleto">Boleto</option><option value="ted">TED</option><option value="cartao">Cartão (forma, não natureza)</option>
             </select></label>
         </div>
-        <label className="text-[12px] font-semibold">Natureza financeira (o que está sendo pago)
-          <select className={inputCls} style={inputStyle} value={f.naturezaId} onChange={set('naturezaId')}>
-            {config.naturezas.map((n) => <option key={n.id} value={n.id}>{n.nome}{n.especial ? ' — aprovação da Diretoria' : ''}</option>)}
-          </select></label>
+        <SeletorCategoria config={config} naturezaId={f.naturezaId} onChange={(id) => setF({ ...f, naturezaId: id })} />
         {natureza?.exigeAtivo && (
-          <label className="text-[12px] font-semibold" style={{ color: '#8a5a00' }}>Veículo/ativo (obrigatório nesta natureza) — informe o código do ativo
+          <label className="text-[12px] font-semibold" style={{ color: '#8a5a00' }}>Veículo/ativo (obrigatório nesta categoria) — informe o código do ativo
             <input className={inputCls} style={inputStyle} value={f.ativoId} onChange={set('ativoId')} placeholder="código do ativo (da tela Estoque de ativos)" /></label>
         )}
         {natureza?.exigeJustificativa && (
-          <label className="text-[12px] font-semibold" style={{ color: '#8a5a00' }}>Justificativa (natureza excepcional)
+          <label className="text-[12px] font-semibold" style={{ color: '#8a5a00' }}>Justificativa (categoria excepcional)
             <input className={inputCls} style={inputStyle} value={f.justificativaNatureza} onChange={set('justificativaNatureza')} /></label>
         )}
-        <label className="text-[12px] font-semibold">Centro de custo (área responsável)
+        <label className="text-[12px] font-semibold">Centro de custo (opcional — área responsável)
           <select className={inputCls} style={inputStyle} value={f.centroCustoAreaId} onChange={set('centroCustoAreaId')}>
+            <option value="">Sem centro de custo</option>
             {config.centros.map((c) => <option key={c.id} value={c.id}>{c.codigo} — {c.nome}</option>)}
           </select></label>
         <label className="text-[12px] font-semibold">Responsável econômico (quem arca com o valor)
@@ -474,7 +559,7 @@ function ModalNovaDespesa({ config, fechar, onCriou }: { config: ConfiguracaoFin
         {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: '#fdecec', color: '#a12622' }}>{erro}</div>}
         <div className="flex justify-end gap-[8px]">
           <button className={btnS} onClick={fechar}>Cancelar</button>
-          <button className={btnP} disabled={ocupado || !f.fornecedorId || !f.descricao.trim() || dinheiroParaCentavos(f.valor) <= 0 || !f.vencimento}
+          <button className={btnP} disabled={ocupado || !f.fornecedorId || !f.naturezaId || !f.descricao.trim() || dinheiroParaCentavos(f.valor) <= 0 || !f.vencimento}
             onClick={criar}>{ocupado ? 'Criando…' : 'Criar despesa'}</button>
         </div>
       </div>
@@ -541,34 +626,27 @@ function ListaOrcamentos({ orcamentos, carregando, config, onMudou }: { orcament
   );
 }
 
-function ModalConverterOrcamento({ orcamento, config, ocupado, fechar, confirmar }: { orcamento: OrcamentoApi; config: ConfiguracaoFinanceiro; ocupado: boolean; fechar: () => void; confirmar: (dto: { fornecedorId: string; vencimento: string; naturezaId: string; centroCustoAreaId: string }) => void }) {
-  const fornecedores = useQuery({ queryKey: ['fin-fornecedores'], queryFn: () => financeiroService.fornecedores() });
+function ModalConverterOrcamento({ orcamento, config, ocupado, fechar, confirmar }: { orcamento: OrcamentoApi; config: ConfiguracaoFinanceiro; ocupado: boolean; fechar: () => void; confirmar: (dto: { fornecedorId: string; vencimento: string; naturezaId: string; centroCustoAreaId?: string }) => void }) {
   const selecionada = orcamento.propostas.find((p) => p.selecionado);
-  const [f, setF] = useState({ fornecedorId: selecionada?.fornecedorId ?? '', vencimento: '', naturezaId: config.naturezas[0]?.id ?? '', centroCustoAreaId: config.centros[0]?.id ?? '' });
+  const [f, setF] = useState({ fornecedorId: selecionada?.fornecedorId ?? '', vencimento: '', naturezaId: '', centroCustoAreaId: '' });
   return (
     <Modal open onClose={fechar} title="Converter orçamento em despesa">
       <div className="flex flex-col gap-[8px]">
         <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
           A despesa nasce com o valor da proposta escolhida ({selecionada ? reais(selecionada.valor) : '—'}) e mantém o vínculo com a decisão do orçamento.
         </div>
-        <label className="text-[12px] font-semibold">Fornecedor (cadastrado e ativo)
-          <select className={inputCls} style={inputStyle} value={f.fornecedorId} onChange={(e) => setF({ ...f, fornecedorId: e.target.value })}>
-            <option value="">Selecione…</option>
-            {(fornecedores.data ?? []).map((x) => <option key={x.id} value={x.id}>{x.nome} ({rotuloStatus(x.status)})</option>)}
-          </select></label>
+        <SeletorFornecedor rotulo="Fornecedor (cadastrado e ativo)" fornecedorId={f.fornecedorId} onChange={(id) => setF({ ...f, fornecedorId: id })} />
         <label className="text-[12px] font-semibold">Vencimento
           <input type="date" className={inputCls} style={inputStyle} value={f.vencimento} onChange={(e) => setF({ ...f, vencimento: e.target.value })} /></label>
-        <label className="text-[12px] font-semibold">Natureza financeira
-          <select className={inputCls} style={inputStyle} value={f.naturezaId} onChange={(e) => setF({ ...f, naturezaId: e.target.value })}>
-            {config.naturezas.map((n) => <option key={n.id} value={n.id}>{n.nome}</option>)}
-          </select></label>
+        <SeletorCategoria config={config} naturezaId={f.naturezaId} onChange={(id) => setF({ ...f, naturezaId: id })} />
         <label className="text-[12px] font-semibold">Centro de custo
           <select className={inputCls} style={inputStyle} value={f.centroCustoAreaId} onChange={(e) => setF({ ...f, centroCustoAreaId: e.target.value })}>
+            <option value="">Sem centro de custo</option>
             {config.centros.map((c) => <option key={c.id} value={c.id}>{c.codigo} — {c.nome}</option>)}
           </select></label>
         <div className="flex justify-end gap-[8px]">
           <button className={btnS} onClick={fechar}>Voltar</button>
-          <button className={btnP} disabled={ocupado || !f.fornecedorId || !f.vencimento} onClick={() => confirmar(f)}>Converter</button>
+          <button className={btnP} disabled={ocupado || !f.fornecedorId || !f.naturezaId || !f.vencimento} onClick={() => confirmar({ ...f, centroCustoAreaId: f.centroCustoAreaId || undefined })}>Converter</button>
         </div>
       </div>
     </Modal>
@@ -747,5 +825,86 @@ function ModalNovoLote({ config, titulos, fechar, onCriou }: { config: Configura
         </div>
       </div>
     </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Por categoria (doc 02 §18.6): o mês pelo plano do Manda — grupo → categoria,
+// previsto (em aberto) × pago, pelo vencimento. É o que a operação confere no
+// fim do dia e o que o BPO recebe classificado.
+// ---------------------------------------------------------------------------
+
+function QuadroCategorias() {
+  const [mes, setMes] = useState(hojeLocalISO().slice(0, 7));
+  const quadro = useQuery({ queryKey: ['fin-por-categoria', mes], queryFn: () => financeiroService.porCategoria(mes) });
+  const q = quadro.data;
+  const th = 'pb-[6px] text-right font-semibold';
+  const td = 'py-[5px] text-right tabular-nums';
+  return (
+    <div className="flex flex-col gap-[10px]">
+      <div className="flex flex-wrap items-center gap-[8px]">
+        <label className="text-[12px] font-semibold">Mês (pelo vencimento)
+          <input type="month" className={`${inputCls} block w-[160px]`} style={inputStyle} value={mes} onChange={(e) => setMes(e.target.value)} /></label>
+        {q && (
+          <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
+            {q.total.quantidade} título(s) · em aberto <b>{reais(q.total.aberto)}</b> · pago <b>{reais(q.total.pago)}</b>{q.total.cancelado > 0 && <> · cancelado {reais(q.total.cancelado)}</>}
+          </div>
+        )}
+      </div>
+      {quadro.isLoading && <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>}
+      {q && (
+        <div className="overflow-x-auto rounded-[12px] p-[12px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <table className="w-full min-w-[640px] border-collapse text-[12.5px]">
+            <thead><tr style={{ color: 'var(--text-muted)' }}>
+              <th className="pb-[6px] text-left font-semibold">Categoria</th>
+              <th className={th}>Títulos</th><th className={th}>Em aberto</th><th className={th}>Pago</th><th className={th}>Total</th>
+            </tr></thead>
+            <tbody>
+              {q.grupos.filter((g) => g.ativo || g.quantidade > 0).map((g) => (
+                <GrupoLinhas key={g.id} g={g} td={td} />
+              ))}
+              {q.semGrupo.length > 0 && <GrupoLinhas g={{ id: 'sem', codigo: '—', nome: 'Sem grupo', ativo: true, saida: true, aberto: q.semGrupo.reduce((a, c) => a + c.aberto, 0), pago: q.semGrupo.reduce((a, c) => a + c.pago, 0), cancelado: 0, quantidade: q.semGrupo.reduce((a, c) => a + c.quantidade, 0), categorias: q.semGrupo }} td={td} />}
+              <tr style={{ borderTop: '2px solid var(--border)' }}>
+                <td className="py-[7px] font-bold">Total do mês</td>
+                <td className={`${td} font-bold`}>{q.total.quantidade}</td>
+                <td className={`${td} font-bold`}>{reais(q.total.aberto)}</td>
+                <td className={`${td} font-bold`}>{reais(q.total.pago)}</td>
+                <td className={`${td} font-bold`}>{reais(q.total.aberto + q.total.pago)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div className="mt-[8px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+            Cancelados ficam fora dos totais. Categorias de receita ficam no plano, mas não recebem título a pagar. Para incluir ou renomear categoria: Configuração do financeiro.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GrupoLinhas({ g, td }: { g: LinhaCategoria & { categorias: LinhaCategoria[] }; td: string }) {
+  const [aberto, setAberto] = useState(g.quantidade > 0);
+  return (
+    <>
+      <tr style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-input)' }}>
+        <td className="py-[6px] font-bold">
+          <button type="button" className="mr-[6px] text-[11px]" onClick={() => setAberto((v) => !v)} aria-label={aberto ? 'Recolher' : 'Expandir'}>{aberto ? '▾' : '▸'}</button>
+          {g.codigo}. {g.nome}
+        </td>
+        <td className={`${td} font-bold`}>{g.quantidade || '—'}</td>
+        <td className={`${td} font-bold`}>{g.aberto ? reais(g.aberto) : '—'}</td>
+        <td className={`${td} font-bold`}>{g.pago ? reais(g.pago) : '—'}</td>
+        <td className={`${td} font-bold`}>{g.aberto + g.pago ? reais(g.aberto + g.pago) : '—'}</td>
+      </tr>
+      {aberto && g.categorias.map((c) => (
+        <tr key={c.id} style={{ borderTop: '1px solid var(--border-light)', color: c.saida ? undefined : 'var(--text-muted)' }}>
+          <td className="py-[5px] pl-[26px]">{c.codigo} {c.nome}{!c.saida && ' (receita)'}{!c.ativo && ' (inativa)'}</td>
+          <td className={td}>{c.quantidade || '—'}</td>
+          <td className={td}>{c.aberto ? reais(c.aberto) : '—'}</td>
+          <td className={td}>{c.pago ? reais(c.pago) : '—'}</td>
+          <td className={td}>{c.aberto + c.pago ? reais(c.aberto + c.pago) : '—'}</td>
+        </tr>
+      ))}
+    </>
   );
 }
