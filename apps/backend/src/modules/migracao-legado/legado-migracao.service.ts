@@ -637,6 +637,12 @@ export class LegadoMigracaoService {
 
     const statusDe = (l: LinhaConciliacao, rec: DivergenciaReconhecida | undefined, vencFatura: string): { status: StatusFaturaPlano; pagoEm: string | null; valorPago: number | null; chargeId: string | null; substituir: string | null } => {
       const chargeId = chargeDe(l.cobrancaId) ?? chargeDe(l.partes[0]?.cobrancaId);
+      // Quitada por acordo (§26.14): paga pelas parcelas do acordo; a fatura
+      // não tem cobrança própria no Asaas (as do acordo ficam como prova nas partes).
+      if (l.situacao === 'paga_por_acordo') return { status: 'PAGA_EM_ATRASO', pagoEm: l.pagoEm ?? vencFatura, valorPago: (l.pagoValor ?? l.esperadoValor) + Math.max(0, l.encargo), chargeId: null, substituir: null };
+      // Em acordo ainda sendo pago: fica FECHADA (vencida) sem cobrança nova — o
+      // Asaas continua cobrando as parcelas do acordo.
+      if (l.situacao === 'em_acordo') return { status: 'FECHADA', pagoEm: null, valorPago: null, chargeId: null, substituir: null };
       const pagaReal = l.situacao === 'paga' || l.situacao === 'paga_com_encargo';
       if (pagaReal || (l.situacao === 'valor_diverge' && l.pagoEm)) {
         const pagoEm = l.pagoEm ?? vencFatura;
@@ -656,13 +662,26 @@ export class LegadoMigracaoService {
       if (substituir) { resumo.substituidas++; if (emitirAgora(venc)) resumo.emitidasAgora++; }
     };
 
-    for (const l of linhasParcela) {
+    // ADIADA (§26.14, modo DATA): a parcela não foi cobrada e vai para o FIM do
+    // cronograma — o cliente segue devendo todas; só a data muda.
+    const adiadas = linhasParcela.filter((l) => reconhecidas.get(l.chave)?.desfecho === 'ADIADA' && !l.cobradoEm);
+    const ordemParcelas = [...linhasParcela.filter((l) => !adiadas.includes(l)), ...adiadas];
+    const ultimaLinha = ordemParcelas.filter((l) => !adiadas.includes(l)).slice(-1)[0];
+    let fimCronograma = ultimaLinha ? (modo === 'ASAAS' ? (ultimaLinha.cobradoEm ?? addDias(ultimaLinha.esperadoEm, deslocamento)) : ultimaLinha.esperadoEm) : primeiraEm;
+    for (const l of ordemParcelas) {
       const rec = reconhecidas.get(l.chave);
-      const vencParcela = modo === 'ASAAS' ? (l.cobradoEm ?? addDias(l.esperadoEm, deslocamento)) : l.esperadoEm;
-      const vencFatura = l.cobradoEm ?? vencParcela;
-      const st = statusDe(l, rec, vencFatura);
+      const adiada = adiadas.includes(l);
+      if (adiada) fimCronograma = addDias(fimCronograma, 7);
+      const vencParcela = adiada ? fimCronograma : modo === 'ASAAS' ? (l.cobradoEm ?? addDias(l.esperadoEm, deslocamento)) : l.esperadoEm;
+      // Linha por acordo: a fatura é da parcela (data do contrato), não do acordo.
+      const vencFatura = l.acordoGrupo ? vencParcela : (l.cobradoEm ?? vencParcela);
+      const st = statusDe(l, adiada ? undefined : rec, vencFatura);
       const comp = l.componentes;
-      const cobrado = l.cobradoValor;
+      // Parcela de acordo embutida na cobrança da semana NÃO é desta fatura
+      // (§26.14): ela quita outra parcela. Sai do total e do pago.
+      const acordoJunto = comp?.acordo ?? 0;
+      const cobrado = l.cobradoValor == null ? null : l.cobradoValor - acordoJunto;
+      if (acordoJunto > 0 && st.valorPago != null) st.valorPago = Math.max(0, st.valorPago - acordoJunto);
       // Proteção e taxa: a conciliação só traz valores lidos da descrição quando
       // diferem do padrão; o padrão do contrato (termos) é a referência.
       const segV = comp?.seguro || seguro;
@@ -673,14 +692,14 @@ export class LegadoMigracaoService {
       // Cobrança REEMITIDA por atraso traz juros/multa dentro do valor original
       // (encargo embutido = encargo total − o que o Asaas somou no pagamento).
       // Esse pedaço é ENCARGO, não principal — senão a parcela "pagaria" a mais.
-      const somadoNoPagamento = Math.max(0, (l.pagoValor ?? cobrado ?? 0) - (cobrado ?? 0));
-      const embutido = Math.max(0, encargo - somadoNoPagamento);
-      const principal = cobrado != null && comp ? Math.max(0, cobrado - segV - taxV - inter - extra - embutido) : valorParcela;
+      const somadoNoPagamento = Math.max(0, ((l.pagoValor ?? cobrado ?? 0) - (l.pagoValor != null ? acordoJunto : 0)) - (cobrado ?? 0));
+      const embutido = l.acordoGrupo ? 0 : Math.max(0, encargo - somadoNoPagamento);
+      const principal = l.acordoGrupo ? valorParcela : cobrado != null && comp ? Math.max(0, cobrado - segV - taxV - inter - extra - embutido) : valorParcela;
       const itens: ItemPlano[] = [{ tipo: 'PRINCIPAL', descricao: `Parcela ${l.numero}/${qtd} · Compra Parcelada ${descricaoVeiculo}`, valor: principal, parcela: 'veiculo' }];
       if (segV > 0) itens.push({ tipo: 'SERVICO', descricao: 'Proteção veicular', valor: segV, parcela: null });
       if (taxV > 0) itens.push({ tipo: 'SERVICO', descricao: 'Taxa de boleto e PIX', valor: taxV, parcela: null });
       if (inter > 0) itens.push({ tipo: 'INTERMEDIARIA', descricao: `Intermediária (entrada diluída) · ${l.numero}/${qtd}`, valor: inter, parcela: null });
-      if (encargo > 0) { itens.push({ tipo: 'ENCARGO', descricao: 'Multa e juros de atraso (legado)', valor: encargo, parcela: 'veiculo' }); resumo.encargos += encargo; }
+      if (encargo > 0) { itens.push({ tipo: 'ENCARGO', descricao: l.acordoGrupo ? 'Juros do acordo (legado)' : 'Multa e juros de atraso (legado)', valor: encargo, parcela: 'veiculo' }); resumo.encargos += encargo; }
       const idx = faturas.length;
       // Despesa junto da parcela → Reembolso Parcelado (1 ou N) — consecutivas de mesmo rótulo formam um só RP
       if (extra > 0) {
@@ -694,7 +713,7 @@ export class LegadoMigracaoService {
       } else {
         rpAberto = null;
       }
-      const valorTotalFatura = cobrado ?? principal + segV + taxV + inter + extra;
+      const valorTotalFatura = l.acordoGrupo ? principal + segV + taxV : (cobrado ?? principal + segV + taxV + inter + extra);
       faturas.push({ origem: l.chave, vencimento: vencFatura, status: st.status, valorTotal: valorTotalFatura, valorPago: st.valorPago, pagoEm: st.pagoEm, asaasChargeId: st.chargeId, substituirChargeId: st.substituir, emitirAgora: !!st.substituir && emitirAgora(vencFatura), itens, parcela: { numero: l.numero, vencimento: vencParcela, valorNominal: valorParcela, principal, encargo } });
       contar(st.status, st.substituir, vencFatura);
       if (st.status === 'PAGA' || st.status === 'PAGA_EM_ATRASO') resumo.parcelasPagas++;

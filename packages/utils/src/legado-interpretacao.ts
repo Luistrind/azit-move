@@ -35,6 +35,11 @@ export interface InterpretacaoCobranca {
   // reemitida por atraso, "… / Multa e juros por atraso." sem valor no texto —
   // o encargo é o que sobra depois das partes). Não é parcela nem despesa.
   encargo: number;
+  // Parcela de ACORDO cobrada junto (06/10, doc 02 §26.14): "acordo de uma
+  // parcela semanal $265,12 (2/3)". Cobre parcela ANTIGA vencida — a
+  // conciliação agrupa as k/n e propõe quais parcelas o acordo quitou.
+  acordo: number;
+  acordoRef: { k: number; n: number } | null;
   duvida: boolean;
   motivo: string; // por que a regra chegou aqui (ou por que ficou em dúvida)
 }
@@ -46,7 +51,17 @@ export interface InterpretacaoCobranca {
 export interface ParteRotulada {
   rotulo: string;
   valor: number; // centavos
-  papel: 'parcelamento' | 'seguro' | 'taxa' | 'intermediaria' | 'entrada' | 'extra' | 'encargo';
+  papel: 'parcelamento' | 'seguro' | 'taxa' | 'intermediaria' | 'entrada' | 'extra' | 'encargo' | 'acordo';
+  ref?: { k: number; n: number } | null; // "(2/3)" de uma parcela de acordo
+}
+
+// "(2/3)", "2/3", "2 de 3" no fim do trecho.
+export function refParcelaDoTexto(s: string): { k: number; n: number } | null {
+  const m = s.match(/\(?\s*(\d{1,3})\s*(?:\/|de)\s*(\d{1,3})\s*\)?\s*$/);
+  if (!m) return null;
+  const k = Number(m[1]);
+  const n = Number(m[2]);
+  return k >= 1 && n >= 1 && k <= n ? { k, n } : null;
 }
 
 export function partesRotuladas(descricao: string): ParteRotulada[] {
@@ -55,7 +70,9 @@ export function partesRotuladas(descricao: string): ParteRotulada[] {
   // ficam para as regras por palavra, que leem o rótulo depois do valor.
   // Separador é " / " com espaços ou "//" (caso real 23/09: "… R$ 5,00// 1ª
   // Cota do IPVA 2026") — uma data "01/04" no fim do rótulo não corta.
-  const segmentos = descricao.split(/\s*\/\/\s*|\s+\/\s+/).map((s) => s.trim()).filter(Boolean);
+  // Também "R$ 5,00/ acordo …" (caso real 06/10): barra colada no valor, com
+  // espaço depois — não confunde com data ("01/04") nem com "(1/3)".
+  const segmentos = descricao.split(/\s*\/\/\s*|\s+\/\s+|(?<=\d,\d{2})\/\s+/).map((s) => s.trim()).filter(Boolean);
   if (segmentos.length < 2) return [];
   const partes: ParteRotulada[] = [];
   for (const seg of segmentos) {
@@ -75,8 +92,10 @@ export function partesRotuladas(descricao: string): ParteRotulada[] {
     if (valor == null) return [];
     const rotulo = seg.slice(0, valores[0].index).replace(/[\s\-–:]+$/g, '').trim() || 'valor';
     const r = rotulo.toLowerCase();
+    // "acordo de uma parcela semanal" fala em parcela: o acordo vem ANTES.
     const papel: ParteRotulada['papel'] =
-      /intermedi|dilu[íi]d/.test(r) ? 'intermediaria'
+      /acordo|renegoc/.test(r) ? 'acordo'
+        : /intermedi|dilu[íi]d/.test(r) ? 'intermediaria'
         : /entrada|sinal|reserva/.test(r) ? 'entrada'
           : /prote[çc][ãa]o|seguro/.test(r) ? 'seguro'
             : /taxa|boleto|pix|mensag/.test(r) ? 'taxa'
@@ -85,7 +104,7 @@ export function partesRotuladas(descricao: string): ParteRotulada[] {
               : /parcelament/.test(r) ? 'extra'
                 : /parcela|semanal|contrato|financiamento/.test(r) && !partes.some((x) => x.papel === 'parcelamento') ? 'parcelamento'
                   : 'extra';
-    partes.push({ rotulo, valor, papel });
+    partes.push({ rotulo, valor, papel, ref: papel === 'acordo' ? refParcelaDoTexto(seg) : null });
   }
   return partes;
 }
@@ -133,7 +152,7 @@ export function interpretarCobrancaLegada(params: {
   const semItens = (v: number) => v - seguro - taxa;
 
   const sem = (tipo: TipoCobrancaLegada, parcelamento: number, extra: Partial<InterpretacaoCobranca> & { motivo: string }): InterpretacaoCobranca => ({
-    tipo, parcelamento, seguro: 0, taxa: 0, intermediaria: 0, extra: 0, extraRotulo: null, encargo: 0, duvida: false, ...extra,
+    tipo, parcelamento, seguro: 0, taxa: 0, intermediaria: 0, extra: 0, extraRotulo: null, encargo: 0, acordo: 0, acordoRef: null, duvida: false, ...extra,
   });
 
   // 0. Descrição ESTRUTURADA (rótulo: R$ valor / rótulo: R$ valor …): a
@@ -176,6 +195,8 @@ export function interpretarCobrancaLegada(params: {
     const soma = (papel: ParteRotulada['papel']) => partes.filter((x) => x.papel === papel).reduce((s, x) => s + x.valor, 0);
     const parcelamento = soma('parcelamento');
     const entradaParte = soma('entrada');
+    const acordoParte = soma('acordo');
+    const acordoRef = partes.find((x) => x.papel === 'acordo')?.ref ?? null;
     const rotuloExtras = extras.length ? extras.map((x) => x.rotulo).join(' + ') : null;
     if (parcelamento > 0 && fechou) {
       const p0 = c.parcelaContratual;
@@ -189,14 +210,19 @@ export function interpretarCobrancaLegada(params: {
         extra: extraValor,
         extraRotulo: extraValor > 0 ? rotuloExtras : null,
         encargo: encargoEmbutido,
+        acordo: acordoParte,
+        acordoRef,
         duvida: !bate,
         motivo: bate
-          ? `composição lida da descrição${extraValor ? ` (com ${rotuloExtras} ${(extraValor / 100).toFixed(2)})` : ''}${encargoEmbutido ? ` (juros/multa embutidos: ${(encargoEmbutido / 100).toFixed(2)}${temAvisoEncargo ? '' : ', sem aviso na descrição'})` : ''}`
+          ? `composição lida da descrição${extraValor ? ` (com ${rotuloExtras} ${(extraValor / 100).toFixed(2)})` : ''}${acordoParte ? ` (com parcela de acordo ${(acordoParte / 100).toFixed(2)}${acordoRef ? ` ${acordoRef.k}/${acordoRef.n}` : ''})` : ''}${encargoEmbutido ? ` (juros/multa embutidos: ${(encargoEmbutido / 100).toFixed(2)}${temAvisoEncargo ? '' : ', sem aviso na descrição'})` : ''}`
           : `composição lida da descrição, mas a parcela (${(parcelamento / 100).toFixed(2)}) difere do contrato (${((p0 ?? 0) / 100).toFixed(2)})`,
       };
     }
     if (parcelamento === 0 && entradaParte > 0 && fechou && extraValor === 0) {
       return sem('entrada', valor, { motivo: 'entrada, pela descrição' });
+    }
+    if (parcelamento === 0 && acordoParte > 0 && fechou && extraValor === 0) {
+      return sem('acordo', valor, { acordo: valor, acordoRef, motivo: `parcela de acordo${acordoRef ? ` ${acordoRef.k}/${acordoRef.n}` : ''}, pela descrição` });
     }
     if (parcelamento === 0 && extras.length && fechou) {
       return sem('reembolso', valor, { extra: valor, extraRotulo: rotuloExtras, motivo: 'despesa repassada, pela descrição' });
@@ -205,7 +231,7 @@ export function interpretarCobrancaLegada(params: {
 
   // 1. Acordo / renegociação
   if (/acordo|renegocia|negocia[çc][ãa]o|parcelamento de atraso|atrasad[ao]s? renegoc/.test(d)) {
-    return sem('acordo', valor, { motivo: 'descrição fala em acordo/renegociação' });
+    return sem('acordo', valor, { acordo: valor, acordoRef: refParcelaDoTexto(desc), motivo: 'descrição fala em acordo/renegociação' });
   }
   // 2. Reembolso de despesa (3.5 do contrato)
   if (/ipva|licenciamento|multa(?!\s*de\s*\d)|manuten[çc][ãa]o|reembolso|despesa|guincho|oficina|pe[çc]a|revis[ãa]o|pneu|rastreador avulso|dpvat|ped[áa]gio|vistoria/.test(d)) {
@@ -215,10 +241,10 @@ export function interpretarCobrancaLegada(params: {
   //    "parcela + intermediária" é parcela com a intermediária embutida.
   const p0 = c.parcelaContratual;
   if (p0 != null && valor === p0 + seguro + taxa) {
-    return { tipo: 'parcela', parcelamento: p0, seguro, taxa, intermediaria: 0, extra: 0, extraRotulo: null, encargo: 0, duvida: false, motivo: 'valor = parcela + seguro + taxa' };
+    return { tipo: 'parcela', parcelamento: p0, seguro, taxa, intermediaria: 0, extra: 0, extraRotulo: null, encargo: 0, acordo: 0, acordoRef: null, duvida: false, motivo: 'valor = parcela + seguro + taxa' };
   }
   if (p0 != null && c.intermediariaValor != null && valor === p0 + seguro + taxa + c.intermediariaValor) {
-    return { tipo: 'parcela', parcelamento: p0, seguro, taxa, intermediaria: c.intermediariaValor, extra: 0, extraRotulo: null, encargo: 0, duvida: false, motivo: 'valor = parcela + seguro + taxa + intermediária' };
+    return { tipo: 'parcela', parcelamento: p0, seguro, taxa, intermediaria: c.intermediariaValor, extra: 0, extraRotulo: null, encargo: 0, acordo: 0, acordoRef: null, duvida: false, motivo: 'valor = parcela + seguro + taxa + intermediária' };
   }
   // 4. Entrada no ato vs. diluída
   if (/intermedi|dilu[íi]d/.test(d)) {
@@ -235,13 +261,13 @@ export function interpretarCobrancaLegada(params: {
   const p = c.parcelaContratual;
   if (p != null) {
     if (valor === p + seguro + taxa) {
-      return { tipo: 'parcela', parcelamento: p, seguro, taxa, intermediaria: 0, extra: 0, extraRotulo: null, encargo: 0, duvida: false, motivo: 'valor = parcela + seguro + taxa' };
+      return { tipo: 'parcela', parcelamento: p, seguro, taxa, intermediaria: 0, extra: 0, extraRotulo: null, encargo: 0, acordo: 0, acordoRef: null, duvida: false, motivo: 'valor = parcela + seguro + taxa' };
     }
     if (c.intermediariaValor != null && valor === p + seguro + taxa + c.intermediariaValor) {
-      return { tipo: 'parcela', parcelamento: p, seguro, taxa, intermediaria: c.intermediariaValor, extra: 0, extraRotulo: null, encargo: 0, duvida: false, motivo: 'valor = parcela + seguro + taxa + intermediária' };
+      return { tipo: 'parcela', parcelamento: p, seguro, taxa, intermediaria: c.intermediariaValor, extra: 0, extraRotulo: null, encargo: 0, acordo: 0, acordoRef: null, duvida: false, motivo: 'valor = parcela + seguro + taxa + intermediária' };
     }
     if (valor === p) {
-      return { tipo: 'parcela', parcelamento: p, seguro: 0, taxa: 0, intermediaria: 0, extra: 0, extraRotulo: null, encargo: 0, duvida: true, motivo: 'valor = parcela SEM seguro e taxa — confirmar' };
+      return { tipo: 'parcela', parcelamento: p, seguro: 0, taxa: 0, intermediaria: 0, extra: 0, extraRotulo: null, encargo: 0, acordo: 0, acordoRef: null, duvida: true, motivo: 'valor = parcela SEM seguro e taxa — confirmar' };
     }
     if (c.intermediariaValor != null && valor === c.intermediariaValor) {
       return sem('intermediaria', valor, { motivo: 'valor igual ao da parcela intermediária (cobrada à parte)' });
@@ -250,7 +276,7 @@ export function interpretarCobrancaLegada(params: {
   if (/parcela|semanal|semana/.test(d) || (!params.avulsa && p == null)) {
     const parcelamento = semItens(valor);
     return {
-      tipo: 'parcela', parcelamento: Math.max(parcelamento, 0), seguro: parcelamento > 0 ? seguro : 0, taxa: parcelamento > 0 ? taxa : 0, intermediaria: 0, extra: 0, extraRotulo: null, encargo: 0,
+      tipo: 'parcela', parcelamento: Math.max(parcelamento, 0), seguro: parcelamento > 0 ? seguro : 0, taxa: parcelamento > 0 ? taxa : 0, intermediaria: 0, extra: 0, extraRotulo: null, encargo: 0, acordo: 0, acordoRef: null,
       duvida: true,
       motivo: p == null ? 'parcela, mas os termos ainda não dizem o valor contratual' : `parcela com valor fora do padrão (${(valor / 100).toFixed(2)} ≠ ${((p + seguro + taxa) / 100).toFixed(2)})`,
     };

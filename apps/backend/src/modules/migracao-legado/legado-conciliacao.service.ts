@@ -12,6 +12,7 @@ import {
   dataHojeBrasil,
   extrairTermosDoTexto,
   interpretarCobrancaLegada,
+  refParcelaDoTexto,
   TERMOS_VAZIOS,
   termosEfetivos,
   type CobrancaConciliavel,
@@ -94,7 +95,7 @@ const iso = (d: Date | null | undefined) => d?.toISOString().slice(0, 10) ?? nul
 
 type CobrancaBanco = Prisma.CobrancaLegadaGetPayload<object>;
 export interface VinculoManual { cobrancaId: string; chave: string; em: string; por: string }
-type CasoConciliavel = { termos: unknown; cobrancas: CobrancaBanco[]; divergenciasReconhecidas: unknown; vinculosManuais: unknown };
+type CasoConciliavel = { termos: unknown; cobrancas: CobrancaBanco[]; divergenciasReconhecidas: unknown; vinculosManuais: unknown; modoConciliacao?: string | null; acordosConfirmados?: unknown };
 const soDigitos = (v: string | null | undefined) => (v ?? '').replace(/\D/g, '');
 // CPF do comprador no contrato × CPF do cliente no Asaas (comparação EXATA, só
 // dígitos). Calculado na hora, sobre os termos atuais — não o que o PDF dizia.
@@ -347,7 +348,7 @@ export class LegadoConciliacaoService {
   async definirInterpretacao(
     casoId: string,
     cobrancaId: string,
-    corpo: { tipo: string; parcelamento?: number; seguro?: number; taxa?: number; intermediaria?: number; extra?: number; extraRotulo?: string; encargo?: number; observacao?: string },
+    corpo: { tipo: string; parcelamento?: number; seguro?: number; taxa?: number; intermediaria?: number; extra?: number; extraRotulo?: string; encargo?: number; acordo?: number; observacao?: string },
     usuarioId: string,
   ) {
     const caso = await this.carregar(casoId);
@@ -363,17 +364,19 @@ export class LegadoConciliacaoService {
     const intermediaria = corpo.intermediaria ?? 0;
     const extra = corpo.extra ?? 0; // despesa repassada junto da parcela (23/09)
     const encargo = corpo.encargo ?? 0; // juros/multa embutidos (parcela reemitida)
-    const parcelamento = corpo.parcelamento ?? valorOriginal - seguro - taxa - intermediaria - extra - encargo;
-    if ([seguro, taxa, intermediaria, extra, encargo, parcelamento].some((v) => !Number.isInteger(v) || v < 0)) {
+    // Parcela de acordo junto da cobrança (§26.14); cobrança do tipo acordo é toda acordo.
+    const acordo = corpo.tipo === 'acordo' ? valorOriginal : (corpo.acordo ?? 0);
+    const parcelamento = corpo.tipo === 'acordo' ? 0 : (corpo.parcelamento ?? valorOriginal - seguro - taxa - intermediaria - extra - encargo - acordo);
+    if ([seguro, taxa, intermediaria, extra, encargo, acordo, parcelamento].some((v) => !Number.isInteger(v) || v < 0)) {
       throw new UnprocessableEntityException({ erro: 'decomposicao_invalida', mensagem: 'Valores da decomposição precisam ser inteiros em centavos, não negativos' });
     }
-    if (parcelamento + seguro + taxa + intermediaria + extra + encargo !== valorOriginal) {
+    if (parcelamento + seguro + taxa + intermediaria + extra + encargo + acordo !== valorOriginal) {
       throw new UnprocessableEntityException({
         erro: 'decomposicao_nao_fecha',
-        mensagem: `A decomposição soma ${centavosParaReaisString(parcelamento + seguro + taxa + intermediaria + extra + encargo)} e a cobrança vale ${centavosParaReaisString(valorOriginal)}`,
+        mensagem: `A decomposição soma ${centavosParaReaisString(parcelamento + seguro + taxa + intermediaria + extra + encargo + acordo)} e a cobrança vale ${centavosParaReaisString(valorOriginal)}`,
       });
     }
-    const interp: InterpretacaoCobranca = { tipo: corpo.tipo as TipoCobrancaLegada, parcelamento, seguro, taxa, intermediaria, extra, extraRotulo: extra > 0 ? (corpo.extraRotulo?.trim() || 'despesa junto da parcela') : null, encargo, duvida: false, motivo: 'definido pelo operador' };
+    const interp: InterpretacaoCobranca = { tipo: corpo.tipo as TipoCobrancaLegada, parcelamento, seguro, taxa, intermediaria, extra, extraRotulo: extra > 0 ? (corpo.extraRotulo?.trim() || 'despesa junto da parcela') : null, encargo, acordo, acordoRef: acordo > 0 ? refParcelaDoTexto(c.descricao ?? '') : null, duvida: false, motivo: 'definido pelo operador' };
     const atualizada = await this.prisma.db.cobrancaLegada.update({
       where: { id: cobrancaId },
       data: { tipoInterpretado: interp.tipo, interpretacao: interp as unknown as Prisma.InputJsonValue, interpretadoPor: 'operador', interpretadoEm: new Date(), duvida: false, interpretacaoObs: corpo.observacao?.trim() || null },
@@ -396,8 +399,9 @@ export class LegadoConciliacaoService {
 
   // ---------------- Conciliação ----------------
 
-  conciliar(caso: CasoConciliavel): ResultadoConciliacao & { reconhecidas: DivergenciaReconhecida[]; vinculos: VinculoManual[] } {
+  conciliar(caso: CasoConciliavel): ResultadoConciliacao & { reconhecidas: DivergenciaReconhecida[]; vinculos: VinculoManual[]; acordosConfirmados: AcordoConfirmado[] } {
     const vinculos = ((caso.vinculosManuais as VinculoManual[] | null) ?? []);
+    const acordosConfirmados = ((caso.acordosConfirmados as AcordoConfirmado[] | null) ?? []);
     const termos = termosEfetivos(caso.termos as TermosContratoLegado | null);
     const hoje = dataHojeBrasil();
     const conciliaveis: CobrancaConciliavel[] = caso.cobrancas.map((c) => {
@@ -418,6 +422,9 @@ export class LegadoConciliacaoService {
         extra: interp?.extra ?? 0,
         extraRotulo: interp?.extraRotulo ?? null,
         encargoEmbutido: interp?.encargo ?? 0,
+        // Parcela de acordo (06/10): embutida na cobrança da semana ou avulsa.
+        acordo: interp?.acordo ?? (c.tipoInterpretado === 'acordo' ? valorOriginal : 0),
+        acordoRef: interp?.acordoRef ?? null,
         descricao: c.descricao,
       };
     });
@@ -427,10 +434,57 @@ export class LegadoConciliacaoService {
         : { parcelas: { quantidade: null, valor: null, primeiraEm: null }, intermediarias: null, entradaValor: null, seguroSemanal: 5_000, taxaSemanal: 500 },
       cobrancas: conciliaveis,
       hoje,
+      modo: caso.modoConciliacao === 'DATA' ? 'DATA' : 'SEQUENCIA',
       vinculosManuais: vinculos.map((v) => ({ cobrancaId: v.cobrancaId, chave: v.chave })),
+      acordosConfirmados: acordosConfirmados.map((a) => ({ grupo: a.grupo, quantidade: a.quantidade, chaves: a.chaves })),
     });
     const reconhecidas = ((caso.divergenciasReconhecidas as DivergenciaReconhecida[] | null) ?? []);
-    return { ...r, reconhecidas, vinculos };
+    return { ...r, reconhecidas, vinculos, acordosConfirmados };
+  }
+
+  // Doc 02 §26.14: como a parcela N é encontrada — pela SEQUÊNCIA das cobranças
+  // (padrão) ou pela DATA do contrato (método antigo da bancada).
+  async definirModoConciliacao(casoId: string, modo: string, usuarioId: string) {
+    const caso = await this.carregar(casoId);
+    this.exigirEditavel(caso.status);
+    if (modo !== 'SEQUENCIA' && modo !== 'DATA') throw new UnprocessableEntityException({ erro: 'modo_invalido', mensagem: 'Conciliação: SEQUENCIA ou DATA' });
+    await this.prisma.db.casoMigracaoLegado.update({ where: { id: casoId }, data: { modoConciliacao: modo } });
+    await this.prisma.db.logAuditoria.create({ data: { usuarioId, acao: 'legado_modo_conciliacao', entidade: 'caso_migracao_legado', entidadeId: casoId, antes: { modo: caso.modoConciliacao }, depois: { modo } } });
+    return { modoConciliacao: modo };
+  }
+
+  // Confirma o que um acordo legado quitou (§26.14): quantas parcelas (e quais,
+  // no modo DATA). Sem quantidade/chaves, vale a proposta do motor.
+  async confirmarAcordo(casoId: string, grupo: string, corpo: { quantidade?: number; chaves?: string[] } | undefined, usuarioId: string) {
+    const caso = await this.carregar(casoId);
+    this.exigirEditavel(caso.status);
+    const r = this.conciliar(caso);
+    const g = r.acordos.find((x) => x.id === grupo);
+    if (!g) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Acordo não encontrado na conciliação' });
+    const quantidade = Math.max(1, Math.round(corpo?.quantidade ?? g.proposta.quantidade));
+    let chaves = (corpo?.chaves ?? []).filter((c) => /^parcela:\d+$/.test(c));
+    if (r.modo === 'DATA') {
+      if (!chaves.length) chaves = g.proposta.chaves.slice(0, quantidade);
+      if (chaves.length !== quantidade) throw new UnprocessableEntityException({ erro: 'parcelas_insuficientes', mensagem: `Escolha ${quantidade} parcela(s) em aberto para este acordo cobrir` });
+      const ocupadas = r.linhas.filter((l) => chaves.includes(l.chave) && (l.situacao === 'paga' || l.situacao === 'paga_com_encargo' || l.acordoGrupo));
+      if (ocupadas.length) throw new UnprocessableEntityException({ erro: 'parcela_ja_paga', mensagem: `${ocupadas.map((l) => l.chave.replace('parcela:', 'parcela ')).join(', ')} já está paga — escolha outra` });
+    } else {
+      chaves = [];
+    }
+    const lista = ((caso.acordosConfirmados as AcordoConfirmado[] | null) ?? []).filter((a) => a.grupo !== grupo);
+    lista.push({ grupo, quantidade, chaves, em: new Date().toISOString(), por: usuarioId });
+    await this.prisma.db.casoMigracaoLegado.update({ where: { id: casoId }, data: { acordosConfirmados: lista as unknown as Prisma.InputJsonValue } });
+    await this.prisma.db.logAuditoria.create({ data: { usuarioId, acao: 'legado_acordo_confirmado', entidade: 'caso_migracao_legado', entidadeId: casoId, depois: { grupo, quantidade, chaves, total: g.total, rotulo: g.rotulo } } });
+    return { confirmado: true, quantidade, chaves };
+  }
+
+  async desfazerAcordo(casoId: string, grupo: string, usuarioId: string) {
+    const caso = await this.carregar(casoId);
+    this.exigirEditavel(caso.status);
+    const lista = ((caso.acordosConfirmados as AcordoConfirmado[] | null) ?? []).filter((a) => a.grupo !== grupo);
+    await this.prisma.db.casoMigracaoLegado.update({ where: { id: casoId }, data: { acordosConfirmados: lista as unknown as Prisma.InputJsonValue } });
+    await this.prisma.db.logAuditoria.create({ data: { usuarioId, acao: 'legado_acordo_desfeito', entidade: 'caso_migracao_legado', entidadeId: casoId, depois: { grupo } } });
+    return { desfeito: true };
   }
 
   async reconhecerDivergencia(casoId: string, chave: string, nota: string, desfecho: string | undefined, usuarioId: string) {
@@ -534,6 +588,9 @@ export class LegadoConciliacaoService {
         ...r.fora.filter((f) => f.divergencia && !reconhecidas.has(`cobranca:${f.cobrancaId}`)).map((f) => `cobranca:${f.cobrancaId}`),
       ];
       if (abertas.length) p.push(`${abertas.length} divergência(s) da conciliação sem reconhecimento`);
+      // §26.14: acordo com dinheiro recebido precisa dizer o que quitou.
+      const semConfirmar = r.acordos.filter((g) => !g.confirmado && g.pago > 0).length;
+      if (semConfirmar) p.push(`${semConfirmar} acordo(s) sem confirmação do que cobrem — confirme no quadro de acordos`);
     }
     return p;
   }
@@ -620,17 +677,20 @@ export interface DivergenciaReconhecida {
   por: string;
 }
 
-export const DESFECHOS_DIVERGENCIA = ['PAGA_FORA_ASAAS', 'VALOR_ACEITO', 'COBRANCA_AVULSA'] as const;
+export interface AcordoConfirmado { grupo: string; quantidade: number; chaves: string[]; em: string; por: string }
+
+export const DESFECHOS_DIVERGENCIA = ['PAGA_FORA_ASAAS', 'VALOR_ACEITO', 'ADIADA', 'COBRANCA_AVULSA'] as const;
 export type DesfechoDivergencia = (typeof DESFECHOS_DIVERGENCIA)[number];
 export const ROTULO_DESFECHO: Record<DesfechoDivergencia, string> = {
   PAGA_FORA_ASAAS: 'Paga fora do Asaas (dinheiro, transferência)',
   VALOR_ACEITO: 'Valor diferente aceito (desconto, arredondamento)',
+  ADIADA: 'Adiada — não foi cobrada, vai para o fim do cronograma (ex.: carro em manutenção)',
   COBRANCA_AVULSA: 'Cobrança avulsa (não é parcela de nada)',
 };
 // Linha do cronograma (parcela/intermediária/entrada) admite os dois primeiros;
 // cobrança fora do cronograma admite só o terceiro.
 export function desfechosPermitidos(chave: string): DesfechoDivergencia[] {
-  return chave.startsWith('cobranca:') ? ['COBRANCA_AVULSA'] : ['PAGA_FORA_ASAAS', 'VALOR_ACEITO'];
+  return chave.startsWith('cobranca:') ? ['COBRANCA_AVULSA'] : chave.startsWith('parcela:') ? ['PAGA_FORA_ASAAS', 'VALOR_ACEITO', 'ADIADA'] : ['PAGA_FORA_ASAAS', 'VALOR_ACEITO'];
 }
 
 export const MODOS_VENCIMENTO = ['CONTRATO', 'ASAAS'] as const;

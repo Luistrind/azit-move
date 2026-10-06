@@ -10,7 +10,7 @@ import {
   type TipoCobrancaLegada,
   type DesfechoDivergencia,
   type DivergenciaReconhecida,
-  type ModoVencimentos,
+  type ModoVencimentos, type ModoConciliacao,
   type PlanoMigracao,
 } from '../services/migracao-legado.service';
 import { Modal } from '../components/Modal';
@@ -19,7 +19,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { toast } from '../components/Toast';
 import { mensagemErro, usePodeRole } from '../lib/permissoes';
 import { reaisParaCentavos } from '../lib/valor';
-import { CASO_LEGADO_STATUS_COLORS, COBRANCA_LEGADA_COLORS, CONCILIACAO_LINHA_COLORS, SITUACAO_LEGADO_COLORS } from '../config/statusColors';
+import { CASO_LEGADO_STATUS_COLORS, COBRANCA_LEGADA_COLORS, CONCILIACAO_LINHA_COLORS, CONFIANCA_LINHA_COLORS, SITUACAO_LEGADO_COLORS } from '../config/statusColors';
 
 // Caso do legado — F2 (doc 02 §26.7): o lado PopHub (termos + PDF), a leitura
 // das cobranças e a conciliação. Regras propõem, o operador decide; validar
@@ -54,7 +54,7 @@ const bloco = { background: 'var(--surface)', border: '1px solid var(--border)' 
 const tituloBloco = 'text-[11px] font-bold uppercase tracking-[.04em]';
 
 const SITUACAO_LINHA_ROTULO: Record<string, string> = {
-  paga: 'paga', paga_com_encargo: 'paga c/ encargo', pendente: 'pendente', vencida: 'vencida', nao_cobrada: 'não cobrada', futura: 'futura', valor_diverge: 'valor diverge',
+  paga: 'paga', paga_com_encargo: 'paga c/ encargo', paga_por_acordo: 'paga por acordo', em_acordo: 'em acordo', pendente: 'pendente', vencida: 'vencida', nao_cobrada: 'não cobrada', futura: 'futura', valor_diverge: 'valor diverge',
 };
 const CAMPO_ROTULO: Record<string, string> = {
   numeroOrigem: 'nº do contrato', dataAssinatura: 'data de assinatura', compradorCpf: 'CPF do comprador', 'veiculo.placa': 'placa', 'veiculo.chassi': 'chassi',
@@ -127,6 +127,8 @@ export function MigracaoLegadoCasoPage() {
   const [desfechoDiv, setDesfechoDiv] = useState<Record<string, DesfechoDivergencia | ''>>({});
   const [ajuste, setAjuste] = useState<CobrancaLegada | null>(null);
   const [soDivergencias, setSoDivergencias] = useState(false);
+  const [qtdAcordo, setQtdAcordo] = useState<Record<string, number>>({});
+  const [chavesAcordo, setChavesAcordo] = useState<Record<string, string>>({});
   const [soDuvidas, setSoDuvidas] = useState(false);
 
   useEffect(() => {
@@ -460,6 +462,20 @@ export function MigracaoLegadoCasoPage() {
                 {r.intermediariasEsperadas > 0 && <Metrica label="Intermediárias pagas" valor={`${r.intermediariasPagas} de ${r.intermediariasEsperadas}`} />}
                 <Metrica label="Entrada" valor={r.entradaPaga === null ? 'fora do Asaas' : r.entradaPaga ? 'paga' : 'em aberto'} />
                 <Metrica label="Fora do cronograma" valor={r.cobrancasForaDoCronograma} />
+                <Metrica label="Conferir / decidir" valor={`${r.linhasConferir} / ${r.linhasDecidir}`} alerta={r.linhasDecidir > 0} />
+                {r.acordosSemConfirmar > 0 && <Metrica label="Acordos a confirmar" valor={r.acordosSemConfirmar} alerta />}
+                {conc.modo === 'SEQUENCIA' && r.deslocamentoSemanas !== 0 && <Metrica label="Cronograma deslocado" valor={`${r.deslocamentoSemanas} semana(s)`} />}
+              </div>
+            )}
+            {/* Doc 02 §26.14: parcela N = N-ésima cobrança (sequência) ou cobrança na data do contrato. */}
+            {!conc.incompleta && (
+              <div className="mt-[10px] flex flex-wrap items-center gap-[8px] text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                <span className="font-semibold">Como achar cada parcela:</span>
+                <select className="rounded-[6px] px-[6px] py-[3px] text-[12px]" style={inputStyle} disabled={!editavel} value={c.modoConciliacao}
+                  onChange={(e) => rodar(() => svc.definirModoConciliacao(id, e.target.value as ModoConciliacao), 'Método de conciliação definido')}>
+                  <option value="SEQUENCIA">pela sequência das cobranças (semana pulada não consome parcela; recomendado)</option>
+                  <option value="DATA">pela data do contrato (±3 dias; método antigo)</option>
+                </select>
               </div>
             )}
             {/* Doc 02 §26.9 item 4: vencimentos do contrato ou das cobranças reais — escolha POR CASO, sem regra. */}
@@ -483,6 +499,48 @@ export function MigracaoLegadoCasoPage() {
         </div>
       </div>
 
+      {/* Acordos legados (doc 02 §26.14): o sistema agrupa as (k/n), soma e propõe o que quitam. */}
+      {!conc.incompleta && conc.acordos.length > 0 && (
+        <div className="rounded-[12px] p-[14px]" style={bloco}>
+          <div className={tituloBloco} style={{ color: 'var(--text-muted)' }}>Acordos encontrados nas cobranças ({conc.acordos.length}) — acordo cobre parcela antiga vencida, nunca empurra o cronograma</div>
+          <ul className="mt-[8px] flex flex-col gap-[8px]">
+            {conc.acordos.map((g) => (
+              <li key={g.id} className="rounded-[10px] p-[10px] text-[12px]" style={{ border: '1px solid var(--border)', background: g.confirmado ? CASO_LEGADO_STATUS_COLORS.MIGRADO.bg : CASO_LEGADO_STATUS_COLORS.EM_REVISAO.bg }}>
+                <div className="flex flex-wrap items-center justify-between gap-[8px]">
+                  <div>
+                    <b>{g.rotulo}</b> · {g.parcelas.length} parcela(s) · total <b className="tabular-nums">{formatCurrency(g.total)}</b>
+                    {g.concluido ? ' · todas pagas' : ` · pago ${formatCurrency(g.pago)} (em andamento)`}
+                  </div>
+                  {g.confirmado
+                    ? <span className="flex items-center gap-[8px]" style={{ color: CASO_LEGADO_STATUS_COLORS.MIGRADO.fg }}>
+                        <b>Confirmado: cobre {g.confirmado.quantidade} parcela(s){g.confirmado.chaves.length ? ` (${g.confirmado.chaves.map((k) => k.replace('parcela:', '')).join(', ')})` : ''}</b>
+                        {editavel && <button className="underline" onClick={() => rodar(() => svc.desfazerAcordo(id, g.id), 'Confirmação desfeita')}>desfazer</button>}
+                      </span>
+                    : editavel && (
+                      <span className="flex flex-wrap items-center gap-[6px]">
+                        <label className="flex items-center gap-[4px]">cobre
+                          <input type="number" min={1} className="w-[52px] rounded-[6px] px-[6px] py-[3px] text-[12px] tabular-nums" style={inputStyle} value={qtdAcordo[g.id] ?? g.proposta.quantidade} onChange={(e) => setQtdAcordo({ ...qtdAcordo, [g.id]: Math.max(1, Number(e.target.value) || 1) })} />
+                          parcela(s)</label>
+                        {conc.modo === 'DATA' && (
+                          <input className="w-[200px] rounded-[6px] px-[6px] py-[3px] text-[12px]" style={inputStyle} placeholder={g.proposta.chaves.map((k) => k.replace('parcela:', '')).join(', ') || 'nº das parcelas (ex.: 5, 6)'} value={chavesAcordo[g.id] ?? ''} onChange={(e) => setChavesAcordo({ ...chavesAcordo, [g.id]: e.target.value })} />
+                        )}
+                        <button className={btn} style={btnPri} disabled={ocupado}
+                          onClick={() => rodar(() => svc.confirmarAcordo(id, g.id, { quantidade: qtdAcordo[g.id] ?? g.proposta.quantidade, chaves: conc.modo === 'DATA' ? ((chavesAcordo[g.id] ?? '').split(/[,\s]+/).filter(Boolean).map((n) => `parcela:${n}`)) : undefined }), 'Acordo confirmado')}>
+                          Confirmar
+                        </button>
+                      </span>
+                    )}
+                </div>
+                <div className="mt-[4px]" style={{ color: 'var(--text-secondary)' }}>{g.proposta.texto}</div>
+                <div className="mt-[4px] text-[11px] tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                  {g.parcelas.map((x) => `${dataBR(x.vencimento)} ${formatCurrency(x.valor)}${x.k != null ? ` (${x.k}/${x.n})` : ''}${x.classe === 'paga' ? '' : ` [${x.classe}]`}${x.dentroDeParcela ? ' junto da parcela' : ''}`).join(' · ')}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Conciliação */}
       {!conc.incompleta && (
         <div className="rounded-[12px] p-[14px]" style={bloco}>
@@ -496,7 +554,7 @@ export function MigracaoLegadoCasoPage() {
             <table className="w-full min-w-[900px] border-collapse">
               <thead className="sticky top-0" style={{ background: 'var(--surface)' }}>
                 <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
-                  <th className={th}>Item</th><th className={th}>Esperado em</th><th className={`${th} text-right`}>Esperado</th>
+                  <th className={th}></th><th className={th}>Item</th><th className={th}>Esperado em</th><th className={`${th} text-right`}>Esperado</th>
                   <th className={th}>Cobrado em</th><th className={`${th} text-right`}>Cobrado</th><th className={th}>Pago em</th><th className={`${th} text-right`}>Pago</th>
                   <th className={`${th} text-right`}>Encargo</th><th className={th}>Situação</th><th className={th}>Divergência</th>
                 </tr>
@@ -508,7 +566,7 @@ export function MigracaoLegadoCasoPage() {
                   desfazer={() => rodar(() => svc.desfazerReconhecimento(id, l.chave), '')}
                   vinculadas={[...(l.partes.length ? l.partes.map((x) => x.cobrancaId) : l.cobrancaId ? [l.cobrancaId] : [])].filter((cid) => vinculoPorCobranca.has(cid))}
                   desvincular={(cid) => rodar(() => svc.desvincular(id, cid), 'Vínculo desfeito')} />)}
-                {linhas.length === 0 && <tr><td className={td} colSpan={10} style={{ color: 'var(--text-muted)' }}>Nenhuma linha{soDivergencias ? ' divergente' : ''}.</td></tr>}
+                {linhas.length === 0 && <tr><td className={td} colSpan={11} style={{ color: 'var(--text-muted)' }}>Nenhuma linha{soDivergencias ? ' divergente' : ''}.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -624,6 +682,9 @@ function LinhaConc({ l, reconhecida, editavel, nota, setNota, desfecho, setDesfe
   const rotuloItem = l.serie === 'entrada' ? 'Entrada' : l.serie === 'parcela' ? `Parcela ${l.numero}` : `Intermediária ${l.numero}`;
   return (
     <tr style={{ borderBottom: '1px solid var(--border)', background: l.divergencia && !reconhecida ? CASO_LEGADO_STATUS_COLORS.DESCARTADO.bg : undefined }}>
+      <td className={td} title={l.confianca === 'alta' ? 'Casou sem ressalva' : l.confianca === 'media' ? 'Conferir: casou com deslocamento, em partes, por vínculo ou por acordo' : 'Decidir: diverge ou não há cobrança'}>
+        <span className="inline-block h-[9px] w-[9px] rounded-full" style={{ background: CONFIANCA_LINHA_COLORS[l.confianca]?.fg }} />
+      </td>
       <td className={`${td} font-semibold`}>{rotuloItem}</td>
       <td className={`${td} tabular-nums`}>{dataBR(l.esperadoEm)}</td>
       <td className={`${td} text-right tabular-nums`}>{formatCurrency(l.esperadoValor)}</td>
@@ -643,6 +704,10 @@ function LinhaConc({ l, reconhecida, editavel, nota, setNota, desfecho, setDesfe
             {l.componentes.intermediaria > 0 && `+ intermediária ${formatCurrency(l.componentes.intermediaria)} `}
             {l.componentes.extra > 0 && `+ ${l.componentes.extraRotulo ?? 'despesa'} ${formatCurrency(l.componentes.extra)}`}
           </div>
+        )}
+        {/* Parcela de acordo cobrada junto (§26.14): não é desta parcela — quita outra. */}
+        {l.componentes && l.componentes.acordo > 0 && (
+          <div className="text-[10.5px] font-normal" style={{ color: 'var(--text-muted)' }}>+ acordo {formatCurrency(l.componentes.acordo)} (quita outra parcela)</div>
         )}
       </td>
       <td className={`${td} tabular-nums`}>{dataBR(l.pagoEm)}</td>

@@ -99,7 +99,7 @@ export class MigracaoLegadoController {
   definirInterpretacao(
     @Param('id') id: string,
     @Param('cobrancaId') cobrancaId: string,
-    @Body() body: { tipo: string; parcelamento?: number; seguro?: number; taxa?: number; intermediaria?: number; observacao?: string },
+    @Body() body: { tipo: string; parcelamento?: number; seguro?: number; taxa?: number; intermediaria?: number; extra?: number; extraRotulo?: string; encargo?: number; acordo?: number; observacao?: string },
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.conciliacao.definirInterpretacao(id, cobrancaId, body, user.id);
@@ -118,6 +118,22 @@ export class MigracaoLegadoController {
   @Put('casos/:id/vencimentos')
   definirModoVencimentos(@Param('id') id: string, @Body() body: { modo: string }, @CurrentUser() user: UsuarioAutenticado) {
     return this.conciliacao.definirModoVencimentos(id, body?.modo ?? '', user.id);
+  }
+
+  // §26.14: método de conciliação e acordos confirmados.
+  @Put('casos/:id/conciliacao-modo')
+  definirModoConciliacao(@Param('id') id: string, @Body() body: { modo: string }, @CurrentUser() user: UsuarioAutenticado) {
+    return this.conciliacao.definirModoConciliacao(id, body?.modo ?? '', user.id);
+  }
+
+  @Put('casos/:id/acordos/:grupo')
+  confirmarAcordo(@Param('id') id: string, @Param('grupo') grupo: string, @Body() body: { quantidade?: number; chaves?: string[] } | undefined, @CurrentUser() user: UsuarioAutenticado) {
+    return this.conciliacao.confirmarAcordo(id, decodeURIComponent(grupo), body, user.id);
+  }
+
+  @Delete('casos/:id/acordos/:grupo')
+  desfazerAcordo(@Param('id') id: string, @Param('grupo') grupo: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.conciliacao.desfazerAcordo(id, decodeURIComponent(grupo), user.id);
   }
 
   @Delete('casos/:id/divergencias/:chave')

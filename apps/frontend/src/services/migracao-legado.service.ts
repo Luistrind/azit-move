@@ -84,16 +84,28 @@ export interface TermosContratoLegado {
   observacoes: string | null;
 }
 
-export type SituacaoLinha = 'paga' | 'paga_com_encargo' | 'pendente' | 'vencida' | 'nao_cobrada' | 'futura' | 'valor_diverge';
+export type SituacaoLinha = 'paga' | 'paga_com_encargo' | 'paga_por_acordo' | 'em_acordo' | 'pendente' | 'vencida' | 'nao_cobrada' | 'futura' | 'valor_diverge';
+export type ModoConciliacao = 'SEQUENCIA' | 'DATA';
+export type ConfiancaLinha = 'alta' | 'media' | 'baixa';
 export interface LinhaConciliacao {
   chave: string; serie: 'parcela' | 'intermediaria' | 'entrada'; numero: number; esperadoEm: string; esperadoValor: number;
   cobrancaId: string | null; cobradoEm: string | null; cobradoValor: number | null; pagoEm: string | null; pagoValor: number | null;
-  encargo: number; situacao: SituacaoLinha; divergencia: boolean;
-  // O que veio junto na cobrança (despesa repassada, intermediária) — não é divergência.
-  componentes: { seguro: number; taxa: number; intermediaria: number; extra: number; extraRotulo: string | null } | null;
+  encargo: number; situacao: SituacaoLinha; divergencia: boolean; confianca: ConfiancaLinha;
+  // O que veio junto na cobrança (despesa repassada, intermediária, parcela de acordo) — não é divergência.
+  componentes: { seguro: number; taxa: number; intermediaria: number; extra: number; extraRotulo: string | null; acordo: number } | null;
   // Entrada paga em várias transações: as partes somadas.
   partes: { cobrancaId: string; vencimento: string; valor: number; classe: string }[];
-  observacao: string | null; // ex.: cobrança reemitida por atraso
+  observacao: string | null; // ex.: cobrança reemitida por atraso, cronograma deslocado
+  deslocamentoDias: number | null;
+  acordoGrupo: string | null;
+}
+// Grupo de parcelas de acordo (doc 02 §26.14): o que elas somam e o que quitam.
+export interface GrupoAcordo {
+  id: string; rotulo: string;
+  parcelas: { cobrancaId: string; vencimento: string; valor: number; k: number | null; n: number | null; classe: string; pagoEm: string | null; dentroDeParcela: boolean }[];
+  total: number; pago: number; concluido: boolean;
+  proposta: { quantidade: number; juros: number; desconto: number; chaves: string[]; texto: string };
+  confirmado: { quantidade: number; chaves: string[] } | null;
 }
 export interface ForaDoCronograma {
   cobrancaId: string; vencimento: string; valorOriginal: number; tipo: TipoCobrancaLegada; classe: string; descricao: string | null; motivo: string; divergencia: boolean;
@@ -102,8 +114,9 @@ export interface ResumoConciliacao {
   parcelasEsperadas: number; parcelasPagas: number; parcelasPendentes: number; parcelasVencidas: number; parcelasNaoCobradas: number; parcelasFuturas: number;
   intermediariasPagas: number; intermediariasEsperadas: number; entradaPaga: boolean | null; encargosPagos: number; saldoContratualRestante: number;
   divergencias: number; cobrancasForaDoCronograma: number;
+  linhasConferir: number; linhasDecidir: number; acordosSemConfirmar: number; deslocamentoSemanas: number;
 }
-export type DesfechoDivergencia = 'PAGA_FORA_ASAAS' | 'VALOR_ACEITO' | 'COBRANCA_AVULSA';
+export type DesfechoDivergencia = 'PAGA_FORA_ASAAS' | 'VALOR_ACEITO' | 'ADIADA' | 'COBRANCA_AVULSA';
 export type ModoVencimentos = 'CONTRATO' | 'ASAAS';
 export interface DivergenciaReconhecida { chave: string; nota: string; desfecho?: DesfechoDivergencia; em: string; por: string }
 export interface VinculoManual { cobrancaId: string; chave: string; em: string; por: string }
@@ -138,7 +151,8 @@ export interface CasoLegadoDetalhe extends CasoLegado {
     cpfContrato: string; nomeContrato: string | null;
     casos: { id: string; nome: string; status: string; asaasCustomerId: string; totalCobrancas: number; cobrancasPagas: number; temContrato: boolean; fechado: boolean }[];
   } | null;
-  conciliacao: { linhas: LinhaConciliacao[]; fora: ForaDoCronograma[]; resumo: ResumoConciliacao; incompleta: boolean };
+  conciliacao: { modo: ModoConciliacao; linhas: LinhaConciliacao[]; fora: ForaDoCronograma[]; acordos: GrupoAcordo[]; resumo: ResumoConciliacao; incompleta: boolean };
+  modoConciliacao: ModoConciliacao;
   divergenciasReconhecidas: DivergenciaReconhecida[];
   vinculosManuais: VinculoManual[];
   modoVencimentos: ModoVencimentos;
@@ -222,6 +236,15 @@ export const migracaoLegadoService = {
   },
   async reconhecerDivergencia(id: string, chave: string, nota: string, desfecho: DesfechoDivergencia | ''): Promise<void> {
     await api.put(`/api/v1/migracao-legado/casos/${id}/divergencias/${encodeURIComponent(chave)}`, { nota, desfecho: desfecho || undefined });
+  },
+  async definirModoConciliacao(id: string, modo: ModoConciliacao): Promise<void> {
+    await api.put(`/api/v1/migracao-legado/casos/${id}/conciliacao-modo`, { modo });
+  },
+  async confirmarAcordo(id: string, grupo: string, corpo: { quantidade?: number; chaves?: string[] }): Promise<void> {
+    await api.put(`/api/v1/migracao-legado/casos/${id}/acordos/${encodeURIComponent(grupo)}`, corpo);
+  },
+  async desfazerAcordo(id: string, grupo: string): Promise<void> {
+    await api.delete(`/api/v1/migracao-legado/casos/${id}/acordos/${encodeURIComponent(grupo)}`);
   },
   async definirModoVencimentos(id: string, modo: ModoVencimentos): Promise<void> {
     await api.put(`/api/v1/migracao-legado/casos/${id}/vencimentos`, { modo });

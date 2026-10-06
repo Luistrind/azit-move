@@ -231,9 +231,17 @@ export const COBRANCA_LEGADA_COLORS: Record<string, StatusColor> = {
 export const CONCILIACAO_LINHA_COLORS: Record<string, StatusColor> = {
   paga: { bg: '#eafaf1', fg: '#1f9d5b' },
   paga_com_encargo: { bg: '#fef6e9', fg: '#c98a0a' },
+  paga_por_acordo: { bg: '#eafaf1', fg: '#1f9d5b' },
+  em_acordo: { bg: '#eef4ff', fg: '#2456c7' },
   pendente: { bg: '#eef4ff', fg: '#2456c7' },
   vencida: { bg: '#fdeceb', fg: '#e0413c' },
   nao_cobrada: { bg: '#fdeceb', fg: '#e0413c' },
   futura: { bg: '#eef1f5', fg: '#5b6b7f' },
   valor_diverge: { bg: '#f3eafb', fg: '#9a3bd1' },
+};
+// Confiança da linha (doc 02 §26.14): alta = nada a fazer; média = conferir; baixa = decidir.
+export const CONFIANCA_LINHA_COLORS: Record<string, StatusColor> = {
+  alta: { bg: '#eafaf1', fg: '#1f9d5b' },
+  media: { bg: '#fef6e9', fg: '#c98a0a' },
+  baixa: { bg: '#fdeceb', fg: '#e0413c' },
 };

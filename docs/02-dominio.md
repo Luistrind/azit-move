@@ -2266,3 +2266,45 @@ assim criaria o titular de um com as cobranças do outro.
 5. **"Retirar o contrato deste caso"** limpa o caso quando o cliente certo ainda não está na
    fila (CPF errado no cadastro do Asaas: corrige-se lá e lê-se o Asaas de novo).
 6. As cobranças lidas do Asaas nunca mudam de caso. Tudo fica na auditoria.
+
+### 26.14 Conciliação por sequência e acordos legados (decisão Luís, 2026-10-06)
+
+O que descrevia o Asaas não casava por data: a operação pulou semanas ("carro em manutenção —
+não cobramos, jogamos pra frente"), reemitiu cobranças e renegociou parcelas vencidas em
+"acordo de uma parcela semanal (k/3)" cobrado junto das semanas seguintes. A bancada ganhou
+inteligência para isso; o operador confirma, não digita.
+
+1. **Parcela N é a N-ésima cobrança de parcela emitida** (modo SEQUÊNCIA, padrão). A data do
+   contrato vira conferência: cobrança longe da data esperada é "cronograma deslocado em k
+   semanas", não divergência. Semana sem cobrança **não consome número**: a parcela foi
+   **adiada** e o cliente segue devendo todas as 165 — só mais tarde. As não emitidas seguem
+   semanalmente a partir da última cobrança real. O modo DATA (±3 dias) continua disponível
+   por caso; os casos já validados/migrados ficaram em DATA.
+2. **Cobrança composta é decomposta**: "642 + 50 + 5 + acordo 265,12 (2/3)" é a parcela da
+   semana (697) mais uma **parcela de acordo**, que não é desta parcela — quita outra. Acaba o
+   vínculo manual com "soma diferente".
+3. **Acordos são agrupados** pelas "(k/n)" (ou um grupo por cobrança avulsa de acordo) e o
+   grupo **propõe quantas parcelas quitou**: quantidade = ⌊total ÷ valor cheio da cobrança
+   semanal⌋ (mínimo 1); o resto são **juros do acordo** (encargo pago, nunca valor pago —
+   decisão 02/10); abaixo de uma parcela, desconto. **Acordo cobre parcela antiga vencida e
+   nunca empurra o cronograma**: no modo SEQUÊNCIA as parcelas cobertas ocupam os números
+   logo antes da semana em que o acordo começou a ser cobrado; no modo DATA, as mais antigas
+   sem pagamento antes do acordo (o operador pode escolher outras). Um acordo pode cobrir
+   mais de uma parcela — por isso o valor não bate exato com uma.
+4. **Confirmação é do operador** (quantidade; parcelas no modo DATA), auditada e desfazível.
+   Acordo com dinheiro recebido e sem confirmação **trava a validação**. Linha quitada por
+   acordo = `paga_por_acordo` (ou `em_acordo` enquanto o acordo não terminar).
+5. **Desfecho "Adiada"** para linha não cobrada no modo DATA: vai para o fim do cronograma na
+   migração (F3), uma semana depois da última.
+6. **Confiança por linha**: verde = casou sem ressalva; amarelo = conferir (deslocada, em
+   partes, por vínculo ou por acordo); vermelho = decidir (diverge ou sem cobrança). O resumo
+   mostra "conferir / decidir", acordos a confirmar e o deslocamento do cronograma.
+7. **Na migração (F3)**: a fatura da parcela quitada por acordo nasce PAGA (em atraso) na
+   data do contrato, com o principal + proteção + taxa e os juros do acordo como ENCARGO, sem
+   cobrança própria no Asaas (as do acordo ficam como prova nas partes); a fatura da semana
+   composta leva só a parcela (o pedaço de acordo sai do total e do pago). Em acordo ainda em
+   pagamento, a fatura fica FECHADA sem cobrança nova.
+8. Decisões do operador anteriores continuam valendo: cobrança marcada à mão como "Acordo"
+   inteira não é decomposta pela regra — use "desfazer" na leitura para a regra reler, e
+   "desvincular" nos vínculos manuais que a sequência tornou desnecessários.
+

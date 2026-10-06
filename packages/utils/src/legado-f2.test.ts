@@ -170,7 +170,7 @@ describe('conciliarLegado', () => {
   const paga = (id: string, venc: string, valor: number, pagoEm = venc, valorPago = valor, extra: Partial<CobrancaConciliavel> = {}) => cob(id, venc, valor, { classe: 'paga', pagoEm, valorPago, ...extra });
 
   it('casa parcela a parcela, intermediária junto e à parte, entrada, encargo e futuras', () => {
-    const r = conciliarLegado({
+    const r = conciliarLegado({ modo: 'DATA',
       termos, hoje: '2026-09-10',
       cobrancas: [
         paga('e', '2026-08-05', 250_000, '2026-08-05', 250_000, { tipo: 'entrada' }),
@@ -215,7 +215,7 @@ describe('conciliarLegado', () => {
   });
 
   it('parcela cobrada em data sem correspondência no cronograma é divergência (fora)', () => {
-    const r = conciliarLegado({
+    const r = conciliarLegado({ modo: 'DATA',
       termos: { ...termos, intermediarias: null, entradaValor: null }, hoje: '2026-08-06',
       cobrancas: [paga('p1', '2026-08-05', 99_700), paga('x', '2026-07-01', 99_700)],
     });
@@ -306,7 +306,7 @@ describe('parcela reemitida por atraso', () => {
   it('conciliação: a reemitida (venc. +7 dias) fecha a parcela vazia da semana anterior; a paga adiantada fica na sua', () => {
     const termos = { parcelas: { quantidade: 3, valor: 94_200, primeiraEm: '2026-01-29' }, intermediarias: null, entradaValor: null, seguroSemanal: 5_000, taxaSemanal: 500 };
     const base = { valorPago: null as number | null, pagoEm: null as string | null, classe: 'paga' as const, intermediariaEmbutida: 0, parcelamento: 94_200 as number | null, extra: 0, extraRotulo: null as string | null, encargoEmbutido: 0, descricao: null as string | null, tipo: 'parcela' as const };
-    const r = conciliarLegado({
+    const r = conciliarLegado({ modo: 'DATA',
       termos, hoje: '2026-03-01',
       cobrancas: [
         { ...base, id: 'p16', vencimento: '2026-01-29', valorOriginal: 99_700, valorPago: 99_700, pagoEm: '2026-01-29' },
@@ -439,5 +439,92 @@ describe('parcela do contrato que já inclui seguro e taxa', () => {
     expect(t.valorTotal).toBe(2_500_00 + 165 * 942_00);
     expect(t.seguroSemanal).toBe(50_00);
     expect(t.parcelaIncluiServicos).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 06/10 (doc 02 §26.14): conciliação por SEQUÊNCIA e acordos agrupados
+// ---------------------------------------------------------------------------
+describe('conciliação por sequência e acordos (caso real 06/10)', () => {
+  // Mobi: 642 + 50 + 5 = 697/semana, 1ª em 25/01/2026.
+  const termos = { parcelas: { quantidade: 20, valor: 64_200, primeiraEm: '2026-01-25' }, intermediarias: null, entradaValor: null, seguroSemanal: 5_000, taxaSemanal: 500 };
+  const base = { valorPago: null as number | null, pagoEm: null as string | null, classe: 'paga' as const, intermediariaEmbutida: 0, parcelamento: 64_200 as number | null, extra: 0, extraRotulo: null as string | null, encargoEmbutido: 0, descricao: null as string | null, tipo: 'parcela' as const };
+  const semana = (n: number) => new Date(Date.UTC(2026, 0, 25) + (n - 1) * 7 * 86_400_000).toISOString().slice(0, 10);
+  const paga = (id: string, venc: string, extra: Partial<CobrancaConciliavel> = {}): CobrancaConciliavel => ({ ...base, id, vencimento: venc, valorOriginal: 69_700, valorPago: 69_700, pagoEm: venc, ...extra });
+
+  it('leitura: "acordo de uma parcela semanal $265,12 (2/3)" junto da parcela vira componente de acordo', () => {
+    const r = interpretarCobrancaLegada({
+      descricao: 'Contrato - Parcela semanal: R$ 642,00 / Proteção Veicular - Repasse: R$ 50,00 / Taxas Boleto Pix - Repasse: R$ 5,00 / acordo de uma parcela semanal $265,12 (2/3)',
+      valorOriginal: 96_212, avulsa: false,
+      contexto: contextoDosTermos({ parcelas: { valor: 64_200 }, intermediarias: null, entradaValor: null, seguroSemanal: 5_000, taxaSemanal: 500 }, 69_700),
+    });
+    expect(r).toMatchObject({ tipo: 'parcela', parcelamento: 64_200, seguro: 5_000, taxa: 500, acordo: 26_512, acordoRef: { k: 2, n: 3 }, encargo: 0, duvida: false });
+    const solta = interpretarCobrancaLegada({ descricao: 'Acordo de pagamento do dia 23/05/2026 (1/2)', valorOriginal: 45_000, avulsa: true, contexto: contextoDosTermos(null, 69_700) });
+    expect(solta).toMatchObject({ tipo: 'acordo', acordo: 45_000, acordoRef: { k: 1, n: 2 } });
+  });
+
+  it('sequência: semana pulada (manutenção) não consome número; as seguintes deslocam e as futuras seguem da última cobrança', () => {
+    // Semanas 1,2 cobradas; semana 3 pulada; semanas 4,5 cobradas → parcelas 3 e 4 (deslocadas 1 semana).
+    const cobrancas = [paga('a', semana(1)), paga('b', semana(2)), paga('c', semana(4)), paga('d', semana(5), { classe: 'pendente', valorPago: null, pagoEm: null })];
+    const r = conciliarLegado({ termos, hoje: semana(5), cobrancas });
+    const l = Object.fromEntries(r.linhas.map((x) => [x.chave, x]));
+    expect(r.modo).toBe('SEQUENCIA');
+    expect(l['parcela:3']).toMatchObject({ cobrancaId: 'c', situacao: 'paga', deslocamentoDias: 7, confianca: 'media' });
+    expect(l['parcela:3'].observacao).toContain('deslocado');
+    expect(l['parcela:4']).toMatchObject({ cobrancaId: 'd', situacao: 'pendente' });
+    // Parcela 5 ainda não emitida: uma semana depois da última cobrança real (semana 6), futura.
+    expect(l['parcela:5']).toMatchObject({ esperadoEm: semana(6), situacao: 'futura', divergencia: false });
+    expect(r.fora).toHaveLength(0);
+    expect(r.resumo.deslocamentoSemanas).toBe(1);
+    expect(r.resumo.linhasDecidir).toBe(0);
+  });
+
+  it('acordo: agrupa as (k/3) embutidas, propõe quantas parcelas cobre e, confirmado, ocupa o número logo antes de onde começou', () => {
+    // Semanas 1..11 pagas; semana 12 NÃO cobrada (virou acordo); 13,14,15 cobradas com acordo (k/3) embutido; 16 normal.
+    const cobrancas: CobrancaConciliavel[] = [];
+    for (let n = 1; n <= 11; n++) cobrancas.push(paga(`p${n}`, semana(n)));
+    for (let k = 1; k <= 3; k++) cobrancas.push(paga(`ac${k}`, semana(12 + k), { valorOriginal: 96_212, valorPago: 96_212, acordo: 26_512, acordoRef: { k, n: 3 }, descricao: `Contrato - Parcela semanal: R$ 642,00 / Proteção Veicular - Repasse: R$ 50,00 / Taxas Boleto Pix - Repasse: R$ 5,00 / acordo de uma parcela semanal $265,12 (${k}/3)` }));
+    cobrancas.push(paga('p16', semana(16)));
+
+    const antes = conciliarLegado({ termos, hoje: semana(17), cobrancas });
+    expect(antes.acordos).toHaveLength(1);
+    const g = antes.acordos[0];
+    expect(g).toMatchObject({ total: 79_536, pago: 79_536, concluido: true, confirmado: null });
+    expect(g.parcelas.map((x) => x.k)).toEqual([1, 2, 3]);
+    // 795,36 = 1 × 697,00 + 98,36 de juros do acordo.
+    expect(g.proposta).toMatchObject({ quantidade: 1, juros: 9_836, desconto: 0 });
+    expect(g.proposta.texto).toContain('parcela 12');
+    expect(antes.resumo.acordosSemConfirmar).toBe(1);
+    // Sem confirmar: as compostas são parcelas 12,13,14 pela sequência (o acordo embutido é componente, não divergência).
+    const la = Object.fromEntries(antes.linhas.map((x) => [x.chave, x]));
+    expect(la['parcela:12']).toMatchObject({ cobrancaId: 'ac1', situacao: 'paga', divergencia: false });
+    expect(la['parcela:12'].componentes?.acordo).toBe(26_512);
+
+    const depois = conciliarLegado({ termos, hoje: semana(17), cobrancas, acordosConfirmados: [{ grupo: g.id, quantidade: 1 }] });
+    const l = Object.fromEntries(depois.linhas.map((x) => [x.chave, x]));
+    expect(l['parcela:12']).toMatchObject({ situacao: 'paga_por_acordo', acordoGrupo: g.id, pagoValor: 69_700, encargo: 9_836, divergencia: false, confianca: 'media' });
+    expect(l['parcela:12'].partes.map((x) => x.cobrancaId)).toEqual(['ac1', 'ac2', 'ac3']);
+    expect(l['parcela:13']).toMatchObject({ cobrancaId: 'ac1', situacao: 'paga', deslocamentoDias: 0 });
+    expect(l['parcela:15']).toMatchObject({ cobrancaId: 'ac3', situacao: 'paga' });
+    expect(l['parcela:16']).toMatchObject({ cobrancaId: 'p16', situacao: 'paga' });
+    expect(depois.resumo.parcelasPagas).toBe(16);
+    expect(depois.resumo.encargosPagos).toBe(9_836);
+    expect(depois.resumo.acordosSemConfirmar).toBe(0);
+    expect(depois.fora).toHaveLength(0);
+  });
+
+  it('acordo que cobre DUAS parcelas: proposta pelo valor (2 × 697 + juros) e, no modo DATA, aponta as duas mais antigas em aberto', () => {
+    // Modo DATA: semanas 5 e 6 não cobradas; acordo avulso em 3 parcelas de 500 a partir da semana 8.
+    const cobrancas: CobrancaConciliavel[] = [paga('p1', semana(1)), paga('p2', semana(2)), paga('p3', semana(3)), paga('p4', semana(4)), paga('p7', semana(7))];
+    for (let k = 1; k <= 3; k++) cobrancas.push({ ...base, id: `ac${k}`, tipo: 'acordo', parcelamento: null, vencimento: semana(7 + k), valorOriginal: 50_000, valorPago: 50_000, pagoEm: semana(7 + k), acordo: 50_000, acordoRef: { k, n: 3 }, descricao: `Acordo das parcelas atrasadas (${k}/3)` });
+    const r = conciliarLegado({ modo: 'DATA', termos: { ...termos, parcelas: { ...termos.parcelas, quantidade: 7 } }, hoje: semana(11), cobrancas });
+    const g = r.acordos[0];
+    expect(g.proposta).toMatchObject({ quantidade: 2, juros: 150_000 - 2 * 69_700, chaves: ['parcela:5', 'parcela:6'] });
+    const c = conciliarLegado({ modo: 'DATA', termos: { ...termos, parcelas: { ...termos.parcelas, quantidade: 7 } }, hoje: semana(11), cobrancas, acordosConfirmados: [{ grupo: g.id, quantidade: 2, chaves: ['parcela:5', 'parcela:6'] }] });
+    const l = Object.fromEntries(c.linhas.map((x) => [x.chave, x]));
+    expect(l['parcela:5'].situacao).toBe('paga_por_acordo');
+    expect(l['parcela:6'].situacao).toBe('paga_por_acordo');
+    expect(l['parcela:5'].encargo + l['parcela:6'].encargo).toBe(150_000 - 2 * 69_700);
+    expect(c.resumo.divergencias).toBe(0);
   });
 });

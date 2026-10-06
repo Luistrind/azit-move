@@ -311,7 +311,8 @@ export class MigracaoLegadoService {
       // Contrato de outro CPF anexado aqui (02/10): para onde ele deveria ir.
       contratoDeOutroCliente,
       cobrancas: c.cobrancas.map((p) => this.conciliacao.cobrancaParaApi(p)),
-      conciliacao: { linhas: conc.linhas, fora: conc.fora, resumo: conc.resumo, incompleta: conc.incompleta },
+      conciliacao: { modo: conc.modo, linhas: conc.linhas, fora: conc.fora, acordos: conc.acordos, resumo: conc.resumo, incompleta: conc.incompleta },
+      modoConciliacao: c.modoConciliacao,
       divergenciasReconhecidas: conc.reconhecidas,
       vinculosManuais: conc.vinculos,
       modoVencimentos: c.modoVencimentos,
