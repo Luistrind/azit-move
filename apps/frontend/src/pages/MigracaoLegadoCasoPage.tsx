@@ -465,6 +465,7 @@ export function MigracaoLegadoCasoPage() {
                 <Metrica label="Conferir / decidir" valor={`${r.linhasConferir} / ${r.linhasDecidir}`} alerta={r.linhasDecidir > 0} />
                 {r.acordosSemConfirmar > 0 && <Metrica label="Acordos a confirmar" valor={r.acordosSemConfirmar} alerta />}
                 {conc.modo === 'SEQUENCIA' && r.deslocamentoSemanas !== 0 && <Metrica label="Cronograma deslocado" valor={`${r.deslocamentoSemanas} semana(s)`} />}
+                {r.vinculosIgnorados > 0 && <Metrica label="Vínculos manuais ignorados" valor={r.vinculosIgnorados} alerta />}
               </div>
             )}
             {/* Doc 02 §26.14: parcela N = N-ésima cobrança (sequência) ou cobrança na data do contrato. */}
@@ -614,6 +615,12 @@ export function MigracaoLegadoCasoPage() {
               <input type="checkbox" checked={soDuvidas} onChange={(e) => setSoDuvidas(e.target.checked)} /> só em dúvida ({c.cobrancas.filter((p) => p.duvida).length})
             </label>
             {editavel && <button className={btn} style={btnSec} disabled={ocupado} onClick={() => rodar(() => svc.reinterpretar(id), 'Regras reaplicadas')}>Reaplicar regras</button>}
+            {editavel && (
+              <button className={btn} style={btnSec} disabled={ocupado} title="Apaga leituras feitas à mão, vínculos manuais, reconhecimentos e confirmações de acordo; as regras releem tudo. Cobranças e termos ficam."
+                onClick={() => { if (window.confirm('Recomeçar a conciliação deste caso?\n\nSaem: leituras feitas à mão, vínculos manuais, divergências reconhecidas e acordos confirmados. As regras releem tudo e você decide de novo só o que sobrar.')) void rodar(async () => { const r = await svc.recomecarConciliacao(id); toast.info(`Limpos: ${r.leiturasManuais} leitura(s) manual(is), ${r.vinculos} vínculo(s), ${r.reconhecimentos} reconhecimento(s), ${r.acordos} acordo(s)`); }, 'Conciliação recomeçada'); }}>
+                Recomeçar a conciliação
+              </button>
+            )}
           </div>
         </div>
         <div className="mt-[8px] max-h-[520px] overflow-auto rounded-[10px]" style={{ border: '1px solid var(--border)' }}>

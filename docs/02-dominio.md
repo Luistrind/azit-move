@@ -2308,3 +2308,8 @@ inteligência para isso; o operador confirma, não digita.
    inteira não é decomposta pela regra — use "desfazer" na leitura para a regra reler, e
    "desvincular" nos vínculos manuais que a sequência tornou desnecessários.
 
+9. **Recomeçar a conciliação** (botão, 06/10 à tarde): o trabalho manual feito no método antigo
+   (leituras à mão, vínculos, reconhecimentos, confirmações de acordo) sai de uma vez, as
+   regras releem tudo e o operador decide de novo só o que sobrar; cobranças e termos ficam;
+   auditado. Na SEQUÊNCIA, vínculo manual de parcela é **ignorado** (e contado no resumo) — era
+   artefato do modo DATA e prendia as cobranças compostas, deslocando o cronograma.

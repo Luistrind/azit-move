@@ -114,7 +114,7 @@ export interface ResumoConciliacao {
   parcelasEsperadas: number; parcelasPagas: number; parcelasPendentes: number; parcelasVencidas: number; parcelasNaoCobradas: number; parcelasFuturas: number;
   intermediariasPagas: number; intermediariasEsperadas: number; entradaPaga: boolean | null; encargosPagos: number; saldoContratualRestante: number;
   divergencias: number; cobrancasForaDoCronograma: number;
-  linhasConferir: number; linhasDecidir: number; acordosSemConfirmar: number; deslocamentoSemanas: number;
+  vinculosIgnorados: number; linhasConferir: number; linhasDecidir: number; acordosSemConfirmar: number; deslocamentoSemanas: number;
 }
 export type DesfechoDivergencia = 'PAGA_FORA_ASAAS' | 'VALOR_ACEITO' | 'ADIADA' | 'COBRANCA_AVULSA';
 export type ModoVencimentos = 'CONTRATO' | 'ASAAS';
@@ -236,6 +236,10 @@ export const migracaoLegadoService = {
   },
   async reconhecerDivergencia(id: string, chave: string, nota: string, desfecho: DesfechoDivergencia | ''): Promise<void> {
     await api.put(`/api/v1/migracao-legado/casos/${id}/divergencias/${encodeURIComponent(chave)}`, { nota, desfecho: desfecho || undefined });
+  },
+  async recomecarConciliacao(id: string): Promise<{ recomecada: boolean; leiturasManuais: number; vinculos: number; reconhecimentos: number; acordos: number }> {
+    const { data } = await api.post(`/api/v1/migracao-legado/casos/${id}/recomecar-conciliacao`);
+    return data;
   },
   async definirModoConciliacao(id: string, modo: ModoConciliacao): Promise<void> {
     await api.put(`/api/v1/migracao-legado/casos/${id}/conciliacao-modo`, { modo });

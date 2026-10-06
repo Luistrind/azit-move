@@ -129,6 +129,7 @@ export interface ResumoConciliacao {
   divergencias: number;
   cobrancasForaDoCronograma: number;
   // 06/10: o que precisa de olho humano.
+  vinculosIgnorados: number; // modo SEQUENCIA: vínculos manuais de parcela que deixaram de valer
   linhasConferir: number; // confiança média
   linhasDecidir: number; // confiança baixa
   acordosSemConfirmar: number;
@@ -150,7 +151,7 @@ const difDias = (a: string, b: string) => Math.round((new Date(`${a}T00:00:00Z`)
 const brl = (c: number) => (c / 100).toFixed(2).replace('.', ',');
 const dataBR = (iso: string) => iso.split('-').reverse().join('/');
 
-const RESUMO_VAZIO: ResumoConciliacao = { parcelasEsperadas: 0, parcelasPagas: 0, parcelasPendentes: 0, parcelasVencidas: 0, parcelasNaoCobradas: 0, parcelasFuturas: 0, intermediariasPagas: 0, intermediariasEsperadas: 0, entradaPaga: null, encargosPagos: 0, saldoContratualRestante: 0, divergencias: 0, cobrancasForaDoCronograma: 0, linhasConferir: 0, linhasDecidir: 0, acordosSemConfirmar: 0, deslocamentoSemanas: 0 };
+const RESUMO_VAZIO: ResumoConciliacao = { parcelasEsperadas: 0, parcelasPagas: 0, parcelasPendentes: 0, parcelasVencidas: 0, parcelasNaoCobradas: 0, parcelasFuturas: 0, intermediariasPagas: 0, intermediariasEsperadas: 0, entradaPaga: null, encargosPagos: 0, saldoContratualRestante: 0, divergencias: 0, cobrancasForaDoCronograma: 0, vinculosIgnorados: 0, linhasConferir: 0, linhasDecidir: 0, acordosSemConfirmar: 0, deslocamentoSemanas: 0 };
 
 export function conciliarLegado(params: {
   termos: TermosConciliaveis;
@@ -167,8 +168,15 @@ export function conciliarLegado(params: {
 }): ResultadoConciliacao {
   const { termos, hoje } = params;
   const modo: ModoConciliacao = params.modo ?? 'SEQUENCIA';
+  const vinculosIgnorados = modo === 'SEQUENCIA' ? (params.vinculosManuais ?? []).filter((v) => v.chave.startsWith('parcela:')).length : 0;
   const manuais = new Map<string, string[]>(); // chave → cobrancaIds
-  for (const v of params.vinculosManuais ?? []) manuais.set(v.chave, [...(manuais.get(v.chave) ?? []), v.cobrancaId]);
+  // Vínculo manual de PARCELA é artefato do modo DATA (caso real 06/10: os
+  // vínculos antigos prendiam as cobranças compostas e deslocavam tudo). Na
+  // SEQUÊNCIA ele é ignorado; entrada/intermediária continuam valendo.
+  for (const v of params.vinculosManuais ?? []) {
+    if (modo === 'SEQUENCIA' && v.chave.startsWith('parcela:')) continue;
+    manuais.set(v.chave, [...(manuais.get(v.chave) ?? []), v.cobrancaId]);
+  }
   const confirmados = new Map((params.acordosConfirmados ?? []).map((a) => [a.grupo, a]));
   const tol = params.toleranciaDias ?? 3;
   const p = termos.parcelas;
@@ -607,6 +615,7 @@ export function conciliarLegado(params: {
     saldoContratualRestante: (parcelas.length - pagas) * valorParcela,
     divergencias: linhas.filter((l) => l.divergencia).length + fora.filter((f) => f.divergencia).length,
     cobrancasForaDoCronograma: fora.length,
+    vinculosIgnorados,
     linhasConferir: linhas.filter((l) => l.confianca === 'media').length,
     linhasDecidir: linhas.filter((l) => l.confianca === 'baixa').length,
     acordosSemConfirmar: acordos.filter((g) => !g.confirmado).length,

@@ -385,7 +385,7 @@ describe('caso José Luiz — //, $1.320.00, cota sem valor, parcela em partes, 
   });
 
   it('vínculo manual: a cobrança de 20/03 apontada para a parcela 14 fecha a linha, sem divergência', () => {
-    const r = conciliarLegado({ termos, hoje: '2026-04-01', cobrancas, vinculosManuais: [{ cobrancaId: 'p14x', chave: 'parcela:3' }] });
+    const r = conciliarLegado({ modo: 'DATA', termos, hoje: '2026-04-01', cobrancas, vinculosManuais: [{ cobrancaId: 'p14x', chave: 'parcela:3' }] });
     const l = Object.fromEntries(r.linhas.map((x) => [x.chave, x]));
     expect(l['parcela:3']).toMatchObject({ cobrancaId: 'p14x', cobradoValor: 99_700, situacao: 'paga', divergencia: false });
     expect(l['parcela:3'].observacao).toContain('vínculo manual');
@@ -395,7 +395,7 @@ describe('caso José Luiz — //, $1.320.00, cota sem valor, parcela em partes, 
 
   it('vínculo manual com soma diferente do esperado: fecha mesmo assim, mas a observação avisa', () => {
     const cobs: CobrancaConciliavel[] = [{ ...base, id: 'd', vencimento: '2026-02-19', valorOriginal: 90_000, valorPago: 90_000, pagoEm: '2026-02-19', tipo: 'acordo' as const }];
-    const r = conciliarLegado({ termos: { ...termos, parcelas: { ...termos.parcelas, quantidade: 1 } }, hoje: '2026-04-01', cobrancas: cobs, vinculosManuais: [{ cobrancaId: 'd', chave: 'parcela:1' }] });
+    const r = conciliarLegado({ modo: 'DATA', termos: { ...termos, parcelas: { ...termos.parcelas, quantidade: 1 } }, hoje: '2026-04-01', cobrancas: cobs, vinculosManuais: [{ cobrancaId: 'd', chave: 'parcela:1' }] });
     expect(r.linhas[0]).toMatchObject({ cobrancaId: 'd', situacao: 'paga', divergencia: false });
     expect(r.linhas[0].observacao).toContain('≠');
   });
@@ -526,5 +526,21 @@ describe('conciliação por sequência e acordos (caso real 06/10)', () => {
     expect(l['parcela:6'].situacao).toBe('paga_por_acordo');
     expect(l['parcela:5'].encargo + l['parcela:6'].encargo).toBe(150_000 - 2 * 69_700);
     expect(c.resumo.divergencias).toBe(0);
+  });
+});
+
+describe('sequência ignora vínculo manual de parcela (caso real 06/10)', () => {
+  const termos = { parcelas: { quantidade: 6, valor: 64_200, primeiraEm: '2026-01-25' }, intermediarias: null, entradaValor: null, seguroSemanal: 5_000, taxaSemanal: 500 };
+  const base = { valorPago: null as number | null, pagoEm: null as string | null, classe: 'paga' as const, intermediariaEmbutida: 0, parcelamento: 64_200 as number | null, extra: 0, extraRotulo: null as string | null, encargoEmbutido: 0, descricao: null as string | null, tipo: 'parcela' as const };
+  const semana = (n: number) => new Date(Date.UTC(2026, 0, 25) + (n - 1) * 7 * 86_400_000).toISOString().slice(0, 10);
+  const paga = (id: string, venc: string, extra: Partial<CobrancaConciliavel> = {}): CobrancaConciliavel => ({ ...base, id, vencimento: venc, valorOriginal: 69_700, valorPago: 69_700, pagoEm: venc, ...extra });
+  it('vínculo antigo (modo DATA) não prende a cobrança composta nem desloca a sequência', () => {
+    const cobrancas = [paga('p1', semana(1)), paga('p2', semana(2)), paga('c3', semana(4), { valorOriginal: 96_212, valorPago: 96_212, acordo: 26_512, acordoRef: { k: 1, n: 1 } }), paga('p5', semana(5))];
+    const r = conciliarLegado({ termos, hoje: semana(6), cobrancas, vinculosManuais: [{ cobrancaId: 'c3', chave: 'parcela:3' }, { cobrancaId: 'p5', chave: 'parcela:3' }] });
+    const l = Object.fromEntries(r.linhas.map((x) => [x.chave, x]));
+    expect(r.resumo.vinculosIgnorados).toBe(2);
+    expect(l['parcela:3']).toMatchObject({ cobrancaId: 'c3', situacao: 'paga', partes: [] });
+    expect(l['parcela:4']).toMatchObject({ cobrancaId: 'p5', situacao: 'paga' });
+    expect(l['parcela:3'].observacao ?? '').not.toContain('vínculo manual');
   });
 });

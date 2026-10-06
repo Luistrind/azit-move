@@ -126,6 +126,12 @@ export class MigracaoLegadoController {
     return this.conciliacao.definirModoConciliacao(id, body?.modo ?? '', user.id);
   }
 
+  @Post('casos/:id/recomecar-conciliacao')
+  @HttpCode(200)
+  recomecarConciliacao(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.conciliacao.recomecarConciliacao(id, user.id);
+  }
+
   @Put('casos/:id/acordos/:grupo')
   confirmarAcordo(@Param('id') id: string, @Param('grupo') grupo: string, @Body() body: { quantidade?: number; chaves?: string[] } | undefined, @CurrentUser() user: UsuarioAutenticado) {
     return this.conciliacao.confirmarAcordo(id, decodeURIComponent(grupo), body, user.id);

@@ -478,6 +478,29 @@ export class LegadoConciliacaoService {
     return { confirmado: true, quantidade, chaves };
   }
 
+  // Recomeça a conciliação do zero (§26.14, caso real 06/10): o trabalho manual
+  // feito no método antigo (leituras à mão, vínculos, reconhecimentos,
+  // confirmações) sai, as regras releem tudo e o operador decide de novo só o
+  // que sobrar. As cobranças lidas do Asaas e os termos ficam. Auditado.
+  async recomecarConciliacao(casoId: string, usuarioId: string) {
+    const caso = await this.carregar(casoId);
+    this.exigirEditavel(caso.status);
+    const manuais = caso.cobrancas.filter((c) => c.interpretadoPor === 'operador').length;
+    const antes = {
+      leiturasManuais: manuais,
+      vinculos: ((caso.vinculosManuais as unknown[] | null) ?? []).length,
+      reconhecimentos: ((caso.divergenciasReconhecidas as unknown[] | null) ?? []).length,
+      acordos: ((caso.acordosConfirmados as unknown[] | null) ?? []).length,
+    };
+    await this.prisma.db.$transaction([
+      this.prisma.db.cobrancaLegada.updateMany({ where: { casoId, interpretadoPor: 'operador' }, data: { interpretadoPor: null, interpretacaoObs: null } }),
+      this.prisma.db.casoMigracaoLegado.update({ where: { id: casoId }, data: { vinculosManuais: Prisma.JsonNull, divergenciasReconhecidas: Prisma.JsonNull, acordosConfirmados: Prisma.JsonNull } }),
+      this.prisma.db.logAuditoria.create({ data: { usuarioId, acao: 'legado_conciliacao_recomecada', entidade: 'caso_migracao_legado', entidadeId: casoId, antes, depois: { vinculosManuais: (caso.vinculosManuais ?? Prisma.JsonNull) as Prisma.InputJsonValue, divergenciasReconhecidas: (caso.divergenciasReconhecidas ?? Prisma.JsonNull) as Prisma.InputJsonValue, acordosConfirmados: (caso.acordosConfirmados ?? Prisma.JsonNull) as Prisma.InputJsonValue } } }),
+    ]);
+    await this.interpretarCobrancasDoCaso(casoId, 'regra');
+    return { recomecada: true, ...antes };
+  }
+
   async desfazerAcordo(casoId: string, grupo: string, usuarioId: string) {
     const caso = await this.carregar(casoId);
     this.exigirEditavel(caso.status);
@@ -588,8 +611,9 @@ export class LegadoConciliacaoService {
         ...r.fora.filter((f) => f.divergencia && !reconhecidas.has(`cobranca:${f.cobrancaId}`)).map((f) => `cobranca:${f.cobrancaId}`),
       ];
       if (abertas.length) p.push(`${abertas.length} divergência(s) da conciliação sem reconhecimento`);
-      // §26.14: acordo com dinheiro recebido precisa dizer o que quitou.
-      const semConfirmar = r.acordos.filter((g) => !g.confirmado && g.pago > 0).length;
+      // §26.14: acordo com dinheiro recebido precisa dizer o que quitou — a não
+      // ser que todas as cobranças dele já tenham desfecho reconhecido (avulsa).
+      const semConfirmar = r.acordos.filter((g) => !g.confirmado && g.pago > 0 && !g.parcelas.every((x) => reconhecidas.has(`cobranca:${x.cobrancaId}`))).length;
       if (semConfirmar) p.push(`${semConfirmar} acordo(s) sem confirmação do que cobrem — confirme no quadro de acordos`);
     }
     return p;
