@@ -376,6 +376,8 @@ export class NovacaoDecomposicaoService {
       desconto?: number; // centavos — só comitê
       recebimentoInicial?: number; // centavos
       trocaAtivoId?: string; // F3: troca de veículo (ativo disponível)
+      acrescimo?: number; // centavos — somado ao saldo-base (09/10)
+      acrescimoMotivo?: string;
     },
   ) {
     const dec = await this.decomporConta(contaId);
@@ -476,6 +478,7 @@ export class NovacaoDecomposicaoService {
       saldoVeiculo: dec.parteVeiculo.total,
       saldoDemais: dec.demaisProdutos.total,
       ajusteTrocaVeiculo: troca?.ajuste ?? 0,
+      acrescimo: dto.acrescimo ?? 0,
       desconto: dto.desconto ?? 0,
       recebimentoInicial: dto.recebimentoInicial ?? 0,
       numeroParcelasVeiculo: numeroParcelas,
@@ -501,6 +504,8 @@ export class NovacaoDecomposicaoService {
       prazoMeses: dto.prazoMeses ?? null,
       numeroParcelasVeiculo: numeroParcelas,
       troca,
+      // Acréscimo ao saldo (09/10): valor + motivo, congelados no snapshot.
+      acrescimoMotivo: (dto.acrescimo ?? 0) > 0 ? (dto.acrescimoMotivo ?? null) : null,
       produtoAtivo: params.ativo,
       versaoParametros: params.versao,
       // Congelados para a contratação (F2 grava na ref dos contratos novos).

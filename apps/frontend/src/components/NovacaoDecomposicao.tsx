@@ -234,6 +234,10 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
   // Troca de veículo (F3 — A5): ativo DISPONÍVEL do estoque; ajuste pelo
   // valor de cadastro (entra − sai), nunca informado livremente.
   const [trocaAtivoId, setTrocaAtivoId] = useState('');
+  // Acréscimo ao saldo (09/10, Luís): ex.: orçamento da avaria do veículo
+  // devolvido na troca — soma à dívida, com motivo obrigatório.
+  const [acrescimo, setAcrescimo] = useState('');
+  const [acrescimoMotivo, setAcrescimoMotivo] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const [sim, setSim] = useState<SimulacaoNovacao | null>(null);
   const disponiveis = useQuery({
@@ -258,6 +262,8 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
         recebimentoInicial: reaisParaCentavos(recebimento) || undefined,
         desconto: reaisParaCentavos(desconto) || undefined,
         trocaAtivoId: trocaAtivoId || undefined,
+        acrescimo: reaisParaCentavos(acrescimo) || undefined,
+        acrescimoMotivo: acrescimoMotivo.trim() || undefined,
       });
       setSim(r);
     } catch (e) {
@@ -277,6 +283,8 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
         recebimentoInicial: reaisParaCentavos(recebimento) || undefined,
         desconto: reaisParaCentavos(desconto) || undefined,
         trocaAtivoId: trocaAtivoId || undefined,
+        acrescimo: reaisParaCentavos(acrescimo) || undefined,
+        acrescimoMotivo: acrescimoMotivo.trim() || undefined,
         observacao: observacao.trim() || undefined,
       });
       setEnviada(true);
@@ -335,7 +343,17 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
             ))}
           </select>
         </label>
-        <button onClick={simular} disabled={ocupado} className="h-[34px] rounded-[8px] px-[14px] text-[12.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>
+        <label className="flex flex-col gap-[4px]">
+          <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Acréscimo ao saldo (R$) — ex.: avaria do veículo devolvido</span>
+          <input value={acrescimo} onChange={(e) => setAcrescimo(e.target.value)} placeholder="0,00" className="h-[34px] w-[130px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+        </label>
+        {reaisParaCentavos(acrescimo) > 0 && (
+          <label className="flex flex-col gap-[4px]">
+            <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Motivo do acréscimo (vai para o instrumento)</span>
+            <input value={acrescimoMotivo} onChange={(e) => setAcrescimoMotivo(e.target.value)} placeholder="ex.: reparo da avaria do HB20 — orçamento nº 123" maxLength={200} className="h-[34px] w-[320px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+          </label>
+        )}
+        <button onClick={simular} disabled={ocupado || (reaisParaCentavos(acrescimo) > 0 && !acrescimoMotivo.trim())} className="h-[34px] rounded-[8px] px-[14px] text-[12.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>
           {ocupado ? 'Calculando…' : 'Simular'}
         </button>
       </div>
@@ -377,11 +395,12 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
                 </div>
               )}
               <div className="flex flex-col gap-[3px]">
-                {sim.troca ? (
+                {sim.troca || sim.acrescimo > 0 ? (
                   <>
                     <LinhaValor label="Parte do veículo (decomposição)" valor={sim.decomposicao.parteVeiculo.total} />
-                    <LinhaValor label="Ajuste da troca (entra − sai)" valor={sim.troca.ajuste} />
-                    <LinhaValor label="Saldo-base (com a troca)" valor={sim.saldoBase} />
+                    {sim.troca && <LinhaValor label="Ajuste da troca (entra − sai)" valor={sim.troca.ajuste} />}
+                    {sim.acrescimo > 0 && <LinhaValor label={`Acréscimo — ${sim.acrescimoMotivo ?? 'motivo não informado'}`} valor={sim.acrescimo} />}
+                    <LinhaValor label={sim.troca ? 'Saldo-base (com a troca)' : 'Saldo-base (com o acréscimo)'} valor={sim.saldoBase} />
                   </>
                 ) : (
                   <LinhaValor label="Saldo-base (parte do veículo)" valor={sim.saldoBase} />

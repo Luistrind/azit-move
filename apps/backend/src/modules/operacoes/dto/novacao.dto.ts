@@ -14,7 +14,12 @@ export const simularNovacaoSchema = z
     // Troca de veículo (F3 — A5): ativo DISPONÍVEL no estoque; ajuste pelo
     // valor de cadastro (entra − sai).
     trocaAtivoId: z.string().min(1).optional(),
+    // Acréscimo ao saldo (09/10): valor somado à dívida, com motivo (ex.:
+    // orçamento da avaria do veículo devolvido).
+    acrescimo: z.coerce.number().int().min(0).optional(),
+    acrescimoMotivo: z.string().trim().max(200).optional(),
   })
+  .refine((d) => !d.acrescimo || !!d.acrescimoMotivo, { message: 'Diga o motivo do acréscimo (ex.: avaria do veículo devolvido — orçamento nº …)', path: ['acrescimoMotivo'] })
   .refine((d) => d.prazoMeses !== undefined || d.numeroParcelasVeiculo !== undefined, {
     message: 'Informe o prazo em meses (ou o número de parcelas)',
     path: ['prazoMeses'],
@@ -31,8 +36,11 @@ export const solicitarNovacaoSchema = z
     desconto: z.coerce.number().int().min(0).optional(),
     recebimentoInicial: z.coerce.number().int().min(0).optional(),
     trocaAtivoId: z.string().min(1).optional(),
+    acrescimo: z.coerce.number().int().min(0).optional(),
+    acrescimoMotivo: z.string().trim().max(200).optional(),
     observacao: z.string().trim().min(1).optional(),
   })
+  .refine((d) => !d.acrescimo || !!d.acrescimoMotivo, { message: 'Diga o motivo do acréscimo', path: ['acrescimoMotivo'] })
   .refine((d) => d.prazoMeses !== undefined || d.numeroParcelasVeiculo !== undefined, {
     message: 'Informe o prazo em meses (ou o número de parcelas)',
     path: ['prazoMeses'],

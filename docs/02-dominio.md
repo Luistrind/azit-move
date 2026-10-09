@@ -1073,7 +1073,15 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > Estados novos: parcela/fatura NOVADA, acordo NOVADO, novação AGUARDANDO_ASSINATURA/
 > AGUARDANDO_RECEBIMENTO/EXPIRADO. Telas: envio à aprovação no modal da prévia; lista de
 > novações (Acordos e novações) com os dois contratos e ação dev de recebimento.
-> Próxima fase: F3 (troca de veículo por valor FIPE + garantias — A5).
+> F3 (troca de veículo, 14/09): veículo novo DISPONÍVEL no estoque, ajuste = valor de cadastro
+> do que entra − do que sai (**valor de cadastro = valor de venda = FIPE**, confirmado pelo Luís
+> em 09/10/2026), C1 nasce com o veículo novo (reservado EM_CONTRATO), o antigo volta ao
+> estoque na ativação; proteção veicular do C1 nasce sobre o veículo NOVO.
+> **Acréscimo ao saldo (decisão Luís, 2026-10-09):** a simulação aceita um valor que SOMA à
+> dívida novada, com motivo obrigatório — o caso típico é o orçamento da avaria do veículo
+> devolvido na troca. Entra no saldo-base (antes do desconto; a taxa inicial incide sobre ele),
+> fica congelado no snapshot e o instrumento declara valor e motivo. É o espelho do desconto,
+> sem exigir comitê (o desconto reduz dívida; o acréscimo é dívida reconhecida pelo cliente).
 >
 > **Fonte das fórmulas:** `docs/Planilha Novacao de Contrato - Azit Move.xlsx` (extraída
 > célula a célula, 13/09) — abas: **Parâmetros** (NV001–019, ICVF/ICPF, mora 2%+1% a.m.

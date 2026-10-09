@@ -352,6 +352,10 @@ export interface ParametrosPrecificacaoNovacao {
   saldoVeiculo: number; // centavos — parteVeiculo.total da decomposição (F1)
   saldoDemais: number; // centavos — demaisProdutos.total da decomposição (F1)
   ajusteTrocaVeiculo?: number; // centavos (FIPE do que entra − do que sai; F3)
+  /** Acréscimo ao saldo (09/10, Luís): valor que a operação SOMA à dívida na
+   *  novação — ex.: orçamento da avaria do veículo devolvido na troca. Entra no
+   *  saldo-base (e portanto na taxa inicial), com motivo obrigatório. */
+  acrescimo?: number;
   desconto?: number; // centavos — SÓ com aprovação do comitê
   recebimentoInicial?: number; // centavos (0 = sem recebimento inicial)
   numeroParcelasVeiculo: number; // prazo escolhido para o contrato do veículo
@@ -379,6 +383,7 @@ export interface FaseContrato {
 }
 
 export interface ResultadoPrecificacaoNovacao {
+  acrescimo: number; // centavos — o que foi somado ao saldo-base (09/10)
   saldoBase: number;
   saldoNovado: number;
   taxaInicial: number;
@@ -433,7 +438,8 @@ export function precificarNovacao(p: ParametrosPrecificacaoNovacao): ResultadoPr
   const excecoes: string[] = [];
 
   // Passo 3 — cadeia do contrato do veículo.
-  const saldoBase = p.saldoVeiculo + (p.ajusteTrocaVeiculo ?? 0);
+  const acrescimo = Math.max(0, p.acrescimo ?? 0);
+  const saldoBase = p.saldoVeiculo + (p.ajusteTrocaVeiculo ?? 0) + acrescimo;
   if (saldoBase <= 0) throw new Error('Novação: saldo-base do veículo deve ser positivo');
   if (desconto > 0) excecoes.push('desconto aplicado — exige aprovação do comitê (CONAC)');
   const saldoNovado = saldoBase - Math.min(desconto, saldoBase);
@@ -488,6 +494,7 @@ export function precificarNovacao(p: ParametrosPrecificacaoNovacao): ResultadoPr
   const totalAPagar = recebimento + totalComposto2 + antecipacaoTransicao + totalComposto1;
 
   return {
+    acrescimo,
     saldoBase,
     saldoNovado,
     taxaInicial,

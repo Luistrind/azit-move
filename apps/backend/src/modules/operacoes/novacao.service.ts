@@ -6,6 +6,9 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { QUEUE_NAMES } from '../queues/queues.module';
 import {
   centavosParaReaisString,
   dataPorExtenso,
@@ -26,6 +29,8 @@ import { INSTRUMENTO_NOVACAO_TEMPLATE } from './templates/instrumento-novacao.te
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 const reais = (c: number) => centavosParaReaisString(c);
+// Instrumento em pt-BR ('8.991,52') — o cliente lê e assina este texto (09/10).
+const reaisBR = (c: number) => (c / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const cent = (d: Prisma.Decimal | null): number =>
   d !== null ? Math.round(Number(d.toString()) * 100) : 0;
 
@@ -67,6 +72,7 @@ export class NovacaoService implements OnModuleInit {
     private readonly asaas: AsaasService,
     private readonly catalogoFonte: CatalogoFonteService,
     private readonly decomposicao: NovacaoDecomposicaoService,
+    @InjectQueue(QUEUE_NAMES.EFETIVAR_ACORDO) private readonly filaAcordo: Queue,
   ) {}
 
   onModuleInit() {
@@ -343,7 +349,10 @@ export class NovacaoService implements OnModuleInit {
 
     const recebimento = cent(novacao.recebimentoInicial);
     if (recebimento <= 0) {
-      await this.ativar(novacao.id, new Date().toISOString());
+      // Ativação pela FILA, com retry (09/10 — caso real local: uma falha no
+      // meio da ativação deixava a novação parada em AGUARDANDO_ASSINATURA sem
+      // ninguém voltar nela; as etapas são idempotentes, o job repete até fechar).
+      await this.filaAcordo.add('novacao-recebida', { novacaoId: novacao.id, paymentDate: new Date().toISOString() }, { attempts: 5, backoff: { type: 'exponential', delay: 30_000 }, removeOnComplete: true, removeOnFail: 50 });
       return;
     }
 
@@ -612,15 +621,18 @@ export class NovacaoService implements OnModuleInit {
       telefoneCliente: t.whatsapp ?? '—',
       razaoCredoraVeiculo: 'Estrutura jurídica titular do veículo (conforme contrato)',
       dataBase: new Date(snap.dataBase).toLocaleDateString('pt-BR'),
-      saldoTotal: `R$ ${reais(sim.decomposicao.totalGeral)}`,
+      saldoTotal: `R$ ${reaisBR(sim.decomposicao.totalGeral)}`,
       saldoTotalExtenso: valorPorExtenso(sim.decomposicao.totalGeral),
       numeroContratoVeiculo: ctx.numeroContratoVeiculo,
       numeroContratoTermo: ctx.numeroContratoTermo,
       descricaoVeiculo: ctx.descricaoVeiculo,
-      saldoVeiculo: `R$ ${reais(sim.decomposicao.parteVeiculo.total)}`,
+      saldoVeiculo: `R$ ${reaisBR(sim.decomposicao.parteVeiculo.total)}`,
       saldoVeiculoExtenso: valorPorExtenso(sim.decomposicao.parteVeiculo.total),
       trocaLinha: sim.troca
-        ? `\n\nA operação inclui TROCA DE VEÍCULO: sai o veículo ${sim.troca.saiDescricao} (valor de cadastro R$ ${reais(sim.troca.saiValor)}), devolvido à CREDORA, e entra o veículo ${sim.troca.entraDescricao} (valor de cadastro R$ ${reais(sim.troca.entraValor)}); o ajuste de R$ ${reais(Math.abs(sim.troca.ajuste))} ${sim.troca.ajuste >= 0 ? 'soma-se ao' : 'deduz-se do'} saldo-base.`
+        ? `\n\nA operação inclui TROCA DE VEÍCULO: sai o veículo ${sim.troca.saiDescricao} (valor de cadastro R$ ${reaisBR(sim.troca.saiValor)}), devolvido à CREDORA, e entra o veículo ${sim.troca.entraDescricao} (valor de cadastro R$ ${reaisBR(sim.troca.entraValor)}); o ajuste de R$ ${reais(Math.abs(sim.troca.ajuste))} ${sim.troca.ajuste >= 0 ? 'soma-se ao' : 'deduz-se do'} saldo-base.`
+        : '',
+      acrescimoLinha: sim.acrescimo > 0
+        ? `\n\nAo saldo da parte do veículo soma-se o acréscimo de R$ ${reais(sim.acrescimo)} (${valorPorExtenso(sim.acrescimo)}), a título de ${sim.acrescimoMotivo ?? 'acréscimo acordado entre as partes'}, que o CLIENTE reconhece como devido.`
         : '',
       taxaInicial: `R$ ${reais(sim.taxaInicial)}`,
       descontoLinha: desconto > 0 ? ` e deduzido o desconto de R$ ${reais(desconto)} aprovado pelo comitê` : '',

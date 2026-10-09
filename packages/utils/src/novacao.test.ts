@@ -238,6 +238,17 @@ describe('precificarNovacao (A7 passos 3-4)', () => {
   // max(2%; 3.990)) são testados em separado.
   const semTaxas = { taxaMensal: 0, taxaInicialPct: 0, taxaInicialMinima: 0 };
 
+  it('acréscimo ao saldo (09/10): soma ao saldo-base junto do ajuste da troca; a taxa inicial incide sobre ele', () => {
+    const r = precificarNovacao({
+      saldoVeiculo: 100000, saldoDemais: 0, ajusteTrocaVeiculo: -20000, acrescimo: 35000, numeroParcelasVeiculo: 5, frequencia: 'semanal',
+      taxaMensal: 0, taxaInicialPct: 0.02, taxaInicialMinima: 0,
+    });
+    expect(r.acrescimo).toBe(35000);
+    expect(r.saldoBase).toBe(115000);
+    expect(r.taxaInicial).toBe(2300);
+    expect(r.contrato1.totalParcelas).toBe(5);
+  });
+
   it('sem juros e sem demais produtos: divisão simples com ajuste na última', () => {
     const r = precificarNovacao({
       saldoVeiculo: 120000, saldoDemais: 0, numeroParcelasVeiculo: 12, frequencia: 'semanal', ...semTaxas,
