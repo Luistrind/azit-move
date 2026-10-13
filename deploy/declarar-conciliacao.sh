@@ -17,8 +17,12 @@ case "$STACK" in azit|azit-hml) ;; *) erro "Uso: bash deploy/declarar-conciliaca
 DBCID=$(container_do_servico "${STACK}_azit-db")
 [ -n "$DBCID" ] || { erro "Banco do stack $STACK não está rodando"; exit 1; }
 SQL() { docker exec -i "$DBCID" psql -U azit -d azit -v ON_ERROR_STOP=1 -tA "$@"; }
+# O host não tem Node: a conferência do JSON roda no container do backend, lendo o arquivo pela entrada padrão.
+BECID=$(container_do_servico "${STACK}_backend")
+[ -n "$BECID" ] || { erro "Backend do stack $STACK não está rodando (preciso dele para conferir o JSON)"; exit 1; }
+NODE() { docker exec -i "$BECID" node "$@"; }
 
-node -e 'const d=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); if(!Array.isArray(d.parcelas)||!d.parcelas.length) throw new Error("JSON sem parcelas[]"); const n=d.parcelas.map(p=>p.numero); if(new Set(n).size!==n.length) throw new Error("numero de parcela repetido"); for(const p of d.parcelas){ if(!/^\d{4}-\d{2}-\d{2}$/.test(p.vencimento)) throw new Error("vencimento invalido na parcela "+p.numero); if(!["paga","paga_com_encargo","paga_por_acordo","vencida","pendente","nao_cobrada","adiada","futura"].includes(p.situacao)) throw new Error("situacao invalida na parcela "+p.numero);} console.log("  JSON ok: "+d.parcelas.length+" parcelas"+(d.entrada?", entrada":"")+(d.fora?", "+d.fora.length+" avulsa(s)":""));' "$ARQ" || { erro "JSON inválido"; exit 1; }
+NODE -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); if(!Array.isArray(d.parcelas)||!d.parcelas.length) throw new Error("JSON sem parcelas[]"); const n=d.parcelas.map(p=>p.numero); if(new Set(n).size!==n.length) throw new Error("numero de parcela repetido"); for(const p of d.parcelas){ if(!/^\d{4}-\d{2}-\d{2}$/.test(p.vencimento)) throw new Error("vencimento invalido na parcela "+p.numero); if(!["paga","paga_com_encargo","paga_por_acordo","vencida","pendente","nao_cobrada","adiada","futura"].includes(p.situacao)) throw new Error("situacao invalida na parcela "+p.numero);} console.log("  JSON ok: "+d.parcelas.length+" parcelas"+(d.entrada?", entrada":"")+(d.fora?", "+d.fora.length+" avulsa(s)":""));' < "$ARQ" || { erro "JSON inválido"; exit 1; }
 
 etapa "Caso $CASO em $STACK"
 read -r CID NOME STATUS <<<"$(SQL -F' ' -c "select id, replace(nome,' ','_'), status from casos_migracao_legado where id = '$CASO' or \"asaasCustomerId\" = '$CASO'" | tr -d '\r')"
@@ -27,7 +31,7 @@ echo "  ${NOME//_/ } · status $STATUS · id $CID"
 case "$STATUS" in COLETADO|EM_REVISAO) ;; *) erro "Caso em $STATUS — só COLETADO ou EM_REVISAO aceitam declaração (reabra na tela se for VALIDADO)"; exit 1 ;; esac
 
 # Cobranças citadas precisam existir no caso (senão a prova não fecha).
-CITADAS=$(node -e 'const d=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const ids=new Set(); for(const p of [...(d.parcelas||[]),...(d.intermediarias||[])]) for(const c of (p.cobrancas||[])) ids.add(c); for(const f of (d.fora||[])) ids.add(f.cobranca); for(const c of ((d.entrada&&d.entrada.cobrancas)||[])) ids.add(c); console.log([...ids].join(","));' "$ARQ")
+CITADAS=$(NODE -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); const ids=new Set(); for(const p of [...(d.parcelas||[]),...(d.intermediarias||[])]) for(const c of (p.cobrancas||[])) ids.add(c); for(const f of (d.fora||[])) ids.add(f.cobranca); for(const c of ((d.entrada&&d.entrada.cobrancas)||[])) ids.add(c); console.log([...ids].join(","));' < "$ARQ")
 if [ -n "$CITADAS" ]; then
   FALTAM=$(SQL -c "select string_agg(x, ', ') from unnest(string_to_array('$CITADAS', ',')) x where x not in (select \"asaasPaymentId\" from cobrancas_legadas where \"casoId\"='$CID')" | tr -d '\r')
   [ -z "$FALTAM" ] || { erro "Cobranças citadas que o caso não tem: $FALTAM — leia o Asaas de novo ou corrija o JSON"; exit 1; }
