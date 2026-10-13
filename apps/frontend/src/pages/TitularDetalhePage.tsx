@@ -51,6 +51,8 @@ export function TitularDetalhePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [pagina, setPagina] = useState(1);
+  // Faturas NOVADAS (extintas pela novação) ficam fora do histórico por padrão (13/10).
+  const [mostrarNovadas, setMostrarNovadas] = useState(false);
   const [faturaSel, setFaturaSel] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
 
@@ -234,8 +236,8 @@ export function TitularDetalhePage() {
   const consultasBiro = useQuery({ queryKey: ['titular-consultas-biro', id], queryFn: () => titularService.consultasBiro(id), enabled: !!id });
   const contaId = det.data?.conta?.id;
   const faturas = useQuery({
-    queryKey: ['titular-faturas', contaId, pagina],
-    queryFn: () => faturaService.daConta(contaId!, pagina, PAGE),
+    queryKey: ['titular-faturas', contaId, pagina, mostrarNovadas],
+    queryFn: () => faturaService.daConta(contaId!, pagina, PAGE, mostrarNovadas),
     enabled: !!contaId,
   });
   // Lançamentos avulsos da conta (entradas de contrato/acordo — doc 02 §4-A.3, 30/08).
@@ -454,7 +456,19 @@ export function TitularDetalhePage() {
       {/* Bloco 4 — Histórico de faturas (paginado) */}
       <div className="rounded-card p-[18px]" style={card}>
         <div className="mb-[12px] flex items-center justify-between">
-          <span className="font-display text-[13px] font-bold">Histórico de faturas{faturas.data ? ` (${faturas.data.total})` : ''}</span>
+          <span className="font-display text-[13px] font-bold">
+            Histórico de faturas{faturas.data ? ` (${faturas.data.total})` : ''}
+            {faturas.data && (faturas.data.ocultas > 0 || mostrarNovadas) && (
+              <button
+                onClick={() => { setMostrarNovadas((v) => !v); setPagina(1); }}
+                className="ml-[10px] text-[11.5px] font-semibold"
+                style={{ color: 'var(--text-muted)' }}
+                title="Faturas extintas pela novação ficam no histórico, mas fora da lista"
+              >
+                {mostrarNovadas ? 'ocultar novadas' : `${faturas.data.ocultas} novada${faturas.data.ocultas === 1 ? '' : 's'} oculta${faturas.data.ocultas === 1 ? '' : 's'} · mostrar`}
+              </button>
+            )}
+          </span>
           {faturas.data && faturas.data.total > PAGE && (
             <div className="flex items-center gap-[8px] text-[12px]">
               <button disabled={pagina <= 1} onClick={() => setPagina((p) => p - 1)} className="rounded-[7px] px-[9px] py-[5px] font-semibold disabled:opacity-40" style={{ background: 'var(--surface-input)' }}>←</button>

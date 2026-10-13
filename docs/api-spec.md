@@ -406,6 +406,12 @@ Cronograma completo de parcelas.
 #### GET `/api/v1/contratos/:id/faturas`
 Histórico de faturas do contrato.
 
+#### GET `/api/v1/contas/:contaId/faturas`
+Histórico de faturas da conta (ficha do titular), paginado por `page`/`limit`. Faturas **NOVADAS**
+(extintas pela novação, doc 02 §7.7b) ficam fora da lista por padrão — `ocultas` na resposta diz
+quantas são; `novadas=mostrar` as traz de volta. (Decisão 13/10/2026: o histórico fica gravado, a
+tela não lista o que não existe mais.)
+
 #### GET `/api/v1/contratos/:id/extrato`
 Extrato completo do contrato — todos os eventos financeiros em ordem cronológica.
 

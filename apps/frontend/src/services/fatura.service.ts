@@ -50,14 +50,16 @@ export interface LancamentoConta {
 
 export interface PaginaFaturas {
   total: number;
+  ocultas: number; // faturas NOVADAS fora da lista (0 quando mostrarNovadas)
   page: number;
   limit: number;
   data: Fatura[];
 }
 
 export const faturaService = {
-  async daConta(contaId: string, page = 1, limit = 8): Promise<PaginaFaturas> {
-    const { data } = await api.get(`/api/v1/contas/${contaId}/faturas`, { params: { page, limit } });
+  // Faturas NOVADAS ficam fora da lista por padrão (histórico fica, tela não).
+  async daConta(contaId: string, page = 1, limit = 8, mostrarNovadas = false): Promise<PaginaFaturas> {
+    const { data } = await api.get(`/api/v1/contas/${contaId}/faturas`, { params: { page, limit, novadas: mostrarNovadas ? 'mostrar' : 'ocultar' } });
     return data;
   },
   async lancamentos(contaId: string): Promise<LancamentoConta[]> {

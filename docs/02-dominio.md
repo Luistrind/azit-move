@@ -1093,6 +1093,12 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > novação em dois contratos (parcelas/faturas NOVADAS, origem ENCERRADA por NOVACAO, veículo
 > antigo ao estoque). Quando o instrumento de novação for validado, a opção some.
 >
+> **Faturas NOVADAS na ficha (13/10):** ficam no histórico (prova da extinção), mas a ficha do
+> titular não as lista por padrão — mostra só a contagem ("N novadas ocultas · mostrar"). O
+> cronograma novo nasce no **ciclo da conta** (próxima fatura aberta das origens); quando a data
+> precisar ser outra, o deslocamento é operacional (`deploy/deslocar-vencimentos.sh`, que aceita
+> contrato nascido de novação: só as faturas que carregam parcelas dele se movem).
+>
 > **Fonte das fórmulas:** `docs/Planilha Novacao de Contrato - Azit Move.xlsx` (extraída
 > célula a célula, 13/09) — abas: **Parâmetros** (NV001–019, ICVF/ICPF, mora 2%+1% a.m.
 > base 30); **Simulador** (memória de liquidação POR COMPONENTE com a taxa de desconto do

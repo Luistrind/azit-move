@@ -571,19 +571,25 @@ export class FaturaService {
 
   // Visão de faturas do cliente (por conta), paginada — cada fatura agrega itens de
   // todos os contratos/produtos do mesmo ciclo (Doc 2 §372).
-  async faturasDaConta(contaId: string, page = 1, limit = 8) {
+  // Faturas NOVADAS (extintas pela novação, doc 02 §7.7b) ficam no histórico mas
+  // saem da lista por padrão (decisão Luís 13/10: a ficha ficava longa e confusa
+  // com dezenas de faturas que não existem mais); `ocultas` diz quantas são e
+  // `incluirNovadas` as traz de volta.
+  async faturasDaConta(contaId: string, page = 1, limit = 8, incluirNovadas = false) {
     const skip = (Math.max(1, page) - 1) * limit;
-    const [total, faturas] = await Promise.all([
-      this.prisma.db.fatura.count({ where: { contaId } }),
+    const where: Prisma.FaturaWhereInput = incluirNovadas ? { contaId } : { contaId, status: { not: 'NOVADA' } };
+    const [total, ocultas, faturas] = await Promise.all([
+      this.prisma.db.fatura.count({ where }),
+      incluirNovadas ? Promise.resolve(0) : this.prisma.db.fatura.count({ where: { contaId, status: 'NOVADA' } }),
       this.prisma.db.fatura.findMany({
-        where: { contaId },
+        where,
         orderBy: { dataVencimento: 'asc' },
         skip,
         take: limit,
         include: { itensFatura: { orderBy: { tipo: 'asc' } } },
       }),
     ]);
-    return { total, page: Math.max(1, page), limit, data: faturas.map((f) => this.mapearFatura(f)) };
+    return { total, ocultas, page: Math.max(1, page), limit, data: faturas.map((f) => this.mapearFatura(f)) };
   }
 
   // Detalhe de uma fatura (modal): composição completa + datas + valores.

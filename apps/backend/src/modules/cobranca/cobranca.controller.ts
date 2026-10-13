@@ -45,8 +45,9 @@ export class CobrancaController {
     @Param('contaId') contaId: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('novadas') novadas?: string, // 'mostrar' traz as faturas extintas pela novação
   ) {
-    return this.fatura.faturasDaConta(contaId, Number(page) || 1, Number(limit) || 8);
+    return this.fatura.faturasDaConta(contaId, Number(page) || 1, Number(limit) || 8, novadas === 'mostrar');
   }
 
   // Lançamentos avulsos da conta (entradas de contrato/acordo — doc 02 §4-A.3, 30/08).
