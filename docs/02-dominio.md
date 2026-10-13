@@ -2358,7 +2358,18 @@ valer no lugar das regras.
    `parcelas[]` e `intermediarias[]` com `numero, vencimento, situacao, cobrancas[] (ids pay_… como
    prova), pagoEm, pagoValor (principal, sem juros), encargo, valor, observacao`; `fora[]` lista as
    cobranças avulsas que viram fatura própria. Situações: paga, paga_com_encargo, paga_por_acordo,
-   vencida, pendente, nao_cobrada, **adiada** (vai ao fim do cronograma), futura.
+   **em_acordo**, vencida, pendente, nao_cobrada, **adiada** (vai ao fim do cronograma), futura.
+   `rotulo` troca o "Parcela n/N" do item da fatura (ex.: **"Resíduo da parcela 31"** — decisão
+   Luís 13/10, caso Wallace: metade paga fica na parcela com `valor` reduzido, a outra metade vira
+   parcela extra no fim do cronograma com o rótulo; a numeração "n/N" não muda).
+   **Acordo em andamento** (`acordoEmAndamento`, caso Wallace 13/10): `parcelasCobertas[]`,
+   `entrada {valor, pagoEm, cobrancas[]}`, `parcelas {quantidade, valor, primeiraEm}` (semanal),
+   `pagas[] {numero, pagoEm, cobranca}`. As cobertas ficam `em_acordo`. Na migração o acordo nasce
+   **ATIVO como um acordo nativo**: faturas/parcelas cobertas RENEGOCIADAS com vínculo (sem
+   cobrança própria; a cobrança antiga do Asaas é apagada), item ACORDO no contrato com as N
+   cotas como parcelas novas — cada cota entra na fatura da mesma semana como "Renegociação
+   parcela n/N" (as já pagas no Asaas nascem pagas) —, entrada como lançamento
+   ENTRADA_ACORDO. Depois da última cota a fatura volta ao valor normal.
 3. **Efeito**: a bancada mostra o aviso "Conciliação declarada"; leitura das cobranças, acordos,
    vínculos e divergências deixam de contar na validação (só PDF, termos e CPF); o seletor de
    método mostra "cronograma declarado". A migração (F3) consome as linhas declaradas como

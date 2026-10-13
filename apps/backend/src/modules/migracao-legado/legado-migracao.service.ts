@@ -36,15 +36,18 @@ const UPLOADS_LEGADO = join(process.cwd(), 'uploads', 'legado');
 const UPLOADS_ASSINATURAS = join(process.cwd(), 'uploads', 'assinaturas');
 const DIA_MS = 86_400_000;
 
-type StatusFaturaPlano = 'PAGA' | 'PAGA_EM_ATRASO' | 'FECHADA' | 'ABERTA';
+// RENEGOCIADA (13/10, acordo em andamento declarado): fatura coberta pelo acordo,
+// sem cobrança própria — a dívida vive nas cotas do acordo.
+type StatusFaturaPlano = 'PAGA' | 'PAGA_EM_ATRASO' | 'FECHADA' | 'ABERTA' | 'RENEGOCIADA';
 type TipoItemPlano = 'PRINCIPAL' | 'INTERMEDIARIA' | 'SERVICO' | 'ENCARGO';
 
 interface ItemPlano {
   tipo: TipoItemPlano;
   descricao: string;
   valor: number; // centavos
-  // A que parcela o item pertence: a do veículo desta fatura, ou a parcela n do RP k.
-  parcela: 'veiculo' | { rp: number; n: number } | null;
+  // A que parcela o item pertence: a do veículo desta fatura, a parcela n do RP k,
+  // ou a cota n do acordo em andamento.
+  parcela: 'veiculo' | { rp: number; n: number } | { acordo: number } | null;
 }
 
 interface FaturaPlano {
@@ -58,6 +61,8 @@ interface FaturaPlano {
   // Cobrança a vencer já emitida pela assinatura: apagada no Asaas após o commit;
   // a fatura nasce ABERTA e o sistema emite a sua (na hora, se já estiver no D-5).
   substituirChargeId: string | null;
+  // Cobrança antiga de fatura coberta por acordo: apagada no Asaas após o commit, sem substituta.
+  removerChargeId: string | null;
   emitirAgora: boolean;
   itens: ItemPlano[];
   // Parcela do VEÍCULO que esta fatura cobra (null = intermediária solta, avulsa, RP solto).
@@ -69,6 +74,20 @@ interface RpPlano {
   parcelas: { n: number; valor: number; faturaIdx: number }[];
 }
 
+// Acordo em andamento (doc 02 §26.15, 13/10): nasce ATIVO no sistema como um
+// acordo nativo — entrada como lançamento, cotas somadas às faturas semanais.
+interface AcordoPlano {
+  entrada: { valor: number; pagoEm: string; asaasChargeId: string | null };
+  numeroParcelas: number;
+  valorParcela: number;
+  primeiraEm: string;
+  ultimaEm: string;
+  cobertas: number[]; // parcelas do veículo cobertas
+  valorCoberto: number; // soma do valor nominal das cobertas
+  cotas: { n: number; vencimento: string; valor: number; faturaIdx: number; paga: boolean; pagoEm: string | null }[];
+  observacao: string | null;
+}
+
 export interface PlanoMigracao {
   titular: { cpfCnpj: string; nome: string; existente: { id: string; nome: string } | null };
   veiculo: { descricao: string; placa: string | null; existente: { id: string; descricao: string } | null; fipe: ConsultaFipe | null; fipeMotivo: string | null };
@@ -77,7 +96,8 @@ export interface PlanoMigracao {
   entrada: { valor: number; pagoEm: string; asaasChargeId: string | null } | null;
   faturas: FaturaPlano[];
   rps: RpPlano[];
-  resumo: { faturasPagas: number; faturasFechadas: number; faturasAbertas: number; parcelasPagas: number; reembolsos: number; avulsas: number; encargos: number; assinaturaId: string | null; substituidas: number; emitidasAgora: number };
+  acordo: AcordoPlano | null;
+  resumo: { faturasPagas: number; faturasFechadas: number; faturasAbertas: number; faturasRenegociadas: number; parcelasPagas: number; reembolsos: number; avulsas: number; encargos: number; assinaturaId: string | null; substituidas: number; emitidasAgora: number; removidas: number };
 }
 
 const d = (iso: string) => new Date(`${iso}T03:00:00.000Z`); // meia-noite de Brasília
@@ -275,6 +295,38 @@ export class LegadoMigracaoService {
         rpContratos.push({ contratoId: c.id, itemId: item.id, parcelaIds: new Map(), total });
       }
 
+      // 5b. Acordo em andamento (§26.15, 13/10): nasce ATIVO como um acordo
+      //     nativo — item ACORDO no contrato, cotas como parcelas novas, entrada
+      //     como lançamento; as parcelas/faturas cobertas recebem o vínculo.
+      let acordoId: string | null = null;
+      let itemAcordoId: string | null = null;
+      if (plano.acordo) {
+        const a = plano.acordo;
+        const criado = await tx.acordo.create({
+          data: {
+            contaId: conta.id, contratoId: contrato.id, operadorId: usuarioId,
+            dataCriacao: d(a.entrada.pagoEm), dataEfetivacao: d(a.entrada.pagoEm),
+            valorTotalRenegociado: reais(a.valorCoberto), valorEntrada: reais(a.entrada.valor),
+            numeroParcelasNovas: a.numeroParcelas, valorParcelaNova: reais(a.valorParcela), periodicidade: 'SEMANAL',
+            asaasChargeIdEntrada: a.entrada.asaasChargeId, status: 'ATIVO',
+            observacao: a.observacao ?? 'Acordo em andamento importado do legado (conciliação declarada)',
+            snapshotJson: { legado: { casoId: caso.id, parcelasCobertas: a.cobertas, primeiraEm: a.primeiraEm, ultimaEm: a.ultimaEm, declarado: true } } as Prisma.InputJsonValue,
+          },
+          select: { id: true },
+        });
+        acordoId = criado.id;
+        const item = await tx.itemContratado.create({
+          data: { contratoId: contrato.id, descricao: 'Crédito de acordo', natureza: 'PARCELADO', origem: 'ACORDO', acordoOrigemId: acordoId, credor: 'AZIT', valor: reais(a.numeroParcelas * a.valorParcela), numeroParcelas: a.numeroParcelas, periodicidade: 'SEMANAL', dataInicio: d(a.primeiraEm) },
+          select: { id: true },
+        });
+        itemAcordoId = item.id;
+        if (a.entrada.valor > 0) {
+          await tx.lancamentoConta.create({
+            data: { contaId: conta.id, contratoId: contrato.id, acordoId, tipo: 'ENTRADA_ACORDO', descricao: 'Entrada do acordo de renegociação (legado)', valor: reais(a.entrada.valor), dataPagamento: d(a.entrada.pagoEm), asaasChargeId: a.entrada.asaasChargeId },
+          });
+        }
+      }
+
       // 6. Faturas, parcelas, recebíveis e itens — na ordem do vencimento
       const ultimoNumero = await tx.fatura.aggregate({ where: { contaId: conta.id }, _max: { numero: true } });
       let numeroFatura = (ultimoNumero._max.numero ?? 0) + 1;
@@ -295,6 +347,7 @@ export class LegadoMigracaoService {
             valorPago: paga ? reais(f.valorPago ?? f.valorTotal) : null,
             status: f.status,
             asaasChargeId: f.asaasChargeId,
+            acordoId: f.status === 'RENEGOCIADA' ? acordoId : null,
           },
           select: { id: true },
         });
@@ -315,6 +368,7 @@ export class LegadoMigracaoService {
               valorPago: paga ? reais(p.principal + p.encargo) : null,
               valorEncargo: paga && p.encargo > 0 ? reais(p.encargo) : null,
               status: statusParcela, faturaId: fatura.id,
+              acordoId: f.status === 'RENEGOCIADA' ? acordoId : null, // coberta pelo acordo (vínculo, não status)
             },
             select: { id: true },
           });
@@ -333,7 +387,28 @@ export class LegadoMigracaoService {
         for (const it of f.itens) {
           let parcelaId: string | null = null;
           if (it.parcela === 'veiculo') parcelaId = parcelaVeiculoId;
-          else if (it.parcela && typeof it.parcela === 'object') {
+          else if (it.parcela && typeof it.parcela === 'object' && 'acordo' in it.parcela) {
+            // Cota do acordo em andamento: parcela NOVA do item ACORDO, paga se a cota já entrou no Asaas.
+            const a = plano.acordo!;
+            const cota = a.cotas.find((c) => c.n === (it.parcela as { acordo: number }).acordo)!;
+            const cotaPaga = cota.paga && paga;
+            const parcelaAcordo = await tx.parcela.create({
+              data: {
+                contratoId: contrato.id, itemContratadoId: itemAcordoId!,
+                numero: cota.n, totalParcelas: a.numeroParcelas, display: `${cota.n}/${a.numeroParcelas}`,
+                valorNominal: reais(cota.valor), dataVencimento: d(cota.vencimento),
+                dataPagamento: cotaPaga ? d(cota.pagoEm ?? f.pagoEm ?? cota.vencimento) : null,
+                valorPago: cotaPaga ? reais(cota.valor) : null,
+                status: cotaPaga ? (difDias(cota.pagoEm ?? f.pagoEm ?? cota.vencimento, cota.vencimento) > 0 ? 'PAGA_EM_ATRASO' : 'PAGA') : null,
+                faturaId: fatura.id,
+              },
+              select: { id: true },
+            });
+            await tx.recebivel.create({
+              data: { contratoId: contrato.id, parcelaId: parcelaAcordo.id, dataPrevista: d(cota.vencimento), valorPrevisto: reais(cota.valor), dataRealizada: cotaPaga ? d(cota.pagoEm ?? f.pagoEm ?? cota.vencimento) : null, valorRealizado: cotaPaga ? reais(cota.valor) : null, status: cotaPaga ? 'REALIZADO' : 'ESPERADO' },
+            });
+            parcelaId = parcelaAcordo.id;
+          } else if (it.parcela && typeof it.parcela === 'object' && 'rp' in it.parcela) {
             const rp = rpContratos[it.parcela.rp];
             const plan = plano.rps[it.parcela.rp];
             const nRp = it.parcela.n;
@@ -382,7 +457,7 @@ export class LegadoMigracaoService {
       }
 
       // 8. O caso vira MIGRADO e aponta para o que nasceu
-      const resumo = { ...plano.resumo, contratoNumero: contrato.numero, reembolsosIds: rpContratos.map((r) => r.contratoId), pdfCopiado, faturas: faturaIds.length, substituicoes: substituicoes.length };
+      const resumo = { ...plano.resumo, contratoNumero: contrato.numero, reembolsosIds: rpContratos.map((r) => r.contratoId), pdfCopiado, faturas: faturaIds.length, substituicoes: substituicoes.length, acordoId, acordo: plano.acordo ? { parcelas: plano.acordo.numeroParcelas, valor: plano.acordo.valorParcela, cobertas: plano.acordo.cobertas.length } : null };
       await tx.casoMigracaoLegado.update({
         where: { id: caso.id },
         data: {
@@ -399,8 +474,33 @@ export class LegadoMigracaoService {
     // as cobranças emitidas. Falha não desfaz a migração: fica visível e repetível.
     const corte = await this.pararAssinatura(casoId, usuarioId);
     const substituicao = await this.substituirCobrancas(casoId, resultado.substituicoes);
+    const removidas = await this.removerCobrancasCobertas(casoId, plano.faturas.map((f) => f.removerChargeId).filter((c): c is string => !!c));
     const orfas = await this.limparCobrancasOrfas(casoId, usuarioId).catch((e) => ({ apagadas: 0, erro: (e as Error).message.slice(0, 200) }));
-    return { titularId: resultado.titularId, contaId: resultado.contaId, contratoId: resultado.contratoId, contratoNumero: resultado.contratoNumero, resumo: resultado.resumo, assinatura: corte, substituicao, orfas };
+    return { titularId: resultado.titularId, contaId: resultado.contaId, contratoId: resultado.contratoId, contratoNumero: resultado.contratoNumero, resumo: resultado.resumo, assinatura: corte, substituicao, removidas, orfas };
+  }
+
+  // Cobranças antigas de faturas cobertas pelo acordo em andamento (§26.15): a
+  // dívida agora vive nas cotas do acordo — apagadas no Asaas, como no acordo
+  // nativo. Falha não desfaz a migração; fica no resumo para conciliação manual.
+  private async removerCobrancasCobertas(casoId: string, chargeIds: string[]) {
+    const mantidas: { chargeId: string; erro: string }[] = [];
+    let apagadas = 0;
+    const simulado = this.asaasLeitura.ambiente === 'simulado';
+    for (const chargeId of chargeIds) {
+      try {
+        if (!simulado) await this.asaasLeitura.requisicao('DELETE', `/payments/${chargeId}`);
+        apagadas++;
+      } catch (e) {
+        mantidas.push({ chargeId, erro: (e as Error).message.slice(0, 160) });
+      }
+    }
+    if (chargeIds.length) {
+      await this.prisma.db.casoMigracaoLegado.update({
+        where: { id: casoId },
+        data: { migracaoResumo: { ...((await this.prisma.db.casoMigracaoLegado.findUnique({ where: { id: casoId }, select: { migracaoResumo: true } }))?.migracaoResumo as object ?? {}), cobrancasCobertasApagadas: apagadas, cobrancasCobertasMantidas: mantidas } as Prisma.InputJsonValue },
+      }).catch(() => undefined);
+    }
+    return { apagadas, mantidas };
   }
 
   // Cobranças ÓRFÃS da assinatura (caso real 01/10, Ezequias): entre a coleta
@@ -631,35 +731,43 @@ export class LegadoMigracaoService {
     const faturas: FaturaPlano[] = [];
     const rps: RpPlano[] = [];
     let rpAberto: { chave: string; idx: number } | null = null;
-    const resumo = { faturasPagas: 0, faturasFechadas: 0, faturasAbertas: 0, parcelasPagas: 0, reembolsos: 0, avulsas: 0, encargos: 0, assinaturaId: caso.assinaturaId, substituidas: 0, emitidasAgora: 0 };
+    const resumo = { faturasPagas: 0, faturasFechadas: 0, faturasAbertas: 0, faturasRenegociadas: 0, parcelasPagas: 0, reembolsos: 0, avulsas: 0, encargos: 0, assinaturaId: caso.assinaturaId, substituidas: 0, emitidasAgora: 0, removidas: 0 };
     // Fatura que já estaria no D-5 (vence em até 5 dias) é emitida na hora.
     const emitirAgora = (venc: string) => difDias(venc, hoje) <= 5;
+    // Acordo em andamento declarado (§26.15) + rótulos de item (ex.: resíduo).
+    const acordoDecl = conc.acordoEmAndamento ?? null;
+    const rotulos = conc.rotulos ?? {};
 
-    const statusDe = (l: LinhaConciliacao, rec: DivergenciaReconhecida | undefined, vencFatura: string): { status: StatusFaturaPlano; pagoEm: string | null; valorPago: number | null; chargeId: string | null; substituir: string | null } => {
+    const statusDe = (l: LinhaConciliacao, rec: DivergenciaReconhecida | undefined, vencFatura: string): { status: StatusFaturaPlano; pagoEm: string | null; valorPago: number | null; chargeId: string | null; substituir: string | null; remover: string | null } => {
       const chargeId = chargeDe(l.cobrancaId) ?? chargeDe(l.partes[0]?.cobrancaId);
       // Quitada por acordo (§26.14): paga pelas parcelas do acordo; a fatura
       // não tem cobrança própria no Asaas (as do acordo ficam como prova nas partes).
-      if (l.situacao === 'paga_por_acordo') return { status: 'PAGA_EM_ATRASO', pagoEm: l.pagoEm ?? vencFatura, valorPago: (l.pagoValor ?? l.esperadoValor) + Math.max(0, l.encargo), chargeId: null, substituir: null };
-      // Em acordo ainda sendo pago: fica FECHADA (vencida) sem cobrança nova — o
-      // Asaas continua cobrando as parcelas do acordo.
-      if (l.situacao === 'em_acordo') return { status: 'FECHADA', pagoEm: null, valorPago: null, chargeId: null, substituir: null };
+      if (l.situacao === 'paga_por_acordo') return { status: 'PAGA_EM_ATRASO', pagoEm: l.pagoEm ?? vencFatura, valorPago: (l.pagoValor ?? l.esperadoValor) + Math.max(0, l.encargo), chargeId: null, substituir: null, remover: null };
+      // Em acordo DECLARADO (13/10): a fatura nasce RENEGOCIADA, vinculada ao
+      // acordo que o sistema cria; a cobrança antiga do Asaas é apagada.
+      if (l.situacao === 'em_acordo' && acordoDecl && l.serie === 'parcela' && acordoDecl.parcelasCobertas.includes(l.numero)) return { status: 'RENEGOCIADA', pagoEm: null, valorPago: null, chargeId: null, substituir: null, remover: chargeId };
+      // Em acordo pelas regras (ainda sendo pago): fica FECHADA (vencida) sem
+      // cobrança nova — o Asaas continua cobrando as parcelas do acordo.
+      if (l.situacao === 'em_acordo') return { status: 'FECHADA', pagoEm: null, valorPago: null, chargeId: null, substituir: null, remover: null };
       const pagaReal = l.situacao === 'paga' || l.situacao === 'paga_com_encargo';
       if (pagaReal || (l.situacao === 'valor_diverge' && l.pagoEm)) {
         const pagoEm = l.pagoEm ?? vencFatura;
-        return { status: difDias(pagoEm, vencFatura) > 0 ? 'PAGA_EM_ATRASO' : 'PAGA', pagoEm, valorPago: l.pagoValor ?? l.cobradoValor ?? l.esperadoValor, chargeId, substituir: null };
+        return { status: difDias(pagoEm, vencFatura) > 0 ? 'PAGA_EM_ATRASO' : 'PAGA', pagoEm, valorPago: l.pagoValor ?? l.cobradoValor ?? l.esperadoValor, chargeId, substituir: null, remover: null };
       }
-      if (rec?.desfecho === 'PAGA_FORA_ASAAS') return { status: 'PAGA', pagoEm: l.pagoEm ?? vencFatura, valorPago: l.esperadoValor, chargeId: null, substituir: null };
-      if (rec?.desfecho === 'VALOR_ACEITO') return { status: 'PAGA', pagoEm: l.pagoEm ?? l.cobradoEm ?? vencFatura, valorPago: l.pagoValor ?? l.cobradoValor ?? l.esperadoValor, chargeId, substituir: null };
+      if (rec?.desfecho === 'PAGA_FORA_ASAAS') return { status: 'PAGA', pagoEm: l.pagoEm ?? vencFatura, valorPago: l.esperadoValor, chargeId: null, substituir: null, remover: null };
+      if (rec?.desfecho === 'VALOR_ACEITO') return { status: 'PAGA', pagoEm: l.pagoEm ?? l.cobradoEm ?? vencFatura, valorPago: l.pagoValor ?? l.cobradoValor ?? l.esperadoValor, chargeId, substituir: null, remover: null };
       // A vencer: a cobrança antiga é substituída pela do sistema (decisão 01/10).
-      if (l.situacao === 'pendente' && chargeId) return { status: 'ABERTA', pagoEm: null, valorPago: null, chargeId: null, substituir: chargeId };
-      if (l.situacao === 'vencida') return { status: 'FECHADA', pagoEm: null, valorPago: null, chargeId, substituir: null };
-      return { status: 'ABERTA', pagoEm: null, valorPago: null, chargeId: null, substituir: null };
+      if (l.situacao === 'pendente' && chargeId) return { status: 'ABERTA', pagoEm: null, valorPago: null, chargeId: null, substituir: chargeId, remover: null };
+      if (l.situacao === 'vencida') return { status: 'FECHADA', pagoEm: null, valorPago: null, chargeId, substituir: null, remover: null };
+      return { status: 'ABERTA', pagoEm: null, valorPago: null, chargeId: null, substituir: null, remover: null };
     };
-    const contar = (status: StatusFaturaPlano, substituir: string | null, venc: string) => {
+    const contar = (status: StatusFaturaPlano, substituir: string | null, venc: string, remover: string | null = null) => {
       if (status === 'PAGA' || status === 'PAGA_EM_ATRASO') resumo.faturasPagas++;
       else if (status === 'FECHADA') resumo.faturasFechadas++;
+      else if (status === 'RENEGOCIADA') resumo.faturasRenegociadas++;
       else resumo.faturasAbertas++;
       if (substituir) { resumo.substituidas++; if (emitirAgora(venc)) resumo.emitidasAgora++; }
+      if (remover) resumo.removidas++;
     };
 
     // ADIADA (§26.14, modo DATA): a parcela não foi cobrada e vai para o FIM do
@@ -694,10 +802,18 @@ export class LegadoMigracaoService {
       // Esse pedaço é ENCARGO, não principal — senão a parcela "pagaria" a mais.
       const somadoNoPagamento = Math.max(0, ((l.pagoValor ?? cobrado ?? 0) - (l.pagoValor != null ? acordoJunto : 0)) - (cobrado ?? 0));
       const embutido = l.acordoGrupo ? 0 : Math.max(0, encargo - somadoNoPagamento);
-      const principal = l.acordoGrupo ? valorParcela : cobrado != null && comp ? Math.max(0, cobrado - segV - taxV - inter - extra - embutido) : valorParcela;
-      const itens: ItemPlano[] = [{ tipo: 'PRINCIPAL', descricao: `Parcela ${l.numero}/${qtd} · Compra Parcelada ${descricaoVeiculo}`, valor: principal, parcela: 'veiculo' }];
-      if (segV > 0) itens.push({ tipo: 'SERVICO', descricao: 'Proteção veicular', valor: segV, parcela: null });
-      if (taxV > 0) itens.push({ tipo: 'SERVICO', descricao: 'Taxa de boleto e PIX', valor: taxV, parcela: null });
+      // Linha DECLARADA com valor próprio (§26.15: metade paga, resíduo): o
+      // principal é o declarado menos proteção/taxa; o resíduo (com rótulo) é só
+      // principal — proteção e taxa da semana já estão na parcela de origem.
+      const rotulo = rotulos[l.numero] ?? null;
+      const valorDeclarado = !comp && l.esperadoValor !== valorParcela + seguro + taxa ? l.esperadoValor : null;
+      const principal = rotulo && valorDeclarado != null ? valorDeclarado
+        : valorDeclarado != null ? Math.max(0, valorDeclarado - segV - taxV)
+        : l.acordoGrupo ? valorParcela : cobrado != null && comp ? Math.max(0, cobrado - segV - taxV - inter - extra - embutido) : valorParcela;
+      const semServicos = !!rotulo && valorDeclarado != null;
+      const itens: ItemPlano[] = [{ tipo: 'PRINCIPAL', descricao: `${rotulo ?? `Parcela ${l.numero}/${qtd}`} · Compra Parcelada ${descricaoVeiculo}`, valor: principal, parcela: 'veiculo' }];
+      if (segV > 0 && !semServicos) itens.push({ tipo: 'SERVICO', descricao: 'Proteção veicular', valor: segV, parcela: null });
+      if (taxV > 0 && !semServicos) itens.push({ tipo: 'SERVICO', descricao: 'Taxa de boleto e PIX', valor: taxV, parcela: null });
       if (inter > 0) itens.push({ tipo: 'INTERMEDIARIA', descricao: `Intermediária (entrada diluída) · ${l.numero}/${qtd}`, valor: inter, parcela: null });
       if (encargo > 0) { itens.push({ tipo: 'ENCARGO', descricao: l.acordoGrupo ? 'Juros do acordo (legado)' : 'Multa e juros de atraso (legado)', valor: encargo, parcela: 'veiculo' }); resumo.encargos += encargo; }
       const idx = faturas.length;
@@ -713,13 +829,54 @@ export class LegadoMigracaoService {
       } else {
         rpAberto = null;
       }
-      const valorTotalFatura = l.acordoGrupo ? principal + segV + taxV : (cobrado ?? principal + segV + taxV + inter + extra);
-      faturas.push({ origem: l.chave, vencimento: vencFatura, status: st.status, valorTotal: valorTotalFatura, valorPago: st.valorPago, pagoEm: st.pagoEm, asaasChargeId: st.chargeId, substituirChargeId: st.substituir, emitirAgora: !!st.substituir && emitirAgora(vencFatura), itens, parcela: { numero: l.numero, vencimento: vencParcela, valorNominal: valorParcela, principal, encargo } });
-      contar(st.status, st.substituir, vencFatura);
+      const valorTotalFatura = semServicos ? principal : l.acordoGrupo ? principal + segV + taxV : (cobrado ?? principal + segV + taxV + inter + extra);
+      // Valor nominal da parcela: o declarado (ex.: metade paga, resíduo) ou o do contrato.
+      const nominalParcela = semServicos ? principal : l.acordoGrupo || !comp ? Math.max(0, l.esperadoValor - segV - taxV) : valorParcela;
+      faturas.push({ origem: l.chave, vencimento: vencFatura, status: st.status, valorTotal: valorTotalFatura, valorPago: st.valorPago, pagoEm: st.pagoEm, asaasChargeId: st.chargeId, substituirChargeId: st.substituir, removerChargeId: st.remover, emitirAgora: !!st.substituir && emitirAgora(vencFatura), itens, parcela: { numero: l.numero, vencimento: vencParcela, valorNominal: nominalParcela, principal, encargo } });
+      contar(st.status, st.substituir, vencFatura, st.remover);
       if (st.status === 'PAGA' || st.status === 'PAGA_EM_ATRASO') resumo.parcelasPagas++;
     }
+
+    // Acordo em andamento declarado (§26.15, 13/10): as cotas entram na fatura
+    // da mesma semana ("Renegociação parcela n/N", como o acordo nativo); sem
+    // fatura naquela semana, nasce uma só do acordo.
+    let acordo: AcordoPlano | null = null;
+    if (acordoDecl) {
+      const q = acordoDecl.parcelas.quantidade;
+      const pagasPorN = new Map((acordoDecl.pagas ?? []).map((p) => [p.numero, p]));
+      const cotas: AcordoPlano['cotas'] = [];
+      for (let n = 1; n <= q; n++) {
+        const venc = addDias(acordoDecl.parcelas.primeiraEm, (n - 1) * 7);
+        const cota = pagasPorN.get(n);
+        let idx = faturas.findIndex((f) => f.parcela && f.vencimento === venc && f.status !== 'RENEGOCIADA');
+        if (idx < 0) {
+          const status: StatusFaturaPlano = cota ? 'PAGA' : difDias(venc, hoje) < 0 ? 'FECHADA' : 'ABERTA';
+          faturas.push({ origem: `acordo:${n}`, vencimento: venc, status, valorTotal: 0, valorPago: cota ? 0 : null, pagoEm: cota?.pagoEm ?? null, asaasChargeId: null, substituirChargeId: null, removerChargeId: null, emitirAgora: false, itens: [], parcela: null });
+          idx = faturas.length - 1;
+          contar(status, null, venc);
+        }
+        const f = faturas[idx];
+        f.itens.push({ tipo: 'PRINCIPAL', descricao: `Renegociação parcela ${n}/${q}`, valor: acordoDecl.parcelas.valor, parcela: { acordo: n } });
+        f.valorTotal += acordoDecl.parcelas.valor;
+        if (cota && f.valorPago != null) f.valorPago += acordoDecl.parcelas.valor;
+        cotas.push({ n, vencimento: venc, valor: acordoDecl.parcelas.valor, faturaIdx: idx, paga: !!cota, pagoEm: cota?.pagoEm ?? null });
+      }
+      const cobertas = linhasParcela.filter((l) => acordoDecl.parcelasCobertas.includes(l.numero));
+      const idEntrada = (acordoDecl.entrada.cobrancas ?? [])[0] ?? null;
+      acordo = {
+        entrada: { valor: acordoDecl.entrada.valor, pagoEm: acordoDecl.entrada.pagoEm, asaasChargeId: idEntrada },
+        numeroParcelas: q,
+        valorParcela: acordoDecl.parcelas.valor,
+        primeiraEm: acordoDecl.parcelas.primeiraEm,
+        ultimaEm: addDias(acordoDecl.parcelas.primeiraEm, (q - 1) * 7),
+        cobertas: cobertas.map((l) => l.numero),
+        valorCoberto: cobertas.reduce((s, l) => s + Math.max(0, l.esperadoValor - seguro - taxa), 0),
+        cotas,
+        observacao: acordoDecl.observacao ?? null,
+      };
+    }
     // Fecha "n/?" dos RPs agora que o total é conhecido
-    for (const f of faturas) for (const it of f.itens) if (it.parcela && typeof it.parcela === 'object') it.descricao = it.descricao.replace('/?', `/${rps[it.parcela.rp].parcelas.length}`);
+    for (const f of faturas) for (const it of f.itens) if (it.parcela && typeof it.parcela === 'object' && 'rp' in it.parcela) it.descricao = it.descricao.replace('/?', `/${rps[it.parcela.rp].parcelas.length}`);
 
     // Intermediárias cobradas à parte
     for (const l of conc.linhas.filter((x) => x.serie === 'intermediaria')) {
@@ -727,7 +884,7 @@ export class LegadoMigracaoService {
       const venc = l.cobradoEm ?? l.esperadoEm;
       const st = statusDe(l, reconhecidas.get(l.chave), venc);
       if (st.status === 'ABERTA' && difDias(venc, hoje) < 0) continue;
-      faturas.push({ origem: l.chave, vencimento: venc, status: st.status, valorTotal: l.cobradoValor ?? l.esperadoValor, valorPago: st.valorPago, pagoEm: st.pagoEm, asaasChargeId: st.chargeId, substituirChargeId: st.substituir, emitirAgora: !!st.substituir && emitirAgora(venc), itens: [{ tipo: 'INTERMEDIARIA', descricao: `Intermediária ${l.numero} (entrada diluída)`, valor: l.cobradoValor ?? l.esperadoValor, parcela: null }], parcela: null });
+      faturas.push({ origem: l.chave, vencimento: venc, status: st.status, valorTotal: l.cobradoValor ?? l.esperadoValor, valorPago: st.valorPago, pagoEm: st.pagoEm, asaasChargeId: st.chargeId, substituirChargeId: st.substituir, removerChargeId: null, emitirAgora: !!st.substituir && emitirAgora(venc), itens: [{ tipo: 'INTERMEDIARIA', descricao: `Intermediária ${l.numero} (entrada diluída)`, valor: l.cobradoValor ?? l.esperadoValor, parcela: null }], parcela: null });
       contar(st.status, st.substituir, venc);
     }
 
@@ -762,10 +919,10 @@ export class LegadoMigracaoService {
         const rotulo = (cob.descricao ?? 'Despesa').slice(0, 80);
         rps.push({ rotulo, parcelas: [{ n: 1, valor: f.valorOriginal, faturaIdx: idx }] });
         resumo.reembolsos++;
-        faturas.push({ origem: `cobranca:${f.cobrancaId}`, vencimento: venc, status, valorTotal: f.valorOriginal, valorPago: status.startsWith('PAGA') ? valorPago : null, pagoEm: status.startsWith('PAGA') ? pagoEm : null, asaasChargeId: chargeFora, substituirChargeId: substituir, emitirAgora: !!substituir && emitirAgora(venc), itens: [{ tipo: 'PRINCIPAL', descricao: `Reembolso Parcelado · ${rotulo} 1/1`, valor: f.valorOriginal, parcela: { rp: rps.length - 1, n: 1 } }], parcela: null });
+        faturas.push({ origem: `cobranca:${f.cobrancaId}`, vencimento: venc, status, valorTotal: f.valorOriginal, valorPago: status.startsWith('PAGA') ? valorPago : null, pagoEm: status.startsWith('PAGA') ? pagoEm : null, asaasChargeId: chargeFora, substituirChargeId: substituir, removerChargeId: null, emitirAgora: !!substituir && emitirAgora(venc), itens: [{ tipo: 'PRINCIPAL', descricao: `Reembolso Parcelado · ${rotulo} 1/1`, valor: f.valorOriginal, parcela: { rp: rps.length - 1, n: 1 } }], parcela: null });
       } else {
         resumo.avulsas++;
-        faturas.push({ origem: `cobranca:${f.cobrancaId}`, vencimento: venc, status, valorTotal: f.valorOriginal, valorPago: status.startsWith('PAGA') ? valorPago : null, pagoEm: status.startsWith('PAGA') ? pagoEm : null, asaasChargeId: chargeFora, substituirChargeId: substituir, emitirAgora: !!substituir && emitirAgora(venc), itens: [{ tipo: 'SERVICO', descricao: (cob.descricao ?? `Cobrança avulsa (legado, ${f.tipo})`).slice(0, 120), valor: f.valorOriginal, parcela: null }], parcela: null });
+        faturas.push({ origem: `cobranca:${f.cobrancaId}`, vencimento: venc, status, valorTotal: f.valorOriginal, valorPago: status.startsWith('PAGA') ? valorPago : null, pagoEm: status.startsWith('PAGA') ? pagoEm : null, asaasChargeId: chargeFora, substituirChargeId: substituir, removerChargeId: null, emitirAgora: !!substituir && emitirAgora(venc), itens: [{ tipo: 'SERVICO', descricao: (cob.descricao ?? `Cobrança avulsa (legado, ${f.tipo})`).slice(0, 120), valor: f.valorOriginal, parcela: null }], parcela: null });
       }
       contar(status, substituir, venc);
     }
@@ -778,6 +935,7 @@ export class LegadoMigracaoService {
       entrada,
       faturas,
       rps,
+      acordo,
       resumo,
     };
   }

@@ -16,6 +16,7 @@ import {
   refParcelaDoTexto,
   TERMOS_VAZIOS,
   termosEfetivos,
+  type AcordoEmAndamentoDeclarado,
   type CobrancaConciliavel,
   type DeclaracaoConciliacao,
   type InterpretacaoCobranca,
@@ -403,7 +404,7 @@ export class LegadoConciliacaoService {
 
   // ---------------- Conciliação ----------------
 
-  conciliar(caso: CasoConciliavel): ResultadoConciliacao & { reconhecidas: DivergenciaReconhecida[]; vinculos: VinculoManual[]; acordosConfirmados: AcordoConfirmado[] } {
+  conciliar(caso: CasoConciliavel): ResultadoConciliacao & { reconhecidas: DivergenciaReconhecida[]; vinculos: VinculoManual[]; acordosConfirmados: AcordoConfirmado[]; acordoEmAndamento?: AcordoEmAndamentoDeclarado | null; rotulos?: Record<number, string> } {
     const vinculos = ((caso.vinculosManuais as VinculoManual[] | null) ?? []);
     const acordosConfirmados = ((caso.acordosConfirmados as AcordoConfirmado[] | null) ?? []);
     const termos = termosEfetivos(caso.termos as TermosContratoLegado | null);
@@ -443,7 +444,7 @@ export class LegadoConciliacaoService {
       const reconhecidasGravadas = ((caso.divergenciasReconhecidas as DivergenciaReconhecida[] | null) ?? []);
       const sintetizadas: DivergenciaReconhecida[] = r.reconhecimentos.map((x) => ({ chave: x.chave, nota: x.nota, desfecho: x.desfecho, em: declarada.em, por: declarada.por ?? 'declaracao' }));
       const chavesSint = new Set(sintetizadas.map((x) => x.chave));
-      const { reconhecimentos: _r, ...resto } = r;
+      const { reconhecimentos: _r, ...resto } = r; // acordoEmAndamento e rotulos seguem no resto (planner F3)
       return { ...resto, reconhecidas: [...sintetizadas, ...reconhecidasGravadas.filter((x) => !chavesSint.has(x.chave))], vinculos: [], acordosConfirmados: [] };
     }
     const r = conciliarLegado({
@@ -474,7 +475,24 @@ export class LegadoConciliacaoService {
     const numeros = d.parcelas.map((p) => p.numero);
     if (new Set(numeros).size !== numeros.length) throw new UnprocessableEntityException({ erro: 'declaracao_invalida', mensagem: 'Número de parcela repetido na declaração' });
     const conhecidas = new Set(caso.cobrancas.map((c) => c.asaasPaymentId));
-    const citadas = [...d.parcelas, ...(d.intermediarias ?? [])].flatMap((p) => p.cobrancas ?? []).concat((d.fora ?? []).map((f) => f.cobranca), d.entrada?.cobrancas ?? []);
+    const acordo = d.acordoEmAndamento ?? null;
+    if (acordo) {
+      const porNumero = new Map(d.parcelas.map((p) => [p.numero, p]));
+      const erradas = acordo.parcelasCobertas.filter((n) => porNumero.get(n)?.situacao !== 'em_acordo');
+      if (erradas.length) throw new UnprocessableEntityException({ erro: 'declaracao_invalida', mensagem: `Parcela(s) cobertas pelo acordo precisam estar como em_acordo: ${erradas.join(', ')}` });
+      const soltas = d.parcelas.filter((p) => p.situacao === 'em_acordo' && !acordo.parcelasCobertas.includes(p.numero)).map((p) => p.numero);
+      if (soltas.length) throw new UnprocessableEntityException({ erro: 'declaracao_invalida', mensagem: `Parcela(s) em_acordo fora de parcelasCobertas: ${soltas.join(', ')}` });
+      const cotaAlta = (acordo.pagas ?? []).find((c) => c.numero > acordo.parcelas.quantidade);
+      if (cotaAlta) throw new UnprocessableEntityException({ erro: 'declaracao_invalida', mensagem: `Cota paga ${cotaAlta.numero} maior que a quantidade do acordo` });
+    } else if (d.parcelas.some((p) => p.situacao === 'em_acordo')) {
+      throw new UnprocessableEntityException({ erro: 'declaracao_invalida', mensagem: 'Parcela em_acordo exige acordoEmAndamento na declaração' });
+    }
+    const citadas = [...d.parcelas, ...(d.intermediarias ?? [])].flatMap((p) => p.cobrancas ?? []).concat(
+      (d.fora ?? []).map((f) => f.cobranca),
+      d.entrada?.cobrancas ?? [],
+      acordo?.entrada.cobrancas ?? [],
+      (acordo?.pagas ?? []).map((c) => c.cobranca).filter((c): c is string => !!c),
+    );
     const desconhecidas = [...new Set(citadas.filter((id) => !conhecidas.has(id)))];
     if (desconhecidas.length) throw new UnprocessableEntityException({ erro: 'cobranca_desconhecida', mensagem: `Cobrança(s) não lida(s) neste caso: ${desconhecidas.slice(0, 5).join(', ')} — leia o Asaas de novo ou corrija o id` });
     const gravada: ConciliacaoDeclaradaGravada = { ...d, em: new Date().toISOString(), por: usuarioId, origem };
@@ -761,20 +779,31 @@ export interface AcordoConfirmado { grupo: string; quantidade: number; chaves: s
 const parcelaDeclaradaSchema = z.object({
   numero: z.number().int().min(0),
   vencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  situacao: z.enum(['paga', 'paga_com_encargo', 'paga_por_acordo', 'vencida', 'pendente', 'nao_cobrada', 'adiada', 'futura']),
+  situacao: z.enum(['paga', 'paga_com_encargo', 'paga_por_acordo', 'em_acordo', 'vencida', 'pendente', 'nao_cobrada', 'adiada', 'futura']),
   cobrancas: z.array(z.string().min(1)).optional(),
   pagoEm: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   pagoValor: z.number().int().min(0).nullable().optional(),
   encargo: z.number().int().min(0).nullable().optional(),
   valor: z.number().int().min(0).nullable().optional(),
+  rotulo: z.string().max(80).nullable().optional(),
   observacao: z.string().max(300).nullable().optional(),
+});
+const dataISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+// Acordo em andamento (13/10): vira acordo ATIVO na migração.
+const acordoEmAndamentoSchema = z.object({
+  parcelasCobertas: z.array(z.number().int().min(1)).min(1),
+  entrada: z.object({ valor: z.number().int().min(0), pagoEm: dataISO, cobrancas: z.array(z.string().min(1)).optional() }),
+  parcelas: z.object({ quantidade: z.number().int().min(1).max(520), valor: z.number().int().min(1), primeiraEm: dataISO }),
+  pagas: z.array(z.object({ numero: z.number().int().min(1), pagoEm: dataISO, cobranca: z.string().min(1).nullable().optional() })).optional(),
+  observacao: z.string().max(500).nullable().optional(),
 });
 const declaracaoSchema = z.object({
   observacao: z.string().max(2000).nullable().optional(),
-  entrada: z.object({ valor: z.number().int().min(0), pagoEm: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(), cobrancas: z.array(z.string().min(1)).optional() }).nullable().optional(),
+  entrada: z.object({ valor: z.number().int().min(0), pagoEm: dataISO.nullable().optional(), cobrancas: z.array(z.string().min(1)).optional() }).nullable().optional(),
   parcelas: z.array(parcelaDeclaradaSchema).min(1),
   intermediarias: z.array(parcelaDeclaradaSchema).optional(),
   fora: z.array(z.object({ cobranca: z.string().min(1), nota: z.string().max(300).nullable().optional() })).optional(),
+  acordoEmAndamento: acordoEmAndamentoSchema.nullable().optional(),
 });
 
 export const DESFECHOS_DIVERGENCIA = ['PAGA_FORA_ASAAS', 'VALOR_ACEITO', 'ADIADA', 'COBRANCA_AVULSA'] as const;

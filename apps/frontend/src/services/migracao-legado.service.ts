@@ -126,9 +126,11 @@ export interface PlanoMigracao {
   veiculo: { descricao: string; placa: string | null; existente: { id: string; descricao: string } | null; fipe: { valor: number; codigoFipe: string; modeloFipe: string; anoModelo: number; referencia: string; alternativas: string[] } | null; fipeMotivo: string | null };
   contrato: { numero: string; dataAssinatura: string; dataPrimeiraParcela: string; numeroParcelas: number; valorParcela: number; valorTotal: number; valorEntrada: number; modoVencimentos: string; taxaDescontoMensal: number | null };
   entrada: { valor: number; pagoEm: string; asaasChargeId: string | null } | null;
-  faturas: { origem: string; vencimento: string; status: string; valorTotal: number; valorPago: number | null; pagoEm: string | null; asaasChargeId: string | null }[];
+  faturas: { origem: string; vencimento: string; status: string; valorTotal: number; valorPago: number | null; pagoEm: string | null; asaasChargeId: string | null; itens: { tipo: string; descricao: string; valor: number }[] }[];
   rps: { rotulo: string; parcelas: { n: number; valor: number }[] }[];
-  resumo: { faturasPagas: number; faturasFechadas: number; faturasAbertas: number; parcelasPagas: number; reembolsos: number; avulsas: number; encargos: number; assinaturaId: string | null; substituidas: number; emitidasAgora: number };
+  // Acordo em andamento declarado (doc 02 §26.15): nasce ATIVO na migração.
+  acordo: { entrada: { valor: number; pagoEm: string }; numeroParcelas: number; valorParcela: number; primeiraEm: string; ultimaEm: string; cobertas: number[]; valorCoberto: number; cotas: { n: number; vencimento: string; paga: boolean }[] } | null;
+  resumo: { faturasPagas: number; faturasFechadas: number; faturasAbertas: number; faturasRenegociadas: number; parcelasPagas: number; reembolsos: number; avulsas: number; encargos: number; assinaturaId: string | null; substituidas: number; emitidasAgora: number; removidas: number };
 }
 export interface MigracaoFeita {
   em: string; por: string | null; assinaturaParadaEm: string | null; assinaturaParadaErro: string | null; assinaturaId: string | null;

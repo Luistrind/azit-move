@@ -579,4 +579,35 @@ describe('conciliação declarada (doc 02 §26.15)', () => {
     expect(r.fora[0]).toMatchObject({ cobrancaId: 'cx', classe: 'outra' });
     expect(r.resumo).toMatchObject({ parcelasPagas: 4, parcelasNaoCobradas: 1, parcelasFuturas: 1, encargosPagos: 9_836, divergencias: 0 });
   });
+
+  it('em acordo + acordo em andamento + rótulo (caso Wallace 13/10): parcelas cobertas ficam em_acordo, cotas e entrada viram prova, rótulo segue para o planner', () => {
+    const cobrancas = [cob('c1', '2026-01-25'), cob('ce', '2026-03-01', { valorOriginal: 130_000, valorPago: 130_000, tipo: 'reembolso' }), cob('cq', '2026-03-08', { valorOriginal: 119_571, valorPago: 119_571 }), cob('c5', '2026-02-22', { classe: 'vencida', valorPago: null, pagoEm: null })];
+    const r = expandirConciliacaoDeclarada({
+      termos, hoje: '2026-03-10', asaasIdDe: (id) => ({ c1: 'pay_1', ce: 'pay_e', cq: 'pay_q', c5: 'pay_5' } as Record<string, string>)[id] ?? null,
+      cobrancas,
+      declaracao: {
+        parcelas: [
+          { numero: 1, vencimento: '2026-01-25', situacao: 'paga', cobrancas: ['pay_1'] },
+          { numero: 2, vencimento: '2026-02-01', situacao: 'paga', pagoEm: '2026-02-01', pagoValor: 34_850, valor: 34_850, observacao: 'metade; resto no fim' },
+          { numero: 3, vencimento: '2026-02-08', situacao: 'em_acordo' },
+          { numero: 4, vencimento: '2026-02-15', situacao: 'em_acordo' },
+          { numero: 5, vencimento: '2026-02-22', situacao: 'em_acordo', cobrancas: ['pay_5'] },
+          { numero: 6, vencimento: '2026-03-08', situacao: 'paga', cobrancas: ['pay_q'], pagoValor: 69_700 },
+          { numero: 7, vencimento: '2026-03-15', situacao: 'futura', valor: 34_850, rotulo: 'Resíduo da parcela 2' },
+        ],
+        acordoEmAndamento: { parcelasCobertas: [3, 4, 5], entrada: { valor: 130_000, pagoEm: '2026-03-01', cobrancas: ['pay_e'] }, parcelas: { quantidade: 4, valor: 49_871, primeiraEm: '2026-03-08' }, pagas: [{ numero: 1, pagoEm: '2026-03-08', cobranca: 'pay_q' }] },
+      },
+    });
+    const l = Object.fromEntries(r.linhas.map((x) => [x.chave, x]));
+    expect(l['parcela:3']).toMatchObject({ situacao: 'em_acordo', acordoGrupo: 'declarado', pagoValor: null, cobradoValor: null });
+    expect(l['parcela:5']).toMatchObject({ situacao: 'em_acordo', cobrancaId: 'c5' });
+    expect(l['parcela:2']).toMatchObject({ situacao: 'paga', esperadoValor: 34_850, pagoValor: 34_850 });
+    expect(l['parcela:7']).toMatchObject({ situacao: 'futura', esperadoValor: 34_850 });
+    expect(r.rotulos).toEqual({ 7: 'Resíduo da parcela 2' });
+    expect(r.acordoEmAndamento).toMatchObject({ parcelasCobertas: [3, 4, 5], parcelas: { quantidade: 4, valor: 49_871 } });
+    // Entrada e cota do acordo são prova: não viram fatura avulsa.
+    expect(r.fora.filter((f) => f.classe !== 'outra')).toHaveLength(0);
+    expect(r.fora.map((f) => f.cobrancaId)).not.toContain('ce');
+    expect(r.resumo).toMatchObject({ parcelasPagas: 3, parcelasPendentes: 3, parcelasFuturas: 1 });
+  });
 });

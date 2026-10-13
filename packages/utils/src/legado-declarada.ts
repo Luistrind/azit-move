@@ -7,7 +7,9 @@
 
 import type { CobrancaConciliavel, ForaDoCronograma, LinhaConciliacao, ResultadoConciliacao, ResumoConciliacao, SituacaoLinha, TermosConciliaveis } from './legado-conciliacao';
 
-export type SituacaoDeclarada = 'paga' | 'paga_com_encargo' | 'paga_por_acordo' | 'vencida' | 'pendente' | 'nao_cobrada' | 'adiada' | 'futura';
+// em_acordo (13/10, caso Wallace): coberta por um acordo AINDA EM ANDAMENTO —
+// a migração a vincula ao acordo (fatura RENEGOCIADA, sem cobrança própria).
+export type SituacaoDeclarada = 'paga' | 'paga_com_encargo' | 'paga_por_acordo' | 'em_acordo' | 'vencida' | 'pendente' | 'nao_cobrada' | 'adiada' | 'futura';
 
 export interface ParcelaDeclarada {
   numero: number;
@@ -18,6 +20,20 @@ export interface ParcelaDeclarada {
   pagoValor?: number | null; // centavos — o que entrou de principal (sem juros); default = valor da parcela
   encargo?: number | null; // centavos — juros/multa pagos (não abatem saldo)
   valor?: number | null; // centavos — valor de face da parcela; default = parcela + seguro + taxa dos termos
+  // Rótulo do item na fatura no lugar de "Parcela n/N" (ex.: "Resíduo da parcela 31").
+  rotulo?: string | null;
+  observacao?: string | null;
+}
+
+// Acordo de pagamento em andamento no Asaas (13/10, Wallace): a migração cria o
+// acordo ATIVO no sistema — entrada paga como lançamento, N parcelas novas de
+// valor fixo somadas às faturas semanais a partir de `primeiraEm`, parcelas
+// cobertas com vínculo de acordo. As cotas já pagas no Asaas entram pagas.
+export interface AcordoEmAndamentoDeclarado {
+  parcelasCobertas: number[]; // números das parcelas (série 'parcela') que o acordo cobre
+  entrada: { valor: number; pagoEm: string; cobrancas?: string[] };
+  parcelas: { quantidade: number; valor: number; primeiraEm: string }; // valor em centavos; semanal
+  pagas?: { numero: number; pagoEm: string; cobranca?: string | null }[]; // cotas do acordo já pagas
   observacao?: string | null;
 }
 
@@ -28,6 +44,7 @@ export interface DeclaracaoConciliacao {
   intermediarias?: ParcelaDeclarada[];
   // Cobranças avulsas que viram fatura própria na migração (desfecho COBRANCA_AVULSA).
   fora?: { cobranca: string; nota?: string | null }[];
+  acordoEmAndamento?: AcordoEmAndamentoDeclarado | null;
 }
 
 export interface ReconhecimentoSintetizado { chave: string; desfecho: 'ADIADA' | 'COBRANCA_AVULSA' | 'PAGA_FORA_ASAAS'; nota: string }
@@ -38,8 +55,9 @@ export function expandirConciliacaoDeclarada(params: {
   cobrancas: CobrancaConciliavel[]; // id = id interno; asaasPaymentId por `asaasIdDe`
   asaasIdDe: (cobrancaId: string) => string | null;
   hoje: string;
-}): ResultadoConciliacao & { reconhecimentos: ReconhecimentoSintetizado[] } {
+}): ResultadoConciliacao & { reconhecimentos: ReconhecimentoSintetizado[]; acordoEmAndamento: AcordoEmAndamentoDeclarado | null; rotulos: Record<number, string> } {
   const { declaracao: d, termos, hoje } = params;
+  const rotulos: Record<number, string> = {};
   const porAsaas = new Map<string, CobrancaConciliavel>();
   for (const c of params.cobrancas) {
     const a = params.asaasIdDe(c.id);
@@ -71,6 +89,7 @@ export function expandirConciliacaoDeclarada(params: {
     if (paga && encargo > 0 && situacao === 'paga') situacao = 'paga_com_encargo';
     const pagoValor = paga ? (p.pagoValor ?? esperadoValor) : null;
     const chave = serie === 'entrada' ? 'entrada' : `${serie}:${p.numero}`;
+    if (serie === 'parcela' && p.rotulo) rotulos[p.numero] = p.rotulo;
     if (p.situacao === 'adiada') reconhecimentos.push({ chave, desfecho: 'ADIADA', nota: p.observacao ?? 'adiada (declarada)' });
     if (paga && partes.length === 0 && situacao !== 'paga_por_acordo') reconhecimentos.push({ chave, desfecho: 'PAGA_FORA_ASAAS', nota: p.observacao ?? 'paga fora do Asaas (declarada)' });
     return {
@@ -93,7 +112,7 @@ export function expandirConciliacaoDeclarada(params: {
       partes: partes.map((x) => ({ cobrancaId: x.id, vencimento: x.vencimento, valor: x.valorOriginal, classe: x.classe })),
       observacao: p.observacao ?? null,
       deslocamentoDias: null,
-      acordoGrupo: situacao === 'paga_por_acordo' ? 'declarado' : null,
+      acordoGrupo: situacao === 'paga_por_acordo' || situacao === 'em_acordo' ? 'declarado' : null,
     };
   };
 
@@ -121,6 +140,13 @@ export function expandirConciliacaoDeclarada(params: {
   const interValor = termos.intermediarias?.valor ?? 0;
   for (const p of [...(d.intermediarias ?? [])].sort((a, b) => a.numero - b.numero)) linhas.push(linha('intermediaria', p, interValor));
 
+  // Acordo em andamento: entrada e cotas pagas são prova (não viram fatura própria).
+  const acordo = d.acordoEmAndamento ?? null;
+  if (acordo) {
+    partesDe(acordo.entrada.cobrancas);
+    partesDe((acordo.pagas ?? []).map((x) => x.cobranca).filter((x): x is string => !!x));
+  }
+
   // Fora: só o que foi declarado vira fatura avulsa; o resto é ignorado na migração.
   const fora: ForaDoCronograma[] = [];
   for (const f of d.fora ?? []) {
@@ -143,7 +169,7 @@ export function expandirConciliacaoDeclarada(params: {
   const resumo: ResumoConciliacao = {
     parcelasEsperadas: parcelas.length,
     parcelasPagas: pagas,
-    parcelasPendentes: cont(['pendente']),
+    parcelasPendentes: cont(['pendente', 'em_acordo']),
     parcelasVencidas: cont(['vencida']),
     parcelasNaoCobradas: cont(['nao_cobrada']),
     parcelasFuturas: cont(['futura']),
@@ -160,5 +186,5 @@ export function expandirConciliacaoDeclarada(params: {
     acordosSemConfirmar: 0,
     deslocamentoSemanas: 0,
   };
-  return { modo: 'DECLARADA', linhas, fora, acordos: [], resumo, incompleta: false, reconhecimentos };
+  return { modo: 'DECLARADA', linhas, fora, acordos: [], resumo, incompleta: false, reconhecimentos, acordoEmAndamento: acordo, rotulos };
 }
