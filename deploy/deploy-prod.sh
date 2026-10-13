@@ -93,6 +93,15 @@ checar_saude https://app.azitmove.com.br/
 
 mkdir -p "$BACKUP_ROOT"
 echo "$(date '+%Y-%m-%d %H:%M') $TAG $(git -C "$REPO_DIR" rev-parse --short "$TAG^{commit}")" >> "$REGISTRO"
+
+# Os scripts operacionais em deploy/ são lidos do working tree, não da imagem:
+# avança a cópia local até a release (caso real 13/10: deslocar-vencimentos e
+# declarar-conciliacao rodaram na versão antiga depois do deploy).
+if git -C "$REPO_DIR" merge --ff-only -q "$TAG" >/dev/null 2>&1; then
+  ok "scripts em deploy/ atualizados para $TAG"
+else
+  aviso "não avancei os arquivos locais até $TAG (há alterações locais?) — rode: git -C $REPO_DIR pull --ff-only origin main"
+fi
 echo
 ok "PRODUÇÃO publicada na release $TAG → https://app.azitmove.com.br"
 [ -n "$ANTERIOR" ] && echo "Rollback, se precisar:  bash deploy/deploy-prod.sh $ANTERIOR"
