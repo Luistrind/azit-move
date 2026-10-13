@@ -313,6 +313,11 @@ export class MigracaoLegadoService {
       cobrancas: c.cobrancas.map((p) => this.conciliacao.cobrancaParaApi(p)),
       conciliacao: { modo: conc.modo, linhas: conc.linhas, fora: conc.fora, acordos: conc.acordos, resumo: conc.resumo, incompleta: conc.incompleta },
       modoConciliacao: c.modoConciliacao,
+      // §26.15: cronograma declarado — a tela avisa que as regras não valem aqui.
+      conciliacaoDeclarada: (() => {
+        const d = c.conciliacaoDeclarada as { em?: string; por?: string | null; origem?: string; observacao?: string | null; parcelas?: unknown[] } | null;
+        return d && Array.isArray(d.parcelas) ? { em: d.em ?? null, por: d.por ?? null, origem: d.origem ?? null, observacao: d.observacao ?? null, parcelas: d.parcelas.length } : null;
+      })(),
       divergenciasReconhecidas: conc.reconhecidas,
       vinculosManuais: conc.vinculos,
       modoVencimentos: c.modoVencimentos,

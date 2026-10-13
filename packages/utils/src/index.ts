@@ -16,4 +16,5 @@ export * from './migracao-legado';
 export * from './legado-termos';
 export * from './legado-interpretacao';
 export * from './legado-conciliacao';
+export * from './legado-declarada';
 export * from './fipe';

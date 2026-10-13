@@ -2331,3 +2331,29 @@ inteligência para isso; o operador confirma, não digita.
    regras releem tudo e o operador decide de novo só o que sobrar; cobranças e termos ficam;
    auditado. Na SEQUÊNCIA, vínculo manual de parcela é **ignorado** (e contado no resumo) — era
    artefato do modo DATA e prendia as cobranças compostas, deslocando o cronograma.
+
+### 26.15 Conciliação declarada — validação caso a caso (decisão Luís, 2026-10-13)
+
+As regras da bancada (§26.7, §26.14) não dão conta de todo histórico; o Luís decidiu validar os
+contratos **caso a caso, fora da tela**, e subir o resultado de alguma forma. A forma é a
+**conciliação declarada**: o cronograma validado é gravado no caso parcela a parcela e passa a
+valer no lugar das regras.
+
+1. **Fluxo**: Luís manda, por cliente, a exportação do Asaas (com as cobranças removidas
+   visíveis), o PDF do contrato e a situação em texto; Claude monta a planilha do cronograma
+   (nº, vencimento, valor, pago em, valor pago, encargo, situação, observação); Luís aprova em
+   texto; Claude converte em JSON e sobe pelo script `deploy/declarar-conciliacao.sh` (ou pela API,
+   `PUT /migracao-legado/casos/:id/conciliacao-declarada`, ADMIN/DIRETOR).
+2. **Formato** (`DeclaracaoConciliacao`, @azit/utils): `entrada {valor, pagoEm, cobrancas[]}`,
+   `parcelas[]` e `intermediarias[]` com `numero, vencimento, situacao, cobrancas[] (ids pay_… como
+   prova), pagoEm, pagoValor (principal, sem juros), encargo, valor, observacao`; `fora[]` lista as
+   cobranças avulsas que viram fatura própria. Situações: paga, paga_com_encargo, paga_por_acordo,
+   vencida, pendente, nao_cobrada, **adiada** (vai ao fim do cronograma), futura.
+3. **Efeito**: a bancada mostra o aviso "Conciliação declarada"; leitura das cobranças, acordos,
+   vínculos e divergências deixam de contar na validação (só PDF, termos e CPF); o seletor de
+   método mostra "cronograma declarado". A migração (F3) consome as linhas declaradas como
+   consome as das regras: fatura da parcela = valor cheio, cobranças citadas ficam como prova,
+   parcela paga sem cobrança = paga fora do Asaas, adiada vai ao fim, cobrança não declarada não
+   vira fatura (fica só como prova no caso).
+4. Removível (ADMIN/DIRETOR) enquanto o caso não migrou — o caso volta às regras. Tudo auditado.
+

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { camposFaltantesTermos, extrairTermosDoTexto, parcelamentoDosTermos, reaisTextoParaCentavos, termosEfetivos, TERMOS_VAZIOS } from './legado-termos';
 import { contextoDosTermos, interpretarCobrancaLegada, partesRotuladas } from './legado-interpretacao';
 import { conciliarLegado, type CobrancaConciliavel } from './legado-conciliacao';
+import { expandirConciliacaoDeclarada } from './legado-declarada';
 
 // Texto no formato que o pdf-parse devolve para o modelo Mod06 (quebras de
 // linha no meio das frases, rodapé de página, carimbo da assinatura). Dados
@@ -542,5 +543,40 @@ describe('sequência ignora vínculo manual de parcela (caso real 06/10)', () =>
     expect(l['parcela:3']).toMatchObject({ cobrancaId: 'c3', situacao: 'paga', partes: [] });
     expect(l['parcela:4']).toMatchObject({ cobrancaId: 'p5', situacao: 'paga' });
     expect(l['parcela:3'].observacao ?? '').not.toContain('vínculo manual');
+  });
+});
+
+describe('conciliação declarada (doc 02 §26.15)', () => {
+  const termos = { parcelas: { quantidade: 6, valor: 64_200, primeiraEm: '2026-01-25' }, intermediarias: null, entradaValor: null, seguroSemanal: 5_000, taxaSemanal: 500 };
+  const base = { valorPago: null as number | null, pagoEm: null as string | null, classe: 'paga' as const, intermediariaEmbutida: 0, parcelamento: 64_200 as number | null, extra: 0, extraRotulo: null as string | null, encargoEmbutido: 0, descricao: null as string | null, tipo: 'parcela' as const };
+  const cob = (id: string, venc: string, extra: Partial<CobrancaConciliavel> = {}): CobrancaConciliavel => ({ ...base, id, vencimento: venc, valorOriginal: 69_700, valorPago: 69_700, pagoEm: venc, ...extra });
+  it('expande a declaração: paga com prova, paga fora do Asaas, por acordo (principal sem juros), adiada e cobrança não declarada ignorada', () => {
+    const cobrancas = [cob('c1', '2026-01-25'), cob('c3', '2026-02-08', { valorOriginal: 96_212, valorPago: 96_212 }), cob('cx', '2026-03-01', { tipo: 'reembolso' })];
+    const r = expandirConciliacaoDeclarada({
+      termos, hoje: '2026-03-10', asaasIdDe: (id) => ({ c1: 'pay_1', c3: 'pay_3', cx: 'pay_x' } as Record<string, string>)[id] ?? null,
+      cobrancas,
+      declaracao: { parcelas: [
+        { numero: 1, vencimento: '2026-01-25', situacao: 'paga', cobrancas: ['pay_1'] },
+        { numero: 2, vencimento: '2026-02-01', situacao: 'paga_por_acordo', cobrancas: ['pay_3'], pagoEm: '2026-02-08', encargo: 9_836 },
+        { numero: 3, vencimento: '2026-02-08', situacao: 'paga', cobrancas: ['pay_3'] },
+        { numero: 4, vencimento: '2026-02-15', situacao: 'paga', pagoEm: '2026-02-15', observacao: 'dinheiro' },
+        { numero: 5, vencimento: '2026-02-22', situacao: 'adiada', observacao: 'manutenção' },
+        { numero: 6, vencimento: '2026-03-29', situacao: 'futura' },
+      ] },
+    });
+    const l = Object.fromEntries(r.linhas.map((x) => [x.chave, x]));
+    expect(r.modo).toBe('DECLARADA');
+    expect(l['parcela:1']).toMatchObject({ situacao: 'paga', cobrancaId: 'c1', cobradoValor: 69_700, pagoValor: 69_700, confianca: 'alta', divergencia: false });
+    expect(l['parcela:2']).toMatchObject({ situacao: 'paga_por_acordo', pagoValor: 69_700, encargo: 9_836, pagoEm: '2026-02-08', acordoGrupo: 'declarado' });
+    expect(l['parcela:4']).toMatchObject({ situacao: 'paga', cobrancaId: null, cobradoValor: 69_700, pagoEm: '2026-02-15' });
+    expect(l['parcela:5']).toMatchObject({ situacao: 'nao_cobrada', divergencia: false });
+    expect(l['parcela:6'].situacao).toBe('futura');
+    expect(r.reconhecimentos).toEqual(expect.arrayContaining([
+      { chave: 'parcela:4', desfecho: 'PAGA_FORA_ASAAS', nota: 'dinheiro' },
+      { chave: 'parcela:5', desfecho: 'ADIADA', nota: 'manutenção' },
+    ]));
+    expect(r.fora).toHaveLength(1);
+    expect(r.fora[0]).toMatchObject({ cobrancaId: 'cx', classe: 'outra' });
+    expect(r.resumo).toMatchObject({ parcelasPagas: 4, parcelasNaoCobradas: 1, parcelasFuturas: 1, encargosPagos: 9_836, divergencias: 0 });
   });
 });

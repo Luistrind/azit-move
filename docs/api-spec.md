@@ -1081,6 +1081,8 @@ não o status do Asaas.
 | PUT | `/migracao-legado/casos/:id/conciliacao-modo` | `{ modo: 'SEQUENCIA' \| 'DATA' }` — como a parcela N é encontrada (doc 02 §26.14). 422 `modo_invalido` |
 | PUT | `/migracao-legado/casos/:id/acordos/:grupo` | `{ quantidade?, chaves? }` — confirma o que o acordo legado quitou (sem corpo vale a proposta; `chaves` só no modo DATA). 422 `parcelas_insuficientes` / `parcela_ja_paga` |
 | DELETE | `/migracao-legado/casos/:id/acordos/:grupo` | Desfaz a confirmação |
+| PUT | `/migracao-legado/casos/:id/conciliacao-declarada` | `DeclaracaoConciliacao` (doc 02 §26.15) — grava o cronograma validado caso a caso; substitui as regras. ADMIN/DIRETOR. 422 `declaracao_invalida` / `cobranca_desconhecida`. O detalhe traz `conciliacaoDeclarada { em, por, origem, observacao, parcelas }` e `conciliacao.modo = 'DECLARADA'` |
+| DELETE | `/migracao-legado/casos/:id/conciliacao-declarada` | Remove a declaração (o caso volta às regras) |
 | POST | `/migracao-legado/casos/:id/recomecar-conciliacao` | Limpa leituras manuais, vínculos, reconhecimentos e acordos confirmados; reaplica as regras. Devolve as contagens limpas |
 | PUT | `/migracao-legado/casos/:id/cobrancas/:cobrancaId/interpretacao` | Aceita também `acordo` (parcela de acordo junto da cobrança) |
 | GET | `/migracao-legado/casos/:id/migracao/previa` | ADMIN/DIRETOR. Plano da F3 (doc 02 §26.10) sem gravar nada: titular (novo/existente), veículo, contrato, entrada, faturas por situação, RPs, avulsas, assinatura a parar. 422 `nao_validado` / `ja_migrado` / `pendencias` / `cpf_ausente` / `estrutura_azit_ausente` / `titular_excluido` / `veiculo_em_contrato` |

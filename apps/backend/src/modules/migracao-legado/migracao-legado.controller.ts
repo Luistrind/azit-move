@@ -121,6 +121,19 @@ export class MigracaoLegadoController {
   }
 
   // §26.14: método de conciliação e acordos confirmados.
+  // §26.15: cronograma declarado (validado caso a caso) — ADMIN/DIRETOR.
+  @Put('casos/:id/conciliacao-declarada')
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  declararConciliacao(@Param('id') id: string, @Body() body: unknown, @CurrentUser() user: UsuarioAutenticado) {
+    return this.conciliacao.declararConciliacao(id, body, user.id, 'tela');
+  }
+
+  @Delete('casos/:id/conciliacao-declarada')
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  removerDeclaracao(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.conciliacao.removerDeclaracao(id, user.id);
+  }
+
   @Put('casos/:id/conciliacao-modo')
   definirModoConciliacao(@Param('id') id: string, @Body() body: { modo: string }, @CurrentUser() user: UsuarioAutenticado) {
     return this.conciliacao.definirModoConciliacao(id, body?.modo ?? '', user.id);

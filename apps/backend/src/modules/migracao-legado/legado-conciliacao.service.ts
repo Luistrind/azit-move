@@ -10,12 +10,14 @@ import {
   conciliarLegado,
   contextoDosTermos,
   dataHojeBrasil,
+  expandirConciliacaoDeclarada,
   extrairTermosDoTexto,
   interpretarCobrancaLegada,
   refParcelaDoTexto,
   TERMOS_VAZIOS,
   termosEfetivos,
   type CobrancaConciliavel,
+  type DeclaracaoConciliacao,
   type InterpretacaoCobranca,
   type ResultadoConciliacao,
   type TermosContratoLegado,
@@ -95,7 +97,9 @@ const iso = (d: Date | null | undefined) => d?.toISOString().slice(0, 10) ?? nul
 
 type CobrancaBanco = Prisma.CobrancaLegadaGetPayload<object>;
 export interface VinculoManual { cobrancaId: string; chave: string; em: string; por: string }
-type CasoConciliavel = { termos: unknown; cobrancas: CobrancaBanco[]; divergenciasReconhecidas: unknown; vinculosManuais: unknown; modoConciliacao?: string | null; acordosConfirmados?: unknown };
+type CasoConciliavel = { termos: unknown; cobrancas: CobrancaBanco[]; divergenciasReconhecidas: unknown; vinculosManuais: unknown; modoConciliacao?: string | null; acordosConfirmados?: unknown; conciliacaoDeclarada?: unknown };
+// Declaração gravada no caso (§26.15): a declaração compacta + quem/quando.
+export interface ConciliacaoDeclaradaGravada extends DeclaracaoConciliacao { em: string; por: string | null; origem: string }
 const soDigitos = (v: string | null | undefined) => (v ?? '').replace(/\D/g, '');
 // CPF do comprador no contrato × CPF do cliente no Asaas (comparação EXATA, só
 // dígitos). Calculado na hora, sobre os termos atuais — não o que o PDF dizia.
@@ -428,6 +432,20 @@ export class LegadoConciliacaoService {
         descricao: c.descricao,
       };
     });
+    const termosConc: Parameters<typeof conciliarLegado>[0]['termos'] = termos
+      ? { parcelas: termos.parcelas, intermediarias: termos.intermediarias, entradaValor: termos.entradaValor, seguroSemanal: termos.seguroSemanal, taxaSemanal: termos.taxaSemanal }
+      : { parcelas: { quantidade: null, valor: null, primeiraEm: null }, intermediarias: null, entradaValor: null, seguroSemanal: 5_000, taxaSemanal: 500 };
+    // §26.15: cronograma DECLARADO (validado caso a caso) substitui as regras.
+    const declarada = caso.conciliacaoDeclarada as ConciliacaoDeclaradaGravada | null | undefined;
+    if (declarada && Array.isArray(declarada.parcelas)) {
+      const asaasPorId = new Map(caso.cobrancas.map((c) => [c.id, c.asaasPaymentId]));
+      const r = expandirConciliacaoDeclarada({ declaracao: declarada, termos: termosConc, cobrancas: conciliaveis, asaasIdDe: (id) => asaasPorId.get(id) ?? null, hoje });
+      const reconhecidasGravadas = ((caso.divergenciasReconhecidas as DivergenciaReconhecida[] | null) ?? []);
+      const sintetizadas: DivergenciaReconhecida[] = r.reconhecimentos.map((x) => ({ chave: x.chave, nota: x.nota, desfecho: x.desfecho, em: declarada.em, por: declarada.por ?? 'declaracao' }));
+      const chavesSint = new Set(sintetizadas.map((x) => x.chave));
+      const { reconhecimentos: _r, ...resto } = r;
+      return { ...resto, reconhecidas: [...sintetizadas, ...reconhecidasGravadas.filter((x) => !chavesSint.has(x.chave))], vinculos: [], acordosConfirmados: [] };
+    }
     const r = conciliarLegado({
       termos: termos
         ? { parcelas: termos.parcelas, intermediarias: termos.intermediarias, entradaValor: termos.entradaValor, seguroSemanal: termos.seguroSemanal, taxaSemanal: termos.taxaSemanal }
@@ -440,6 +458,39 @@ export class LegadoConciliacaoService {
     });
     const reconhecidas = ((caso.divergenciasReconhecidas as DivergenciaReconhecida[] | null) ?? []);
     return { ...r, reconhecidas, vinculos, acordosConfirmados };
+  }
+
+  // §26.15: grava (ou troca) a declaração do cronograma. Valida o mínimo —
+  // parcelas numeradas sem repetição, datas ISO, situações conhecidas, cobranças
+  // citadas existindo no caso — e responde com a conciliação resultante.
+  async declararConciliacao(casoId: string, corpo: unknown, usuarioId: string | null, origem = 'api') {
+    const caso = await this.carregar(casoId);
+    this.exigirEditavel(caso.status);
+    const parsed = declaracaoSchema.safeParse(corpo);
+    if (!parsed.success) {
+      throw new UnprocessableEntityException({ erro: 'declaracao_invalida', mensagem: `Declaração inválida: ${parsed.error.issues.slice(0, 3).map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}` });
+    }
+    const d = parsed.data;
+    const numeros = d.parcelas.map((p) => p.numero);
+    if (new Set(numeros).size !== numeros.length) throw new UnprocessableEntityException({ erro: 'declaracao_invalida', mensagem: 'Número de parcela repetido na declaração' });
+    const conhecidas = new Set(caso.cobrancas.map((c) => c.asaasPaymentId));
+    const citadas = [...d.parcelas, ...(d.intermediarias ?? [])].flatMap((p) => p.cobrancas ?? []).concat((d.fora ?? []).map((f) => f.cobranca), d.entrada?.cobrancas ?? []);
+    const desconhecidas = [...new Set(citadas.filter((id) => !conhecidas.has(id)))];
+    if (desconhecidas.length) throw new UnprocessableEntityException({ erro: 'cobranca_desconhecida', mensagem: `Cobrança(s) não lida(s) neste caso: ${desconhecidas.slice(0, 5).join(', ')} — leia o Asaas de novo ou corrija o id` });
+    const gravada: ConciliacaoDeclaradaGravada = { ...d, em: new Date().toISOString(), por: usuarioId, origem };
+    await this.prisma.db.casoMigracaoLegado.update({ where: { id: casoId }, data: { conciliacaoDeclarada: gravada as unknown as Prisma.InputJsonValue } });
+    await this.prisma.db.logAuditoria.create({ data: { usuarioId: usuarioId ?? undefined, acao: 'legado_conciliacao_declarada', entidade: 'caso_migracao_legado', entidadeId: casoId, antes: (caso.conciliacaoDeclarada ?? Prisma.JsonNull) as Prisma.InputJsonValue, depois: gravada as unknown as Prisma.InputJsonValue } });
+    const atualizado = await this.carregar(casoId);
+    const r = this.conciliar(atualizado);
+    return { declarada: true, parcelas: d.parcelas.length, resumo: r.resumo };
+  }
+
+  async removerDeclaracao(casoId: string, usuarioId: string) {
+    const caso = await this.carregar(casoId);
+    this.exigirEditavel(caso.status);
+    await this.prisma.db.casoMigracaoLegado.update({ where: { id: casoId }, data: { conciliacaoDeclarada: Prisma.JsonNull } });
+    await this.prisma.db.logAuditoria.create({ data: { usuarioId, acao: 'legado_conciliacao_declarada_removida', entidade: 'caso_migracao_legado', entidadeId: casoId, antes: (caso.conciliacaoDeclarada ?? Prisma.JsonNull) as Prisma.InputJsonValue } });
+    return { removida: true };
   }
 
   // Doc 02 §26.14: como a parcela N é encontrada — pela SEQUÊNCIA das cobranças
@@ -590,6 +641,10 @@ export class LegadoConciliacaoService {
       if (faltam.length) p.push(`Termos incompletos: ${faltam.join(', ')}`);
     }
     if (!caso.contratoPdfRef) p.push('PDF do contrato não anexado');
+    // §26.15: com cronograma declarado, a leitura das cobranças e as divergências
+    // das regras não contam — o que vale é a declaração validada.
+    const temDeclarada = !!(caso.conciliacaoDeclarada as { parcelas?: unknown[] } | null)?.parcelas;
+    if (temDeclarada) return p;
     const emDuvida = caso.cobrancas.filter((c) => c.duvida && !c.deletada).length;
     if (emDuvida) p.push(`${emDuvida} cobrança(s) com leitura em dúvida — confirme o tipo de cada uma`);
     const semTipo = caso.cobrancas.filter((c) => !c.tipoInterpretado && !c.deletada).length;
@@ -702,6 +757,25 @@ export interface DivergenciaReconhecida {
 }
 
 export interface AcordoConfirmado { grupo: string; quantidade: number; chaves: string[]; em: string; por: string }
+
+const parcelaDeclaradaSchema = z.object({
+  numero: z.number().int().min(0),
+  vencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  situacao: z.enum(['paga', 'paga_com_encargo', 'paga_por_acordo', 'vencida', 'pendente', 'nao_cobrada', 'adiada', 'futura']),
+  cobrancas: z.array(z.string().min(1)).optional(),
+  pagoEm: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  pagoValor: z.number().int().min(0).nullable().optional(),
+  encargo: z.number().int().min(0).nullable().optional(),
+  valor: z.number().int().min(0).nullable().optional(),
+  observacao: z.string().max(300).nullable().optional(),
+});
+const declaracaoSchema = z.object({
+  observacao: z.string().max(2000).nullable().optional(),
+  entrada: z.object({ valor: z.number().int().min(0), pagoEm: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(), cobrancas: z.array(z.string().min(1)).optional() }).nullable().optional(),
+  parcelas: z.array(parcelaDeclaradaSchema).min(1),
+  intermediarias: z.array(parcelaDeclaradaSchema).optional(),
+  fora: z.array(z.object({ cobranca: z.string().min(1), nota: z.string().max(300).nullable().optional() })).optional(),
+});
 
 export const DESFECHOS_DIVERGENCIA = ['PAGA_FORA_ASAAS', 'VALOR_ACEITO', 'ADIADA', 'COBRANCA_AVULSA'] as const;
 export type DesfechoDivergencia = (typeof DESFECHOS_DIVERGENCIA)[number];

@@ -43,7 +43,7 @@ export interface TermosConciliaveis {
   taxaSemanal: number;
 }
 
-export type ModoConciliacao = 'SEQUENCIA' | 'DATA';
+export type ModoConciliacao = 'SEQUENCIA' | 'DATA' | 'DECLARADA';
 
 export type SituacaoLinha =
   | 'paga'

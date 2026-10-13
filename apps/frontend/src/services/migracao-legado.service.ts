@@ -85,7 +85,7 @@ export interface TermosContratoLegado {
 }
 
 export type SituacaoLinha = 'paga' | 'paga_com_encargo' | 'paga_por_acordo' | 'em_acordo' | 'pendente' | 'vencida' | 'nao_cobrada' | 'futura' | 'valor_diverge';
-export type ModoConciliacao = 'SEQUENCIA' | 'DATA';
+export type ModoConciliacao = 'SEQUENCIA' | 'DATA' | 'DECLARADA';
 export type ConfiancaLinha = 'alta' | 'media' | 'baixa';
 export interface LinhaConciliacao {
   chave: string; serie: 'parcela' | 'intermediaria' | 'entrada'; numero: number; esperadoEm: string; esperadoValor: number;
@@ -153,6 +153,8 @@ export interface CasoLegadoDetalhe extends CasoLegado {
   } | null;
   conciliacao: { modo: ModoConciliacao; linhas: LinhaConciliacao[]; fora: ForaDoCronograma[]; acordos: GrupoAcordo[]; resumo: ResumoConciliacao; incompleta: boolean };
   modoConciliacao: ModoConciliacao;
+  // §26.15: cronograma declarado (validado caso a caso, fora das regras).
+  conciliacaoDeclarada: { em: string | null; por: string | null; origem: string | null; observacao: string | null; parcelas: number } | null;
   divergenciasReconhecidas: DivergenciaReconhecida[];
   vinculosManuais: VinculoManual[];
   modoVencimentos: ModoVencimentos;
@@ -240,6 +242,9 @@ export const migracaoLegadoService = {
   async recomecarConciliacao(id: string): Promise<{ recomecada: boolean; leiturasManuais: number; vinculos: number; reconhecimentos: number; acordos: number }> {
     const { data } = await api.post(`/api/v1/migracao-legado/casos/${id}/recomecar-conciliacao`);
     return data;
+  },
+  async removerDeclaracao(id: string): Promise<void> {
+    await api.delete(`/api/v1/migracao-legado/casos/${id}/conciliacao-declarada`);
   },
   async definirModoConciliacao(id: string, modo: ModoConciliacao): Promise<void> {
     await api.put(`/api/v1/migracao-legado/casos/${id}/conciliacao-modo`, { modo });

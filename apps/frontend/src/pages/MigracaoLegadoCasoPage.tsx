@@ -472,8 +472,9 @@ export function MigracaoLegadoCasoPage() {
             {!conc.incompleta && (
               <div className="mt-[10px] flex flex-wrap items-center gap-[8px] text-[12px]" style={{ color: 'var(--text-secondary)' }}>
                 <span className="font-semibold">Como achar cada parcela:</span>
-                <select className="rounded-[6px] px-[6px] py-[3px] text-[12px]" style={inputStyle} disabled={!editavel} value={c.modoConciliacao}
+                <select className="rounded-[6px] px-[6px] py-[3px] text-[12px]" style={inputStyle} disabled={!editavel || !!c.conciliacaoDeclarada} value={c.conciliacaoDeclarada ? 'DECLARADA' : c.modoConciliacao}
                   onChange={(e) => rodar(() => svc.definirModoConciliacao(id, e.target.value as ModoConciliacao), 'Método de conciliação definido')}>
+                  {c.conciliacaoDeclarada && <option value="DECLARADA">cronograma declarado (validado caso a caso)</option>}
                   <option value="SEQUENCIA">pela sequência das cobranças (semana pulada não consome parcela; recomendado)</option>
                   <option value="DATA">pela data do contrato (±3 dias; método antigo)</option>
                 </select>
@@ -499,6 +500,19 @@ export function MigracaoLegadoCasoPage() {
           </div>
         </div>
       </div>
+
+      {/* §26.15: cronograma DECLARADO — validado caso a caso, fora das regras. */}
+      {c.conciliacaoDeclarada && (
+        <div className="rounded-[12px] p-[14px]" style={{ background: CASO_LEGADO_STATUS_COLORS.VALIDADO.bg, border: `1px solid ${CASO_LEGADO_STATUS_COLORS.VALIDADO.fg}` }}>
+          <div className="flex flex-wrap items-center justify-between gap-[8px]">
+            <div className="text-[12.5px]" style={{ color: CASO_LEGADO_STATUS_COLORS.VALIDADO.fg }}>
+              <b>Conciliação declarada</b> — cronograma validado caso a caso ({c.conciliacaoDeclarada.parcelas} parcelas), gravado em {c.conciliacaoDeclarada.em ? dataHoraBR(c.conciliacaoDeclarada.em) : '—'}{c.conciliacaoDeclarada.origem ? ` via ${c.conciliacaoDeclarada.origem}` : ''}. As regras de leitura e conciliação não valem neste caso; a migração usa o declarado.
+              {c.conciliacaoDeclarada.observacao && <div className="mt-[3px] text-[12px]">{c.conciliacaoDeclarada.observacao}</div>}
+            </div>
+            {editavel && <button className={btn} style={btnSec} disabled={ocupado} onClick={() => { if (window.confirm('Remover a conciliação declarada? O caso volta às regras da bancada.')) void rodar(() => svc.removerDeclaracao(id), 'Declaração removida'); }}>Remover declaração</button>}
+          </div>
+        </div>
+      )}
 
       {/* Acordos legados (doc 02 §26.14): o sistema agrupa as (k/n), soma e propõe o que quitam. */}
       {!conc.incompleta && conc.acordos.length > 0 && (
