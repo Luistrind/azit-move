@@ -39,7 +39,7 @@ fi
 
 JSON=$(cat "$ARQ")
 aviso "Vai gravar a conciliação declarada do caso ${NOME//_/ } (substitui a declaração anterior, se houver)."
-confirmar "DECLARAR-$CID" "Digite DECLARAR-$CID para continuar: " || exit 1
+confirmar "DECLARAR" "Digite DECLARAR para continuar: " || exit 1
 
 docker exec -i "$DBCID" psql -U azit -d azit -v ON_ERROR_STOP=1 -q -v json="$JSON" -v cid="$CID" <<'SQLEOF'
 begin;
