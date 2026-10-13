@@ -38,6 +38,9 @@ export const solicitarNovacaoSchema = z
     trocaAtivoId: z.string().min(1).optional(),
     acrescimo: z.coerce.number().int().min(0).optional(),
     acrescimoMotivo: z.string().trim().max(200).optional(),
+    // Contrato ÚNICO (adaptação 13/10, até o instrumento de novação ficar
+    // pronto): um só contrato de Compra Parcelada com o valor global.
+    contratoUnico: z.boolean().optional(),
     observacao: z.string().trim().min(1).optional(),
   })
   .refine((d) => !d.acrescimo || !!d.acrescimoMotivo, { message: 'Diga o motivo do acréscimo', path: ['acrescimoMotivo'] })

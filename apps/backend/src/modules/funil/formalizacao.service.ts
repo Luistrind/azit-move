@@ -30,7 +30,7 @@ import { CONTRATO_VEICULO_TEMPLATE } from './templates/contrato-veiculo.template
 import { AssinaturaService } from '../assinatura/assinatura.service';
 
 // Qualificação da parte no padrão do contrato oficial (campos ausentes são omitidos).
-function qualificarParte(t: {
+export function qualificarParte(t: {
   nome: string;
   cpfCnpj: string;
   rg?: string | null;

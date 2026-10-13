@@ -1082,6 +1082,16 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > devolvido na troca. Entra no saldo-base (antes do desconto; a taxa inicial incide sobre ele),
 > fica congelado no snapshot e o instrumento declara valor e motivo. É o espelho do desconto,
 > sem exigir comitê (o desconto reduz dívida; o acréscimo é dívida reconhecida pelo cliente).
+> **Contrato único (adaptação Luís, 2026-10-13 — provisória até o jurídico validar o instrumento
+> de novação):** a proposta pode marcar "contrato único". Aprovada, nasce **um só** contrato de
+> Compra Parcelada do veículo (o da troca, se houver), com **valor global = todas as pendências**
+> (veículo + demais produtos + ajuste da troca + acréscimo − desconto + taxa inicial), pela MESMA
+> precificação da novação: N = parcelas do Termo + parcelas do veículo, todas no valor único do
+> motor (última residual), começando no próximo ciclo — sem Termo e sem fatura de transição. O
+> instrumento é o **modelo padrão do contrato de veículo**, preenchido como um contrato começando
+> hoje; a entrada é o recebimento inicial. A ativação extingue as origens exatamente como na
+> novação em dois contratos (parcelas/faturas NOVADAS, origem ENCERRADA por NOVACAO, veículo
+> antigo ao estoque). Quando o instrumento de novação for validado, a opção some.
 >
 > **Fonte das fórmulas:** `docs/Planilha Novacao de Contrato - Azit Move.xlsx` (extraída
 > célula a célula, 13/09) — abas: **Parâmetros** (NV001–019, ICVF/ICPF, mora 2%+1% a.m.

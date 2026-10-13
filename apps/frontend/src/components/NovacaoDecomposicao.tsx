@@ -238,6 +238,10 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
   // devolvido na troca — soma à dívida, com motivo obrigatório.
   const [acrescimo, setAcrescimo] = useState('');
   const [acrescimoMotivo, setAcrescimoMotivo] = useState('');
+  // Contrato único (adaptação 13/10): enquanto o instrumento de novação não
+  // sai do jurídico, a operação vira UM contrato de Compra Parcelada com o
+  // valor global — mesma precificação, modelo padrão do contrato de veículo.
+  const [contratoUnico, setContratoUnico] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [sim, setSim] = useState<SimulacaoNovacao | null>(null);
   const disponiveis = useQuery({
@@ -285,10 +289,13 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
         trocaAtivoId: trocaAtivoId || undefined,
         acrescimo: reaisParaCentavos(acrescimo) || undefined,
         acrescimoMotivo: acrescimoMotivo.trim() || undefined,
+        contratoUnico: contratoUnico || undefined,
         observacao: observacao.trim() || undefined,
       });
       setEnviada(true);
-      toast.sucesso('Novação enviada para a Central de Aprovações (CONAC — operação sensível, exige 2 aprovações). Aprovada, os dois contratos vão juntos para assinatura.');
+      toast.sucesso(contratoUnico
+        ? 'Novação enviada para a Central de Aprovações (CONAC — 2 aprovações). Aprovada, nasce UM contrato de Compra Parcelada com o valor global e vai para assinatura.'
+        : 'Novação enviada para a Central de Aprovações (CONAC — operação sensível, exige 2 aprovações). Aprovada, os dois contratos vão juntos para assinatura.');
     } catch (e) {
       toast.erro(mensagemErro(e));
     } finally {
@@ -370,6 +377,14 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
               {sim.excecoes.map((e, i) => <div key={i}>⚠ {e}</div>)}
             </div>
           )}
+
+          <label className="flex items-start gap-[8px] rounded-[10px] px-[12px] py-[8px] text-[12px]" style={{ background: '#fff8e6', border: '1px solid #f0dfae', color: '#8a6d1a' }}>
+            <input type="checkbox" checked={contratoUnico} onChange={(e) => setContratoUnico(e.target.checked)} className="mt-[2px]" />
+            <span>
+              <b>Contrato único</b> (adaptação até o instrumento de novação ficar pronto): em vez de dois contratos, nasce <b>um contrato de Compra Parcelada</b> do veículo
+              {sim.troca ? ' da troca' : ''}, com o valor global de <b>{formatCurrency(sim.totalAPagar)}</b> em <b>{sim.contrato2.totalParcelas + sim.contrato1.totalParcelas} parcelas</b> de {formatCurrency(sim.valorParcelaTotal ?? sim.valorParcela)} {sim.contrato1.valorUltima > 0 ? <> (última de {formatCurrency(sim.contrato1.valorUltima + (sim.comissaoPorPeriodo ?? 0) + (sim.protecaoPorPeriodo ?? 0))})</> : null}, no modelo padrão do contrato de veículo — mesma precificação, sem Termo e sem fatura de transição.
+            </span>
+          </label>
 
           <div className="rounded-[10px] px-[14px] py-[10px]" style={{ background: 'var(--navy)', color: '#fff' }}>
             <div className="flex items-center justify-between">

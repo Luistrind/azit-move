@@ -26,6 +26,8 @@ import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 import { NovacaoDecomposicaoService } from './novacao-decomposicao.service';
 import { SimularNovacaoBody } from './dto/novacao.dto';
 import { INSTRUMENTO_NOVACAO_TEMPLATE } from './templates/instrumento-novacao.template';
+import { CONTRATO_VEICULO_TEMPLATE } from '../funil/templates/contrato-veiculo.template';
+import { qualificarParte } from '../funil/formalizacao.service';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 const reais = (c: number) => centavosParaReaisString(c);
@@ -37,7 +39,7 @@ const cent = (d: Prisma.Decimal | null): number =>
 // Fotografia congelada na proposta (fonte da efetivação — RAP034 por analogia).
 type SnapshotNovacao = {
   dataBase: string;
-  dto: SimularNovacaoBody & { observacao?: string };
+  dto: SimularNovacaoBody & { observacao?: string; contratoUnico?: boolean };
   simulacao: Awaited<ReturnType<NovacaoDecomposicaoService['simular']>>;
   documento?: string;
 };
@@ -104,7 +106,7 @@ export class NovacaoService implements OnModuleInit {
   // 1. Proposta: congela decomposição + simulação e abre a aprovação.
   async solicitar(
     contaId: string,
-    dto: SimularNovacaoBody & { observacao?: string },
+    dto: SimularNovacaoBody & { observacao?: string; contratoUnico?: boolean },
     operadorId: string,
   ) {
     // Chave de virada: a CONTRATAÇÃO exige o produto ATIVO no Catálogo
@@ -233,7 +235,15 @@ export class NovacaoService implements OnModuleInit {
 
     // Contrato 2 — Termo (pago PRIMEIRO; sem ativo, credor Azit). Datas são
     // estimativas: a ativação atômica recalcula antes de gerar os cronogramas.
-    const c2 = await this.contrato.criar(
+    // CONTRATO ÚNICO (adaptação Luís 13/10, doc 02 §7.7b): enquanto o
+    // instrumento de novação não é validado pelo jurídico, a operação sai como
+    // UM contrato de Compra Parcelada do veículo (o da troca, se houver), com o
+    // valor global = todas as pendências (veículo + demais + troca + acréscimo,
+    // pela MESMA precificação) e a parcela única do motor do 1º ao último
+    // período — sem Termo, sem fatura de transição. O instrumento é o modelo
+    // padrão do contrato de veículo, como um contrato começando hoje.
+    const unico = !!snap.dto.contratoUnico;
+    const c2 = unico ? null : await this.contrato.criar(
       {
         contaId: novacao.contaId,
         dataAssinatura: hoje,
@@ -254,10 +264,12 @@ export class NovacaoService implements OnModuleInit {
     );
     // Fase do Termo: proteção nas faturas desde a 1ª (A3); a CR do período é
     // amortização extra do próprio Termo (A4.3) — por isso crP = 0 na ref.
-    await this.prisma.db.contratoCredito.update({
-      where: { id: c2.id },
-      data: { catalogoVersaoRef: refNovacao(0) },
-    });
+    if (c2) {
+      await this.prisma.db.contratoCredito.update({
+        where: { id: c2.id },
+        data: { catalogoVersaoRef: refNovacao(0) },
+      });
+    }
 
     // Contrato 1 — veículo. SEM troca: MESMO ativo do contrato de origem (que
     // só encerra na ativação atômica) → verificarEstoque desligado, exceção
@@ -272,15 +284,21 @@ export class NovacaoService implements OnModuleInit {
         contaId: novacao.contaId,
         ativoId: ativoC1,
         dataAssinatura: hoje,
-        dataPrimeiraParcela: new Date(hoje.getTime() + (sim.contrato2.totalParcelas + 1) * passo * DIA_MS),
+        dataPrimeiraParcela: unico
+          ? new Date(hoje.getTime() + passo * DIA_MS)
+          : new Date(hoje.getTime() + (sim.contrato2.totalParcelas + 1) * passo * DIA_MS),
         // Total do PLANO da fase do veículo + a antecipação (a "entrada",
         // cobrada na fatura de transição) — saldoDevedor nasce = somaFase1.
-        valorTotal: somaFase1 + sim.contrato2.antecipacaoTransicao,
-        valorEntrada: sim.contrato2.antecipacaoTransicao,
-        numeroParcelas: Math.max(1, sim.contrato1.totalParcelas),
+        // Contrato único: o total do relacionamento inteiro (todas as parcelas
+        // + recebimento inicial), e a entrada é o recebimento inicial.
+        valorTotal: unico ? sim.totalAPagar : somaFase1 + sim.contrato2.antecipacaoTransicao,
+        valorEntrada: unico ? (snap.dto.recebimentoInicial ?? 0) : sim.contrato2.antecipacaoTransicao,
+        numeroParcelas: unico
+          ? Math.max(1, sim.contrato2.totalParcelas + sim.contrato1.totalParcelas)
+          : Math.max(1, sim.contrato1.totalParcelas),
         valorParcelaInicial: parcelaTotal,
         periodicidade: sim.frequencia,
-        descricaoFinanciamento: 'Novação do veículo',
+        descricaoFinanciamento: unico ? 'Compra Parcelada (novação em contrato único)' : 'Novação do veículo',
         credor: credorVeiculo,
         taxaDescontoQuitacao: paramsNovacao.taxaMensal,
       },
@@ -297,12 +315,14 @@ export class NovacaoService implements OnModuleInit {
 
     // Instrumento único (os dois contratos no mesmo ato) anexado ao contrato
     // do veículo — a assinatura dele destrava a operação inteira.
-    const documento = await this.gerarInstrumento(novacao.id, {
-      numeroContratoVeiculo: c1.numero,
-      numeroContratoTermo: c2.numero,
-      descricaoVeiculo: troca ? troca.entraDescricao : (origemVeiculo.ativo?.descricao ?? '—'),
-      periodicidade,
-    });
+    const documento = unico
+      ? await this.gerarContratoUnico(novacao.id, c1.id, ativoC1, sim.frequencia)
+      : await this.gerarInstrumento(novacao.id, {
+          numeroContratoVeiculo: c1.numero,
+          numeroContratoTermo: c2!.numero,
+          descricaoVeiculo: troca ? troca.entraDescricao : (origemVeiculo.ativo?.descricao ?? '—'),
+          periodicidade,
+        });
     await this.prisma.db.contratoCredito.update({
       where: { id: c1.id },
       data: { snapshotJson: { documento } as unknown as Prisma.InputJsonValue },
@@ -310,7 +330,7 @@ export class NovacaoService implements OnModuleInit {
 
     await this.prisma.db.novacao.update({
       where: { id: novacao.id },
-      data: { status: 'AGUARDANDO_ASSINATURA', contratoVeiculoId: c1.id, contratoTermoId: c2.id },
+      data: { status: 'AGUARDANDO_ASSINATURA', contratoVeiculoId: c1.id, contratoTermoId: c2?.id ?? null },
     });
 
     // Envio automático à ZapSign — falha NÃO derruba a aprovação (padrão RP):
@@ -322,7 +342,7 @@ export class NovacaoService implements OnModuleInit {
       await this.prisma.db.notificacao.create({
         data: {
           titulo: 'FALHA — instrumento da novação não foi à assinatura',
-          corpo: `Contratos ${c1.numero}/${c2.numero} criados, mas o envio à ZapSign falhou: ${(e as Error).message}. Reenvie pela tela do contrato ${c1.numero}.`,
+          corpo: `Contrato${c2 ? `s ${c1.numero}/${c2.numero}` : ` ${c1.numero}`} criado${c2 ? 's' : ''}, mas o envio à ZapSign falhou: ${(e as Error).message}. Reenvie pela tela do contrato ${c1.numero}.`,
           rota: `/contratos/${c1.id}`,
           tipo: 'COBRANCA',
           area: 'CARTEIRA_COBRANCA',
@@ -330,7 +350,9 @@ export class NovacaoService implements OnModuleInit {
       });
     }
 
-    return `Novação aprovada: contratos ${c1.numero} (veículo) e ${c2.numero} (Termo) criados — instrumento enviado para assinatura.`;
+    return c2
+      ? `Novação aprovada: contratos ${c1.numero} (veículo) e ${c2.numero} (Termo) criados — instrumento enviado para assinatura.`
+      : `Novação aprovada em CONTRATO ÚNICO: contrato ${c1.numero} criado com o valor global — contrato enviado para assinatura.`;
   }
 
   // ---------------------------------------------------------------
@@ -383,6 +405,62 @@ export class NovacaoService implements OnModuleInit {
     this.logger.log(`Novação ${novacao.id}: instrumento assinado — cobrança do recebimento inicial gerada (${cobranca.id})`);
   }
 
+  // Contrato ÚNICO (13/10): o instrumento é o modelo padrão do contrato de
+  // veículo, preenchido como um contrato começando hoje — valor global, entrada
+  // (recebimento inicial), N parcelas no valor único, veículo da troca.
+  private async gerarContratoUnico(novacaoId: string, contratoId: string, ativoId: string, frequencia: 'semanal' | 'quinzenal' | 'mensal') {
+    const [novacao, contrato, ativo, origem, paramsAssinatura] = await Promise.all([
+      this.prisma.db.novacao.findFirst({ where: { id: novacaoId }, include: { conta: { select: { titular: true } } } }),
+      this.prisma.db.contratoCredito.findFirst({ where: { id: contratoId } }),
+      this.prisma.db.ativo.findFirst({ where: { id: ativoId } }),
+      this.prisma.db.contratoCredito.findFirst({ where: { status: 'ATIVO', deletedAt: null }, orderBy: { createdAt: 'desc' }, select: { taxaMultaAtraso: true, taxaJurosAtraso: true } }),
+      this.assinatura.obterParametros(),
+    ]);
+    if (!novacao || !contrato || !ativo) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Dados do contrato único não encontrados' });
+    const t = novacao.conta.titular;
+    const valorTotal = cent(contrato.valorTotal);
+    const valorEntrada = cent(contrato.valorEntrada);
+    const valorParcela = cent(contrato.valorParcelaInicial);
+    const vencimentoPorFreq = { semanal: 'no mesmo dia das semanas subsequentes', quinzenal: 'a cada 15 (quinze) dias, mantendo o mesmo dia da semana', mensal: 'no mesmo dia dos meses subsequentes' } as const;
+    const pluralPorFreq = { semanal: 'semanais', quinzenal: 'quinzenais', mensal: 'mensais' } as const;
+    const linhaTestemunha = (nome: string, cpf: string) => (nome ? `${nome}\nCPF: ${cpf || '—'}` : 'Nome:\nCPF:');
+    return renderTemplate(CONTRATO_VEICULO_TEMPLATE, {
+      numero: contrato.numero,
+      compradoresBloco: `A) ${qualificarParte(t)}, doravante denominado simplesmente "COMPRADOR".`,
+      garantidorBloco: '',
+      veiculoDescricao: ativo.descricao,
+      veiculoAnoFabricacao: ativo.anoFabricacao ?? '—',
+      veiculoAnoModelo: ativo.anoModelo ?? '—',
+      veiculoCor: ativo.cor ?? '—',
+      veiculoPlaca: ativo.placa ?? '—',
+      veiculoChassi: ativo.chassi ?? '—',
+      veiculoRenavam: ativo.renavam ?? '—',
+      veiculoOrigem: ativo.origem ? ativo.origem.charAt(0) + ativo.origem.slice(1).toLowerCase() : '—',
+      veiculoCombustivel: ativo.combustivel?.toLowerCase() ?? '—',
+      veiculoKm: ativo.quilometragemEntrada ?? '—',
+      valorTotal: formatCurrency(valorTotal),
+      valorTotalExtenso: valorPorExtenso(valorTotal),
+      valorEntrada: formatCurrency(valorEntrada),
+      valorEntradaExtenso: valorPorExtenso(valorEntrada),
+      valorSaldo: formatCurrency(valorTotal - valorEntrada),
+      valorSaldoExtenso: valorPorExtenso(valorTotal - valorEntrada),
+      numeroParcelas: contrato.numeroParcelas,
+      numeroParcelasExtenso: numeroPorExtenso(contrato.numeroParcelas),
+      periodicidadePlural: pluralPorFreq[frequencia],
+      valorParcela: formatCurrency(valorParcela),
+      valorParcelaExtenso: valorPorExtenso(valorParcela),
+      dataPrimeiraParcela: contrato.dataPrimeiraParcela.toLocaleDateString('pt-BR'),
+      vencimentoSubsequente: vencimentoPorFreq[frequencia],
+      taxaMulta: origem ? Number(origem.taxaMultaAtraso.toString()) : 2,
+      taxaJuros: origem ? Number(origem.taxaJurosAtraso.toString()) : 1,
+      dataAssinaturaLinha: `VITORIA/ES, ${dataPorExtenso(new Date())}.`,
+      compradorAssinatura: `${t.nome}\nCPF: ${t.cpfCnpj}`,
+      assinaturasAdicionais: '',
+      testemunha1Linha: linhaTestemunha(paramsAssinatura.testemunha1Nome, paramsAssinatura.testemunha1Cpf),
+      testemunha2Linha: linhaTestemunha(paramsAssinatura.testemunha2Nome, paramsAssinatura.testemunha2Cpf),
+    });
+  }
+
   // ---------------------------------------------------------------
   // 4. ATIVAÇÃO (A7 passo 6): extingue as origens e gera os dois cronogramas.
   async ativar(novacaoId: string, paymentDateISO: string) {
@@ -390,11 +468,12 @@ export class NovacaoService implements OnModuleInit {
       where: { id: novacaoId, status: { in: ['AGUARDANDO_ASSINATURA', 'AGUARDANDO_RECEBIMENTO'] } },
     });
     if (!novacao) return { resultado: 'estado_invalido' };
-    if (!novacao.contratoVeiculoId || !novacao.contratoTermoId) return { resultado: 'contratos_ausentes' };
     const snap = novacao.snapshotJson as unknown as SnapshotNovacao;
     const sim = snap.simulacao;
+    const unico = !!snap.dto.contratoUnico;
+    if (!novacao.contratoVeiculoId || (!novacao.contratoTermoId && !unico)) return { resultado: 'contratos_ausentes' };
     const passo = sim.frequencia === 'mensal' ? 30 : sim.frequencia === 'quinzenal' ? 14 : 7;
-    const novos = [novacao.contratoVeiculoId, novacao.contratoTermoId];
+    const novos = [novacao.contratoVeiculoId, novacao.contratoTermoId].filter((x): x is string => !!x);
 
     // Etapa 1 (TRANSAÇÃO ÚNICA) — extinção das obrigações de origem. Vem ANTES
     // dos cronogramas: faturas antigas NOVADAS não recebem as parcelas novas.
@@ -454,15 +533,18 @@ export class NovacaoService implements OnModuleInit {
     // Etapa 2 — cronogramas (ativarComCronograma é idempotente; job tem retry).
     // Termo primeiro (ocupa as primeiras faturas)...
     const dataPrimeiraC2 = this.rolarParaFuturo(dataCiclo ?? new Date(Date.now() + passo * DIA_MS), passo);
-    await this.prisma.db.contratoCredito.update({
-      where: { id: novacao.contratoTermoId },
-      data: { dataPrimeiraParcela: dataPrimeiraC2 },
-    });
-    await this.contrato.ativarComCronograma(novacao.contratoTermoId);
+    if (novacao.contratoTermoId) {
+      await this.prisma.db.contratoCredito.update({
+        where: { id: novacao.contratoTermoId },
+        data: { dataPrimeiraParcela: dataPrimeiraC2 },
+      });
+      await this.contrato.ativarComCronograma(novacao.contratoTermoId);
+    }
 
     // ...o veículo começa APÓS a fatura de transição (última do Termo).
+    // Contrato único: começa no próximo ciclo, sem fase do Termo.
     const nTermo = Math.max(1, sim.contrato2.totalParcelas);
-    const dataPrimeiraC1 = new Date(dataPrimeiraC2.getTime() + nTermo * passo * DIA_MS);
+    const dataPrimeiraC1 = novacao.contratoTermoId ? new Date(dataPrimeiraC2.getTime() + nTermo * passo * DIA_MS) : dataPrimeiraC2;
     await this.prisma.db.contratoCredito.update({
       where: { id: novacao.contratoVeiculoId },
       data: { dataPrimeiraParcela: dataPrimeiraC1 },
@@ -472,7 +554,7 @@ export class NovacaoService implements OnModuleInit {
     // Etapa 3 — antecipação do veículo NA fatura de transição (A6.3): a última
     // fatura do Termo é completada até o valor periódico padrão.
     const antecipacao = sim.contrato2.antecipacaoTransicao;
-    if (antecipacao > 0) {
+    if (antecipacao > 0 && novacao.contratoTermoId) {
       const ultimaParcelaTermo = await this.prisma.db.parcela.findFirst({
         where: { contratoId: novacao.contratoTermoId },
         orderBy: { numero: 'desc' },
@@ -530,7 +612,7 @@ export class NovacaoService implements OnModuleInit {
         },
       },
     });
-    this.logger.warn(`Novação ${novacao.id} ATIVA: origens extintas, cronogramas gerados (Termo ${nTermo}p → veículo)`);
+    this.logger.warn(`Novação ${novacao.id} ATIVA: origens extintas, cronogramas gerados (${novacao.contratoTermoId ? `Termo ${nTermo}p → veículo` : 'contrato único'})`);
     return { resultado: 'ativada' };
   }
 

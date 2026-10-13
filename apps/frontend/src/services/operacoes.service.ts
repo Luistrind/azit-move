@@ -251,7 +251,7 @@ export const operacoesService = {
   },
   async solicitarNovacao(
     contaId: string,
-    body: { prazoMeses: number; frequencia?: 'semanal' | 'quinzenal' | 'mensal'; desconto?: number; recebimentoInicial?: number; trocaAtivoId?: string; acrescimo?: number; acrescimoMotivo?: string; observacao?: string },
+    body: { prazoMeses: number; frequencia?: 'semanal' | 'quinzenal' | 'mensal'; desconto?: number; recebimentoInicial?: number; trocaAtivoId?: string; acrescimo?: number; acrescimoMotivo?: string; contratoUnico?: boolean; observacao?: string },
   ): Promise<{ id: string; status: string; valorParcela: number }> {
     const { data } = await api.post(`/api/v1/contas/${contaId}/novacao`, body);
     return data;
