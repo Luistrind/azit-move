@@ -298,7 +298,10 @@ export class NovacaoService implements OnModuleInit {
           : Math.max(1, sim.contrato1.totalParcelas),
         valorParcelaInicial: parcelaTotal,
         periodicidade: sim.frequencia,
-        descricaoFinanciamento: unico ? 'Compra Parcelada (novação em contrato único)' : 'Novação do veículo',
+        // Mesmo nome que a formalização dá ao item (13/10, Luís): a fatura sai
+        // "Parcela n/N · Compra Parcelada <veículo atual>" + "Proteção veicular",
+        // sem citar novação — o veículo é o que ENTRA, quando há troca.
+        descricaoFinanciamento: `Compra Parcelada ${troca ? troca.entraDescricao : (origemVeiculo.ativo?.descricao ?? 'veículo')}`,
         credor: credorVeiculo,
         taxaDescontoQuitacao: paramsNovacao.taxaMensal,
       },
@@ -474,6 +477,7 @@ export class NovacaoService implements OnModuleInit {
     if (!novacao.contratoVeiculoId || (!novacao.contratoTermoId && !unico)) return { resultado: 'contratos_ausentes' };
     const passo = sim.frequencia === 'mensal' ? 30 : sim.frequencia === 'quinzenal' ? 14 : 7;
     const novos = [novacao.contratoVeiculoId, novacao.contratoTermoId].filter((x): x is string => !!x);
+    const cobrancasNovadas: string[] = [];
 
     // Etapa 1 (TRANSAÇÃO ÚNICA) — extinção das obrigações de origem. Vem ANTES
     // dos cronogramas: faturas antigas NOVADAS não recebem as parcelas novas.
@@ -504,6 +508,13 @@ export class NovacaoService implements OnModuleInit {
         data: { status: 'NOVADA' },
       });
       // Faturas não pagas da conta (inclusive RENEGOCIADAS de acordos) → NOVADAS.
+      // As cobranças delas no Asaas saem do ar depois da transação (como no
+      // acordo) — pego no Renato 13/10: ficavam vivas no painel do Asaas.
+      const comCobranca = await tx.fatura.findMany({
+        where: { contaId: novacao.contaId, status: { in: ['ABERTA', 'FECHADA', 'RENEGOCIADA'] }, asaasChargeId: { not: null } },
+        select: { asaasChargeId: true },
+      });
+      cobrancasNovadas.push(...comCobranca.map((f) => f.asaasChargeId!));
       await tx.fatura.updateMany({
         where: { contaId: novacao.contaId, status: { in: ['ABERTA', 'FECHADA', 'RENEGOCIADA'] } },
         data: { status: 'NOVADA' },
@@ -529,6 +540,9 @@ export class NovacaoService implements OnModuleInit {
       });
       return proximaFatura?.dataVencimento ?? null;
     }, { timeout: 60_000 });
+    // Falha na remoção não propaga (removerCobranca só loga): cobrança órfã é
+    // menos grave do que uma ativação pela metade.
+    for (const chargeId of cobrancasNovadas) await this.asaas.removerCobranca(chargeId);
 
     // Etapa 2 — cronogramas (ativarComCronograma é idempotente; job tem retry).
     // Termo primeiro (ocupa as primeiras faturas)...

@@ -1098,6 +1098,10 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > cronograma novo nasce no **ciclo da conta** (próxima fatura aberta das origens); quando a data
 > precisar ser outra, o deslocamento é operacional (`deploy/deslocar-vencimentos.sh`, que aceita
 > contrato nascido de novação: só as faturas que carregam parcelas dele se movem).
+> O item principal do contrato novo tem o **mesmo nome da formalização** ("Compra Parcelada
+> <veículo atual>", o que entra na troca) — a fatura sai "Parcela n/N · Compra Parcelada <veículo>"
+> + "Proteção veicular", sem citar novação (`deploy/padronizar-item-contrato.sh` corrige contrato já
+> nascido). E as cobranças Asaas das faturas que viram NOVADAS são removidas na ativação, como no acordo.
 >
 > **Fonte das fórmulas:** `docs/Planilha Novacao de Contrato - Azit Move.xlsx` (extraída
 > célula a célula, 13/09) — abas: **Parâmetros** (NV001–019, ICVF/ICPF, mora 2%+1% a.m.
