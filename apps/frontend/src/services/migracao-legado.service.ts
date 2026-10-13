@@ -273,7 +273,7 @@ export const migracaoLegadoService = {
     const { data } = await api.get<PlanoMigracao>(`/api/v1/migracao-legado/casos/${id}/migracao/previa`);
     return data;
   },
-  async migrar(id: string): Promise<{ contratoId: string; titularId: string; contratoNumero: string; assinatura: { parada: boolean; motivo: string }; substituicao: { apagadas: number; emitidasAgora: number; mantidas: { vencimento: string; erro: string }[] } }> {
+  async migrar(id: string): Promise<{ contratoId: string; titularId: string; contratoNumero: string; assinatura: { parada: boolean; motivo: string }; substituicao: { apagadas: number; emitidasAgora: number; mantidas: { vencimento: string; erro: string }[] }; removidas?: { apagadas: number; mantidas: { chargeId: string; erro: string }[] } }> {
     const { data } = await api.post(`/api/v1/migracao-legado/casos/${id}/migrar`);
     return data;
   },

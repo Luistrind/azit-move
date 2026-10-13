@@ -314,7 +314,7 @@ export function MigracaoLegadoCasoPage() {
             </table>
             <div className="flex justify-end gap-[8px]">
               <button className={btn} style={btnSec} onClick={() => setPrevia(null)}>Cancelar</button>
-              <button className={btn} style={btnPri} disabled={ocupado} onClick={() => { const p = previa; setPrevia(null); void rodar(async () => { const r = await svc.migrar(id); if (!r.assinatura.parada) toast.erro(`Contrato ${r.contratoNumero} criado, mas a assinatura do Asaas não foi parada: ${r.assinatura.motivo}`); if (r.substituicao?.mantidas?.length) toast.erro(`${r.substituicao.mantidas.length} cobrança(s) a vencer não foram apagadas no Asaas e ficaram amarradas`); return r; }, `Caso migrado — contrato ${p.contrato.numero}`); }}>Confirmar migração</button>
+              <button className={btn} style={btnPri} disabled={ocupado} onClick={() => { const p = previa; setPrevia(null); void rodar(async () => { const r = await svc.migrar(id); if (!r.assinatura.parada) toast.erro(`Contrato ${r.contratoNumero} criado, mas a assinatura do Asaas não foi parada: ${r.assinatura.motivo}`); if (r.substituicao?.mantidas?.length) toast.erro(`${r.substituicao.mantidas.length} cobrança(s) a vencer não foram apagadas no Asaas e ficaram amarradas`); if (r.removidas?.mantidas?.length) toast.erro(`${r.removidas.mantidas.length} cobrança(s) antiga(s) cobertas pelo acordo não foram apagadas no Asaas — apague no painel`); return r; }, `Caso migrado — contrato ${p.contrato.numero}`); }}>Confirmar migração</button>
             </div>
           </div>
         </Modal>

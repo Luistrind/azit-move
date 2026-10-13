@@ -890,12 +890,15 @@ export class LegadoMigracaoService {
 
     // Entrada (§26.8): valor do contrato, pago; as transações ficam como prova no caso
     const linhaEntrada = conc.linhas.find((x) => x.serie === 'entrada');
+    // Declarada (§26.15): entrada e 1ª parcela valem as da declaração quando os termos não trazem.
+    const entradaValor = (termos.entradaValor ?? 0) > 0 ? (termos.entradaValor ?? 0) : conc.modo === 'DECLARADA' ? (linhaEntrada?.esperadoValor ?? 0) : 0;
+    const primeiraDeclarada = conc.modo === 'DECLARADA' ? linhasParcela[0]?.esperadoEm ?? null : null;
     let entrada: PlanoMigracao['entrada'] = null;
-    if ((termos.entradaValor ?? 0) > 0) {
+    if (entradaValor > 0) {
       const rec = linhaEntrada ? reconhecidas.get(linhaEntrada.chave) : undefined;
       const pagoEm = linhaEntrada?.pagoEm ?? linhaEntrada?.cobradoEm ?? dataAssinatura;
       const paga = !!linhaEntrada && (linhaEntrada.situacao === 'paga' || linhaEntrada.situacao === 'paga_com_encargo' || !!rec?.desfecho);
-      entrada = { valor: termos.entradaValor ?? 0, pagoEm: paga ? pagoEm : dataAssinatura, asaasChargeId: chargeDe(linhaEntrada?.cobrancaId) ?? chargeDe(linhaEntrada?.partes[0]?.cobrancaId) };
+      entrada = { valor: entradaValor, pagoEm: paga ? pagoEm : dataAssinatura, asaasChargeId: chargeDe(linhaEntrada?.cobrancaId) ?? chargeDe(linhaEntrada?.partes[0]?.cobrancaId) };
     }
 
     // Fora do cronograma: reembolso solto → RP de 1 parcela com fatura própria;
@@ -931,7 +934,7 @@ export class LegadoMigracaoService {
       titular: { cpfCnpj: cpf, nome: termos.compradorNome ?? caso.nome, existente: titularExistente ? { id: titularExistente.id, nome: titularExistente.nome } : null },
       veiculo: { descricao: descricaoVeiculo, placa, existente: veiculoExistente, fipe, fipeMotivo },
       estruturaId: estrutura.id,
-      contrato: { numero, dataAssinatura, dataPrimeiraParcela: modo === 'ASAAS' ? (linhasParcela[0]?.cobradoEm ?? primeiraEm) : primeiraEm, numeroParcelas: qtd, valorParcela, valorTotal, valorEntrada: termos.entradaValor ?? 0, modoVencimentos: modo, taxaDescontoMensal },
+      contrato: { numero, dataAssinatura, dataPrimeiraParcela: primeiraDeclarada ?? (modo === 'ASAAS' ? (linhasParcela[0]?.cobradoEm ?? primeiraEm) : primeiraEm), numeroParcelas: qtd, valorParcela, valorTotal, valorEntrada: entradaValor, modoVencimentos: modo, taxaDescontoMensal },
       entrada,
       faturas,
       rps,
