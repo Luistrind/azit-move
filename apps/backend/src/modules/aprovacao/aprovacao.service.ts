@@ -355,6 +355,9 @@ export class AprovacaoService {
         // Parecer do analista (caso real 22/09: o aprovador via só "Ver parecer"
         // e não tinha onde ler o texto). Vem da trilha de auditoria.
         parecer: { texto: string; tipo: string | null; emitidoPor: string; emitidoEm: string } | null;
+        // Veículo da proposta (pedido Luís 14/10): quilometragem e quantos contratos
+        // o carro já teve dizem o quanto ele está "rodado" — pesa na decisão.
+        veiculo: { quilometragem: number | null; ano: string | null; contratosAnteriores: number } | null;
       }
     >();
     if (analiseIds.length === 0) return mapa;
@@ -380,7 +383,7 @@ export class AprovacaoService {
           select: {
             valorParcela: true,
             frequencia: true,
-            ativo: { select: { descricao: true, placa: true } },
+            ativo: { select: { descricao: true, placa: true, quilometragemEntrada: true, anoFabricacao: true, anoModelo: true, _count: { select: { contratosCredito: true } } } },
           },
         },
         participantes: {
@@ -401,6 +404,13 @@ export class AprovacaoService {
         rendaPresumida: p?.rendaPresumida && this.cent(p.rendaPresumida) > 0 ? this.cent(p.rendaPresumida) : null,
         rendaApurada: p?.rendaApurada ? this.cent(p.rendaApurada) : null,
         parecer: pareceres.get(a.id) ?? null,
+        veiculo: a.proposta.ativo
+          ? {
+              quilometragem: a.proposta.ativo.quilometragemEntrada ?? null,
+              ano: a.proposta.ativo.anoFabricacao || a.proposta.ativo.anoModelo ? `${a.proposta.ativo.anoFabricacao ?? '?'}/${a.proposta.ativo.anoModelo ?? '?'}` : null,
+              contratosAnteriores: a.proposta.ativo._count.contratosCredito,
+            }
+          : null,
       });
     }
     return mapa;

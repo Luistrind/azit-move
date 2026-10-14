@@ -269,7 +269,21 @@ function CardAprovacao({
       {a.contextoAnalise && (
         <div className="mt-[12px] rounded-[10px] p-[10px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
           <div className="grid grid-cols-2 gap-[8px] sm:grid-cols-4">
-            <div><span style={{ color: 'var(--text-muted)' }}>Ativo da proposta</span><div className="font-bold">{a.contextoAnalise.ativo}</div></div>
+            <div>
+              <span style={{ color: 'var(--text-muted)' }}>Ativo da proposta</span>
+              <div className="font-bold">{a.contextoAnalise.ativo}</div>
+              {/* Quilometragem e contratos anteriores do carro (pedido Luís 14/10):
+                  dizem o quanto ele está rodado — faltava na decisão. */}
+              {a.contextoAnalise.veiculo && (
+                <div className="text-[11.5px]" style={{ color: 'var(--text-secondary)' }}>
+                  {[
+                    a.contextoAnalise.veiculo.ano,
+                    a.contextoAnalise.veiculo.quilometragem != null ? `${a.contextoAnalise.veiculo.quilometragem.toLocaleString('pt-BR')} km na entrada` : 'km não informada',
+                    a.contextoAnalise.veiculo.contratosAnteriores === 0 ? '1º contrato do veículo' : `${a.contextoAnalise.veiculo.contratosAnteriores} contrato(s) anterior(es)`,
+                  ].filter(Boolean).join(' · ')}
+                </div>
+              )}
+            </div>
             <div><span style={{ color: 'var(--text-muted)' }}>Parcela{a.contextoAnalise.frequencia ? ` (${a.contextoAnalise.frequencia})` : ''}</span><div className="font-bold tabular-nums">{formatCurrency(a.contextoAnalise.valorParcela)}</div></div>
             <div><span style={{ color: 'var(--text-muted)' }}>Renda declarada</span><div className="font-bold tabular-nums">{a.contextoAnalise.rendaDeclarada !== null ? formatCurrency(a.contextoAnalise.rendaDeclarada) : '—'}</div></div>
             <div><span style={{ color: 'var(--text-muted)' }}>Renda apurada</span><div className="font-bold tabular-nums">{a.contextoAnalise.rendaApurada !== null ? formatCurrency(a.contextoAnalise.rendaApurada) : '—'}</div></div>

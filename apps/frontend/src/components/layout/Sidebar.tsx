@@ -173,13 +173,9 @@ export function Sidebar() {
       className="flex h-full w-[236px] flex-none flex-col"
       style={{ background: 'var(--navy)', color: '#fff' }}
     >
+      {/* Marca oficial (14/10): símbolo do triângulo + wordmark; o bloco "a" era provisório. */}
       <div className="flex items-center gap-[10px] px-[22px] pb-[18px] pt-[22px]">
-        <div
-          className="flex h-[30px] w-[30px] items-center justify-center rounded-[8px] font-display text-[17px] font-extrabold"
-          style={{ background: 'var(--accent)', color: 'var(--navy)' }}
-        >
-          a
-        </div>
+        <img src="/marca-icone.png" alt="" width={32} height={32} className="h-[32px] w-[32px]" />
         <span className="font-display text-[18px] font-bold tracking-[-0.01em]">
           azit<span style={{ color: 'var(--accent)' }}>move</span>
         </span>

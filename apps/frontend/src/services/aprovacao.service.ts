@@ -45,6 +45,8 @@ export interface Aprovacao {
     rendaApurada: number | null;
     // Parecer do analista — o que o Comitê está aprovando ou não.
     parecer: { texto: string; tipo: string | null; emitidoPor: string; emitidoEm: string } | null;
+    // Veículo da proposta (14/10): quilometragem, ano e quantos contratos o carro já teve.
+    veiculo: { quilometragem: number | null; ano: string | null; contratosAnteriores: number } | null;
   } | null;
   // Situação do usuário logado frente a esta solicitação (calculada no backend).
   minha: { podeAprovar: boolean; ehSolicitante: boolean; jaDecidiu: boolean };

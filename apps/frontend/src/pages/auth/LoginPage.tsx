@@ -46,12 +46,7 @@ export function LoginPage() {
         style={{ background: 'var(--surface)', animation: 'azFade .28s ease both' }}
       >
         <div className="mb-[22px] flex items-center gap-[10px]">
-          <div
-            className="flex h-[30px] w-[30px] items-center justify-center rounded-[8px] font-display text-[17px] font-extrabold"
-            style={{ background: 'var(--accent)', color: 'var(--navy)' }}
-          >
-            a
-          </div>
+          <img src="/marca-icone.png" alt="" width={32} height={32} className="h-[32px] w-[32px]" />
           <span className="font-display text-[18px] font-bold tracking-[-0.01em]">
             azit<span style={{ color: 'var(--accent)' }}>move</span>
           </span>
