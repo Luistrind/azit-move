@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 
-// Modal genérico (Doc 3 §5.8). Overlay + card; fecha no backdrop e no Esc.
+// Modal genérico (Doc 3 §5.8). Overlay + card; fecha SÓ no × e no Esc — clique
+// fora NÃO fecha (reclamação dos usuários 14/10: perdiam o que estavam preenchendo).
 // O corpo ROLA quando o conteúdo passa de ~88% da tela — o card nunca estoura
 // a viewport (correção 14/09: a memória de cálculo da novação, com centenas de
 // linhas, empurrava a página inteira). `largura` opcional para modais densos.
@@ -23,7 +24,6 @@ export function Modal({ open, onClose, title, children, largura }: ModalProps) {
   if (!open) return null;
   return (
     <div
-      onClick={onClose}
       className="fixed inset-0 z-50 flex items-center justify-center p-[20px]"
       style={{ background: 'rgba(0,16,41,.45)' }}
     >

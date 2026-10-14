@@ -295,7 +295,7 @@ export function BotaoVerRetorno({ titulo, resultado }: { titulo: string; resulta
         👁 Ver retorno
       </button>
       {aberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-[16px]" style={{ background: 'rgba(0,16,41,.55)' }} onClick={() => setAberto(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-[16px]" style={{ background: 'rgba(0,16,41,.55)' }}>
           <div
             className="flex h-[92vh] w-[min(1100px,95vw)] flex-col overflow-hidden rounded-[14px]"
             style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}

@@ -51,7 +51,6 @@ export function DocumentoViewer({ doc, onClose }: { doc: { nome: string; url: st
 
   return (
     <div
-      onClick={onClose}
       className="fixed inset-0 z-50 flex items-center justify-center p-[20px]"
       style={{ background: 'rgba(0,16,41,.6)' }}
     >
