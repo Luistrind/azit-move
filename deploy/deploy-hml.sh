@@ -59,7 +59,8 @@ fi
 etapa "5/5 Saúde"
 checar_saude https://api-hml.azitmove.com.br/api/v1/health || aviso "Se for a 1ª subida, o certificado pode levar 1–2 min (DNS precisa apontar para o servidor)."
 
-SHA=$(git -C "$REPO_DIR" rev-parse "$REF")
+# Sempre o COMMIT (tag anotada resolve para o objeto da tag e o deploy-prod não achava — 15/10).
+SHA=$(git -C "$REPO_DIR" rev-parse "$REF^{commit}")
 mkdir -p "$BACKUP_ROOT"
 echo "$(date '+%Y-%m-%d %H:%M') $REF $SHA" >> "$BACKUP_ROOT/homolog.log"
 
