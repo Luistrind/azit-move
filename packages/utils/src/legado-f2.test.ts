@@ -609,5 +609,15 @@ describe('conciliação declarada (doc 02 §26.15)', () => {
     expect(r.fora.filter((f) => f.classe !== 'outra')).toHaveLength(0);
     expect(r.fora.map((f) => f.cobrancaId)).not.toContain('ce');
     expect(r.resumo).toMatchObject({ parcelasPagas: 3, parcelasPendentes: 3, parcelasFuturas: 1 });
+    expect(r.periodicidade).toBe('semanal');
+  });
+
+  it('periodicidade declarada (Kaique 15/10): mensal segue para o planner; ausente = semanal', () => {
+    const r = expandirConciliacaoDeclarada({
+      termos, hoje: '2026-10-15', asaasIdDe: () => null, cobrancas: [],
+      declaracao: { periodicidade: 'mensal', parcelas: [{ numero: 1, vencimento: '2026-09-12', situacao: 'paga', pagoEm: '2026-09-12' }, { numero: 2, vencimento: '2026-10-12', situacao: 'futura' }] },
+    });
+    expect(r.periodicidade).toBe('mensal');
+    expect(r.linhas.find((l) => l.numero === 2)?.situacao).toBe('pendente'); // 12/10 já passou em 15/10
   });
 });

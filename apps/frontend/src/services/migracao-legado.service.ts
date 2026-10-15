@@ -124,7 +124,7 @@ export interface VinculoManual { cobrancaId: string; chave: string; em: string; 
 export interface PlanoMigracao {
   titular: { cpfCnpj: string; nome: string; existente: { id: string; nome: string } | null };
   veiculo: { descricao: string; placa: string | null; existente: { id: string; descricao: string } | null; fipe: { valor: number; codigoFipe: string; modeloFipe: string; anoModelo: number; referencia: string; alternativas: string[] } | null; fipeMotivo: string | null };
-  contrato: { numero: string; dataAssinatura: string; dataPrimeiraParcela: string; numeroParcelas: number; valorParcela: number; valorTotal: number; valorEntrada: number; modoVencimentos: string; taxaDescontoMensal: number | null };
+  contrato: { numero: string; dataAssinatura: string; dataPrimeiraParcela: string; numeroParcelas: number; valorParcela: number; valorTotal: number; valorEntrada: number; modoVencimentos: string; taxaDescontoMensal: number | null; periodicidade: 'semanal' | 'quinzenal' | 'mensal' };
   entrada: { valor: number; pagoEm: string; asaasChargeId: string | null } | null;
   faturas: { origem: string; vencimento: string; status: string; valorTotal: number; valorPago: number | null; pagoEm: string | null; asaasChargeId: string | null; itens: { tipo: string; descricao: string; valor: number }[] }[];
   rps: { rotulo: string; parcelas: { n: number; valor: number }[] }[];

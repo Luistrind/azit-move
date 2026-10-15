@@ -404,7 +404,7 @@ export class LegadoConciliacaoService {
 
   // ---------------- Conciliação ----------------
 
-  conciliar(caso: CasoConciliavel): ResultadoConciliacao & { reconhecidas: DivergenciaReconhecida[]; vinculos: VinculoManual[]; acordosConfirmados: AcordoConfirmado[]; acordoEmAndamento?: AcordoEmAndamentoDeclarado | null; rotulos?: Record<number, string> } {
+  conciliar(caso: CasoConciliavel): ResultadoConciliacao & { reconhecidas: DivergenciaReconhecida[]; vinculos: VinculoManual[]; acordosConfirmados: AcordoConfirmado[]; acordoEmAndamento?: AcordoEmAndamentoDeclarado | null; rotulos?: Record<number, string>; periodicidade?: 'semanal' | 'quinzenal' | 'mensal' } {
     const vinculos = ((caso.vinculosManuais as VinculoManual[] | null) ?? []);
     const acordosConfirmados = ((caso.acordosConfirmados as AcordoConfirmado[] | null) ?? []);
     const termos = termosEfetivos(caso.termos as TermosContratoLegado | null);
@@ -799,6 +799,7 @@ const acordoEmAndamentoSchema = z.object({
 });
 const declaracaoSchema = z.object({
   observacao: z.string().max(2000).nullable().optional(),
+  periodicidade: z.enum(['semanal', 'quinzenal', 'mensal']).nullable().optional(), // 15/10: default semanal
   entrada: z.object({ valor: z.number().int().min(0), pagoEm: dataISO.nullable().optional(), cobrancas: z.array(z.string().min(1)).optional() }).nullable().optional(),
   parcelas: z.array(parcelaDeclaradaSchema).min(1),
   intermediarias: z.array(parcelaDeclaradaSchema).optional(),

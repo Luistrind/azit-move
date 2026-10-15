@@ -37,8 +37,13 @@ export interface AcordoEmAndamentoDeclarado {
   observacao?: string | null;
 }
 
+export type PeriodicidadeDeclarada = 'semanal' | 'quinzenal' | 'mensal';
+
 export interface DeclaracaoConciliacao {
   observacao?: string | null;
+  // Periodicidade do contrato (15/10, caso Kaique mensal): default semanal. Manda na
+  // periodicidade do contrato migrado, nas adiadas (fim do cronograma) e nas cotas do acordo.
+  periodicidade?: PeriodicidadeDeclarada | null;
   entrada?: { valor: number; pagoEm?: string | null; cobrancas?: string[] } | null;
   parcelas: ParcelaDeclarada[];
   intermediarias?: ParcelaDeclarada[];
@@ -55,7 +60,7 @@ export function expandirConciliacaoDeclarada(params: {
   cobrancas: CobrancaConciliavel[]; // id = id interno; asaasPaymentId por `asaasIdDe`
   asaasIdDe: (cobrancaId: string) => string | null;
   hoje: string;
-}): ResultadoConciliacao & { reconhecimentos: ReconhecimentoSintetizado[]; acordoEmAndamento: AcordoEmAndamentoDeclarado | null; rotulos: Record<number, string> } {
+}): ResultadoConciliacao & { reconhecimentos: ReconhecimentoSintetizado[]; acordoEmAndamento: AcordoEmAndamentoDeclarado | null; rotulos: Record<number, string>; periodicidade: PeriodicidadeDeclarada } {
   const { declaracao: d, termos, hoje } = params;
   const rotulos: Record<number, string> = {};
   const porAsaas = new Map<string, CobrancaConciliavel>();
@@ -186,5 +191,5 @@ export function expandirConciliacaoDeclarada(params: {
     acordosSemConfirmar: 0,
     deslocamentoSemanas: 0,
   };
-  return { modo: 'DECLARADA', linhas, fora, acordos: [], resumo, incompleta: false, reconhecimentos, acordoEmAndamento: acordo, rotulos };
+  return { modo: 'DECLARADA', linhas, fora, acordos: [], resumo, incompleta: false, reconhecimentos, acordoEmAndamento: acordo, rotulos, periodicidade: d.periodicidade ?? 'semanal' };
 }

@@ -2370,6 +2370,9 @@ valer no lugar das regras.
    prova), pagoEm, pagoValor (principal, sem juros), encargo, valor, observacao`; `fora[]` lista as
    cobranças avulsas que viram fatura própria. Situações: paga, paga_com_encargo, paga_por_acordo,
    **em_acordo**, vencida, pendente, nao_cobrada, **adiada** (vai ao fim do cronograma), futura.
+   `periodicidade` (semanal | quinzenal | mensal, default semanal — caso Kaique 15/10, contrato
+   mensal dia 12): manda na periodicidade do contrato e dos itens migrados, no passo das adiadas e
+   das cotas do acordo; mensal anda por mês do calendário com clamp no fim do mês.
    `rotulo` troca o "Parcela n/N" do item da fatura (ex.: **"Resíduo da parcela 31"** — decisão
    Luís 13/10, caso Wallace: metade paga fica na parcela com `valor` reduzido, a outra metade vira
    parcela extra no fim do cronograma com o rótulo; a numeração "n/N" não muda).

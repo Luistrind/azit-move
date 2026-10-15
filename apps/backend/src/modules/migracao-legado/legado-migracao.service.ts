@@ -92,7 +92,7 @@ export interface PlanoMigracao {
   titular: { cpfCnpj: string; nome: string; existente: { id: string; nome: string } | null };
   veiculo: { descricao: string; placa: string | null; existente: { id: string; descricao: string } | null; fipe: ConsultaFipe | null; fipeMotivo: string | null };
   estruturaId: string;
-  contrato: { numero: string; dataAssinatura: string; dataPrimeiraParcela: string; numeroParcelas: number; valorParcela: number; valorTotal: number; valorEntrada: number; modoVencimentos: string; taxaDescontoMensal: number | null };
+  contrato: { numero: string; dataAssinatura: string; dataPrimeiraParcela: string; numeroParcelas: number; valorParcela: number; valorTotal: number; valorEntrada: number; modoVencimentos: string; taxaDescontoMensal: number | null; periodicidade: 'semanal' | 'quinzenal' | 'mensal' };
   entrada: { valor: number; pagoEm: string; asaasChargeId: string | null } | null;
   faturas: FaturaPlano[];
   rps: RpPlano[];
@@ -140,6 +140,8 @@ export class LegadoMigracaoService {
     const plano = await this.planejar(caso);
     const termos = termosEfetivos(caso.termos as unknown as TermosContratoLegado);
     const reconhecidas = (caso.divergenciasReconhecidas as DivergenciaReconhecida[] | null) ?? [];
+    // Periodicidade do contrato migrado (15/10): a declarada (Kaique mensal) ou semanal.
+    const PER = ({ semanal: 'SEMANAL', quinzenal: 'QUINZENAL', mensal: 'MENSAL' } as const)[plano.contrato.periodicidade];
 
     const resultado = await this.prisma.db.$transaction(async (tx) => {
       // 1. Titular + conta (cadastro único pelo CPF — Regra 8)
@@ -216,7 +218,7 @@ export class LegadoMigracaoService {
           saldoDevedor: reais(plano.contrato.valorTotal - plano.contrato.valorEntrada),
           numeroParcelas: plano.contrato.numeroParcelas,
           valorParcelaInicial: reais(plano.contrato.valorParcela),
-          periodicidade: 'SEMANAL',
+          periodicidade: PER,
           indiceReajuste: null, // §26.9 item 5: reajuste ignorado no legado
           taxaMultaAtraso: termos.multaAtrasoPct ?? 2,
           taxaJurosAtraso: termos.jurosMensalPct ?? 1,
@@ -242,14 +244,14 @@ export class LegadoMigracaoService {
         select: { id: true, numero: true },
       });
       const itemVeiculo = await tx.itemContratado.create({
-        data: { contratoId: contrato.id, descricao: `Compra Parcelada ${plano.veiculo.descricao}`, natureza: 'PARCELADO', credor: 'AZIT', valor: reais(plano.contrato.valorTotal - plano.contrato.valorEntrada), numeroParcelas: plano.contrato.numeroParcelas, periodicidade: 'SEMANAL', dataInicio: d(plano.contrato.dataPrimeiraParcela) },
+        data: { contratoId: contrato.id, descricao: `Compra Parcelada ${plano.veiculo.descricao}`, natureza: 'PARCELADO', credor: 'AZIT', valor: reais(plano.contrato.valorTotal - plano.contrato.valorEntrada), numeroParcelas: plano.contrato.numeroParcelas, periodicidade: PER, dataInicio: d(plano.contrato.dataPrimeiraParcela) },
         select: { id: true },
       });
       if (termos.seguroSemanal > 0) {
-        await tx.itemContratado.create({ data: { contratoId: contrato.id, descricao: 'Proteção veicular (legado)', natureza: 'RECORRENTE', credor: 'AZIT', valor: reais(termos.seguroSemanal), periodicidade: 'SEMANAL', dataInicio: d(plano.contrato.dataPrimeiraParcela) } });
+        await tx.itemContratado.create({ data: { contratoId: contrato.id, descricao: 'Proteção veicular (legado)', natureza: 'RECORRENTE', credor: 'AZIT', valor: reais(termos.seguroSemanal), periodicidade: PER, dataInicio: d(plano.contrato.dataPrimeiraParcela) } });
       }
       if (termos.taxaSemanal > 0) {
-        await tx.itemContratado.create({ data: { contratoId: contrato.id, descricao: 'Taxa de boleto e PIX (legado)', natureza: 'RECORRENTE', credor: 'AZIT', valor: reais(termos.taxaSemanal), periodicidade: 'SEMANAL', dataInicio: d(plano.contrato.dataPrimeiraParcela) } });
+        await tx.itemContratado.create({ data: { contratoId: contrato.id, descricao: 'Taxa de boleto e PIX (legado)', natureza: 'RECORRENTE', credor: 'AZIT', valor: reais(termos.taxaSemanal), periodicidade: PER, dataInicio: d(plano.contrato.dataPrimeiraParcela) } });
       }
 
       // 4. Entrada materializada (§26.8)
@@ -280,7 +282,7 @@ export class LegadoMigracaoService {
             cronogramaGeradoEm: new Date(),
             numeroParcelas: rp.parcelas.length,
             valorParcelaInicial: reais(rp.parcelas[0].valor),
-            periodicidade: 'SEMANAL',
+            periodicidade: PER,
             status: pagoTudo ? 'ENCERRADO' : 'ATIVO',
             motivoEncerramento: pagoTudo ? 'QUITACAO' : null,
             dataEncerramento: pagoTudo ? d(ultima.vencimento) : null,
@@ -289,7 +291,7 @@ export class LegadoMigracaoService {
           select: { id: true },
         });
         const item = await tx.itemContratado.create({
-          data: { contratoId: c.id, descricao: `Reembolso Parcelado — ${rp.rotulo}`, natureza: 'PARCELADO', credor: 'AZIT', valor: reais(total), numeroParcelas: rp.parcelas.length, periodicidade: 'SEMANAL', dataInicio: d(primeira.vencimento) },
+          data: { contratoId: c.id, descricao: `Reembolso Parcelado — ${rp.rotulo}`, natureza: 'PARCELADO', credor: 'AZIT', valor: reais(total), numeroParcelas: rp.parcelas.length, periodicidade: PER, dataInicio: d(primeira.vencimento) },
           select: { id: true },
         });
         rpContratos.push({ contratoId: c.id, itemId: item.id, parcelaIds: new Map(), total });
@@ -307,7 +309,7 @@ export class LegadoMigracaoService {
             contaId: conta.id, contratoId: contrato.id, operadorId: usuarioId,
             dataCriacao: d(a.entrada.pagoEm), dataEfetivacao: d(a.entrada.pagoEm),
             valorTotalRenegociado: reais(a.valorCoberto), valorEntrada: reais(a.entrada.valor),
-            numeroParcelasNovas: a.numeroParcelas, valorParcelaNova: reais(a.valorParcela), periodicidade: 'SEMANAL',
+            numeroParcelasNovas: a.numeroParcelas, valorParcelaNova: reais(a.valorParcela), periodicidade: PER,
             asaasChargeIdEntrada: a.entrada.asaasChargeId, status: 'ATIVO',
             observacao: a.observacao ?? 'Acordo em andamento importado do legado (conciliação declarada)',
             snapshotJson: { legado: { casoId: caso.id, parcelasCobertas: a.cobertas, primeiraEm: a.primeiraEm, ultimaEm: a.ultimaEm, declarado: true } } as Prisma.InputJsonValue,
@@ -316,7 +318,7 @@ export class LegadoMigracaoService {
         });
         acordoId = criado.id;
         const item = await tx.itemContratado.create({
-          data: { contratoId: contrato.id, descricao: 'Crédito de acordo', natureza: 'PARCELADO', origem: 'ACORDO', acordoOrigemId: acordoId, credor: 'AZIT', valor: reais(a.numeroParcelas * a.valorParcela), numeroParcelas: a.numeroParcelas, periodicidade: 'SEMANAL', dataInicio: d(a.primeiraEm) },
+          data: { contratoId: contrato.id, descricao: 'Crédito de acordo', natureza: 'PARCELADO', origem: 'ACORDO', acordoOrigemId: acordoId, credor: 'AZIT', valor: reais(a.numeroParcelas * a.valorParcela), numeroParcelas: a.numeroParcelas, periodicidade: PER, dataInicio: d(a.primeiraEm) },
           select: { id: true },
         });
         itemAcordoId = item.id;
@@ -737,6 +739,18 @@ export class LegadoMigracaoService {
     // Acordo em andamento declarado (§26.15) + rótulos de item (ex.: resíduo).
     const acordoDecl = conc.acordoEmAndamento ?? null;
     const rotulos = conc.rotulos ?? {};
+    // Periodicidade do contrato (15/10, Kaique mensal): declarada ou semanal. Mensal
+    // anda por mês do calendário (dia preservado, clamp no fim do mês), como o cronograma.
+    const periodicidade: 'semanal' | 'quinzenal' | 'mensal' = conc.periodicidade ?? 'semanal';
+    const avancarPeriodo = (iso: string, n: number): string => {
+      if (periodicidade !== 'mensal') return addDias(iso, n * (periodicidade === 'quinzenal' ? 14 : 7));
+      const base = d(iso);
+      const ano = base.getUTCFullYear();
+      const mes = base.getUTCMonth() + n;
+      const dia = base.getUTCDate();
+      const ultimo = new Date(Date.UTC(ano, mes + 1, 0)).getUTCDate();
+      return isoDe(new Date(Date.UTC(ano, mes, Math.min(dia, ultimo), 3)));
+    };
 
     const statusDe = (l: LinhaConciliacao, rec: DivergenciaReconhecida | undefined, vencFatura: string): { status: StatusFaturaPlano; pagoEm: string | null; valorPago: number | null; chargeId: string | null; substituir: string | null; remover: string | null } => {
       const chargeId = chargeDe(l.cobrancaId) ?? chargeDe(l.partes[0]?.cobrancaId);
@@ -779,7 +793,7 @@ export class LegadoMigracaoService {
     for (const l of ordemParcelas) {
       const rec = reconhecidas.get(l.chave);
       const adiada = adiadas.includes(l);
-      if (adiada) fimCronograma = addDias(fimCronograma, 7);
+      if (adiada) fimCronograma = avancarPeriodo(fimCronograma, 1);
       const vencParcela = adiada ? fimCronograma : modo === 'ASAAS' ? (l.cobradoEm ?? addDias(l.esperadoEm, deslocamento)) : l.esperadoEm;
       // Linha por acordo: a fatura é da parcela (data do contrato), não do acordo.
       const vencFatura = l.acordoGrupo ? vencParcela : (l.cobradoEm ?? vencParcela);
@@ -846,7 +860,7 @@ export class LegadoMigracaoService {
       const pagasPorN = new Map((acordoDecl.pagas ?? []).map((p) => [p.numero, p]));
       const cotas: AcordoPlano['cotas'] = [];
       for (let n = 1; n <= q; n++) {
-        const venc = addDias(acordoDecl.parcelas.primeiraEm, (n - 1) * 7);
+        const venc = avancarPeriodo(acordoDecl.parcelas.primeiraEm, n - 1);
         const cota = pagasPorN.get(n);
         let idx = faturas.findIndex((f) => f.parcela && f.vencimento === venc && f.status !== 'RENEGOCIADA');
         if (idx < 0) {
@@ -868,7 +882,7 @@ export class LegadoMigracaoService {
         numeroParcelas: q,
         valorParcela: acordoDecl.parcelas.valor,
         primeiraEm: acordoDecl.parcelas.primeiraEm,
-        ultimaEm: addDias(acordoDecl.parcelas.primeiraEm, (q - 1) * 7),
+        ultimaEm: avancarPeriodo(acordoDecl.parcelas.primeiraEm, q - 1),
         cobertas: cobertas.map((l) => l.numero),
         valorCoberto: cobertas.reduce((s, l) => s + Math.max(0, l.esperadoValor - seguro - taxa), 0),
         cotas,
@@ -934,7 +948,7 @@ export class LegadoMigracaoService {
       titular: { cpfCnpj: cpf, nome: termos.compradorNome ?? caso.nome, existente: titularExistente ? { id: titularExistente.id, nome: titularExistente.nome } : null },
       veiculo: { descricao: descricaoVeiculo, placa, existente: veiculoExistente, fipe, fipeMotivo },
       estruturaId: estrutura.id,
-      contrato: { numero, dataAssinatura, dataPrimeiraParcela: primeiraDeclarada ?? (modo === 'ASAAS' ? (linhasParcela[0]?.cobradoEm ?? primeiraEm) : primeiraEm), numeroParcelas: qtd, valorParcela, valorTotal, valorEntrada: entradaValor, modoVencimentos: modo, taxaDescontoMensal },
+      contrato: { numero, dataAssinatura, dataPrimeiraParcela: primeiraDeclarada ?? (modo === 'ASAAS' ? (linhasParcela[0]?.cobradoEm ?? primeiraEm) : primeiraEm), numeroParcelas: qtd, valorParcela, valorTotal, valorEntrada: entradaValor, modoVencimentos: modo, taxaDescontoMensal, periodicidade },
       entrada,
       faturas,
       rps,
