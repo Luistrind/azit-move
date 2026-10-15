@@ -232,6 +232,33 @@ export class AssinaturaService {
     return this.status(contrato.id, registro.id);
   }
 
+  // Reenvio com o instrumento REGENERADO (15/10): cancela o documento em
+  // andamento (na ZapSign e aqui) e cria outro a partir do snapshot atual.
+  // Vedado se alguém já assinou — aí é outro instrumento, não um reenvio.
+  async reenviar(contratoId: string, usuarioId?: string) {
+    const d = await this.prisma.db.documentoAssinatura.findFirst({ where: { contratoCreditoId: contratoId } });
+    if (d && (d.status === 'assinado' || d.status === 'parcialmente_assinado')) {
+      throw new UnprocessableEntityException({ erro: 'ja_assinado', mensagem: 'O documento já tem assinatura — não pode ser substituído' });
+    }
+    if (d && d.status !== 'cancelado' && d.status !== 'recusado') {
+      if (!d.simulado && d.docToken) {
+        try {
+          await this.zapSign.cancelarDocumento(d.docToken);
+        } catch (e) {
+          this.logger.warn(`ZapSign não cancelou o documento ${d.docToken} (contrato ${contratoId}): ${(e as Error).message} — seguindo com o reenvio`);
+        }
+      }
+      await this.prisma.db.documentoAssinatura.update({
+        where: { id: d.id },
+        data: { status: 'cancelado', motivoRecusa: 'Substituído por reenvio (instrumento alterado antes da assinatura)' },
+      });
+      await this.prisma.db.logAuditoria.create({
+        data: { usuarioId, acao: 'assinatura_digital_cancelada', entidade: 'contrato_credito', entidadeId: contratoId, antes: { docToken: d.docToken, status: d.status } },
+      });
+    }
+    return this.enviar(contratoId, usuarioId);
+  }
+
   // Estado para a tela de conclusão (cartão por signatário + links).
   async status(contratoId: string, documentoId?: string) {
     const d = await this.prisma.db.documentoAssinatura.findFirst({

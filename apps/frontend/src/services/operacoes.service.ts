@@ -27,6 +27,11 @@ export interface Novacao {
   recebimentoInicial: number;
   contratoVeiculo: { id: string; numero: string } | null;
   contratoTermo: { id: string; numero: string } | null;
+  // 1ª parcela do contrato novo (15/10) e se ainda pode ser trocada antes da assinatura.
+  primeiraParcela: string | null;
+  frequencia: 'semanal' | 'quinzenal' | 'mensal' | null;
+  assinaturaStatus: string | null;
+  podeAlterarPrimeiraParcela: boolean;
   dataAssinatura: string | null;
   dataAtivacao: string | null;
   criadaEm: string;
@@ -121,6 +126,9 @@ export interface SimulacaoNovacao {
   frequencia: 'semanal' | 'quinzenal' | 'mensal';
   prazoMeses: number | null;
   numeroParcelasVeiculo: number;
+  // 1ª parcela escolhida e a sugestão do ciclo da conta (15/10).
+  dataPrimeiraParcela: string;
+  dataPrimeiraParcelaPadrao: string;
   // Troca de veículo (F3): ajuste pelos valores de cadastro (entra − sai).
   troca: null | { ativoEntraId: string; entraDescricao: string; entraValor: number; ativoSaiId: string; saiDescricao: string; saiValor: number; ajuste: number };
   // Acréscimo ao saldo (09/10): valor somado à dívida, com motivo.
@@ -238,7 +246,7 @@ export const operacoesService = {
   // Simulação da proposta de novação (A7 passos 3-4) — números do SERVIDOR.
   async simularNovacao(
     contaId: string,
-    body: { prazoMeses?: number; numeroParcelasVeiculo?: number; frequencia?: 'semanal' | 'quinzenal' | 'mensal'; desconto?: number; recebimentoInicial?: number; trocaAtivoId?: string; acrescimo?: number; acrescimoMotivo?: string },
+    body: { prazoMeses?: number; numeroParcelasVeiculo?: number; frequencia?: 'semanal' | 'quinzenal' | 'mensal'; desconto?: number; recebimentoInicial?: number; trocaAtivoId?: string; acrescimo?: number; acrescimoMotivo?: string; dataPrimeiraParcela?: string },
   ): Promise<SimulacaoNovacao> {
     const { data } = await api.post(`/api/v1/contas/${contaId}/novacao/simular`, body);
     return data;
@@ -251,9 +259,14 @@ export const operacoesService = {
   },
   async solicitarNovacao(
     contaId: string,
-    body: { prazoMeses: number; frequencia?: 'semanal' | 'quinzenal' | 'mensal'; desconto?: number; recebimentoInicial?: number; trocaAtivoId?: string; acrescimo?: number; acrescimoMotivo?: string; contratoUnico?: boolean; observacao?: string },
+    body: { prazoMeses: number; frequencia?: 'semanal' | 'quinzenal' | 'mensal'; desconto?: number; recebimentoInicial?: number; trocaAtivoId?: string; acrescimo?: number; acrescimoMotivo?: string; dataPrimeiraParcela?: string; contratoUnico?: boolean; observacao?: string },
   ): Promise<{ id: string; status: string; valorParcela: number }> {
     const { data } = await api.post(`/api/v1/contas/${contaId}/novacao`, body);
+    return data;
+  },
+  // Troca a 1ª parcela enquanto a novação aguarda assinatura (15/10): regenera e reenvia o instrumento.
+  async alterarPrimeiraParcelaNovacao(novacaoId: string, dataPrimeiraParcela: string): Promise<{ dataPrimeiraParcela: string; assinatura: { reenviada: boolean; motivo: string | null } }> {
+    const { data } = await api.patch(`/api/v1/novacoes/${novacaoId}/primeira-parcela`, { dataPrimeiraParcela });
     return data;
   },
   async simularRecebimentoNovacao(novacaoId: string): Promise<void> {

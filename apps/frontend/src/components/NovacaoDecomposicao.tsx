@@ -242,6 +242,9 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
   // sai do jurídico, a operação vira UM contrato de Compra Parcelada com o
   // valor global — mesma precificação, modelo padrão do contrato de veículo.
   const [contratoUnico, setContratoUnico] = useState(false);
+  // 1ª parcela do contrato novo (15/10): vazio = ciclo da conta (a simulação
+  // devolve a sugestão); o operador escolhe outra antes de propor.
+  const [primeiraParcela, setPrimeiraParcela] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const [sim, setSim] = useState<SimulacaoNovacao | null>(null);
   const disponiveis = useQuery({
@@ -268,8 +271,10 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
         trocaAtivoId: trocaAtivoId || undefined,
         acrescimo: reaisParaCentavos(acrescimo) || undefined,
         acrescimoMotivo: acrescimoMotivo.trim() || undefined,
+        dataPrimeiraParcela: primeiraParcela || undefined,
       });
       setSim(r);
+      if (!primeiraParcela) setPrimeiraParcela(r.dataPrimeiraParcela);
     } catch (e) {
       toast.erro(mensagemErro(e));
     } finally {
@@ -289,6 +294,7 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
         trocaAtivoId: trocaAtivoId || undefined,
         acrescimo: reaisParaCentavos(acrescimo) || undefined,
         acrescimoMotivo: acrescimoMotivo.trim() || undefined,
+        dataPrimeiraParcela: primeiraParcela || undefined,
         contratoUnico: contratoUnico || undefined,
         observacao: observacao.trim() || undefined,
       });
@@ -330,6 +336,10 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
               <option key={f} value={f}>{FREQ_LABEL[f]}{f === frequenciaHerdada ? ' (atual)' : ''}</option>
             ))}
           </select>
+        </label>
+        <label className="flex flex-col gap-[4px]">
+          <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>1ª parcela</span>
+          <input type="date" value={primeiraParcela} onChange={(e) => setPrimeiraParcela(e.target.value)} title="Vazio = próximo ciclo da conta. Mensal: mesmo dia em cada mês; mês sem o dia cai no último dia." className="h-[34px] w-[150px] rounded-[8px] px-[8px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
         </label>
         <label className="flex flex-col gap-[4px]">
           <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Recebimento inicial (R$) — opcional</span>
@@ -385,6 +395,13 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
               {sim.troca ? ' da troca' : ''}, com o valor global de <b>{formatCurrency(sim.totalAPagar)}</b> em <b>{sim.contrato2.totalParcelas + sim.contrato1.totalParcelas} parcelas</b> de {formatCurrency(sim.valorParcelaTotal ?? sim.valorParcela)} {sim.contrato1.valorUltima > 0 ? <> (última de {formatCurrency(sim.contrato1.valorUltima + (sim.comissaoPorPeriodo ?? 0) + (sim.protecaoPorPeriodo ?? 0))})</> : null}, no modelo padrão do contrato de veículo — mesma precificação, sem Termo e sem fatura de transição.
             </span>
           </label>
+
+          {/* 1ª parcela (15/10): o que vai para o instrumento e manda na ativação. */}
+          <div className="text-[12px]" style={{ color: 'var(--text-body)' }}>
+            1ª parcela em <b>{sim.dataPrimeiraParcela.split('-').reverse().join('/')}</b>
+            {sim.dataPrimeiraParcela === sim.dataPrimeiraParcelaPadrao ? ' (próximo ciclo da conta)' : ` (escolhida; o ciclo da conta seria ${sim.dataPrimeiraParcelaPadrao.split('-').reverse().join('/')})`}
+            {sim.frequencia === 'mensal' ? ` · todo dia ${parseInt(sim.dataPrimeiraParcela.slice(8, 10), 10)}; mês sem esse dia vence no último dia` : ''}
+          </div>
 
           <div className="rounded-[10px] px-[14px] py-[10px]" style={{ background: 'var(--navy)', color: '#fff' }}>
             <div className="flex items-center justify-between">

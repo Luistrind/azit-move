@@ -378,6 +378,7 @@ export class NovacaoDecomposicaoService {
       trocaAtivoId?: string; // F3: troca de veículo (ativo disponível)
       acrescimo?: number; // centavos — somado ao saldo-base (09/10)
       acrescimoMotivo?: string;
+      dataPrimeiraParcela?: string; // YYYY-MM-DD — 1ª parcela escolhida (15/10); default = ciclo da conta
     },
   ) {
     const dec = await this.decomporConta(contaId);
@@ -389,6 +390,23 @@ export class NovacaoDecomposicaoService {
     }
     const params = await this.catalogoFonte.novacao();
     const frequencia = dto.frequencia ?? dec.frequenciaHerdada;
+
+    // 1ª parcela (doc 02 §7.7b, 15/10): sugestão = ciclo da conta (próxima fatura
+    // aberta das origens); o operador pode escolher outra, sempre no futuro.
+    const hojeISO = new Date().toISOString().slice(0, 10);
+    const passoDias = frequencia === 'mensal' ? 30 : frequencia === 'quinzenal' ? 14 : 7;
+    const proximaFatura = await this.prisma.db.fatura.findFirst({
+      where: { contaId, status: { in: ['ABERTA', 'FECHADA', 'RENEGOCIADA'] }, dataVencimento: { gt: new Date() } },
+      orderBy: { dataVencimento: 'asc' },
+      select: { dataVencimento: true },
+    });
+    const dataPrimeiraParcelaPadrao = proximaFatura
+      ? proximaFatura.dataVencimento.toISOString().slice(0, 10)
+      : new Date(Date.now() + passoDias * 86_400_000).toISOString().slice(0, 10);
+    const dataPrimeiraParcela = dto.dataPrimeiraParcela ?? dataPrimeiraParcelaPadrao;
+    if (dataPrimeiraParcela <= hojeISO) {
+      throw new UnprocessableEntityException({ erro: 'primeira_parcela_no_passado', mensagem: 'A 1ª parcela precisa vencer depois de hoje' });
+    }
 
     // Contrato/veículo vigente — base da proteção (A3) e da troca (F3).
     const atual = dec.contratos.find((c) => c.temAtivo && c.status === 'ATIVO') ?? dec.contratos.find((c) => c.temAtivo);
@@ -503,6 +521,9 @@ export class NovacaoDecomposicaoService {
       frequencia,
       prazoMeses: dto.prazoMeses ?? null,
       numeroParcelasVeiculo: numeroParcelas,
+      // 1ª parcela escolhida e a sugestão do ciclo da conta (15/10).
+      dataPrimeiraParcela,
+      dataPrimeiraParcelaPadrao,
       troca,
       // Acréscimo ao saldo (09/10): valor + motivo, congelados no snapshot.
       acrescimoMotivo: (dto.acrescimo ?? 0) > 0 ? (dto.acrescimoMotivo ?? null) : null,

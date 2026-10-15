@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -22,7 +23,7 @@ import { NovacaoDecomposicaoService } from './novacao-decomposicao.service';
 import { QuitacaoService } from './quitacao.service';
 import { SinistroService } from './sinistro.service';
 import { ReajusteService } from './reajuste.service';
-import { simularNovacaoSchema, SimularNovacaoBody, solicitarNovacaoSchema, SolicitarNovacaoBody } from './dto/novacao.dto';
+import { simularNovacaoSchema, SimularNovacaoBody, solicitarNovacaoSchema, SolicitarNovacaoBody, primeiraParcelaNovacaoSchema, PrimeiraParcelaNovacaoBody } from './dto/novacao.dto';
 import {
   criarRenegociacaoSchema,
   CriarRenegociacaoBody,
@@ -139,6 +140,18 @@ export class OperacoesController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.novacao.solicitar(id, dto, user.id);
+  }
+
+  // 1ª parcela do contrato novo, alterável enquanto a novação aguarda assinatura
+  // (doc 02 §7.7b, 15/10): regenera o instrumento e reenvia à ZapSign.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
+  @Patch('novacoes/:id/primeira-parcela')
+  alterarPrimeiraParcelaNovacao(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(primeiraParcelaNovacaoSchema)) dto: PrimeiraParcelaNovacaoBody,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.novacao.alterarPrimeiraParcela(id, dto.dataPrimeiraParcela, user.id);
   }
 
   // Dev: simula o pagamento do recebimento inicial (enfileira como o webhook).

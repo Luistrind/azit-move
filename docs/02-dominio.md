@@ -1103,6 +1103,17 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > + "Proteção veicular", sem citar novação (`deploy/padronizar-item-contrato.sh` corrige contrato já
 > nascido). E as cobranças Asaas das faturas que viram NOVADAS são removidas na ativação, como no acordo.
 >
+> **1ª parcela escolhida (15/10, caso Idanilza):** a data da 1ª parcela do contrato novo é um
+> termo da novação, não uma consequência do ciclo. A simulação sugere o **ciclo da conta**
+> (próxima fatura aberta das origens) e o operador pode trocar antes de propor; a data vai
+> congelada no snapshot, impressa no instrumento ("vencendo-se a primeira em …") e manda na
+> ativação (só rola para a frente, período a período, se já tiver passado). Enquanto a novação
+> está *Aguardando assinatura* e ninguém assinou, a data pode ser alterada na tela de Acordos:
+> o instrumento é regenerado, o documento anterior na ZapSign é cancelado e um novo é enviado.
+> Mensal = mesmo dia em cada mês; mês sem o dia (ex.: 30 em fevereiro) cai no último dia do mês
+> (regra do cronograma). Em dois contratos, a data escolhida é a do Termo; o veículo começa
+> N períodos depois.
+>
 > **Fonte das fórmulas:** `docs/Planilha Novacao de Contrato - Azit Move.xlsx` (extraída
 > célula a célula, 13/09) — abas: **Parâmetros** (NV001–019, ICVF/ICPF, mora 2%+1% a.m.
 > base 30); **Simulador** (memória de liquidação POR COMPONENTE com a taxa de desconto do

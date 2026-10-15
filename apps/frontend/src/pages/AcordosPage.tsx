@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
-import { operacoesService } from '../services/operacoes.service';
+import { operacoesService, type Novacao } from '../services/operacoes.service';
 import { StatusBadge } from '../components/StatusBadge';
 import { ACORDO_STATUS_COLORS, NOVACAO_STATUS_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_RENEGOCIACAO, ROLE_NOVACAO, mensagemErro } from '../lib/permissoes';
@@ -153,6 +153,7 @@ export function AcordosPage() {
               <th className="px-[18px] py-[12px] text-right font-semibold">Veículo (C1)</th>
               <th className="px-[18px] py-[12px] text-right font-semibold">Termo (C2)</th>
               <th className="px-[18px] py-[12px] text-right font-semibold">Parcela única</th>
+              <th className="px-[18px] py-[12px] text-left font-semibold">1ª parcela</th>
               <th className="px-[18px] py-[12px] text-left font-semibold">Contratos</th>
               <th className="px-[18px] py-[12px] text-left font-semibold">Status</th>
               <th className="px-[18px] py-[12px] text-right font-semibold">Ação</th>
@@ -160,7 +161,7 @@ export function AcordosPage() {
           </thead>
           <tbody>
             {novacoes.data?.length === 0 && (
-              <tr><td colSpan={7} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>Nenhuma novação ainda — ela nasce da ficha do titular.</td></tr>
+              <tr><td colSpan={8} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>Nenhuma novação ainda — ela nasce da ficha do titular.</td></tr>
             )}
             {novacoes.data?.map((nv) => (
               <tr key={nv.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
@@ -172,6 +173,9 @@ export function AcordosPage() {
                 <td className="px-[18px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>{formatCurrency(nv.saldoVeiculo)}</td>
                 <td className="px-[18px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>{formatCurrency(nv.saldoDemais)}</td>
                 <td className="px-[18px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-body)' }}>{formatCurrency(nv.valorParcela)}</td>
+                <td className="px-[18px] py-[12px]">
+                  <PrimeiraParcelaNovacao nv={nv} podeEditar={podeNovar} onAlterada={refetch} />
+                </td>
                 <td className="px-[18px] py-[12px]">
                   {nv.contratoVeiculo || nv.contratoTermo ? (
                     <span className="flex flex-col gap-[2px]">
@@ -197,5 +201,51 @@ export function AcordosPage() {
       </div>
 
     </div>
+  );
+}
+
+// 1ª parcela do contrato novo (doc 02 §7.7b, 15/10): visível sempre; editável
+// enquanto a novação aguarda assinatura e ninguém assinou — a troca regenera o
+// instrumento e reenvia à assinatura.
+function PrimeiraParcelaNovacao({ nv, podeEditar, onAlterada }: { nv: Novacao; podeEditar: boolean; onAlterada: () => Promise<void> }) {
+  const [editando, setEditando] = useState(false);
+  const [data, setData] = useState(nv.primeiraParcela ?? '');
+  const [salvando, setSalvando] = useState(false);
+  const br = (iso: string | null) => (iso ? iso.split('-').reverse().join('/') : '—');
+  const freq = nv.frequencia ? ` · ${nv.frequencia}` : '';
+  if (!editando) {
+    return (
+      <span className="flex flex-col gap-[2px]">
+        <span className="tabular-nums" style={{ color: 'var(--text-primary)' }}>{br(nv.primeiraParcela)}<span style={{ color: 'var(--text-muted)' }}>{freq}</span></span>
+        {nv.podeAlterarPrimeiraParcela && podeEditar && (
+          <button onClick={() => setEditando(true)} className="text-left text-[11.5px] font-semibold" style={{ color: 'var(--navy)' }}>alterar antes da assinatura</button>
+        )}
+      </span>
+    );
+  }
+  async function salvar() {
+    if (!data || salvando) return;
+    setSalvando(true);
+    try {
+      const r = await operacoesService.alterarPrimeiraParcelaNovacao(nv.id, data);
+      if (r.assinatura.reenviada) toast.sucesso(`1ª parcela em ${br(r.dataPrimeiraParcela)} — instrumento regenerado e reenviado para assinatura.`);
+      else toast.erro(`1ª parcela alterada, mas o reenvio à assinatura falhou: ${r.assinatura.motivo ?? 'motivo não informado'}. Reenvie pela tela do contrato.`);
+      setEditando(false);
+      await onAlterada();
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+    } finally {
+      setSalvando(false);
+    }
+  }
+  return (
+    <span className="flex flex-col gap-[4px]">
+      <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="h-[30px] w-[140px] rounded-[7px] px-[6px] text-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+      <span className="flex gap-[6px]">
+        <button onClick={salvar} disabled={salvando || !data} className="rounded-[7px] px-[10px] py-[4px] text-[11.5px] font-semibold disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>Salvar e reenviar</button>
+        <button onClick={() => { setEditando(false); setData(nv.primeiraParcela ?? ''); }} className="text-[11.5px] font-semibold" style={{ color: 'var(--text-muted)' }}>cancelar</button>
+      </span>
+      {nv.frequencia === 'mensal' && <span className="text-[10.5px]" style={{ color: 'var(--text-muted)' }}>mensal: mesmo dia todo mês; mês sem o dia vence no último dia</span>}
+    </span>
   );
 }

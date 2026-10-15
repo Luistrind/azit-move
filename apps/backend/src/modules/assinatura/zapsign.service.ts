@@ -122,6 +122,20 @@ export class ZapSignService {
     };
   }
 
+  // Cancela (apaga) um documento ainda não assinado — usado no reenvio quando o
+  // instrumento muda antes da assinatura (15/10). Simulado: no-op.
+  async cancelarDocumento(docToken: string): Promise<void> {
+    if (!this.configurado) return;
+    const resp = await fetch(`${this.baseUrl}/docs/${docToken}/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${this.apiToken}` },
+    });
+    if (!resp.ok && resp.status !== 404) {
+      const corpo = await resp.text();
+      throw new Error(`ZapSign respondeu HTTP ${resp.status} ao cancelar: ${corpo.slice(0, 200)}`);
+    }
+  }
+
   // Detalhe do documento — fonte dos links VÁLIDOS do arquivo (expiram em 60min).
   async detalharDocumento(docToken: string): Promise<{ status: string; signedFileUrl: string | null }> {
     if (!this.configurado) return { status: 'signed', signedFileUrl: null };

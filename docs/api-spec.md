@@ -618,6 +618,16 @@ Detalhes de um acordo.
 #### PATCH `/api/v1/acordos/:id/cancelar`
 Cancela um acordo em rascunho.
 
+#### PATCH `/api/v1/novacoes/:id/primeira-parcela`
+Troca a data da 1ª parcela do contrato novo enquanto a novação está *Aguardando assinatura* e
+ninguém assinou (doc 02 §7.7b, 15/10). Body `{ "dataPrimeiraParcela": "AAAA-MM-DD" }` (futuro).
+Efeito: grava a data nos contratos novos (Termo e veículo), congela no snapshot, regenera o
+instrumento, cancela o documento anterior na ZapSign e reenvia. Resposta:
+`{ dataPrimeiraParcela, assinatura: { reenviada, motivo } }`. A simulação (`POST contas/:id/novacao/simular`)
+e a proposta aceitam `dataPrimeiraParcela` opcional e devolvem `dataPrimeiraParcela` e
+`dataPrimeiraParcelaPadrao` (próximo ciclo da conta); `GET /novacoes` traz `primeiraParcela`,
+`frequencia`, `assinaturaStatus` e `podeAlterarPrimeiraParcela`.
+
 #### POST `/api/v1/novacoes`
 Cria uma **novação** (recuperação radical) — mecanismo distinto do acordo. Liquida o contrato inteiro e gera um novo.
 
