@@ -22,6 +22,10 @@ export interface ParcelaDeclarada {
   valor?: number | null; // centavos — valor de face da parcela; default = parcela + seguro + taxa dos termos
   // Rótulo do item na fatura no lugar de "Parcela n/N" (ex.: "Resíduo da parcela 31").
   rotulo?: string | null;
+  // Despesa cobrada JUNTO da parcela (16/10, caso Rafael: "IPVA parcelado R$ 274,67" ×6) —
+  // doc 02 §26.8/§26.15: vira item de Reembolso Parcelado na fatura, fora do principal;
+  // parcelas consecutivas com o mesmo rótulo formam um só RP (n/N). Centavos.
+  extra?: { valor: number; rotulo?: string | null } | null;
   observacao?: string | null;
 }
 
@@ -83,7 +87,10 @@ export function expandirConciliacaoDeclarada(params: {
 
   const linha = (serie: LinhaConciliacao['serie'], p: ParcelaDeclarada, esperadoPadrao: number): LinhaConciliacao => {
     const partes = partesDe(p.cobrancas);
-    const esperadoValor = p.valor ?? esperadoPadrao;
+    // Despesa junto da parcela: entra no valor cobrado (a fatura é parcela + despesa) e sai
+    // como componente `extra`, que o planner transforma em Reembolso Parcelado.
+    const extraValor = Math.max(0, p.extra?.valor ?? 0);
+    const esperadoValor = (p.valor ?? esperadoPadrao) + extraValor;
     let situacao: SituacaoLinha;
     if (p.situacao === 'adiada') situacao = 'nao_cobrada';
     else if (p.situacao === 'futura') situacao = p.vencimento > hoje ? 'futura' : 'pendente';
@@ -113,7 +120,7 @@ export function expandirConciliacaoDeclarada(params: {
       situacao,
       divergencia: false,
       confianca: 'alta',
-      componentes: null,
+      componentes: extraValor > 0 ? { seguro: 0, taxa: 0, intermediaria: 0, extra: extraValor, extraRotulo: (p.extra?.rotulo ?? '').trim() || 'Despesa', acordo: 0 } : null,
       partes: partes.map((x) => ({ cobrancaId: x.id, vencimento: x.vencimento, valor: x.valorOriginal, classe: x.classe })),
       observacao: p.observacao ?? null,
       deslocamentoDias: null,
