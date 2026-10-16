@@ -6,6 +6,7 @@ import { ColetaLegadoProcessor } from './migracao-legado.processor';
 import { LegadoConciliacaoService } from './legado-conciliacao.service';
 import { MigracaoLegadoController } from './migracao-legado.controller';
 import { LegadoMigracaoService } from './legado-migracao.service';
+import { LegadoReembolsosService } from './legado-reembolsos.service';
 import { CobrancaModule } from '../cobranca/cobranca.module';
 import { FipeModule } from '../fipe/fipe.module';
 import { CatalogoModule } from '../catalogo/catalogo.module';
@@ -15,7 +16,7 @@ import { CatalogoModule } from '../catalogo/catalogo.module';
 @Module({
   imports: [BullModule.registerQueue({ name: QUEUE_NAMES.COLETA_LEGADO }), CobrancaModule, FipeModule, CatalogoModule],
   controllers: [MigracaoLegadoController],
-  providers: [MigracaoLegadoService, LegadoConciliacaoService, LegadoMigracaoService, ColetaLegadoProcessor],
+  providers: [MigracaoLegadoService, LegadoConciliacaoService, LegadoMigracaoService, LegadoReembolsosService, ColetaLegadoProcessor],
   exports: [MigracaoLegadoService],
 })
 export class MigracaoLegadoModule {}

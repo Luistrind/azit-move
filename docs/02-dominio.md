@@ -2143,6 +2143,26 @@ do sistema (régua, D+3, acordo, novação) precisa de caso especial para o lega
 (§4-A.3) com o valor do contrato, pago; as transações que a compuseram ficam registradas no
 caso como prova, não viram itens separados.
 
+**Backfill de Reembolso Parcelado em caso JÁ MIGRADO (16/10/2026).** Três contratos migrados
+antes de `extra` existir na declaração (Wallace: "Manutenção troca de óleo" 115,63 em 10/11 e
+17/11/2025; Robson: "1 cota do IPVA 2026" 257,00) ou com descrição que as regras não leem
+(Ezequias: "Reembolso filtro de ar R$ 40,00", sem o padrão "A: R$ x") ficaram sem o RP — o
+valor da despesa ficou fora do sistema. A bancada do caso MIGRADO ganhou **"Completar
+reembolsos do legado"** (ADMIN/DIRETOR): lista as faturas do contrato com a cobrança do Asaas
+que as prova, o operador declara fatura + valor + rótulo, vê a **prévia** e grava. Nasce a
+MESMA estrutura do passo 5 da migração (contrato `<numero>-RPk` com snapshot legado, item
+PARCELADO, cotas como parcelas — pagas nascem pagas —, recebíveis, item "Reembolso Parcelado ·
+<rótulo> n/N" na fatura da semana; ENCERRADO por quitação quando tudo pago; consecutivas de
+mesmo rótulo formam um só RP). A fatura da semana recebe UM de três ajustes, decidido pelos
+números e mostrado na prévia: **folga** (total já incluía a despesa, itens somavam menos — só
+entra o item), **principal** (itens batiam com o total e a cobrança vale o total — o principal
+do veículo absorveu a despesa e diminui), **faltante** (itens batiam com o total MAS a cobrança
+do Asaas vale total + despesa — a fatura nasceu curta, caso da declaração sem `extra`: total e
+pago sobem no valor da despesa, com a cobrança como prova). Qualquer outra combinação é
+inconsistência e nada é gravado. Idempotente (fatura que já tem o item do rótulo é ignorada) e
+auditado (`legado_reembolsos_completados` + `migracaoResumo.reembolsosCompletados`). Datas de
+pagamento e cobranças do Asaas nunca mudam.
+
 **Consequência para a bancada:** ao confirmar a leitura de uma cobrança composta, o operador
 escolhe o tipo **principal** (parcela) e confere a decomposição — é ela que conta. Uma
 cobrança marcada como "reembolso" mas cuja descrição é "parcela + manutenção" está lida

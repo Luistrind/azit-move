@@ -134,7 +134,33 @@ export interface PlanoMigracao {
 }
 export interface MigracaoFeita {
   em: string; por: string | null; assinaturaParadaEm: string | null; assinaturaParadaErro: string | null; assinaturaId: string | null;
-  resumo: { contratoNumero?: string; faturas?: number; faturasPagas?: number; faturasFechadas?: number; faturasAbertas?: number; reembolsos?: number; avulsas?: number; pdfCopiado?: boolean; cobrancasApagadas?: number; emitidasAgora?: number; cobrancasMantidas?: { vencimento: string; chargeId: string; erro: string }[]; orfasApagadas?: number; orfasErro?: string | null } | null;
+  resumo: { contratoNumero?: string; faturas?: number; faturasPagas?: number; faturasFechadas?: number; faturasAbertas?: number; reembolsos?: number; avulsas?: number; pdfCopiado?: boolean; cobrancasApagadas?: number; emitidasAgora?: number; cobrancasMantidas?: { vencimento: string; chargeId: string; erro: string }[]; orfasApagadas?: number; orfasErro?: string | null; reembolsosCompletados?: { em: string; por: string; contratos: { numero: string; rotulo: string; total: number; parcelas: number }[] }[] } | null;
+}
+
+// Backfill de Reembolso Parcelado em caso MIGRADO (doc 02 §26.8, 16/10): despesa
+// cobrada junto da parcela que não virou RP na migração. Valores em centavos.
+export type ModoAjusteFatura = 'folga' | 'principal' | 'faltante';
+export interface FaturaParaReembolso {
+  id: string; numero: number; vencimento: string; status: string; valorTotal: number; valorPago: number | null; pagoEm: string | null; asaasChargeId: string | null;
+  cobranca: { asaasPaymentId: string; descricao: string | null; valorOriginal: number; valorPago: number | null } | null;
+  itens: { id: string; tipo: string; descricao: string; valor: number; parcelaId: string | null; contratoDaParcela: string | null }[];
+  parcelaVeiculo: { id: string; numero: number; valorNominal: number; valorPago: number | null } | null;
+  somaItens: number; somaSemEncargo: number;
+  reembolsosExistentes: { contrato: string; descricao: string; valor: number }[];
+  sugestao: { valor: number; rotulo: string | null; origem: 'leitura' | 'folga' } | null;
+  elegivel: boolean; motivoInelegivel: string | null;
+}
+export interface ReembolsosDoCaso {
+  contrato: { id: string; numero: string; periodicidade: string };
+  reembolsosExistentes: { id: string; numero: string; status: string; total: number | null; parcelas: number; descricao: string | null }[];
+  faturas: FaturaParaReembolso[];
+}
+export interface DespesaBackfill { faturaId: string; valor: number; rotulo: string }
+export interface PlanoReembolsosBackfill {
+  rps: { numero: string; rotulo: string; total: number; numeroParcelas: number; status: 'ENCERRADO' | 'ATIVO'; dataAssinatura: string; dataEncerramento: string | null; cotas: { n: number; faturaId: string; numeroFatura: number; vencimento: string; valor: number; paga: boolean; pagoEm: string | null; statusParcela: string | null; descricaoItem: string }[] }[];
+  ajustes: { faturaId: string; numeroFatura: number; vencimento: string; modo: ModoAjusteFatura; valor: number; totalAntes: number; totalDepois: number; pagoAntes: number | null; pagoDepois: number | null; principal: { itemId: string; antes: number; depois: number } | null; parcelaVeiculo: { id: string; nominalAntes: number; nominalDepois: number; pagoAntes: number | null; pagoDepois: number | null } | null; prova: string }[];
+  ignoradas: { faturaId: string; vencimento: string | null; motivo: string }[];
+  erros: { faturaId: string; vencimento: string | null; motivo: string }[];
 }
 
 export interface CasoLegadoDetalhe extends CasoLegado {
@@ -283,6 +309,19 @@ export const migracaoLegadoService = {
   },
   async limparCobrancasOrfas(id: string): Promise<{ apagadas: number; erro: string | null; vencimentos: string[] }> {
     const { data } = await api.post(`/api/v1/migracao-legado/casos/${id}/limpar-cobrancas-orfas`);
+    return data;
+  },
+  // ---- Backfill de Reembolso Parcelado (caso migrado) ----
+  async reembolsosDoCaso(id: string): Promise<ReembolsosDoCaso> {
+    const { data } = await api.get<ReembolsosDoCaso>(`/api/v1/migracao-legado/casos/${id}/reembolsos`);
+    return data;
+  },
+  async previaReembolsos(id: string, despesas: DespesaBackfill[]): Promise<PlanoReembolsosBackfill> {
+    const { data } = await api.post<PlanoReembolsosBackfill>(`/api/v1/migracao-legado/casos/${id}/reembolsos/previa`, { despesas });
+    return data;
+  },
+  async completarReembolsos(id: string, despesas: DespesaBackfill[]): Promise<{ criados: { id: string; numero: string; rotulo: string; total: number; parcelas: number; status: string }[]; ajustes: PlanoReembolsosBackfill['ajustes']; ignoradas: PlanoReembolsosBackfill['ignoradas'] }> {
+    const { data } = await api.post(`/api/v1/migracao-legado/casos/${id}/reembolsos`, { despesas });
     return data;
   },
   async pararAssinatura(id: string): Promise<{ parada: boolean; motivo: string }> {

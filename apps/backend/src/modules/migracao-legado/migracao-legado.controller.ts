@@ -5,6 +5,7 @@ import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current
 import { MigracaoLegadoService } from './migracao-legado.service';
 import { LegadoConciliacaoService } from './legado-conciliacao.service';
 import { LegadoMigracaoService } from './legado-migracao.service';
+import { LegadoReembolsosService } from './legado-reembolsos.service';
 
 type Resposta = { header: (k: string, v: string) => Resposta; send: (b: Buffer) => void };
 
@@ -17,6 +18,7 @@ export class MigracaoLegadoController {
     private readonly migracao: MigracaoLegadoService,
     private readonly conciliacao: LegadoConciliacaoService,
     private readonly migracaoF3: LegadoMigracaoService,
+    private readonly reembolsos: LegadoReembolsosService,
   ) {}
 
   // ---- F1: leitura, fila e caso ----
@@ -196,6 +198,29 @@ export class MigracaoLegadoController {
   @HttpCode(200)
   limparOrfas(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
     return this.migracaoF3.limparCobrancasOrfas(id, user.id);
+  }
+
+  // Backfill de Reembolso Parcelado em caso JÁ MIGRADO (doc 02 §26.8, 16/10):
+  // despesa cobrada junto da parcela que não virou RP na migração. Lista as
+  // faturas do contrato com a cobrança do Asaas, prévia do que nasce, gravação.
+  @Get('casos/:id/reembolsos')
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  listarReembolsos(@Param('id') id: string) {
+    return this.reembolsos.listar(id);
+  }
+
+  @Post('casos/:id/reembolsos/previa')
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  @HttpCode(200)
+  previaReembolsos(@Param('id') id: string, @Body() body: unknown) {
+    return this.reembolsos.previa(id, body);
+  }
+
+  @Post('casos/:id/reembolsos')
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  @HttpCode(200)
+  completarReembolsos(@Param('id') id: string, @Body() body: unknown, @CurrentUser() user: UsuarioAutenticado) {
+    return this.reembolsos.completar(id, body, user.id);
   }
 
   @Post('casos/:id/parar-assinatura')

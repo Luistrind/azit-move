@@ -12,6 +12,7 @@ import {
   type DivergenciaReconhecida,
   type ModoVencimentos, type ModoConciliacao,
   type PlanoMigracao,
+  type ReembolsosDoCaso, type PlanoReembolsosBackfill, type DespesaBackfill,
 } from '../services/migracao-legado.service';
 import { Modal } from '../components/Modal';
 import { Metrica } from '../components/Metrica';
@@ -19,7 +20,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { toast } from '../components/Toast';
 import { mensagemErro, usePodeRole } from '../lib/permissoes';
 import { reaisParaCentavos } from '../lib/valor';
-import { CASO_LEGADO_STATUS_COLORS, COBRANCA_LEGADA_COLORS, CONCILIACAO_LINHA_COLORS, CONFIANCA_LINHA_COLORS, SITUACAO_LEGADO_COLORS } from '../config/statusColors';
+import { CASO_LEGADO_STATUS_COLORS, COBRANCA_LEGADA_COLORS, CONCILIACAO_LINHA_COLORS, CONFIANCA_LINHA_COLORS, FATURA_SITUACAO_COLORS, FATURA_SITUACAO_LABEL, SITUACAO_LEGADO_COLORS } from '../config/statusColors';
 
 // Caso do legado — F2 (doc 02 §26.7): o lado PopHub (termos + PDF), a leitura
 // das cobranças e a conciliação. Regras propõem, o operador decide; validar
@@ -56,6 +57,9 @@ const tituloBloco = 'text-[11px] font-bold uppercase tracking-[.04em]';
 const SITUACAO_LINHA_ROTULO: Record<string, string> = {
   paga: 'paga', paga_com_encargo: 'paga c/ encargo', paga_por_acordo: 'paga por acordo', em_acordo: 'em acordo', pendente: 'pendente', vencida: 'vencida', nao_cobrada: 'não cobrada', futura: 'futura', valor_diverge: 'valor diverge',
 };
+// Status gravado da fatura migrada → situação exibida (FECHADA = emitida, ainda não paga).
+const SITUACAO_FATURA_MIGRADA: Record<string, string> = { ABERTA: 'em_aberto', FECHADA: 'vencida', PAGA: 'paga', PAGA_EM_ATRASO: 'paga_em_atraso', RENEGOCIADA: 'renegociada', NOVADA: 'novada' };
+const MODO_AJUSTE_ROTULO: Record<string, string> = { folga: 'só entra o item do reembolso (o total da fatura já incluía a despesa)', principal: 'o principal do veículo diminui no valor da despesa', faltante: 'total e pago da fatura sobem no valor da despesa (a fatura nasceu sem ela; a cobrança do Asaas prova)' };
 const CAMPO_ROTULO: Record<string, string> = {
   numeroOrigem: 'nº do contrato', dataAssinatura: 'data de assinatura', compradorCpf: 'CPF do comprador', 'veiculo.placa': 'placa', 'veiculo.chassi': 'chassi',
   valorTotal: 'valor total', entradaValor: 'entrada', 'parcelas.quantidade': 'nº de parcelas', 'parcelas.valor': 'valor da parcela', 'parcelas.primeiraEm': '1ª parcela',
@@ -130,6 +134,30 @@ export function MigracaoLegadoCasoPage() {
   const [qtdAcordo, setQtdAcordo] = useState<Record<string, number>>({});
   const [chavesAcordo, setChavesAcordo] = useState<Record<string, string>>({});
   const [soDuvidas, setSoDuvidas] = useState(false);
+  // Backfill de Reembolso Parcelado no caso migrado (doc 02 §26.8, 16/10).
+  const [reembolsos, setReembolsos] = useState<ReembolsosDoCaso | null>(null);
+  const [despesaForm, setDespesaForm] = useState<Record<string, { marcada: boolean; valor: string; rotulo: string }>>({});
+  const [planoRp, setPlanoRp] = useState<PlanoReembolsosBackfill | null>(null);
+  const [carregandoRp, setCarregandoRp] = useState(false);
+
+  async function abrirReembolsos() {
+    setCarregandoRp(true);
+    try {
+      const r = await svc.reembolsosDoCaso(id);
+      setReembolsos(r);
+      setPlanoRp(null);
+      setDespesaForm(Object.fromEntries(r.faturas.map((f) => [f.id, { marcada: false, valor: f.sugestao ? reaisTxt(f.sugestao.valor) : '', rotulo: f.sugestao?.rotulo ?? '' }])));
+    } catch (e) { toast.erro(mensagemErro(e)); } finally { setCarregandoRp(false); }
+  }
+  function despesasMarcadas(): DespesaBackfill[] {
+    return Object.entries(despesaForm).filter(([, d]) => d.marcada).map(([faturaId, d]) => ({ faturaId, valor: reaisParaCentavos(d.valor), rotulo: d.rotulo.trim() }));
+  }
+  async function previaReembolsos() {
+    const despesas = despesasMarcadas();
+    if (!despesas.length) { toast.erro('Marque ao menos uma fatura com despesa'); return; }
+    setCarregandoRp(true);
+    try { setPlanoRp(await svc.previaReembolsos(id, despesas)); } catch (e) { toast.erro(mensagemErro(e)); } finally { setCarregandoRp(false); }
+  }
 
   useEffect(() => {
     if (c && !formSujo) setForm(formDosTermos(c.termos));
@@ -277,6 +305,7 @@ export function MigracaoLegadoCasoPage() {
             <div className="mt-[4px]">
               {(c.migracao.resumo?.orfasApagadas ?? 0) > 0 && <>{c.migracao.resumo?.orfasApagadas} cobrança(s) órfã(s) da assinatura apagada(s). </>}
               {podeMigrar && <button className="mr-[10px] underline" disabled={ocupado} title="Grava a taxa de desconto vigente no contrato e a FIPE oficial no veículo, só onde estiver vazio" onClick={() => rodar(async () => { const r = await svc.completar(id); if (r.fipeMotivo) toast.erro(`FIPE não preenchida: ${r.fipeMotivo}`); else toast.sucesso(`${r.taxaGravada ? 'Taxa gravada. ' : ''}${r.fipeGravada && r.fipe ? `FIPE ${formatCurrency(r.fipe.valor)} (${r.fipe.modeloFipe}, ${r.fipe.referencia}).` : 'FIPE já estava preenchida.'}`); return r; }, '')}>Completar taxa e FIPE</button>}
+              {podeMigrar && <button className="mr-[10px] underline" disabled={ocupado || carregandoRp} title="Despesa cobrada junto da parcela (IPVA, manutenção) que não virou Reembolso Parcelado na migração: cria o RP com prévia antes de gravar" onClick={abrirReembolsos}>{carregandoRp && !reembolsos ? 'Carregando…' : 'Completar reembolsos do legado'}</button>}
               {podeMigrar && <button className="underline" disabled={ocupado} title="Apaga no Asaas cobranças a vencer que a assinatura antiga emitiu depois da coleta (sem referência do sistema)" onClick={() => rodar(async () => { const r = await svc.limparCobrancasOrfas(id); if (r.erro) toast.erro(`Falha ao apagar órfã: ${r.erro}`); return r; }, 'Cobranças órfãs verificadas')}>Verificar cobranças órfãs no Asaas</button>}
             </div>
             {c.migracao.resumo?.cobrancasMantidas && c.migracao.resumo.cobrancasMantidas.length > 0 && <div className="mt-[4px]" style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}><b>{c.migracao.resumo.cobrancasMantidas.length} cobrança(s) a vencer não foram apagadas</b> e continuam amarradas à cobrança antiga: {c.migracao.resumo.cobrancasMantidas.map((m) => dataBR(m.vencimento)).join(', ')}.</div>}
@@ -315,6 +344,64 @@ export function MigracaoLegadoCasoPage() {
             <div className="flex justify-end gap-[8px]">
               <button className={btn} style={btnSec} onClick={() => setPrevia(null)}>Cancelar</button>
               <button className={btn} style={btnPri} disabled={ocupado} onClick={() => { const p = previa; setPrevia(null); void rodar(async () => { const r = await svc.migrar(id); if (!r.assinatura.parada) toast.erro(`Contrato ${r.contratoNumero} criado, mas a assinatura do Asaas não foi parada: ${r.assinatura.motivo}`); if (r.substituicao?.mantidas?.length) toast.erro(`${r.substituicao.mantidas.length} cobrança(s) a vencer não foram apagadas no Asaas e ficaram amarradas`); if (r.removidas?.mantidas?.length) toast.erro(`${r.removidas.mantidas.length} cobrança(s) antiga(s) cobertas pelo acordo não foram apagadas no Asaas — apague no painel`); return r; }, `Caso migrado — contrato ${p.contrato.numero}`); }}>Confirmar migração</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {reembolsos && (
+        <Modal open onClose={() => { setReembolsos(null); setPlanoRp(null); }} title={`Completar reembolsos do legado — contrato ${reembolsos.contrato.numero}`} largura={980}>
+          <div className="flex flex-col gap-[10px] text-[12.5px]" style={{ color: 'var(--text-body)' }}>
+            <div>Despesa cobrada <b>junto da parcela</b> (IPVA, manutenção) que não virou Reembolso Parcelado na migração. Marque a fatura da semana, informe o valor e o rótulo da despesa e veja a prévia: nasce um contrato <b>{reembolsos.contrato.numero}-RPk</b> (semanas consecutivas com o mesmo rótulo formam um só RP com N cotas), cada cota como item da fatura daquela semana; cota paga nasce paga. Nada é gravado antes de confirmar.</div>
+            {reembolsos.reembolsosExistentes.length > 0 && <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Já existem: {reembolsos.reembolsosExistentes.map((r) => `${r.numero} (${r.descricao ?? ''}, ${r.parcelas}×, ${r.status.toLowerCase()})`).join(' · ')}</div>}
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-[12px]">
+                <thead><tr style={{ color: 'var(--text-muted)' }}><th className={th}></th><th className={th}>Venc.</th><th className={th}>Fatura</th><th className={th}>Cobrança do Asaas</th><th className={th + ' text-right'}>Total / pago</th><th className={th + ' text-right'}>Itens somam</th><th className={th}>Despesa (R$)</th><th className={th}>Rótulo</th></tr></thead>
+                <tbody>
+                  {reembolsos.faturas.map((f) => {
+                    const d = despesaForm[f.id] ?? { marcada: false, valor: '', rotulo: '' };
+                    const sit = SITUACAO_FATURA_MIGRADA[f.status] ?? 'em_aberto';
+                    const cor = FATURA_SITUACAO_COLORS[sit];
+                    return (
+                      <tr key={f.id} style={{ borderTop: '1px solid var(--border)', opacity: f.elegivel ? 1 : 0.6 }}>
+                        <td className={td}><input type="checkbox" disabled={!f.elegivel} checked={d.marcada} onChange={(e) => { setPlanoRp(null); setDespesaForm((m) => ({ ...m, [f.id]: { ...d, marcada: e.target.checked } })); }} title={f.motivoInelegivel ?? ''} /></td>
+                        <td className={td + ' tabular-nums'}>{dataBR(f.vencimento)}</td>
+                        <td className={td}><div>nº {f.numero} · <span className="rounded-[6px] px-[6px] py-[1px] text-[11px] font-semibold" style={{ background: cor?.bg, color: cor?.fg }}>{f.status === 'FECHADA' ? 'emitida' : FATURA_SITUACAO_LABEL[sit] ?? f.status}</span></div>{f.parcelaVeiculo && <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>parcela {f.parcelaVeiculo.numero} do veículo</div>}{!f.elegivel && <div className="text-[11px]" style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>{f.motivoInelegivel}</div>}{f.reembolsosExistentes.map((r) => <div key={r.contrato + r.descricao} className="text-[11px]" style={{ color: CASO_LEGADO_STATUS_COLORS.MIGRADO.fg }}>já tem: {r.descricao} ({formatCurrency(r.valor)}, {r.contrato})</div>)}</td>
+                        <td className={td}>{f.cobranca ? <><div className="tabular-nums">{f.cobranca.asaasPaymentId} · {formatCurrency(f.cobranca.valorOriginal)}{f.cobranca.valorPago != null && f.cobranca.valorPago !== f.cobranca.valorOriginal ? ` (pago ${formatCurrency(f.cobranca.valorPago)})` : ''}</div><div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{f.cobranca.descricao ?? 'sem descrição'}</div></> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                        <td className={td + ' text-right tabular-nums'}>{formatCurrency(f.valorTotal)}{f.valorPago != null && <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>pago {formatCurrency(f.valorPago)}</div>}</td>
+                        <td className={td + ' text-right tabular-nums'}>{formatCurrency(f.somaSemEncargo)}{f.somaItens !== f.somaSemEncargo && <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>+ encargo {formatCurrency(f.somaItens - f.somaSemEncargo)}</div>}{f.valorTotal - f.somaSemEncargo > 0 && <div className="text-[11px]" style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>folga {formatCurrency(f.valorTotal - f.somaSemEncargo)}</div>}</td>
+                        <td className={td}><input className={inputCls + ' w-[90px] text-right'} style={inputStyle} disabled={!f.elegivel} value={d.valor} placeholder="0,00" onChange={(e) => { setPlanoRp(null); setDespesaForm((m) => ({ ...m, [f.id]: { ...d, valor: e.target.value } })); }} />{f.sugestao && <div className="text-[10.5px]" style={{ color: 'var(--text-muted)' }}>{f.sugestao.origem === 'leitura' ? 'lido da cobrança' : 'folga da fatura'}</div>}</td>
+                        <td className={td}><input className={inputCls + ' min-w-[160px]'} style={inputStyle} disabled={!f.elegivel} value={d.rotulo} placeholder="ex.: Troca de óleo" onChange={(e) => { setPlanoRp(null); setDespesaForm((m) => ({ ...m, [f.id]: { ...d, rotulo: e.target.value } })); }} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {planoRp && (
+              <div className="rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+                <div className={tituloBloco} style={{ color: 'var(--text-muted)' }}>Prévia — o que será criado</div>
+                {planoRp.rps.length === 0 && <div className="mt-[4px]">Nenhum reembolso a criar.</div>}
+                {planoRp.rps.map((rp) => (
+                  <div key={rp.numero} className="mt-[6px]">
+                    <b>{rp.numero}</b> · Reembolso Parcelado — {rp.rotulo} · {rp.numeroParcelas}× · total {formatCurrency(rp.total)} · nasce <b>{rp.status === 'ENCERRADO' ? 'ENCERRADO por quitação' : 'ATIVO'}</b> ({dataBR(rp.dataAssinatura)}{rp.dataEncerramento ? ` → ${dataBR(rp.dataEncerramento)}` : ''})
+                    <ul className="mt-[2px] list-disc pl-[18px] text-[12px]">
+                      {rp.cotas.map((ct) => { const aj = planoRp.ajustes.find((a) => a.faturaId === ct.faturaId); return (
+                        <li key={ct.n}>"{ct.descricaoItem}" {formatCurrency(ct.valor)} na fatura nº {ct.numeroFatura} de {dataBR(ct.vencimento)} — cota {ct.paga ? `PAGA em ${dataBR(ct.pagoEm)}` : 'em aberto'}{aj && <div style={{ color: 'var(--text-muted)' }}>ajuste <b>{aj.modo}</b>: {MODO_AJUSTE_ROTULO[aj.modo]}{aj.modo === 'faltante' && <> · total {formatCurrency(aj.totalAntes)} → {formatCurrency(aj.totalDepois)}{aj.pagoAntes != null && <>, pago {formatCurrency(aj.pagoAntes)} → {formatCurrency(aj.pagoDepois ?? 0)}</>}</>}{aj.modo === 'principal' && aj.principal && <> · principal {formatCurrency(aj.principal.antes)} → {formatCurrency(aj.principal.depois)}{aj.parcelaVeiculo && aj.parcelaVeiculo.nominalAntes !== aj.parcelaVeiculo.nominalDepois && <>, nominal da parcela {formatCurrency(aj.parcelaVeiculo.nominalAntes)} → {formatCurrency(aj.parcelaVeiculo.nominalDepois)}</>}</>}<div className="text-[11px]">prova: {aj.prova}</div></div>}</li>
+                      ); })}
+                    </ul>
+                  </div>
+                ))}
+                {planoRp.ignoradas.length > 0 && <div className="mt-[6px]" style={{ color: 'var(--text-muted)' }}><b>Ignoradas (já existem):</b> {planoRp.ignoradas.map((x) => `${dataBR(x.vencimento)} — ${x.motivo}`).join(' · ')}</div>}
+                {planoRp.erros.length > 0 && <div className="mt-[6px]" style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}><b>Inconsistências — nada será gravado enquanto houver:</b><ul className="list-disc pl-[18px]">{planoRp.erros.map((x, i) => <li key={i}>{x.vencimento ? dataBR(x.vencimento) + ' — ' : ''}{x.motivo}</li>)}</ul></div>}
+              </div>
+            )}
+            <div className="flex flex-wrap items-center justify-end gap-[8px]">
+              <button className={btn} style={btnSec} onClick={() => { setReembolsos(null); setPlanoRp(null); }}>Fechar</button>
+              <button className={btn} style={planoRp ? btnSec : btnPri} disabled={carregandoRp || ocupado} onClick={previaReembolsos}>{carregandoRp ? 'Calculando…' : 'Ver prévia'}</button>
+              {planoRp && planoRp.rps.length > 0 && planoRp.erros.length === 0 && (
+                <button className={btn} style={btnPri} disabled={ocupado} onClick={() => { const despesas = despesasMarcadas(); setReembolsos(null); setPlanoRp(null); void rodar(async () => { const r = await svc.completarReembolsos(id, despesas); toast.sucesso(`${r.criados.length} reembolso(s) criado(s): ${r.criados.map((x) => `${x.numero} (${x.rotulo}, ${x.parcelas}×)`).join(', ')}`); return r; }, ''); }}>Gravar {planoRp.rps.length} reembolso(s)</button>
+              )}
             </div>
           </div>
         </Modal>
