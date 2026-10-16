@@ -2373,6 +2373,11 @@ valer no lugar das regras.
    `periodicidade` (semanal | quinzenal | mensal, default semanal — caso Kaique 15/10, contrato
    mensal dia 12): manda na periodicidade do contrato e dos itens migrados, no passo das adiadas e
    das cotas do acordo; mensal anda por mês do calendário com clamp no fim do mês.
+   `extra {valor, rotulo}` (decisão Luís 16/10, caso Rafael: "IPVA parcelado R$ 274,67" em 6
+   semanas) declara a **despesa cobrada junto da parcela**: a fatura migrada vale parcela +
+   despesa e a despesa vira item de **Reembolso Parcelado** (§26.8), fora do principal; parcelas
+   consecutivas com o mesmo rótulo formam um só RP com N cotas (as já pagas nascem pagas). Sem
+   `extra`, a despesa não existe no sistema — o modo declarado não lê descrições.
    `rotulo` troca o "Parcela n/N" do item da fatura (ex.: **"Resíduo da parcela 31"** — decisão
    Luís 13/10, caso Wallace: metade paga fica na parcela com `valor` reduzido, a outra metade vira
    parcela extra no fim do cronograma com o rótulo; a numeração "n/N" não muda).

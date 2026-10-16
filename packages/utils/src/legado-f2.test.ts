@@ -580,6 +580,25 @@ describe('conciliação declarada (doc 02 §26.15)', () => {
     expect(r.resumo).toMatchObject({ parcelasPagas: 4, parcelasNaoCobradas: 1, parcelasFuturas: 1, encargosPagos: 9_836, divergencias: 0 });
   });
 
+  it('despesa junto da parcela (`extra`, caso Rafael 16/10): entra no valor cobrado e sai como componente extra para virar Reembolso Parcelado; sem extra, componentes continua nulo', () => {
+    const cobrancas = [cob('c1', '2026-01-25'), cob('c2', '2026-02-01', { valorOriginal: 97_167, valorPago: 99_837, encargoEmbutido: 0 }), cob('c3', '2026-02-08', { valorOriginal: 97_167, valorPago: null, pagoEm: null, classe: 'vencida' })];
+    const r = expandirConciliacaoDeclarada({
+      termos, hoje: '2026-02-10', asaasIdDe: (id) => ({ c1: 'pay_1', c2: 'pay_2', c3: 'pay_3' } as Record<string, string>)[id] ?? null,
+      cobrancas,
+      declaracao: { parcelas: [
+        { numero: 1, vencimento: '2026-01-25', situacao: 'paga', cobrancas: ['pay_1'] },
+        { numero: 2, vencimento: '2026-02-01', situacao: 'paga', cobrancas: ['pay_2'], encargo: 2_670, extra: { valor: 27_467, rotulo: 'IPVA parcelado' } },
+        { numero: 3, vencimento: '2026-02-08', situacao: 'vencida', cobrancas: ['pay_3'], extra: { valor: 27_467, rotulo: ' ' } },
+      ] },
+    });
+    const l = Object.fromEntries(r.linhas.map((x) => [x.chave, x]));
+    expect(l['parcela:1']).toMatchObject({ esperadoValor: 69_700, componentes: null });
+    // Paga: cobrado/pago = parcela cheia + despesa (+ encargo no pago); a despesa vai no componente.
+    expect(l['parcela:2']).toMatchObject({ situacao: 'paga_com_encargo', esperadoValor: 97_167, cobradoValor: 97_167, pagoValor: 99_837, encargo: 2_670, componentes: { seguro: 0, taxa: 0, intermediaria: 0, extra: 27_467, extraRotulo: 'IPVA parcelado', acordo: 0 } });
+    // Vencida amarrada à cobrança: mesma composição, rótulo em branco cai no padrão.
+    expect(l['parcela:3']).toMatchObject({ situacao: 'vencida', esperadoValor: 97_167, cobradoValor: 97_167, pagoValor: null, cobrancaId: 'c3', componentes: expect.objectContaining({ extra: 27_467, extraRotulo: 'Despesa' }) });
+  });
+
   it('em acordo + acordo em andamento + rótulo (caso Wallace 13/10): parcelas cobertas ficam em_acordo, cotas e entrada viram prova, rótulo segue para o planner', () => {
     const cobrancas = [cob('c1', '2026-01-25'), cob('ce', '2026-03-01', { valorOriginal: 130_000, valorPago: 130_000, tipo: 'reembolso' }), cob('cq', '2026-03-08', { valorOriginal: 119_571, valorPago: 119_571 }), cob('c5', '2026-02-22', { classe: 'vencida', valorPago: null, pagoEm: null })];
     const r = expandirConciliacaoDeclarada({

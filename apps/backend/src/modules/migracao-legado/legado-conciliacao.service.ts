@@ -786,6 +786,8 @@ const parcelaDeclaradaSchema = z.object({
   encargo: z.number().int().min(0).nullable().optional(),
   valor: z.number().int().min(0).nullable().optional(),
   rotulo: z.string().max(80).nullable().optional(),
+  // Despesa junto da parcela (16/10) → Reembolso Parcelado na migração.
+  extra: z.object({ valor: z.number().int().min(1), rotulo: z.string().max(80).nullable().optional() }).nullable().optional(),
   observacao: z.string().max(300).nullable().optional(),
 });
 const dataISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
