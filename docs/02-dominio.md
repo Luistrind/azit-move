@@ -2166,16 +2166,17 @@ Fecham as pendências de domínio levantadas antes de construir a migração do 
    um produto só; o filtro por versão isola o legado.
 3. **Sem assinatura digital.** O PDF assinado no papel é o instrumento. O contrato entra direto
    em ATIVO, com o PDF anexado como documento e a marca "assinado fora do sistema".
-4. **Vencimentos: escolha POR CASO, na validação — não há regra.** A operação mudou o dia da
-   semana de alguns clientes no passado (ex.: segunda → quinta) sem padrão; pelo cronograma do
-   contrato essas parcelas pareceriam atrasadas e não estão. O operador escolhe no caso:
-   - **do contrato** — parcela com a data do cronograma do PDF; fatura com a data real da
-     cobrança (é o tratamento normal de um atraso);
-   - **das cobranças do Asaas** — cada parcela já cobrada recebe a data real da cobrança que a
-     pagou; as parcelas futuras seguem o DIA DA SEMANA da última cobrança real, e é nesse dia
-     que o sistema passa a emitir após o corte (§26.5). Cobre sozinho o contrato cujo dia mudou
-     no meio.
-   O que não cabe em nenhum dos dois, o operador ajusta linha a linha (vínculo manual).
+4. ~~**Vencimentos: escolha POR CASO, na validação — não há regra.**~~ **SUPERADO em
+   2026-10-20 pelo §26.15 item 5**: não há mais escolha. A operação mudou o dia da semana de
+   alguns clientes no passado (ex.: segunda → quinta) sem padrão; pelo cronograma do contrato
+   essas parcelas pareceriam atrasadas e não estão. O comportamento que valia como
+   "das cobranças do Asaas" (parcela na data real da cobrança; futuras no dia da semana da
+   última cobrança real, e é nesse dia que o sistema emite após o corte, §26.5) passou a ser a
+   ÚNICA regra, para parcela, fatura e recebível. O modo "do contrato" (parcela na data do
+   papel, fatura na data real) deixou de existir: criava um atraso fictício na ficha, na régua
+   e no D+3 (casos Carmo 2026030001 e Gerci 2026090017). A coluna `modoVencimentos` do caso
+   ficou inerte até a migration que a remove. O que não cabe na regra, o operador ajusta linha
+   a linha (vínculo manual).
 5. **Reajuste por IPCA ignorado no legado.** O contrato entra com as parcelas originais e sem
    evento de reajuste pendente, mesmo com mais de 12 meses. Decisão de negócio; revisável.
 6. **Vínculo manual e divergência reconhecida na migração.**
@@ -2396,4 +2397,26 @@ valer no lugar das regras.
    parcela paga sem cobrança = paga fora do Asaas, adiada vai ao fim, cobrança não declarada não
    vira fatura (fica só como prova no caso).
 4. Removível (ADMIN/DIRETOR) enquanto o caso não migrou — o caso volta às regras. Tudo auditado.
+5. **Parcela e fatura vencem no MESMO dia** (decisão Luís 2026-10-20, casos Carmo 2026030001 e
+   Gerci 2026090017). Parcela, fatura e recebível são o mesmo compromisso; a ficha do titular, a
+   régua e o bloqueio D+3 contam o atraso pela PARCELA, e a cobrança D-5 pela FATURA — com datas
+   diferentes, o contrato aparecia "em atraso" com a fatura em dia, e o D+3 liberaria bloqueio
+   antes de a cobrança vencer. Regra, válida para a conciliação declarada E para a por regras:
+   - **parcela com cobrança própria no Asaas** → `parcela.dataVencimento = cobrança.dueDate`;
+     a fatura e o `recebivel.dataPrevista` nascem na mesma data. Cobrança "própria" é a da
+     parcela (inclusive a antiga de uma parcela `em_acordo`, que a migração apaga); as cotas de
+     um acordo que quitou a parcela (`paga_por_acordo`) NÃO são — elas não ditam o ciclo;
+   - **parcela sem cobrança** (futura, adiada, coberta por acordo sem cobrança, paga fora do
+     Asaas) → continua a **cadência a partir da última data real**: semanal +7 dias, quinzenal
+     +14, mensal o mesmo dia do mês (clamp no fim do mês), pelo passo do cronograma nativo
+     (`avancarVencimento`/`avancarPeriodoISO`, @azit/utils — Regra 16). Sem nenhuma data real
+     antes dela, fica na data do contrato até a primeira cobrança ancorar;
+   - a **data do papel** (`vencimento` declarado ou cronograma dos termos) não some: vira a
+     `dataPrimeiraParcela` do contrato (1ª parcela) e aparece na prévia ao lado da data
+     efetiva, com aviso quando divergem ("contrato: segunda-feira · cobrança: quinta-feira —
+     parcelas, faturas e recebíveis seguirão quinta-feira"); o snapshot do contrato registra a
+     regra e quantas parcelas divergiram.
+   O modo "vencimentos CONTRATO" do §26.9 item 4 deixou de existir (ver lá). Os dois casos de
+   produção foram corrigidos à mão por SQL; a regra vale para as próximas migrações.
+   Implementação: `alinharVencimentosLegado` (@azit/utils, puro, testado) e o planner da F3.
 

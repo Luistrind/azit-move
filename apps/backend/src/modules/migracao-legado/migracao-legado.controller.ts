@@ -115,11 +115,6 @@ export class MigracaoLegadoController {
     return this.conciliacao.reconhecerDivergencia(id, decodeURIComponent(chave), body?.nota ?? '', body?.desfecho, user.id);
   }
 
-  @Put('casos/:id/vencimentos')
-  definirModoVencimentos(@Param('id') id: string, @Body() body: { modo: string }, @CurrentUser() user: UsuarioAutenticado) {
-    return this.conciliacao.definirModoVencimentos(id, body?.modo ?? '', user.id);
-  }
-
   // §26.14: método de conciliação e acordos confirmados.
   // §26.15: cronograma declarado (validado caso a caso) — ADMIN/DIRETOR.
   @Put('casos/:id/conciliacao-declarada')

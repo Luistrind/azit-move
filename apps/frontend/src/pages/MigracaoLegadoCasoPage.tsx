@@ -10,7 +10,8 @@ import {
   type TipoCobrancaLegada,
   type DesfechoDivergencia,
   type DivergenciaReconhecida,
-  type ModoVencimentos, type ModoConciliacao,
+  type ModoConciliacao,
+  type OrigemVencimentoLegado,
   type PlanoMigracao,
 } from '../services/migracao-legado.service';
 import { Modal } from '../components/Modal';
@@ -19,7 +20,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { toast } from '../components/Toast';
 import { mensagemErro, usePodeRole } from '../lib/permissoes';
 import { reaisParaCentavos } from '../lib/valor';
-import { CASO_LEGADO_STATUS_COLORS, COBRANCA_LEGADA_COLORS, CONCILIACAO_LINHA_COLORS, CONFIANCA_LINHA_COLORS, SITUACAO_LEGADO_COLORS } from '../config/statusColors';
+import { CASO_LEGADO_STATUS_COLORS, COBRANCA_LEGADA_COLORS, CONCILIACAO_LINHA_COLORS, CONFIANCA_LINHA_COLORS, FATURA_SITUACAO_COLORS, FATURA_SITUACAO_LABEL, SITUACAO_LEGADO_COLORS } from '../config/statusColors';
 
 // Caso do legado — F2 (doc 02 §26.7): o lado PopHub (termos + PDF), a leitura
 // das cobranças e a conciliação. Regras propõem, o operador decide; validar
@@ -50,6 +51,10 @@ const inputCls = 'w-full rounded-[8px] px-[9px] py-[6px] text-[12.5px]';
 const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' } as const;
 const th = 'px-[8px] py-[7px] text-left text-[10.5px] font-bold uppercase tracking-[.04em]';
 const td = 'px-[8px] py-[6px] text-[12px] align-top';
+// Doc 02 §26.15 item 5: de onde veio a data efetiva de cada parcela na prévia da migração.
+const ORIGEM_VENCIMENTO_ROTULO: Record<OrigemVencimentoLegado, string> = { cobranca: 'cobrança real do Asaas', cadencia: 'cadência da última cobrança', contrato: 'data do contrato (sem cobrança antes)' };
+// Status com que a fatura NASCE na migração → situação exibida (cores/rótulos únicos de statusColors.ts).
+const FATURA_PLANO_SITUACAO: Record<string, string> = { PAGA: 'paga', PAGA_EM_ATRASO: 'paga_em_atraso', ABERTA: 'em_aberto', FECHADA: 'vencida', RENEGOCIADA: 'renegociada' };
 const bloco = { background: 'var(--surface)', border: '1px solid var(--border)' } as const;
 const tituloBloco = 'text-[11px] font-bold uppercase tracking-[.04em]';
 
@@ -297,7 +302,34 @@ export function MigracaoLegadoCasoPage() {
               <tbody>
                 <tr><td className={td}>Titular</td><td className={td}>{previa.titular.existente ? <>já existe: <b>{previa.titular.existente.nome}</b> (reaproveitado)</> : <>novo: <b>{previa.titular.nome}</b> · {cpfBR(previa.titular.cpfCnpj)}</>}</td></tr>
                 <tr><td className={td}>Veículo</td><td className={td}>{previa.veiculo.existente ? <>já cadastrado: <b>{previa.veiculo.existente.descricao}</b></> : <>novo: <b>{previa.veiculo.descricao}</b>{previa.veiculo.placa ? ` · ${previa.veiculo.placa}` : ''}</>} · estrutura Azit</td></tr>
-                <tr><td className={td}>Contrato</td><td className={td}><b>{previa.contrato.numero}</b> · assinado em {dataBR(previa.contrato.dataAssinatura)} · {previa.contrato.numeroParcelas}× {formatCurrency(previa.contrato.valorParcela)} ({previa.contrato.periodicidade}) a partir de {dataBR(previa.contrato.dataPrimeiraParcela)} · total {formatCurrency(previa.contrato.valorTotal)} · vencimentos {previa.contrato.modoVencimentos === 'ASAAS' ? 'das cobranças do Asaas' : 'do contrato'}</td></tr>
+                <tr><td className={td}>Contrato</td><td className={td}><b>{previa.contrato.numero}</b> · assinado em {dataBR(previa.contrato.dataAssinatura)} · {previa.contrato.numeroParcelas}× {formatCurrency(previa.contrato.valorParcela)} ({previa.contrato.periodicidade}) a partir de {dataBR(previa.contrato.dataPrimeiraParcela)} · total {formatCurrency(previa.contrato.valorTotal)}</td></tr>
+                {/* Doc 02 §26.15 item 5: parcela, fatura e recebível vencem no mesmo dia — o da cobrança real. */}
+                <tr><td className={td}>Vencimentos</td><td className={td}>
+                  <div>Parcela, fatura e recebível vencem no <b>mesmo dia</b>: o da cobrança real do Asaas. Sem cobrança, a cadência ({previa.contrato.periodicidade}) continua a partir da última data real. A data do contrato ({dataBR(previa.contrato.dataPrimeiraParcela)}) fica registrada só como 1ª parcela do contrato.</div>
+                  {previa.vencimentos.aviso
+                    ? <div className="mt-[4px] rounded-[6px] px-[8px] py-[4px] font-semibold" style={{ background: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.bg, color: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.fg }}>Atenção — {previa.vencimentos.aviso}.</div>
+                    : <div className="mt-[4px]" style={{ color: 'var(--text-muted)' }}>Nenhuma parcela com data diferente da do contrato.</div>}
+                  {previa.vencimentos.parcelas.length > 0 && (
+                    <div className="mt-[6px] max-h-[220px] overflow-auto rounded-[8px]" style={{ border: '1px solid var(--border)' }}>
+                      <table className="w-full border-collapse">
+                        <thead className="sticky top-0" style={{ background: 'var(--surface)' }}>
+                          <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}><th className={th}>Parcela</th><th className={th}>Contrato</th><th className={th}>Vence em</th><th className={th}>Origem da data</th><th className={th}>Fatura</th></tr>
+                        </thead>
+                        <tbody>
+                          {previa.vencimentos.parcelas.map((p) => (
+                            <tr key={p.numero} style={{ borderBottom: '1px solid var(--border)' }}>
+                              <td className={`${td} tabular-nums`}>{p.numero}/{previa.contrato.numeroParcelas}</td>
+                              <td className={`${td} tabular-nums`}>{dataBR(p.contrato)}</td>
+                              <td className={`${td} tabular-nums font-semibold`} style={{ color: p.diverge ? CASO_LEGADO_STATUS_COLORS.EM_REVISAO.fg : undefined }} title={p.diverge ? 'data diferente da do contrato' : undefined}>{dataBR(p.efetivo)}{p.diverge ? ' ≠' : ''}</td>
+                              <td className={td} style={{ color: 'var(--text-secondary)' }}>{ORIGEM_VENCIMENTO_ROTULO[p.origem]}</td>
+                              <td className={td}>{(() => { const k = FATURA_PLANO_SITUACAO[p.status] ?? 'em_aberto'; const cor = FATURA_SITUACAO_COLORS[k]; return <span className="rounded-full px-[7px] py-[1px] text-[10.5px] font-semibold" style={{ background: cor.bg, color: cor.fg }}>{FATURA_SITUACAO_LABEL[k]}</span>; })()}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </td></tr>
                 <tr><td className={td}>FIPE do veículo</td><td className={td}>{previa.veiculo.fipe ? <><b>{formatCurrency(previa.veiculo.fipe.valor)}</b> · {previa.veiculo.fipe.modeloFipe} {previa.veiculo.fipe.anoModelo} · código {previa.veiculo.fipe.codigoFipe} · {previa.veiculo.fipe.referencia} (fonte oficial){previa.veiculo.fipe.alternativas.length > 0 && <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>outros modelos próximos: {previa.veiculo.fipe.alternativas.join(' · ')}</div>}</> : previa.veiculo.fipeMotivo ? <span style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>não preenchida — {previa.veiculo.fipeMotivo}. Corrija marca/modelo/ano nos termos; sem FIPE a novação não calcula a proteção.</span> : 'veículo já tem valor de venda'}</td></tr>
                 <tr><td className={td}>Taxa de desconto</td><td className={td}>{previa.contrato.taxaDescontoMensal ? <>{(previa.contrato.taxaDescontoMensal * 100).toFixed(2).replace('.', ',')}% ao mês — a mesma dos contratos gerados hoje (antecipação e novação)</> : <span style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>não definida — sem taxa vigente no Catálogo</span>}</td></tr>
                 <tr><td className={td}>Entrada</td><td className={td}>{previa.entrada ? <>{formatCurrency(previa.entrada.valor)} paga em {dataBR(previa.entrada.pagoEm)}</> : 'sem entrada'}</td></tr>
@@ -483,16 +515,10 @@ export function MigracaoLegadoCasoPage() {
                 </select>
               </div>
             )}
-            {/* Doc 02 §26.9 item 4: vencimentos do contrato ou das cobranças reais — escolha POR CASO, sem regra. */}
+            {/* Doc 02 §26.15 item 5 (20/10): não há mais escolha de modo — parcela, fatura e recebível vencem no dia da cobrança real. */}
             {!conc.incompleta && (
-              <div className="mt-[10px] flex flex-wrap items-center gap-[8px] text-[12px]" style={{ color: 'var(--text-secondary)' }}>
-                <span className="font-semibold">Vencimentos na migração:</span>
-                <select className="rounded-[6px] px-[6px] py-[3px] text-[12px]" style={inputStyle} disabled={!editavel} value={c.modoVencimentos}
-                  onChange={(e) => rodar(() => svc.definirModoVencimentos(id, e.target.value as ModoVencimentos), 'Vencimentos definidos')}>
-                  <option value="CONTRATO">do contrato (parcela na data do cronograma; fatura na data real)</option>
-                  <option value="ASAAS">das cobranças do Asaas (parcela na data real; futuras seguem o dia da semana da última)</option>
-                </select>
-                <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Use "das cobranças" quando o dia da semana foi mudado com o cliente e o cronograma do contrato pareceria atrasado.</span>
+              <div className="mt-[10px] text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                <span className="font-semibold">Vencimentos na migração:</span> parcela, fatura e recebível vencem no <b>mesmo dia</b> — o da cobrança real do Asaas; sem cobrança, a cadência continua a partir da última data real. A data do contrato fica só como 1ª parcela do contrato. A prévia da migração mostra parcela a parcela.
               </div>
             )}
           </div>

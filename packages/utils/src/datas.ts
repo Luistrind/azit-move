@@ -11,6 +11,23 @@ export function dataHojeBrasil(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 }
 
+// Meia-noite UTC de um dia-calendário 'YYYY-MM-DD' — a forma como o cronograma
+// grava vencimentos/fechamentos.
+export function inicioDiaUTC(iso: string): Date {
+  return new Date(`${iso.slice(0, 10)}T00:00:00.000Z`);
+}
+
+// Dia da semana (0 = domingo … 6 = sábado) de um 'YYYY-MM-DD'.
+export function diaSemanaISO(iso: string): number {
+  return inicioDiaUTC(iso).getUTCDay();
+}
+
+// Nome do dia da semana em português ('segunda-feira', 'quinta-feira'…) de um
+// 'YYYY-MM-DD' — para avisos ao operador ("contrato: segunda · cobrança: quinta").
+export function nomeDiaSemanaISO(iso: string): string {
+  return new Intl.DateTimeFormat('pt-BR', { weekday: 'long', timeZone: 'UTC' }).format(inicioDiaUTC(iso));
+}
+
 // Meia-noite UTC do dia de hoje no Brasil — comparável diretamente com as
 // datas de vencimento armazenadas (UTC-midnight da data-calendário).
 export function inicioHojeBrasilUTC(): Date {

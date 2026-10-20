@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException, UnprocessableEntityException } f
 import { Prisma } from '@prisma/client';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { centavosParaReaisString, termosEfetivos, type LinhaConciliacao, type ForaDoCronograma, type TermosContratoLegado } from '@azit/utils';
+import { alinharVencimentosLegado, avancarPeriodoISO, centavosParaReaisString, dataCalendarioUTC, dataHojeBrasil, diasCalendarioEntre, nomeDiaSemanaISO, termosEfetivos, type LinhaConciliacao, type ForaDoCronograma, type OrigemVencimentoLegado, type TermosContratoLegado } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasLeituraService } from '../asaas/asaas-leitura.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
@@ -25,6 +25,13 @@ import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 // estariam fechadas (vencem em até 5 dias) são emitidas NA HORA. Cobrança
 // VENCIDA fica amarrada (o Asaas não emite com vencimento no passado; é ela
 // que um acordo cobre).
+//
+// Vencimentos (doc 02 §26.15 item 5, decisão Luís 20/10 — casos Carmo e
+// Gerci): parcela, fatura e recebível vencem no MESMO dia, o da cobrança real
+// do Asaas; parcela sem cobrança segue a cadência a partir da última data real
+// (`alinharVencimentosLegado`, @azit/utils). A data do papel fica só como
+// `dataPrimeiraParcela` do contrato e na prévia. O antigo modo "vencimentos
+// CONTRATO" (parcela no papel, fatura na cobrança) deixou de existir.
 //
 // Dois passos: PLANEJAR (puro: lê a conciliação validada e descreve o que vai
 // nascer — a tela mostra a prévia) e PERSISTIR (uma transação). O corte no
@@ -66,7 +73,8 @@ interface FaturaPlano {
   emitirAgora: boolean;
   itens: ItemPlano[];
   // Parcela do VEÍCULO que esta fatura cobra (null = intermediária solta, avulsa, RP solto).
-  parcela: { numero: number; vencimento: string; valorNominal: number; principal: number; encargo: number } | null;
+  // `vencimento` é o MESMO da fatura (§26.15 item 5); `vencimentoContrato` é a data do papel.
+  parcela: { numero: number; vencimento: string; vencimentoContrato: string; origemVencimento: OrigemVencimentoLegado; valorNominal: number; principal: number; encargo: number } | null;
 }
 
 interface RpPlano {
@@ -92,8 +100,12 @@ export interface PlanoMigracao {
   titular: { cpfCnpj: string; nome: string; existente: { id: string; nome: string } | null };
   veiculo: { descricao: string; placa: string | null; existente: { id: string; descricao: string } | null; fipe: ConsultaFipe | null; fipeMotivo: string | null };
   estruturaId: string;
-  contrato: { numero: string; dataAssinatura: string; dataPrimeiraParcela: string; numeroParcelas: number; valorParcela: number; valorTotal: number; valorEntrada: number; modoVencimentos: string; taxaDescontoMensal: number | null; periodicidade: 'semanal' | 'quinzenal' | 'mensal' };
+  // dataPrimeiraParcela = data do PAPEL (1ª parcela do contrato); o cronograma vence pelas cobranças (`vencimentos`).
+  contrato: { numero: string; dataAssinatura: string; dataPrimeiraParcela: string; numeroParcelas: number; valorParcela: number; valorTotal: number; valorEntrada: number; taxaDescontoMensal: number | null; periodicidade: 'semanal' | 'quinzenal' | 'mensal' };
   entrada: { valor: number; pagoEm: string; asaasChargeId: string | null } | null;
+  // §26.15 item 5 — por parcela do veículo: data do contrato × data efetiva (= fatura = recebível)
+  // e um aviso quando divergem ("contrato: segunda-feira · cobrança: quinta-feira — o cronograma seguirá quinta-feira").
+  vencimentos: { divergentes: number; aviso: string | null; parcelas: { numero: number; contrato: string; efetivo: string; origem: OrigemVencimentoLegado; diverge: boolean; status: StatusFaturaPlano }[] };
   faturas: FaturaPlano[];
   rps: RpPlano[];
   acordo: AcordoPlano | null;
@@ -101,9 +113,8 @@ export interface PlanoMigracao {
 }
 
 const d = (iso: string) => new Date(`${iso}T03:00:00.000Z`); // meia-noite de Brasília
-const isoDe = (data: Date) => data.toISOString().slice(0, 10);
-const addDias = (iso: string, n: number) => isoDe(new Date(d(iso).getTime() + n * DIA_MS));
-const difDias = (a: string, b: string) => Math.round((d(a).getTime() - d(b).getTime()) / DIA_MS);
+// Dias de calendário a − b (Regra 16: a conta vive em @azit/utils).
+const difDias = (a: string, b: string) => diasCalendarioEntre(b, a);
 const reais = (c: number) => centavosParaReaisString(c);
 
 // Campos do ativo gravados a partir da consulta FIPE (valor de venda = FIPE).
@@ -232,7 +243,8 @@ export class LegadoMigracaoService {
             legado: {
               casoId: caso.id,
               numeroOrigem: termos.numeroOrigem,
-              modoVencimentos: caso.modoVencimentos,
+              // §26.15 item 5: parcela = fatura = cobrança real; a data do papel está em dataPrimeiraParcela.
+              vencimentos: { regra: 'cobranca_real', divergentes: plano.vencimentos.divergentes, aviso: plano.vencimentos.aviso },
               termos: termos as unknown as Prisma.InputJsonValue,
               divergencias: reconhecidas as unknown as Prisma.InputJsonValue,
               vinculosManuais: (caso.vinculosManuais ?? []) as Prisma.InputJsonValue,
@@ -515,7 +527,7 @@ export class LegadoMigracaoService {
     if (!caso) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Caso não encontrado' });
     if (caso.status !== 'MIGRADO') throw new UnprocessableEntityException({ erro: 'nao_migrado', mensagem: 'Só um caso migrado tem cobranças órfãs para limpar' });
     if (this.asaasLeitura.ambiente === 'simulado') return { apagadas: 0, erro: null as string | null, vencimentos: [] as string[] };
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = dataHojeBrasil();
     const cobrancas = await this.asaasLeitura.listarCobrancas(caso.asaasCustomerId);
     const orfas = cobrancas.filter((c) => !c.deleted && c.status === 'PENDING' && !c.externalReference && c.dueDate >= hoje);
     const vencimentos: string[] = [];
@@ -672,7 +684,7 @@ export class LegadoMigracaoService {
     const reconhecidas = new Map(conc.reconhecidas.map((r) => [r.chave, r]));
     const cobrancas = new Map(caso.cobrancas.map((c) => [c.id, c]));
     const chargeDe = (cobrancaId: string | null | undefined) => (cobrancaId ? cobrancas.get(cobrancaId)?.asaasPaymentId ?? null : null);
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = dataHojeBrasil();
 
     // Quem é o titular
     const cpf = (termos.compradorCpf ?? caso.cpfCnpj ?? '').replace(/\D/g, '');
@@ -723,12 +735,7 @@ export class LegadoMigracaoService {
     const numeroOcupado = await this.prisma.db.contratoCredito.findFirst({ where: { numero: base }, select: { id: true } });
     const numero = numeroOcupado ? `${base}-${caso.id.slice(-4).toUpperCase()}` : base;
 
-    // Deslocamento do dia da semana (§26.9 item 4, modo ASAAS): as futuras
-    // seguem o dia da ÚLTIMA cobrança real.
-    const modo = caso.modoVencimentos;
     const linhasParcela = conc.linhas.filter((l) => l.serie === 'parcela').sort((a, b) => a.numero - b.numero);
-    const ultimaCobrada = [...linhasParcela].reverse().find((l) => l.cobradoEm);
-    const deslocamento = modo === 'ASAAS' && ultimaCobrada?.cobradoEm ? difDias(ultimaCobrada.cobradoEm, ultimaCobrada.esperadoEm) : 0;
 
     const faturas: FaturaPlano[] = [];
     const rps: RpPlano[] = [];
@@ -739,18 +746,10 @@ export class LegadoMigracaoService {
     // Acordo em andamento declarado (§26.15) + rótulos de item (ex.: resíduo).
     const acordoDecl = conc.acordoEmAndamento ?? null;
     const rotulos = conc.rotulos ?? {};
-    // Periodicidade do contrato (15/10, Kaique mensal): declarada ou semanal. Mensal
-    // anda por mês do calendário (dia preservado, clamp no fim do mês), como o cronograma.
+    // Periodicidade do contrato (15/10, Kaique mensal): declarada ou semanal. O passo
+    // (semanal/quinzenal/mensal com clamp) é o do cronograma nativo — @azit/utils.
     const periodicidade: 'semanal' | 'quinzenal' | 'mensal' = conc.periodicidade ?? 'semanal';
-    const avancarPeriodo = (iso: string, n: number): string => {
-      if (periodicidade !== 'mensal') return addDias(iso, n * (periodicidade === 'quinzenal' ? 14 : 7));
-      const base = d(iso);
-      const ano = base.getUTCFullYear();
-      const mes = base.getUTCMonth() + n;
-      const dia = base.getUTCDate();
-      const ultimo = new Date(Date.UTC(ano, mes + 1, 0)).getUTCDate();
-      return isoDe(new Date(Date.UTC(ano, mes, Math.min(dia, ultimo), 3)));
-    };
+    const avancarPeriodo = (iso: string, n: number): string => avancarPeriodoISO(iso, n, periodicidade);
 
     const statusDe = (l: LinhaConciliacao, rec: DivergenciaReconhecida | undefined, vencFatura: string): { status: StatusFaturaPlano; pagoEm: string | null; valorPago: number | null; chargeId: string | null; substituir: string | null; remover: string | null } => {
       const chargeId = chargeDe(l.cobrancaId) ?? chargeDe(l.partes[0]?.cobrancaId);
@@ -788,15 +787,21 @@ export class LegadoMigracaoService {
     // cronograma — o cliente segue devendo todas; só a data muda.
     const adiadas = linhasParcela.filter((l) => reconhecidas.get(l.chave)?.desfecho === 'ADIADA' && !l.cobradoEm);
     const ordemParcelas = [...linhasParcela.filter((l) => !adiadas.includes(l)), ...adiadas];
-    const ultimaLinha = ordemParcelas.filter((l) => !adiadas.includes(l)).slice(-1)[0];
-    let fimCronograma = ultimaLinha ? (modo === 'ASAAS' ? (ultimaLinha.cobradoEm ?? addDias(ultimaLinha.esperadoEm, deslocamento)) : ultimaLinha.esperadoEm) : primeiraEm;
+    // Vencimentos (§26.15 item 5): parcela = fatura = recebível, no dia da cobrança
+    // PRÓPRIA da parcela; sem cobrança, a cadência a partir da última data real
+    // (as adiadas, por último, continuam dela). Quitada por acordo não tem cobrança
+    // própria: as partes são as cotas do acordo, que não ditam o ciclo.
+    const cobrancaPropria = (l: LinhaConciliacao) => (!!l.cobrancaId || l.partes.length > 0) && l.situacao !== 'paga_por_acordo' ? l.cobradoEm : null;
+    const alinhados = alinharVencimentosLegado(ordemParcelas.map((l) => ({ chave: l.chave, esperadoEm: l.esperadoEm, cobradoEm: cobrancaPropria(l) })), periodicidade);
+    const vencimentoDe = new Map(alinhados.map((v) => [v.chave, v]));
+    const vencimentos: PlanoMigracao['vencimentos'] = { divergentes: 0, aviso: null, parcelas: [] };
     for (const l of ordemParcelas) {
       const rec = reconhecidas.get(l.chave);
       const adiada = adiadas.includes(l);
-      if (adiada) fimCronograma = avancarPeriodo(fimCronograma, 1);
-      const vencParcela = adiada ? fimCronograma : modo === 'ASAAS' ? (l.cobradoEm ?? addDias(l.esperadoEm, deslocamento)) : l.esperadoEm;
-      // Linha por acordo: a fatura é da parcela (data do contrato), não do acordo.
-      const vencFatura = l.acordoGrupo ? vencParcela : (l.cobradoEm ?? vencParcela);
+      const alinhado = vencimentoDe.get(l.chave)!;
+      // Um só dia para parcela, fatura e recebível.
+      const vencParcela = alinhado.efetivo;
+      const vencFatura = vencParcela;
       const st = statusDe(l, adiada ? undefined : rec, vencFatura);
       const comp = l.componentes;
       // Parcela de acordo embutida na cobrança da semana NÃO é desta fatura
@@ -846,9 +851,19 @@ export class LegadoMigracaoService {
       const valorTotalFatura = semServicos ? principal : l.acordoGrupo ? principal + segV + taxV : (cobrado ?? principal + segV + taxV + inter + extra);
       // Valor nominal da parcela: o declarado (ex.: metade paga, resíduo) ou o do contrato.
       const nominalParcela = semServicos ? principal : l.acordoGrupo || !comp ? Math.max(0, l.esperadoValor - segV - taxV) : valorParcela;
-      faturas.push({ origem: l.chave, vencimento: vencFatura, status: st.status, valorTotal: valorTotalFatura, valorPago: st.valorPago, pagoEm: st.pagoEm, asaasChargeId: st.chargeId, substituirChargeId: st.substituir, removerChargeId: st.remover, emitirAgora: !!st.substituir && emitirAgora(vencFatura), itens, parcela: { numero: l.numero, vencimento: vencParcela, valorNominal: nominalParcela, principal, encargo } });
+      faturas.push({ origem: l.chave, vencimento: vencFatura, status: st.status, valorTotal: valorTotalFatura, valorPago: st.valorPago, pagoEm: st.pagoEm, asaasChargeId: st.chargeId, substituirChargeId: st.substituir, removerChargeId: st.remover, emitirAgora: !!st.substituir && emitirAgora(vencFatura), itens, parcela: { numero: l.numero, vencimento: vencParcela, vencimentoContrato: alinhado.contrato, origemVencimento: adiada ? 'cadencia' : alinhado.origem, valorNominal: nominalParcela, principal, encargo } });
       contar(st.status, st.substituir, vencFatura, st.remover);
       if (st.status === 'PAGA' || st.status === 'PAGA_EM_ATRASO') resumo.parcelasPagas++;
+      // Adiada diverge por definição (foi ao fim do cronograma) — não é a divergência de dia da semana.
+      const diverge = !adiada && alinhado.diverge;
+      if (diverge) vencimentos.divergentes++;
+      vencimentos.parcelas.push({ numero: l.numero, contrato: alinhado.contrato, efetivo: vencParcela, origem: adiada ? 'cadencia' : alinhado.origem, diverge, status: st.status });
+    }
+    // Aviso ao operador: o dia do contrato × o dia da cobrança (a primeira parcela divergente dá o exemplo).
+    const primeiraDivergente = vencimentos.parcelas.find((p) => p.diverge);
+    if (primeiraDivergente) {
+      const rotulo = (iso: string) => (periodicidade === 'mensal' ? `dia ${Number(iso.slice(8, 10))}` : nomeDiaSemanaISO(iso));
+      vencimentos.aviso = `contrato: ${rotulo(primeiraDivergente.contrato)} · cobrança: ${rotulo(primeiraDivergente.efetivo)} — parcelas, faturas e recebíveis seguirão ${rotulo(primeiraDivergente.efetivo)} (${vencimentos.divergentes} de ${vencimentos.parcelas.length} parcela(s) com data diferente da do contrato)`;
     }
 
     // Acordo em andamento declarado (§26.15, 13/10): as cotas entram na fatura
@@ -906,7 +921,8 @@ export class LegadoMigracaoService {
     const linhaEntrada = conc.linhas.find((x) => x.serie === 'entrada');
     // Declarada (§26.15): entrada e 1ª parcela valem as da declaração quando os termos não trazem.
     const entradaValor = (termos.entradaValor ?? 0) > 0 ? (termos.entradaValor ?? 0) : conc.modo === 'DECLARADA' ? (linhaEntrada?.esperadoValor ?? 0) : 0;
-    const primeiraDeclarada = conc.modo === 'DECLARADA' ? linhasParcela[0]?.esperadoEm ?? null : null;
+    // 1ª parcela do CONTRATO = data do papel (declarada ou dos termos); o cronograma vence pelas cobranças.
+    const primeiraDoPapel = linhasParcela[0]?.esperadoEm ?? primeiraEm;
     let entrada: PlanoMigracao['entrada'] = null;
     if (entradaValor > 0) {
       const rec = linhaEntrada ? reconhecidas.get(linhaEntrada.chave) : undefined;
@@ -921,7 +937,7 @@ export class LegadoMigracaoService {
       if (f.tipo === 'entrada') continue; // compõe a entrada (prova no caso)
       const cob = cobrancas.get(f.cobrancaId);
       if (!cob) continue;
-      const pagoEm = cob.pagoEm ? isoDe(cob.pagoEm) : null;
+      const pagoEm = cob.pagoEm ? dataCalendarioUTC(cob.pagoEm) : null;
       const venc = f.vencimento;
       let status: StatusFaturaPlano;
       let substituir: string | null = null;
@@ -948,8 +964,9 @@ export class LegadoMigracaoService {
       titular: { cpfCnpj: cpf, nome: termos.compradorNome ?? caso.nome, existente: titularExistente ? { id: titularExistente.id, nome: titularExistente.nome } : null },
       veiculo: { descricao: descricaoVeiculo, placa, existente: veiculoExistente, fipe, fipeMotivo },
       estruturaId: estrutura.id,
-      contrato: { numero, dataAssinatura, dataPrimeiraParcela: primeiraDeclarada ?? (modo === 'ASAAS' ? (linhasParcela[0]?.cobradoEm ?? primeiraEm) : primeiraEm), numeroParcelas: qtd, valorParcela, valorTotal, valorEntrada: entradaValor, modoVencimentos: modo, taxaDescontoMensal, periodicidade },
+      contrato: { numero, dataAssinatura, dataPrimeiraParcela: primeiraDoPapel, numeroParcelas: qtd, valorParcela, valorTotal, valorEntrada: entradaValor, taxaDescontoMensal, periodicidade },
       entrada,
+      vencimentos,
       faturas,
       rps,
       acordo,
