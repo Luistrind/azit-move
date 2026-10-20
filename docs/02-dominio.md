@@ -840,6 +840,7 @@ só em Encerrado por quitação).
 ### 7.1 Fechamento de Fatura
 - Faturas existem desde a criação do contrato
 - Fechamento ocorre em **D-5** antes do vencimento
+- "Hoje" para o D-5, o D+3 e qualquer contagem de dias é o dia no fuso **America/Sao_Paulo** (Regra 15, 20/10/2026) — nunca o dia UTC do servidor; a chave diária do job e o horário do `@Cron` seguem o mesmo fuso (doc 04 §11.5)
 - Após o fechamento, nenhum item novo entra na fatura
 - Novos contratos ou produtos contratados após o fechamento entram na próxima fatura aberta
 - No fechamento: sistema gera cobrança no Asaas
@@ -902,6 +903,9 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 | D+12 | Início do processo de recuperação do veículo | Manual |
 
 > Desbloqueio após pagamento é sempre **manual** — o operador confirma a regularização antes de liberar.
+
+> **Fuso (Regra 15, 20/10/2026):** D+0, D+1, D+2 e D+3 contam a partir do dia de **Brasília**
+> (`dataHojeBrasil()`), não do dia UTC do servidor — às 22h de Brasília ainda é D+2, não D+3.
 
 > **Decisão 2026-08-31 (Luís, homologação) — o kanban da régua é por DIAS DE ATRASO.** Colunas
 > **1 a 7 dias + "+7 dias"**; o caso se move de coluna conforme o atraso (em **dias de

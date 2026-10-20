@@ -32,6 +32,7 @@ Nunca contrarie sem validação humana explícita:
 12. **Placeholder é funcional, nunca buraco.** Toda regra "a definir" (precificação, alçadas, split) tem padrão provisório que roda e é testável, isolado e marcado como substituível. O sistema simula de ponta a ponta mesmo sem a regra final.
 13. **Originação é nativa, em telas.** O dado nasce na tela (Lead → Simulação → Proposta → Análise → Formalização → Ativação), não via API do PopHub (absorvido). Só Asaas e (futuramente) assinatura digital vêm de fora.
 14. **Investidor não vê dados pessoais do cliente.** A visão do investidor é financeira e anonimizada (LGPD + proteção do negócio) — a projeção de dados exclui campos pessoais do cliente na origem.
+15. **Fuso do Brasil, nunca UTC.** Toda data e todo "hoje" do sistema (vencimentos, D-5, D+3, dia da migração, chaves de job diárias) vêm do fuso America/Sao_Paulo, pelos helpers de `packages/utils/src/datas.ts` (`dataHojeBrasil` e afins). Proibido derivar dia de `new Date().toISOString()`, `split('T')[0]` ou aritmética em UTC. Ao tocar um arquivo, corrigir as ocorrências que encontrar (decisão Luís, reafirmada 2026-10-20 após o caso Rafael).
 
 ## Como conduzir
 
