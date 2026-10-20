@@ -881,6 +881,20 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 
 **Contratos sem versão de parâmetros** (legado/crédito avulso): CR = 0 e taxa única `taxaDescontoQuitacao` do contrato — comportamento anterior preservado.
 
+> **Uma fórmula no código (Regra 16, decisão Luís 2026-10-20).** O valor presente existe UMA vez:
+> `valorPresenteMensal(vf, taxaMensal, dias)` em `packages/utils/src/calculations.ts`. **Convenção:**
+> a entrada é sempre a taxa **MENSAL** (TR, dcr, encargo do reembolso); a função converte à
+> **diária equivalente na base 30** (`taxaDiariaEquivalente`) e desconta por dias; `dias ≤ 0` ou
+> taxa 0 devolvem o próprio VF. A quitação antecipada (`anteciparParcela` /
+> `anteciparParcelaComponentes`), a decomposição da novação (`decomporSaldoNovacao`) e o Termo de
+> Regularização usam só ela. A fórmula antiga de **taxa diária parametrizável**
+> (`calcularValorPresente` / `calcularQuitacaoTotal`, doc 04 original de 23/06) foi **removida**: não
+> tinha chamador e contrariava esta convenção. A mesma casa guarda a taxa do **período** para a Price
+> (`taxaPeriodoEquivalente`: `(1 + tm)^(dias/30) − 1`, 7/14/30 dias), a própria Price (`pmtPrice`),
+> os fatores de **prazo** (4,3452 / 2,1726) e de **valor** (4 / 2) e o encargo de atraso (§7.2).
+> Backend e frontend chamam de lá; a tela **exibe** a taxa mensal que o motor devolve, nunca a
+> reconverte (lint `no-restricted-syntax` proíbe `Math.pow`/`**` fora de `packages/utils`).
+
 **Modalidades de quitação antecipada:**
 1. **Parcelas específicas** — cliente seleciona uma ou mais parcelas futuras; sistema calcula VP de cada uma
 2. **Quitação total** — sistema calcula VP de todas as parcelas restantes
