@@ -789,9 +789,16 @@ export class LegadoMigracaoService {
     const ordemParcelas = [...linhasParcela.filter((l) => !adiadas.includes(l)), ...adiadas];
     // Vencimentos (§26.15 item 5): parcela = fatura = recebível, no dia da cobrança
     // PRÓPRIA da parcela; sem cobrança, a cadência a partir da última data real
-    // (as adiadas, por último, continuam dela). Quitada por acordo não tem cobrança
-    // própria: as partes são as cotas do acordo, que não ditam o ciclo.
-    const cobrancaPropria = (l: LinhaConciliacao) => (!!l.cobrancaId || l.partes.length > 0) && l.situacao !== 'paga_por_acordo' ? l.cobradoEm : null;
+    // (as adiadas, por último, continuam dela). Cobrança própria: a da parcela —
+    // inclusive a antiga de uma `em_acordo` DECLARADA (a que a migração apaga).
+    // Não são próprias as cotas do acordo: linha `paga_por_acordo` e linha de
+    // acordo confirmado pelas regras (§26.14) trazem nas partes as cobranças do
+    // acordo, que não ditam o ciclo da parcela.
+    const cobrancaPropria = (l: LinhaConciliacao) => {
+      const temCobranca = !!l.cobrancaId || l.partes.length > 0;
+      const doAcordo = l.situacao === 'paga_por_acordo' || (!!l.acordoGrupo && l.acordoGrupo !== 'declarado');
+      return temCobranca && !doAcordo ? l.cobradoEm : null;
+    };
     const alinhados = alinharVencimentosLegado(ordemParcelas.map((l) => ({ chave: l.chave, esperadoEm: l.esperadoEm, cobradoEm: cobrancaPropria(l) })), periodicidade);
     const vencimentoDe = new Map(alinhados.map((v) => [v.chave, v]));
     const vencimentos: PlanoMigracao['vencimentos'] = { divergentes: 0, aviso: null, parcelas: [] };
