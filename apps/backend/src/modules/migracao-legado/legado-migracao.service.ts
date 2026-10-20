@@ -104,7 +104,7 @@ export interface PlanoMigracao {
   contrato: { numero: string; dataAssinatura: string; dataPrimeiraParcela: string; numeroParcelas: number; valorParcela: number; valorTotal: number; valorEntrada: number; taxaDescontoMensal: number | null; periodicidade: 'semanal' | 'quinzenal' | 'mensal' };
   entrada: { valor: number; pagoEm: string; asaasChargeId: string | null } | null;
   // §26.15 item 5 — por parcela do veículo: data do contrato × data efetiva (= fatura = recebível)
-  // e um aviso quando divergem ("contrato: segunda-feira · cobrança: quinta-feira — o cronograma seguirá quinta-feira").
+  // e um aviso quando divergem ("contrato: segunda-feira · cobrança: sexta-feira — o cronograma seguirá sexta-feira", caso Carmo).
   vencimentos: { divergentes: number; aviso: string | null; parcelas: { numero: number; contrato: string; efetivo: string; origem: OrigemVencimentoLegado; diverge: boolean; status: StatusFaturaPlano }[] };
   faturas: FaturaPlano[];
   rps: RpPlano[];

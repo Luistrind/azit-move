@@ -6,7 +6,7 @@ import { LegadoMigracaoService, type PlanoMigracao } from './legado-migracao.ser
 // Doc 02 §26.15 item 5 (decisão Luís 20/10/2026): parcela, fatura e recebível
 // vencem no MESMO dia — o da cobrança real do Asaas; sem cobrança, a cadência
 // continua da última data real. Casos de produção: Carmo 2026030001 (contrato
-// segunda, cobrança quinta, acordo em andamento) e Gerci 2026090017 (1 dia).
+// segunda, cobrança SEXTA, acordo em andamento) e Gerci 2026090017 (1 dia).
 // O planner roda inteiro (prévia) sobre a conciliação declarada, sem banco.
 
 const HOJE = '2026-10-20'; // terça-feira
@@ -76,15 +76,16 @@ function conferirParcelaIgualFatura(plano: PlanoMigracao) {
 }
 
 describe('prévia da migração — vencimentos (doc 02 §26.15 item 5)', () => {
-  it('Carmo: contrato na segunda, cobrança na quinta, acordo em andamento cobrindo 3 parcelas — tudo vence na quinta, inclusive as futuras, e as cotas caem nas faturas das parcelas', async () => {
-    // Contrato: 8 parcelas semanais a partir de segunda 14/09. Cobranças reais nas quintas.
+  it('Carmo: contrato na segunda, cobrança na SEXTA, acordo em andamento cobrindo 3 parcelas — tudo vence na sexta, inclusive as futuras, e as cotas caem nas faturas das parcelas', async () => {
+    // Contrato: 8 parcelas semanais a partir de segunda 14/09. Cobranças reais nas sextas
+    // (produção: faturas de 23/10 e 30/10, cotas do acordo em sextas).
     const svc = montar({
       termos: termos('2026-09-14', 8),
       cobrancas: [
-        cobranca('pay_1', '2026-09-17', 'paga'), cobranca('pay_2', '2026-09-24', 'paga'),
-        cobranca('pay_3', '2026-10-01', 'pendente'), // vencida, coberta pelo acordo (apagada na migração)
-        cobranca('pay_6', '2026-10-22', 'pendente'), // a vencer, emitida pela assinatura
-        cobranca('pay_ac0', '2026-10-15', 'paga', 500), // entrada do acordo
+        cobranca('pay_1', '2026-09-18', 'paga'), cobranca('pay_2', '2026-09-25', 'paga'),
+        cobranca('pay_3', '2026-10-02', 'pendente'), // vencida, coberta pelo acordo (apagada na migração)
+        cobranca('pay_6', '2026-10-23', 'pendente'), // a vencer, emitida pela assinatura
+        cobranca('pay_ac0', '2026-10-16', 'paga', 500), // entrada do acordo
       ],
       declaracao: {
         periodicidade: 'semanal',
@@ -98,7 +99,7 @@ describe('prévia da migração — vencimentos (doc 02 §26.15 item 5)', () => 
           { numero: 7, vencimento: '2026-10-26', situacao: 'futura' },
           { numero: 8, vencimento: '2026-11-02', situacao: 'futura' },
         ],
-        acordoEmAndamento: { parcelasCobertas: [3, 4, 5], entrada: { valor: 50_000, pagoEm: '2026-10-15', cobrancas: ['pay_ac0'] }, parcelas: { quantidade: 3, valor: 90_000, primeiraEm: '2026-10-22' } },
+        acordoEmAndamento: { parcelasCobertas: [3, 4, 5], entrada: { valor: 50_000, pagoEm: '2026-10-16', cobrancas: ['pay_ac0'] }, parcelas: { quantidade: 3, valor: 90_000, primeiraEm: '2026-10-23' } },
       },
     });
     const plano = await svc.previa('caso1');
@@ -106,9 +107,9 @@ describe('prévia da migração — vencimentos (doc 02 §26.15 item 5)', () => 
 
     const f = porParcela(plano);
     expect(Object.keys(f)).toHaveLength(8);
-    expect([1, 2, 3, 4, 5, 6, 7, 8].map((n) => f[n].vencimento)).toEqual(['2026-09-17', '2026-09-24', '2026-10-01', '2026-10-08', '2026-10-15', '2026-10-22', '2026-10-29', '2026-11-05']);
+    expect([1, 2, 3, 4, 5, 6, 7, 8].map((n) => f[n].vencimento)).toEqual(['2026-09-18', '2026-09-25', '2026-10-02', '2026-10-09', '2026-10-16', '2026-10-23', '2026-10-30', '2026-11-06']);
     for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) {
-      expect(semana(f[n].vencimento)).toBe('quinta-feira');
+      expect(semana(f[n].vencimento)).toBe('sexta-feira');
       expect(semana(f[n].parcela!.vencimentoContrato)).toBe('segunda-feira');
     }
     expect([1, 2, 3, 4, 5, 6, 7, 8].map((n) => f[n].parcela!.origemVencimento)).toEqual(['cobranca', 'cobranca', 'cobranca', 'cadencia', 'cadencia', 'cobranca', 'cadencia', 'cadencia']);
@@ -120,17 +121,17 @@ describe('prévia da migração — vencimentos (doc 02 §26.15 item 5)', () => 
     expect(f[6]).toMatchObject({ status: 'ABERTA', substituirChargeId: 'pay_6', emitirAgora: true });
     expect(f[7].status).toBe('ABERTA');
 
-    // Cotas do acordo (quintas 22/10, 29/10, 05/11) caem nas faturas das parcelas 6, 7 e 8 — nenhuma fatura só do acordo.
-    expect(plano.acordo).toMatchObject({ numeroParcelas: 3, primeiraEm: '2026-10-22', ultimaEm: '2026-11-05', cobertas: [3, 4, 5] });
+    // Cotas do acordo (sextas 23/10, 30/10, 06/11) caem nas faturas das parcelas 6, 7 e 8 — nenhuma fatura só do acordo.
+    expect(plano.acordo).toMatchObject({ numeroParcelas: 3, primeiraEm: '2026-10-23', ultimaEm: '2026-11-06', cobertas: [3, 4, 5] });
     expect(plano.faturas.filter((x) => x.origem.startsWith('acordo:'))).toHaveLength(0);
     expect(plano.acordo!.cotas.map((c) => plano.faturas[c.faturaIdx].parcela!.numero)).toEqual([6, 7, 8]);
     expect(f[7].itens.some((i) => i.descricao === 'Renegociação parcela 2/3')).toBe(true);
 
     // Prévia: data do contrato × efetiva por parcela, com aviso.
     expect(plano.vencimentos.divergentes).toBe(8);
-    expect(plano.vencimentos.aviso).toContain('contrato: segunda-feira · cobrança: quinta-feira');
-    expect(plano.vencimentos.aviso).toContain('seguirão quinta-feira');
-    expect(plano.vencimentos.parcelas[3]).toEqual({ numero: 4, contrato: '2026-10-05', efetivo: '2026-10-08', origem: 'cadencia', diverge: true, status: 'RENEGOCIADA' });
+    expect(plano.vencimentos.aviso).toContain('contrato: segunda-feira · cobrança: sexta-feira');
+    expect(plano.vencimentos.aviso).toContain('seguirão sexta-feira');
+    expect(plano.vencimentos.parcelas[3]).toEqual({ numero: 4, contrato: '2026-10-05', efetivo: '2026-10-09', origem: 'cadencia', diverge: true, status: 'RENEGOCIADA' });
     // A data do papel fica como 1ª parcela do contrato.
     expect(plano.contrato.dataPrimeiraParcela).toBe('2026-09-14');
     expect(plano.resumo).toMatchObject({ faturasPagas: 2, faturasRenegociadas: 3, faturasAbertas: 3, substituidas: 1, emitidasAgora: 1, removidas: 1 });

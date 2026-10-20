@@ -5,7 +5,7 @@ import { nomeDiaSemanaISO } from './datas';
 // Doc 02 §26.15 item 5 (decisão Luís 20/10/2026): parcela, fatura e recebível
 // vencem no MESMO dia — o da cobrança real; sem cobrança, a cadência segue a
 // última data real. Casos de produção: Carmo (contrato segunda, cobrança
-// quinta, acordo em andamento) e Gerci (1 dia de diferença).
+// sexta, acordo em andamento) e Gerci (1 dia de diferença).
 
 const linha = (n: number, esperadoEm: string, cobradoEm: string | null = null) => ({ chave: `parcela:${n}`, esperadoEm, cobradoEm });
 
@@ -23,23 +23,23 @@ describe('avancarPeriodoISO — o passo do cronograma em dia-calendário', () =>
 });
 
 describe('alinharVencimentosLegado', () => {
-  it('Carmo: contrato na segunda, cobrança na quinta — tudo vence na quinta, inclusive as futuras e as cobertas pelo acordo sem cobrança', () => {
+  it('Carmo: contrato na segunda, cobrança na SEXTA — tudo vence na sexta, inclusive as futuras e as cobertas pelo acordo sem cobrança', () => {
     const r = alinharVencimentosLegado([
-      linha(1, '2026-03-02', '2026-03-05'), // paga, cobrança quinta
-      linha(2, '2026-03-09', '2026-03-12'), // paga
-      linha(3, '2026-03-16', '2026-03-19'), // em_acordo, cobrança antiga (apagada na migração)
+      linha(1, '2026-03-02', '2026-03-06'), // paga, cobrança sexta
+      linha(2, '2026-03-09', '2026-03-13'), // paga
+      linha(3, '2026-03-16', '2026-03-20'), // em_acordo, cobrança antiga (apagada na migração)
       linha(4, '2026-03-23'), // em_acordo sem cobrança própria
       linha(5, '2026-03-30'), // em_acordo sem cobrança própria
-      linha(6, '2026-04-06', '2026-04-09'), // pendente, cobrança a vencer
+      linha(6, '2026-04-06', '2026-04-10'), // pendente, cobrança a vencer
       linha(7, '2026-04-13'), // futura
       linha(8, '2026-04-20'), // futura
     ], 'semanal');
-    expect(r.map((v) => v.efetivo)).toEqual(['2026-03-05', '2026-03-12', '2026-03-19', '2026-03-26', '2026-04-02', '2026-04-09', '2026-04-16', '2026-04-23']);
+    expect(r.map((v) => v.efetivo)).toEqual(['2026-03-06', '2026-03-13', '2026-03-20', '2026-03-27', '2026-04-03', '2026-04-10', '2026-04-17', '2026-04-24']);
     expect(r.map((v) => v.origem)).toEqual(['cobranca', 'cobranca', 'cobranca', 'cadencia', 'cadencia', 'cobranca', 'cadencia', 'cadencia']);
     expect(r.every((v) => v.diverge)).toBe(true);
-    expect(r.every((v) => nomeDiaSemanaISO(v.efetivo) === 'quinta-feira')).toBe(true);
+    expect(r.every((v) => nomeDiaSemanaISO(v.efetivo) === 'sexta-feira')).toBe(true);
     expect(r.every((v) => nomeDiaSemanaISO(v.contrato) === 'segunda-feira')).toBe(true);
-    expect(r[3]).toEqual({ chave: 'parcela:4', contrato: '2026-03-23', efetivo: '2026-03-26', origem: 'cadencia', diverge: true });
+    expect(r[3]).toEqual({ chave: 'parcela:4', contrato: '2026-03-23', efetivo: '2026-03-27', origem: 'cadencia', diverge: true });
   });
 
   it('Gerci: 1 dia de diferença — a parcela segue a cobrança (terça), não o papel (segunda)', () => {

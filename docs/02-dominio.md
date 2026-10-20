@@ -2413,8 +2413,8 @@ valer no lugar das regras.
      antes dela, fica na data do contrato até a primeira cobrança ancorar;
    - a **data do papel** (`vencimento` declarado ou cronograma dos termos) não some: vira a
      `dataPrimeiraParcela` do contrato (1ª parcela) e aparece na prévia ao lado da data
-     efetiva, com aviso quando divergem ("contrato: segunda-feira · cobrança: quinta-feira —
-     parcelas, faturas e recebíveis seguirão quinta-feira"); o snapshot do contrato registra a
+     efetiva, com aviso quando divergem ("contrato: segunda-feira · cobrança: sexta-feira —
+     parcelas, faturas e recebíveis seguirão sexta-feira", caso Carmo); o snapshot do contrato registra a
      regra e quantas parcelas divergiram.
    O modo "vencimentos CONTRATO" do §26.9 item 4 deixou de existir (ver lá). Os dois casos de
    produção foram corrigidos à mão por SQL; a regra vale para as próximas migrações.

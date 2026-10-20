@@ -2,7 +2,7 @@
 // decisão Luís 20/10/2026, casos Carmo 2026030001 e Gerci 2026090017).
 //
 // Parcela, fatura e recebível são o MESMO compromisso e vencem no MESMO dia.
-// Na migração esse dia é o da COBRANÇA REAL do Asaas (o cliente paga quinta,
+// Na migração esse dia é o da COBRANÇA REAL do Asaas (o cliente paga sexta,
 // não a segunda do papel); a parcela sem cobrança própria (futura, adiada,
 // coberta por acordo sem cobrança) continua a CADÊNCIA a partir da última
 // data real — semanal +7, quinzenal +14, mensal mesmo dia do mês — pelo mesmo
