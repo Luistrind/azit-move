@@ -12,7 +12,7 @@ import {
   StatusContratoCredito as StatusContratoCreditoPrisma,
 } from '@prisma/client';
 import { StatusContratoCredito, Credor, Periodicidade as PeriodicidadeTypes } from '@azit/types';
-import { diasAtrasoCalendario, gerarCronograma, centavosParaReaisString, inicioHojeBrasilUTC } from '@azit/utils';
+import { diasAtrasoCalendario, gerarCronograma, centavosParaReaisString, inicioHojeBrasilUTC, dataCalendarioUTC, inicioDiaUTC, FUSO_NEGOCIO } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { CriarContratoDto } from './dto/criar-contrato.dto';
 import { ListarContratosDto } from './dto/listar-contratos.dto';
@@ -123,7 +123,7 @@ export class ContratoService {
   // parametrizável em Configuração > Assinatura digital): instrumento não
   // assinado ou entrada não paga além do prazo cancela o contrato e libera o
   // veículo. Cada caso vira notificação — nunca expira mudo.
-  @Cron(CronExpression.EVERY_DAY_AT_5AM)
+  @Cron(CronExpression.EVERY_DAY_AT_5AM, { timeZone: FUSO_NEGOCIO })
   async cronExpirarNaoEfetivados(): Promise<void> {
     const { expirados } = await this.expirarNaoEfetivados();
     if (expirados) console.log(`[cron] validade: ${expirados} contrato(s) expirados por prazo`);
@@ -422,7 +422,7 @@ export class ContratoService {
       // ABERTA da conta (vencimento >= parcela, janela de 35 dias) — agrega itens de
       // todos os contratos no mesmo ciclo do titular (crédito avulso NÃO gera fatura
       // paralela). Só nasce fatura nova quando não há ciclo aberto à frente.
-      const diaIni = new Date(venc); diaIni.setHours(0, 0, 0, 0);
+      const diaIni = inicioDiaUTC(dataCalendarioUTC(venc)); // dia-calendário (UTC), não o relógio do servidor
       const janelaFim = new Date(diaIni.getTime() + 35 * 24 * 60 * 60 * 1000);
       let fatura = await tx.fatura.findFirst({
         where: {
@@ -532,9 +532,7 @@ export class ContratoService {
         const f = faturasDoContrato[i];
         for (const r of recorrentes) {
           if (r.dataInicio) {
-            const ini = new Date(r.dataInicio); ini.setHours(0, 0, 0, 0);
-            const v = new Date(f.venc); v.setHours(0, 0, 0, 0);
-            if (v < ini) continue;
+            if (dataCalendarioUTC(f.venc) < dataCalendarioUTC(r.dataInicio)) continue; // compara dias de calendário
           }
           if (r.dataFim && f.venc > r.dataFim) continue;
           // Cadência: cobra quando o ciclo do item alinha com este período.

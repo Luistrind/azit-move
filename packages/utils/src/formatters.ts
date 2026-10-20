@@ -1,6 +1,5 @@
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { centavosParaReais } from './money';
+import { formatarDiaBR, isoParaBR } from './datas';
 
 /** Formata um valor em CENTAVOS inteiros como moeda BRL (ex: 99700 -> "R$ 997,00"). */
 export function formatCurrency(centavos: number): string {
@@ -10,8 +9,9 @@ export function formatCurrency(centavos: number): string {
   }).format(centavosParaReais(centavos));
 }
 
+/** 'DD/MM/YYYY' de uma coluna de DATA (dia-calendário gravado em UTC) ou de um 'YYYY-MM-DD'. */
 export function formatDate(date: Date | string): string {
-  return format(new Date(date), 'dd/MM/yyyy', { locale: ptBR });
+  return typeof date === 'string' ? isoParaBR(date) : formatarDiaBR(date);
 }
 
 export function formatCPF(cpf: string): string {

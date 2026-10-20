@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { diaBrasil } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AssistenteAnaliseService } from '../analise/assistente-analise.service';
 import { PROMPT_ASSISTENTE_ANALISE, REGRAS_DEMONSTRATIVOS } from '../analise/prompt-assistente';
@@ -60,7 +61,7 @@ export class McpAzitService {
           analiseId: a.id,
           titular: a.participantes[0]?.titular.nome ?? '—',
           status: a.status,
-          criadaEm: a.createdAt.toISOString().slice(0, 10),
+          criadaEm: diaBrasil(a.createdAt),
           temRelatorio: !!(a.resumoIa as { texto?: string } | null)?.texto,
         }));
         return { content: [{ type: 'text', text: JSON.stringify(linhas, null, 1) }] };
@@ -121,7 +122,7 @@ export class McpAzitService {
             .map(([k, v]) => `${k}=${String(v).slice(0, 120)}`)
             .join(' · ');
           const tamBruto = JSON.stringify((r as { bruto?: unknown }).bruto ?? null)?.length ?? 0;
-          return `• ${c.tipo} · ${c.fornecedor} · ${c.dataConsulta.toISOString().slice(0, 10)} · ${c.situacao}${c.motivoFalha ? ` · falha: ${c.motivoFalha}` : ''}\n  ${campos || 'sem campos mapeados'}\n  payload bruto: ${tamBruto > 2 ? `${tamBruto} chars — use obter_consulta_bruta("${c.tipo}")` : 'vazio'}`;
+          return `• ${c.tipo} · ${c.fornecedor} · ${diaBrasil(c.dataConsulta)} · ${c.situacao}${c.motivoFalha ? ` · falha: ${c.motivoFalha}` : ''}\n  ${campos || 'sem campos mapeados'}\n  payload bruto: ${tamBruto > 2 ? `${tamBruto} chars — use obter_consulta_bruta("${c.tipo}")` : 'vazio'}`;
         });
         const indiceDocs = insumos.documentos.map(
           (d) =>
@@ -166,7 +167,7 @@ export class McpAzitService {
           content: [
             {
               type: 'text',
-              text: `CONSULTA ${c.tipo} · ${c.fornecedor} · ${c.dataConsulta.toISOString().slice(0, 10)} · ${c.situacao}${c.motivoFalha ? ` · falha: ${c.motivoFalha}` : ''}\n${corpo}`,
+              text: `CONSULTA ${c.tipo} · ${c.fornecedor} · ${diaBrasil(c.dataConsulta)} · ${c.situacao}${c.motivoFalha ? ` · falha: ${c.motivoFalha}` : ''}\n${corpo}`,
             },
           ],
         };

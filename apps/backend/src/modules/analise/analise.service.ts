@@ -7,6 +7,7 @@ import {
 import { Prisma, StatusAnalise, PapelTitular } from '@prisma/client';
 import {
   adicionarDiasUteis,
+  FUSO_NEGOCIO,
   avaliarAnaliseCadastro,
   AnaliseInput,
   ParticipanteAnaliseInput,
@@ -64,7 +65,7 @@ export class AnaliseService implements OnModuleInit {
   // viram EXPIRADA — o prazo era gravado e nunca cobrado (achado P1-9). A
   // expiração não decide nada sozinha: notifica a análise para o analista
   // encerrar, reabrir prazo (nova pendência) ou não aprovar.
-  @Cron(CronExpression.EVERY_DAY_AT_5AM)
+  @Cron(CronExpression.EVERY_DAY_AT_5AM, { timeZone: FUSO_NEGOCIO })
   async cronExpirarPrazos(): Promise<void> {
     const { pendencias, ressalvas } = await this.expirarPrazosVencidos();
     if (pendencias + ressalvas > 0) {

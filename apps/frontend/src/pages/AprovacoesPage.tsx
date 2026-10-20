@@ -6,14 +6,10 @@ import { aprovacaoService, Aprovacao, DecisaoInput } from '../services/aprovacao
 import { mensagemErro } from '../lib/permissoes';
 import { toast } from '../components/Toast';
 import { Modal } from '../components/Modal';
+import { instanteCurtoBR } from '../lib/datas';
 
 function fmtDataHora(iso: string): string {
-  return new Date(iso).toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return instanteCurtoBR(iso);
 }
 
 // Central legível (feedback Luís 07/09): título sem id interno nem códigos —

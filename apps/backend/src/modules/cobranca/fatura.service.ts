@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { calcularEncargoAtraso, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, dataCalendarioUTC, diasAtrasoCalendario } from '@azit/utils';
+import { calcularEncargoAtraso, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, dataCalendarioUTC, diasAtrasoCalendario, FUSO_NEGOCIO, inicioDiaUTC, somarDiasISO } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
@@ -42,12 +42,13 @@ export class FaturaService {
   // o operador também pode disparar via /dev/fechar-faturas.
   // ENFILEIRA em vez de rodar in-process (auditoria 15/09, P0-6): o worker da
   // fila tem retry/backoff, e o jobId diário deduplica entre réplicas da API.
-  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  // Horário e chave do job no fuso do negócio (Regra 15): o container roda em UTC.
+  @Cron(CronExpression.EVERY_DAY_AT_3AM, { timeZone: FUSO_NEGOCIO })
   async cronFecharFaturas(): Promise<void> {
     await this.filaFechamento.add(
       'fechar',
       {},
-      { jobId: `fechar-${new Date().toISOString().slice(0, 10)}`, removeOnComplete: true, removeOnFail: 50 },
+      { jobId: `fechar-${dataHojeBrasil()}`, removeOnComplete: true, removeOnFail: 50 },
     );
     this.logger.log('[cron] D-5: fechamento de faturas enfileirado');
   }
@@ -72,7 +73,7 @@ export class FaturaService {
   // recuperáveis (vencimento ainda no futuro — o gerar é idempotente) e alerta
   // a carteira sobre as que já venceram sem cobrança (reemissão de vencida tem
   // política própria a definir — o Asaas rejeita vencimento no passado).
-  @Cron('30 3 * * *')
+  @Cron('30 3 * * *', { timeZone: FUSO_NEGOCIO })
   async cronVarrerCobrancas(): Promise<void> {
     const r = await this.varrerCobrancasPendentes();
     if (r.reenfileiradas || r.vencidasSemCobranca) {
@@ -700,12 +701,12 @@ export class FaturaService {
       include: { parcelas: { select: { id: true } } },
     });
     if (!f) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Fatura não encontrada' });
-    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-    const v = new Date(f.dataVencimento); v.setHours(0, 0, 0, 0);
-    const atrasoAtual = Math.max(0, Math.round((hoje.getTime() - v.getTime()) / DIA_MS));
+    // Dias de calendário no fuso do negócio; vencimento/fechamento gravados em UTC-midnight.
+    const hoje = dataHojeBrasil();
+    const atrasoAtual = diasAtrasoCalendario(f.dataVencimento, inicioDiaUTC(hoje));
     const diasAtraso = atrasoAtual + dias;
-    const novoVenc = new Date(hoje.getTime() - diasAtraso * DIA_MS);
-    const novoFech = new Date(novoVenc.getTime() - 5 * DIA_MS);
+    const novoVenc = inicioDiaUTC(somarDiasISO(hoje, -diasAtraso));
+    const novoFech = inicioDiaUTC(somarDiasISO(hoje, -diasAtraso - 5));
     await this.prisma.db.$transaction(async (tx) => {
       await tx.fatura.update({ where: { id: faturaId }, data: { dataVencimento: novoVenc, dataFechamento: novoFech } });
       for (const p of f.parcelas) {

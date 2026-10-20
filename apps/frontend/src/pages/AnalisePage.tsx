@@ -12,6 +12,7 @@ import { toast } from '../components/Toast';
 import { DocumentoViewer, useDocumentoViewer } from '../components/DocumentoViewer';
 import { ANALISE_SITUACAO_FG } from '../config/statusColors';
 import { mensagemErro } from '../lib/permissoes';
+import { instanteBR } from '../lib/datas';
 
 // UX-3 — Análise de cadastro GUIADA (proposta UX §4.2): stepper de etapas,
 // próximo passo sempre visível, modais no lugar de prompts, status por extenso.
@@ -302,7 +303,7 @@ export function AnalisePage() {
             <div key={doc.id} className="flex items-center justify-between border-t border-[var(--border)] py-[6px] text-[12px]">
               <span>
                 <b>{ROTULO_DOC[doc.tipo] ?? doc.tipo.replace(/_/g, ' ')}</b> · {doc.nome}
-                <span className="opacity-60"> · {new Date(doc.anexadoEm).toLocaleDateString('pt-BR')}</span>
+                <span className="opacity-60"> · {instanteBR(doc.anexadoEm)}</span>
               </span>
               <span className="flex items-center gap-[10px]">
                 <button
@@ -389,7 +390,7 @@ export function AnalisePage() {
                 (c.tipo === 'RESTRITIVOS' && (typeof r.restritivosFinanceiros !== 'number' || typeof r.restritivosNaoFinanceiros !== 'number')));
             return (
               <div key={c.id} className="border-t border-[var(--border)] py-[6px] text-[12px]">
-                <b>{TIPO_CONSULTA_LABEL[c.tipo] ?? c.tipo}</b> · {c.fornecedor} {c.protocolo && `· ${c.protocolo}`} · {new Date(c.dataConsulta).toLocaleDateString('pt-BR')} ·
+                <b>{TIPO_CONSULTA_LABEL[c.tipo] ?? c.tipo}</b> · {c.fornecedor} {c.protocolo && `· ${c.protocolo}`} · {instanteBR(c.dataConsulta)} ·
                 {c.situacao === 'FALHA' ? <span style={{ color: '#b03030' }}> falhou ({c.motivoFalha}) · tentativa {c.tentativas}</span> : c.valida ? ' válida' : <span style={{ color: '#b07000' }}> vencida (mais de 30 dias)</span>}
                 {c.resultado && ` · ${resumoResultado(c.resultado)}`}
                 {semDados && (
@@ -398,7 +399,7 @@ export function AnalisePage() {
                   </span>
                 )}
                 <BotaoVerRetorno
-                  titulo={`Retorno do birô — ${TIPO_CONSULTA_LABEL[c.tipo] ?? c.tipo} · ${new Date(c.dataConsulta).toLocaleDateString('pt-BR')}`}
+                  titulo={`Retorno do birô — ${TIPO_CONSULTA_LABEL[c.tipo] ?? c.tipo} · ${instanteBR(c.dataConsulta)}`}
                   resultado={c.resultado}
                 />
                 {typeof r.statusApi === 'string' && r.statusApi && (

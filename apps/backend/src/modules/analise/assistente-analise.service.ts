@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import Anthropic from '@anthropic-ai/sdk';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { FATOR_PRAZO_QUINZENAL, FATOR_PRAZO_SEMANAL } from '@azit/utils';
+import { FATOR_PRAZO_QUINZENAL, FATOR_PRAZO_SEMANAL, diaBrasil } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { PREAMBULO_INSUMOS, PROMPT_ASSISTENTE_ANALISE, REGRAS_DEMONSTRATIVOS } from './prompt-assistente';
 
@@ -232,7 +232,7 @@ export class AssistenteAnaliseService {
     const consultasTexto = analise.consultas.map((c) => {
       let corpo = JSON.stringify(c.resultado ?? {}, null, 0);
       if (corpo.length > MAX_CHARS_POR_CONSULTA) corpo = corpo.slice(0, MAX_CHARS_POR_CONSULTA) + ' [TRUNCADO]';
-      return `CONSULTA ${c.tipo} · fornecedor: ${c.fornecedor} · data: ${c.dataConsulta.toISOString().slice(0, 10)} · situação: ${c.situacao}${c.motivoFalha ? ` · falha: ${c.motivoFalha}` : ''}\n${corpo}`;
+      return `CONSULTA ${c.tipo} · fornecedor: ${c.fornecedor} · data: ${diaBrasil(c.dataConsulta)} · situação: ${c.situacao}${c.motivoFalha ? ` · falha: ${c.motivoFalha}` : ''}\n${corpo}`;
     });
 
     return {

@@ -11,7 +11,10 @@ import { Queue } from 'bullmq';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import {
   centavosParaReaisString,
+  dataCalendarioUTC,
+  dataHojeBrasil,
   dataPorExtenso,
+  formatarDiaBR,
   formatCurrency,
   numeroPorExtenso,
   renderTemplate,
@@ -467,11 +470,11 @@ export class NovacaoService implements OnModuleInit {
       periodicidadePlural: pluralPorFreq[frequencia],
       valorParcela: formatCurrency(valorParcela),
       valorParcelaExtenso: valorPorExtenso(valorParcela),
-      dataPrimeiraParcela: contrato.dataPrimeiraParcela.toLocaleDateString('pt-BR'),
+      dataPrimeiraParcela: formatarDiaBR(contrato.dataPrimeiraParcela),
       vencimentoSubsequente: vencimentoPorFreq[frequencia],
       taxaMulta: origem ? Number(origem.taxaMultaAtraso.toString()) : 2,
       taxaJuros: origem ? Number(origem.taxaJurosAtraso.toString()) : 1,
-      dataAssinaturaLinha: `VITORIA/ES, ${dataPorExtenso(new Date())}.`,
+      dataAssinaturaLinha: `VITORIA/ES, ${dataPorExtenso(dataHojeBrasil())}.`,
       compradorAssinatura: `${t.nome}\nCPF: ${t.cpfCnpj}`,
       assinaturasAdicionais: '',
       testemunha1Linha: linhaTestemunha(paramsAssinatura.testemunha1Nome, paramsAssinatura.testemunha1Cpf),
@@ -737,7 +740,7 @@ export class NovacaoService implements OnModuleInit {
     if (doc && (doc.status === 'assinado' || doc.status === 'parcialmente_assinado')) {
       throw new UnprocessableEntityException({ erro: 'ja_assinado', mensagem: 'O instrumento já tem assinatura — a data não pode mais ser alterada' });
     }
-    if (dataISO <= new Date().toISOString().slice(0, 10)) {
+    if (dataISO <= dataHojeBrasil()) {
       throw new UnprocessableEntityException({ erro: 'primeira_parcela_no_passado', mensagem: 'A 1ª parcela precisa vencer depois de hoje' });
     }
     const snap = novacao.snapshotJson as unknown as SnapshotNovacao;
@@ -819,7 +822,7 @@ export class NovacaoService implements OnModuleInit {
       cpfCliente: t.cpfCnpj,
       telefoneCliente: t.whatsapp ?? '—',
       razaoCredoraVeiculo: 'Estrutura jurídica titular do veículo (conforme contrato)',
-      dataBase: new Date(snap.dataBase).toLocaleDateString('pt-BR'),
+      dataBase: formatarDiaBR(new Date(snap.dataBase)), // dataBase = meia-noite UTC do dia-Brasil
       saldoTotal: `R$ ${reaisBR(sim.decomposicao.totalGeral)}`,
       saldoTotalExtenso: valorPorExtenso(sim.decomposicao.totalGeral),
       numeroContratoVeiculo: ctx.numeroContratoVeiculo,
@@ -851,7 +854,7 @@ export class NovacaoService implements OnModuleInit {
           ? `O CLIENTE pagará, como recebimento inicial, **R$ ${reais(recebimento)} (${valorPorExtenso(recebimento)})**, sendo a taxa inicial de processamento apropriada primeiro e o restante amortizado do saldo novado.`
           : 'Não há recebimento inicial nesta operação — a taxa inicial de processamento é diluída nas parcelas.',
       condicaoRecebimento: recebimento > 0 ? 'e com a confirmação do pagamento do recebimento inicial, no prazo máximo de 5 dias' : '',
-      dataAssinaturaLinha: `VITÓRIA/ES, ${dataPorExtenso(new Date())}.`,
+      dataAssinaturaLinha: `VITÓRIA/ES, ${dataPorExtenso(dataHojeBrasil())}.`,
       testemunha1Linha: linhaTest(params.testemunha1Nome, params.testemunha1Cpf),
       testemunha2Linha: linhaTest(params.testemunha2Nome, params.testemunha2Cpf),
     });
@@ -873,7 +876,7 @@ export class NovacaoService implements OnModuleInit {
       status: n.status.toLowerCase(),
       // 1ª parcela do relacionamento novo (Termo, se houver; senão veículo) e se
       // ainda pode ser trocada (aguardando assinatura, ninguém assinou) — 15/10.
-      primeiraParcela: (n.contratoTermo?.dataPrimeiraParcela ?? n.contratoVeiculo?.dataPrimeiraParcela)?.toISOString().slice(0, 10) ?? null,
+      primeiraParcela: ((d) => (d ? dataCalendarioUTC(d) : null))(n.contratoTermo?.dataPrimeiraParcela ?? n.contratoVeiculo?.dataPrimeiraParcela),
       frequencia: n.contratoVeiculo?.periodicidade?.toLowerCase() ?? null,
       assinaturaStatus: n.contratoVeiculo?.documentoAssinatura?.status ?? null,
       podeAlterarPrimeiraParcela:

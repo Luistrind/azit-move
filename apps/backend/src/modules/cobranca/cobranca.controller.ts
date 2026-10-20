@@ -15,7 +15,7 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { RoleUsuario } from '@prisma/client';
-import { dataHojeBrasil } from '@azit/utils';
+import { dataHojeBrasil, dataCalendarioUTC } from '@azit/utils';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { PrismaService } from '../../database/prisma.service';
@@ -148,7 +148,7 @@ export class CobrancaController {
     await this.filaRecebido.add('conciliar', {
       faturaId: fatura.id,
       paymentDate: dataHojeBrasil(),
-      dueDate: fatura.dataVencimento.toISOString().slice(0, 10),
+      dueDate: dataCalendarioUTC(fatura.dataVencimento),
       // Valor REAL da fatura (02/10): com 0 a simulação pulava a checagem de
       // pagamento parcial e escondeu o defeito da proteção somada em dobro.
       valor: Math.round(Number(fatura.valorTotal.toString()) * 100),
@@ -186,7 +186,7 @@ export class CobrancaController {
     await this.filaRecebido.add('conciliar', {
       faturaId: parcela.faturaId,
       paymentDate: dataHojeBrasil(),
-      dueDate: parcela.dataVencimento.toISOString().slice(0, 10),
+      dueDate: dataCalendarioUTC(parcela.dataVencimento),
       valor: 0,
     });
     return { enfileirado: true, faturaId: parcela.faturaId };

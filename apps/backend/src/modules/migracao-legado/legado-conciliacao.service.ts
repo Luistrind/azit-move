@@ -23,6 +23,7 @@ import {
   type ResultadoConciliacao,
   type TermosContratoLegado,
   type TipoCobrancaLegada,
+  dataCalendarioUTC,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 
@@ -94,7 +95,7 @@ export const termosSchema = z.object({
 
 const centavos = (v: Prisma.Decimal | null | undefined) => (v == null ? null : Math.round(Number(v) * 100));
 const reais = (c: number) => new Prisma.Decimal(centavosParaReaisString(c));
-const iso = (d: Date | null | undefined) => d?.toISOString().slice(0, 10) ?? null;
+const iso = (d: Date | null | undefined) => (d ? dataCalendarioUTC(d) : null); // coluna de data (UTC-midnight)
 
 type CobrancaBanco = Prisma.CobrancaLegadaGetPayload<object>;
 export interface VinculoManual { cobrancaId: string; chave: string; em: string; por: string }

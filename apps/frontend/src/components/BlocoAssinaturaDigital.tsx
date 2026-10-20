@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { originacaoService } from '../services/originacao.service';
 import { toast } from './Toast';
 import { FERRAMENTAS_TESTE } from '../lib/ambiente';
+import { instanteBR } from '../lib/datas';
 
 // ---------------------------------------------------------------------------
 // Assinatura digital ZapSign F1 (doc 02 §21): cartão por signatário com link
@@ -90,7 +91,7 @@ export function BlocoAssinaturaDigital({ contratoId, ocupado, run, titulo }: {
             <div key={s.papel + s.nome} className="flex flex-wrap items-center gap-[8px] rounded-[8px] px-[10px] py-[7px] text-[12px]" style={{ background: 'var(--surface)', border: '1px solid var(--border-light)' }}>
               <span className="min-w-[220px] font-semibold">{s.nome} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>· {PAPEL_ASSINATURA[s.papel] ?? s.papel}</span></span>
               {s.assinouEm ? (
-                <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={{ background: '#eafaf1', color: '#1f9d5b' }}>✓ Assinou em {new Date(s.assinouEm).toLocaleDateString('pt-BR')}</span>
+                <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={{ background: '#eafaf1', color: '#1f9d5b' }}>✓ Assinou em {instanteBR(s.assinouEm)}</span>
               ) : (
                 <>
                   <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={{ background: s.visualizouEm ? '#fff3d6' : '#eef2f7', color: s.visualizouEm ? '#8a5a00' : '#5b6b7f' }}>

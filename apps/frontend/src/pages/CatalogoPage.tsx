@@ -14,6 +14,7 @@ import { usePodeRole, mensagemErro } from '../lib/permissoes';
 import { Modal } from '../components/Modal';
 import { toast } from '../components/Toast';
 import { CATALOGO_CICLO_COLORS } from '../config/statusColors';
+import { instanteBR } from '../lib/datas';
 
 // Catálogo de Produtos F1 (doc 02 §17): Produto → Variante → Versão, com herança
 // visível (herdado × sobrescrito), ciclo de vida e histórico de versões.
@@ -226,8 +227,8 @@ function DetalheProduto({ id }: { id: string }) {
         <div className="flex flex-col gap-[6px]">
           {d.versoes.map((v) => (
             <div key={v.id} className="rounded-[10px] p-[10px] text-[12px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-              <b>V{v.numero}</b> · nível {v.nivel} · vigente desde {new Date(v.vigenteDesde).toLocaleDateString('pt-BR')}
-              {v.vigenteAte ? ` até ${new Date(v.vigenteAte).toLocaleDateString('pt-BR')}` : ' (vigente)'}
+              <b>V{v.numero}</b> · nível {v.nivel} · vigente desde {instanteBR(v.vigenteDesde)}
+              {v.vigenteAte ? ` até ${instanteBR(v.vigenteAte)}` : ' (vigente)'}
               {v.observacao && <div style={{ color: 'var(--text-muted)' }}>{v.observacao}</div>}
             </div>
           ))}

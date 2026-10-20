@@ -1,7 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { AreaSistema, RoleUsuario, StatusAnalise } from '@prisma/client';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
-import { inicioHojeBrasilUTC } from '@azit/utils';
+import { inicioHojeBrasilUTC, formatarDiaBR } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 
 // Tela Início (proposta UX §4.3): fila de trabalho do papel logado.
@@ -151,7 +151,7 @@ export class InicioController {
         rotaRotulo: 'Abrir régua de cobrança',
         itens: vencidas.slice(0, 5).map((f) => ({
           titulo: f.conta.titular.nome,
-          subtitulo: `Venceu em ${f.dataVencimento.toISOString().slice(0, 10).split('-').reverse().join('/')}`,
+          subtitulo: `Venceu em ${formatarDiaBR(f.dataVencimento)}`,
           rota: `/titulares/${f.conta.titular.id}`,
         })),
       });

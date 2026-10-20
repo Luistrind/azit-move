@@ -5,7 +5,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, StatusTituloPagar, StatusLotePagamento } from '@prisma/client';
-import { centavosParaReaisString, formatCurrency } from '@azit/utils';
+import { centavosParaReaisString, formatCurrency, dataCalendarioUTC, dataHojeBrasil, inicioDiaUTC, partesBrasil, somarDiasISO } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
@@ -73,16 +73,18 @@ export class ContasPagarService implements OnModuleInit {
   }
 
   // RCPG015/016: corte 12h em dia útil — data programada padrão.
+  // Corte e dia útil no fuso do negócio (Regra 15) — antes usava o relógio do
+  // servidor (UTC): 12h UTC são 9h em Brasília.
   proximaDataProgramada(agora = new Date()): Date {
-    const d = new Date(agora);
-    const diaUtil = (x: Date) => x.getDay() !== 0 && x.getDay() !== 6;
-    if (!(diaUtil(d) && d.getHours() < 12)) {
+    const { dia, hora, diaSemana } = partesBrasil(agora);
+    const diaUtil = (ds: number) => ds !== 0 && ds !== 6;
+    let iso = dia;
+    if (!(diaUtil(diaSemana) && hora < 12)) {
       do {
-        d.setTime(d.getTime() + DIA_MS);
-      } while (!diaUtil(d));
+        iso = somarDiasISO(iso, 1);
+      } while (!diaUtil(inicioDiaUTC(iso).getUTCDay()));
     }
-    d.setHours(0, 0, 0, 0);
-    return d;
+    return inicioDiaUTC(iso);
   }
 
   // ---------------------------------------------------------------------------
@@ -612,7 +614,7 @@ export class ContasPagarService implements OnModuleInit {
       referenciaTipo: 'titulo_pagar',
       referenciaId: id,
       valorCentavos: t.natureza.especial ? Math.max(cent(t.valor), 999999999) : cent(t.valor),
-      resumo: `${t.natureza.nome} — ${t.descricao} — ${t.fornecedor.nome} — R$ ${centavosParaReaisString(cent(t.valor))} venc. ${t.vencimento.toISOString().slice(0, 10)}${t.urgente ? ' (URGENTE)' : ''}`,
+      resumo: `${t.natureza.nome} — ${t.descricao} — ${t.fornecedor.nome} — R$ ${centavosParaReaisString(cent(t.valor))} venc. ${dataCalendarioUTC(t.vencimento)}${t.urgente ? ' (URGENTE)' : ''}`,
       solicitanteId: usuarioId,
     });
     await this.auditar(usuarioId, 'cap_titulo_validado', id, { status: t.status }, { status: 'AGUARDANDO_APROVACAO' });
@@ -792,16 +794,16 @@ export class ContasPagarService implements OnModuleInit {
         const db = t.fornecedor.dadosBancarios[0];
         return [
           l.entidade.razaoSocial, l.entidade.cnpj ?? '', `${l.conta.banco} ${l.conta.agencia ?? ''} ${l.conta.conta ?? ''}`.trim(),
-          l.dataProgramada.toISOString().slice(0, 10),
+          dataCalendarioUTC(l.dataProgramada),
           t.fornecedor.nome, t.fornecedor.cpfCnpj,
           db?.banco ?? '', db?.agencia ?? '', db?.conta ?? '', db?.chavePix ?? '',
-          centavosParaReaisString(cent(t.valor)).replace('.', ','), t.vencimento.toISOString().slice(0, 10),
+          centavosParaReaisString(cent(t.valor)).replace('.', ','), dataCalendarioUTC(t.vencimento),
           t.formaPagamento, t.descricao.replace(/;/g, ','),
           t.fornecedor.alertaProximoPagamento ? 'SIM' : '',
         ].join(';');
       }),
     ];
-    return { nomeArquivo: `lote-${l.entidade.razaoSocial.replace(/\s+/g, '-').toLowerCase()}-${l.dataProgramada.toISOString().slice(0, 10)}-v${l.versao}.csv`, conteudo: linhas.join('\n') };
+    return { nomeArquivo: `lote-${l.entidade.razaoSocial.replace(/\s+/g, '-').toLowerCase()}-${dataCalendarioUTC(l.dataProgramada)}-v${l.versao}.csv`, conteudo: linhas.join('\n') };
   }
 
   // FA-CP-07/08: eventos manuais (RF-17) — o Hub é a fonte de status.
@@ -968,7 +970,7 @@ export class ContasPagarService implements OnModuleInit {
   // grupo → categoria, com previsto (em aberto), pago e cancelado, pelo
   // VENCIMENTO. É o que o Luís quer ver no fim do dia.
   async porCategoria(mes: string) {
-    const m = /^\d{4}-\d{2}$/.test(mes) ? mes : new Date().toISOString().slice(0, 7);
+    const m = /^\d{4}-\d{2}$/.test(mes) ? mes : dataHojeBrasil().slice(0, 7);
     const inicio = new Date(`${m}-01T00:00:00.000Z`);
     const fim = new Date(Date.UTC(inicio.getUTCFullYear(), inicio.getUTCMonth() + 1, 1));
     const [grupos, naturezas, titulos] = await Promise.all([

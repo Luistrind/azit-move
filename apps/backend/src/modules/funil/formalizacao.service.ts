@@ -13,6 +13,7 @@ import {
   numeroPorExtenso,
   dataPorExtenso,
   formatCurrency,
+  formatarDiaBR,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { ContratoService } from '../contrato/contrato.service';
@@ -389,7 +390,7 @@ export class FormalizacaoService {
       periodicidadePlural: pluralPorFreq[periodicidadeApi] ?? 'semanais',
       valorParcela: formatCurrency(valorParcela),
       valorParcelaExtenso: valorPorExtenso(valorParcela),
-      dataPrimeiraParcela: dataPrimeira.toLocaleDateString('pt-BR'),
+      dataPrimeiraParcela: formatarDiaBR(dataPrimeira),
       vencimentoSubsequente: vencimentoPorFreq[periodicidadeApi] ?? vencimentoPorFreq.semanal,
       taxaMulta: taxas ? Number(taxas.taxaMultaAtraso.toString()) : 2,
       taxaJuros: taxas ? Number(taxas.taxaJurosAtraso.toString()) : 1,
@@ -615,7 +616,7 @@ export class FormalizacaoService {
     });
     await this.notificacao.emitir({
       titulo: `Cobrança da entrada gerada — contrato ${contrato.numero}`,
-      corpo: `R$ ${centavosParaReaisString(valorAVista)} com vencimento em ${vencimentoEntrada.toLocaleDateString('pt-BR')}. O pagamento ativa o contrato automaticamente.`,
+      corpo: `R$ ${centavosParaReaisString(valorAVista)} com vencimento em ${formatarDiaBR(vencimentoEntrada)}. O pagamento ativa o contrato automaticamente.`,
       rota: `/contratos/${contrato.id}`,
       tipo: 'DINHEIRO',
       area: 'COMERCIAL',
