@@ -69,6 +69,13 @@ export const TAXA_MENSAGENS_LEGADA = 500;
 const PAGA: ReadonlySet<string> = new Set(['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH', 'DUNNING_RECEIVED']);
 const EM_ABERTO: ReadonlySet<string> = new Set(['PENDING', 'OVERDUE', 'AWAITING_RISK_ANALYSIS', 'DUNNING_REQUESTED']);
 
+// Status do Asaas que significam DINHEIRO RECEBIDO — lista única (Regra 16):
+// a triagem do legado, o "conferir pagamento" da fatura e a migração (cobrança
+// já paga entre a coleta e o corte, caso Carmo/Jonathan/Felipe 20/10) leem daqui.
+export function cobrancaAsaasPaga(status: string | null | undefined): boolean {
+  return !!status && PAGA.has(status);
+}
+
 export function classificarCobrancaLegada(
   c: CobrancaLegadaResumo,
   hoje: string,

@@ -15,11 +15,11 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { RoleUsuario } from '@prisma/client';
-import { dataHojeBrasil } from '@azit/utils';
+import { cobrancaAsaasPaga, dataHojeBrasil } from '@azit/utils';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { PrismaService } from '../../database/prisma.service';
-import { FaturaService } from './fatura.service';
+import { FaturaService, eventoConciliacaoDe, type CobrancaAsaasAoVivo } from './fatura.service';
 import { AsaasLeituraService } from '../asaas/asaas-leitura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
 
@@ -116,15 +116,9 @@ export class CobrancaController {
     if (fatura.status === 'PAGA' || fatura.status === 'PAGA_EM_ATRASO') return { enfileirado: false, statusAsaas: null, motivo: 'A fatura já está paga no sistema' };
     if (!fatura.asaasChargeId) throw new UnprocessableEntityException({ erro: 'sem_cobranca', mensagem: 'Esta fatura não tem cobrança no Asaas' });
     if (this.asaasLeitura.ambiente === 'simulado') throw new UnprocessableEntityException({ erro: 'asaas_simulado', mensagem: 'Asaas em modo simulado — não há o que conferir' });
-    const pg = await this.asaasLeitura.requisicao<{ status: string; value: number; paymentDate?: string | null; clientPaymentDate?: string | null; confirmedDate?: string | null; dueDate: string }>('GET', `/payments/${fatura.asaasChargeId}`);
-    const recebida = ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'].includes(pg.status);
-    if (!recebida) return { enfileirado: false, statusAsaas: pg.status, motivo: 'O Asaas ainda não registra o recebimento desta cobrança' };
-    await this.filaRecebido.add('conciliar', {
-      faturaId: fatura.id,
-      paymentDate: pg.clientPaymentDate ?? pg.paymentDate ?? pg.confirmedDate ?? dataHojeBrasil(),
-      dueDate: pg.dueDate,
-      valor: Math.round(pg.value * 100),
-    });
+    const pg = await this.asaasLeitura.requisicao<CobrancaAsaasAoVivo>('GET', `/payments/${fatura.asaasChargeId}`);
+    if (!cobrancaAsaasPaga(pg.status)) return { enfileirado: false, statusAsaas: pg.status, motivo: 'O Asaas ainda não registra o recebimento desta cobrança' };
+    await this.filaRecebido.add('conciliar', eventoConciliacaoDe(fatura.id, pg));
     return { enfileirado: true, statusAsaas: pg.status, motivo: null };
   }
 
