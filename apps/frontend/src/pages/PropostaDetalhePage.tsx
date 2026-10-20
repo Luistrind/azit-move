@@ -596,7 +596,7 @@ export function PropostaDetalhePage() {
 
           {/* a) Parametrização do contrato (reunião 11/07): o operador define a
               data da 1ª parcela (ex.: segunda-feira p/ motorista de app) e então
-              formaliza. Nº de parcelas vem do fator de contrato (4,345). */}
+              formaliza. Nº de parcelas vem do fator de PRAZO do Catálogo (4,3452). */}
           {podeFormalizar && (
             <div className="flex flex-wrap items-end gap-[10px]">
               <label className="flex flex-col gap-[4px]"><Lbl>Previsão de ativação (pagamento da entrada)</Lbl>

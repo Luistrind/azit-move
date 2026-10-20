@@ -19,6 +19,12 @@
 
 export const FUSO_NEGOCIO = 'America/Sao_Paulo';
 
+// Milissegundos de um dia — ÚNICA definição (Regra 16). Só para deslocar
+// instantes ("−5 dias de um timestamp", janelas); contagem de dias entre datas
+// é diasCalendarioEntre/diasAtrasoCalendario — dividir ms por 24h zera o
+// primeiro dia quando há hora (correção 31/08).
+export const DIA_MS = 86_400_000;
+
 // 'YYYY-MM-DD' de um INSTANTE no fuso do negócio.
 export function diaBrasil(instante: Date): string {
   return instante.toLocaleDateString('en-CA', { timeZone: FUSO_NEGOCIO });
@@ -103,7 +109,7 @@ export function formatarInstanteBR(instante: Date): string {
 export function diasCalendarioEntre(aISO: string, bISO: string): number {
   const [ay, am, ad] = aISO.split('-').map(Number);
   const [by, bm, bd] = bISO.split('-').map(Number);
-  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / DIA_MS);
 }
 
 // Soma N dias ÚTEIS (seg–sex) a uma data (A5, 04/09): antes os prazos "em dias

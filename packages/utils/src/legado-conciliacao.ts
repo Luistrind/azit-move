@@ -13,7 +13,7 @@
 // confirma. Acordo cobre parcela vencida — nunca empurra o cronograma.
 
 import type { TipoCobrancaLegada } from './legado-interpretacao';
-import { somarDiasISO } from './datas';
+import { diasCalendarioEntre, somarDiasISO } from './datas';
 
 export interface CobrancaConciliavel {
   id: string;
@@ -146,9 +146,7 @@ export interface ResultadoConciliacao {
   incompleta: boolean; // termos sem o mínimo (quantidade, valor, 1ª parcela)
 }
 
-const DIA_MS = 86_400_000;
 const isoMaisDias = (iso: string, dias: number) => somarDiasISO(iso, dias);
-const difDias = (a: string, b: string) => Math.round((new Date(`${a}T00:00:00Z`).getTime() - new Date(`${b}T00:00:00Z`).getTime()) / DIA_MS);
 const brl = (c: number) => (c / 100).toFixed(2).replace('.', ',');
 const dataBR = (iso: string) => iso.split('-').reverse().join('/');
 
@@ -230,7 +228,7 @@ export function conciliarLegado(params: {
       observacao: manual
         ? `vínculo manual (${ordenadas.length} cobrança${ordenadas.length > 1 ? 's' : ''})${soma !== esperadoValor ? ` — soma ${(soma / 100).toFixed(2)} ≠ esperado ${(esperadoValor / 100).toFixed(2)}` : ''}`
         : `paga em ${ordenadas.length} transações`,
-      deslocamentoDias: ordenadas[0] ? difDias(ordenadas[0].vencimento, esperadoEm) : null,
+      deslocamentoDias: ordenadas[0] ? diasCalendarioEntre(esperadoEm, ordenadas[0].vencimento) : null,
       acordoGrupo: null,
     };
   };
@@ -248,7 +246,7 @@ export function conciliarLegado(params: {
     let melhorDist = Infinity;
     for (const c of cobrancas) {
       if (usadas.has(c.id) || !tipos.includes(c.tipo)) continue;
-      const dist = Math.abs(difDias(c.vencimento, data));
+      const dist = Math.abs(diasCalendarioEntre(data, c.vencimento));
       if (dist > tol) continue;
       // Bate pelo TOTAL ou pela parte de parcela lida da descrição (23/09): uma
       // cobrança "942 + 50 + 5 + manutenção 225,75" é a parcela da semana.
@@ -278,7 +276,7 @@ export function conciliarLegado(params: {
       // "outra" já foi filtrada antes; aqui só chega pendente/vencida.
       situacao = c.classe === 'vencida' ? 'vencida' : 'pendente';
     }
-    const deslocamento = c ? difDias(c.vencimento, esperadoEm) : null;
+    const deslocamento = c ? diasCalendarioEntre(esperadoEm, c.vencimento) : null;
     const deslocada = deslocamento != null && Math.abs(deslocamento) > tol;
     const observacao = c && deslocada
       ? modo === 'SEQUENCIA'
@@ -403,7 +401,7 @@ export function conciliarLegado(params: {
   // ---------------------------------------------------------------------------
   const intermediariasCasadas = new Set<number>();
   const aceitosPara = (data: string) => {
-    const numInter = [...intermediariasPorData.entries()].find(([d]) => Math.abs(difDias(d, data)) <= tol)?.[1];
+    const numInter = [...intermediariasPorData.entries()].find(([d]) => Math.abs(diasCalendarioEntre(data, d)) <= tol)?.[1];
     const aceitos = [valorCobranca];
     if (numInter && inter?.valor != null) aceitos.push(valorCobranca + inter.valor);
     return { numInter, aceitos };
@@ -423,7 +421,7 @@ export function conciliarLegado(params: {
     const complemento: CobrancaConciliavel[] = [];
     let soma = c.valorOriginal;
     const candidatas = cobrancas
-      .filter((x) => !usadas.has(x.id) && x.id !== c.id && (x.tipo === 'parcela' || x.tipo === 'acordo' || x.tipo === 'outra') && Math.abs(difDias(x.vencimento, c.vencimento)) <= tol + 1)
+      .filter((x) => !usadas.has(x.id) && x.id !== c.id && (x.tipo === 'parcela' || x.tipo === 'acordo' || x.tipo === 'outra') && Math.abs(diasCalendarioEntre(c.vencimento, x.vencimento)) <= tol + 1)
       .sort((a, b) => a.vencimento.localeCompare(b.vencimento));
     for (const x of candidatas) {
       if (soma + x.valorOriginal > esperado) continue;
@@ -462,7 +460,7 @@ export function conciliarLegado(params: {
       let melhor: CobrancaConciliavel | null = null;
       for (const c of cobrancas) {
         if (usadas.has(c.id) || c.tipo !== 'parcela') continue;
-        const dias = difDias(c.vencimento, linha.esperadoEm);
+        const dias = diasCalendarioEntre(linha.esperadoEm, c.vencimento);
         if (dias <= tol || dias > 45) continue;
         const bate = (c.parcelamento != null && c.parcelamento === valorParcela) || c.valorOriginal === linha.esperadoValor;
         if (!bate) continue;

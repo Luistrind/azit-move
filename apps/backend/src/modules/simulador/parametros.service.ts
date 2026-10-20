@@ -24,7 +24,7 @@ export interface ParametrosVigentes {
   prazosPadronizados: number[];
   fatorPrecificacaoSemanal: number; // parcela exibida (÷4 / ÷2 — reunião 11/07)
   fatorPrecificacaoQuinzenal: number;
-  fatorSemanal: number; // nº de parcelas do contrato (4,345)
+  fatorSemanal: number; // fator de PRAZO congelado na versão (padrão da casa: FATOR_PRAZO_SEMANAL 4,3452 em @azit/utils)
   fatorQuinzenal: number;
   validadeDias: number;
   ofertasPadrao: OfertaPadraoConfig[];

@@ -13,7 +13,7 @@ import {
 } from '@prisma/client';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { rotuloAtivo, limparDocumento, reaisParaCentavos, centavosParaReaisString , formatCurrency} from '@azit/utils';
+import { rotuloAtivo, limparDocumento, reaisParaCentavos, centavosParaReaisString, formatCurrency, fatorValorDesdeSemanal } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { TitularService } from '../titular/titular.service';
 import { ContaService } from '../conta/conta.service';
@@ -368,7 +368,7 @@ export class PropostaService {
     if (valorAvista <= 0) return null;
     const cat = await this.catalogoFonte.compraParcelada(p.ativo.varianteCatalogo ?? 'carro');
     if (!cat || !cat.protecaoObrigatoria) return null;
-    const fator = p.frequencia === 'MENSAL' ? 4 : p.frequencia === 'QUINZENAL' ? 2 : 1;
+    const fator = p.frequencia ? fatorValorDesdeSemanal(p.frequencia) : 1;
     return { varianteCP: p.ativo.varianteCatalogo ?? 'carro', valorAvista, fator };
   }
 

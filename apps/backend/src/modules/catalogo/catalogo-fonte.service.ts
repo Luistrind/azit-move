@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { FATOR_PRAZO_QUINZENAL, FATOR_PRAZO_SEMANAL } from '@azit/utils';
+import { FATOR_PRAZO_QUINZENAL, FATOR_PRAZO_SEMANAL, FATOR_VALOR_QUINZENAL, FATOR_VALOR_SEMANAL, fatorPrazoPorFrequencia } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 
 // F2 — o Catálogo como FONTE do simulador (doc 02 §17). A chave de virada é o
@@ -8,11 +8,12 @@ import { PrismaService } from '../../database/prisma.service';
 // segue no motor legado (VersaoParametrosSimulacao). Dinheiro em CENTAVOS.
 
 // Fatores do Catálogo (decisão 02/08: "seguir o documento"):
-// índice de conversão de VALOR (parcela exibida) e de PRAZO (nº de parcelas —
-// fonte única em @azit/utils desde 14/09: motores puros usam o mesmo fator).
+// índice de conversão de VALOR (parcela exibida) e de PRAZO (nº de parcelas).
+// Os quatro números vivem em @azit/utils (calculations.ts — fonte única,
+// Regra 16); este objeto só os nomeia no vocabulário do Catálogo.
 export const FATORES_CATALOGO = {
-  precificacaoSemanal: 4,
-  precificacaoQuinzenal: 2,
+  precificacaoSemanal: FATOR_VALOR_SEMANAL,
+  precificacaoQuinzenal: FATOR_VALOR_QUINZENAL,
   contratoSemanal: FATOR_PRAZO_SEMANAL,
   contratoQuinzenal: FATOR_PRAZO_QUINZENAL,
 } as const;
@@ -335,14 +336,13 @@ export class CatalogoFonteService {
   // Máximo de parcelas por frequência = prazo máximo × índice de conversão de
   // prazo do Catálogo (12 meses → 12 / 26 / 52).
   maxParcelasReembolso(prazoMaximoMeses: number, frequencia: 'mensal' | 'quinzenal' | 'semanal'): number {
-    const icpf = frequencia === 'mensal' ? 1 : frequencia === 'quinzenal' ? FATORES_CATALOGO.contratoQuinzenal : FATORES_CATALOGO.contratoSemanal;
-    return Math.round(prazoMaximoMeses * icpf);
+    return Math.round(prazoMaximoMeses * fatorPrazoPorFrequencia(frequencia));
   }
 
   // Fator de PRAZO (nº de períodos por mês) — converte fluxo por período em
   // mensal equivalente (mesmo padrão do comprometimento na análise de cadastro).
   fatorPrazo(frequencia: 'mensal' | 'quinzenal' | 'semanal'): number {
-    return frequencia === 'mensal' ? 1 : frequencia === 'quinzenal' ? FATORES_CATALOGO.contratoQuinzenal : FATORES_CATALOGO.contratoSemanal;
+    return fatorPrazoPorFrequencia(frequencia);
   }
 
   // Proteção por período conforme a frequência do contrato (homologação 04/08):

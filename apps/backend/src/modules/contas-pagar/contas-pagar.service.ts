@@ -5,7 +5,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, StatusTituloPagar, StatusLotePagamento } from '@prisma/client';
-import { centavosParaReaisString, formatCurrency, dataCalendarioUTC, dataHojeBrasil, inicioDiaUTC, partesBrasil, somarDiasISO } from '@azit/utils';
+import { centavosParaReaisString, formatCurrency, dataCalendarioUTC, dataHojeBrasil, DIA_MS, inicioDiaUTC, partesBrasil, somarDiasISO } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
@@ -13,7 +13,6 @@ import { NotificacaoService } from '../notificacao/notificacao.service';
 const reais = (c: number) => (c / 100).toFixed(2);
 const cent = (d: Prisma.Decimal | null | undefined): number =>
   d !== null && d !== undefined ? Math.round(Number(d.toString()) * 100) : 0;
-const DIA_MS = 24 * 60 * 60 * 1000;
 
 // Contas a Pagar — Financeiro Administrativo / ERP Enxuto (doc 02 §18).
 // Códigos RCPG/RF referem-se ao Processo de Contas a Pagar V1.0 (AZH-FIN-PROC-001).

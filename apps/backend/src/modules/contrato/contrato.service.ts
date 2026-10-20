@@ -12,7 +12,7 @@ import {
   StatusContratoCredito as StatusContratoCreditoPrisma,
 } from '@prisma/client';
 import { StatusContratoCredito, Credor, Periodicidade as PeriodicidadeTypes } from '@azit/types';
-import { diasAtrasoCalendario, gerarCronograma, centavosParaReaisString, inicioHojeBrasilUTC, dataCalendarioUTC, inicioDiaUTC, FUSO_NEGOCIO } from '@azit/utils';
+import { diasAtrasoCalendario, gerarCronograma, centavosParaReaisString, inicioHojeBrasilUTC, dataCalendarioUTC, inicioDiaUTC, DIA_MS, DIAS_POR_PERIODO, fatorValorDesdeSemanal, FUSO_NEGOCIO } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { CriarContratoDto } from './dto/criar-contrato.dto';
 import { ListarContratosDto } from './dto/listar-contratos.dto';
@@ -132,7 +132,7 @@ export class ContratoService {
   async expirarNaoEfetivados(): Promise<{ expirados: number }> {
     const params = await this.prisma.db.parametroAssinatura.findFirst({ select: { validadeDias: true } });
     const prazoDias = Math.max(1, params?.validadeDias ?? 7);
-    const limite = new Date(Date.now() - prazoDias * 24 * 60 * 60 * 1000);
+    const limite = new Date(Date.now() - prazoDias * DIA_MS);
 
     const candidatos = await this.prisma.db.contratoCredito.findMany({
       where: { status: { in: ['AGUARDANDO_ASSINATURA', 'AGUARDANDO_PAGAMENTO_INICIAL'] } },
@@ -417,13 +417,13 @@ export class ContratoService {
     for (const pc of parcelasCriadas) {
       const cron = porNumero.get(pc.numero)!;
       const venc = cron.dataVencimento;
-      const fechamento = new Date(venc.getTime() - 5 * 24 * 60 * 60 * 1000);
+      const fechamento = new Date(venc.getTime() - 5 * DIA_MS);
       // Consolidação (Doc 2 §7.7 + reunião 04/07): a parcela entra na PRÓXIMA fatura
       // ABERTA da conta (vencimento >= parcela, janela de 35 dias) — agrega itens de
       // todos os contratos no mesmo ciclo do titular (crédito avulso NÃO gera fatura
       // paralela). Só nasce fatura nova quando não há ciclo aberto à frente.
       const diaIni = inicioDiaUTC(dataCalendarioUTC(venc)); // dia-calendário (UTC), não o relógio do servidor
-      const janelaFim = new Date(diaIni.getTime() + 35 * 24 * 60 * 60 * 1000);
+      const janelaFim = new Date(diaIni.getTime() + 35 * DIA_MS);
       let fatura = await tx.fatura.findFirst({
         where: {
           contaId: p.contaId,
@@ -524,7 +524,7 @@ export class ContratoService {
     });
     if (recorrentes.length && faturasDoContrato.length) {
       const passoContrato = faturasDoContrato.length > 1
-        ? Math.round((faturasDoContrato[1].venc.getTime() - faturasDoContrato[0].venc.getTime()) / (24 * 60 * 60 * 1000))
+        ? Math.round((faturasDoContrato[1].venc.getTime() - faturasDoContrato[0].venc.getTime()) / DIA_MS)
         : 7;
       const passoDe = (per: 'SEMANAL' | 'QUINZENAL' | 'MENSAL' | null) =>
         per === 'MENSAL' ? 30 : per === 'QUINZENAL' ? 14 : per === 'SEMANAL' ? 7 : passoContrato;
@@ -598,7 +598,7 @@ export class ContratoService {
       : null;
 
     const periodicidade = PeriodicidadeTypes[contrato.periodicidade] as 'semanal' | 'quinzenal' | 'mensal';
-    const passo = periodicidade === 'mensal' ? 30 : periodicidade === 'quinzenal' ? 14 : 7;
+    const passo = DIAS_POR_PERIODO[periodicidade];
     // 1ª parcela: respeita a data PARAMETRIZADA na formalização (reunião 11/07
     // — ex.: "toda segunda" p/ motorista de app). Antes era sempre hoje+passo,
     // sobrescrevendo a escolha do operador (pego no E2E 05/09: parametrizada
@@ -606,7 +606,7 @@ export class ContratoService {
     // no passado, rola em passos — preserva o dia do ciclo escolhido.
     const dataPrimeira = contrato.dataPrimeiraParcela
       ? new Date(contrato.dataPrimeiraParcela.getTime())
-      : new Date(Date.now() + passo * 24 * 60 * 60 * 1000);
+      : new Date(Date.now() + passo * DIA_MS);
     while (dataPrimeira.getTime() <= Date.now()) {
       dataPrimeira.setUTCDate(dataPrimeira.getUTCDate() + passo);
     }
@@ -626,7 +626,7 @@ export class ContratoService {
     let protecaoPorPeriodo = 0;
     try {
       const ref = contrato.catalogoVersaoRef ? (JSON.parse(contrato.catalogoVersaoRef) as { protS?: number }) : null;
-      const fatorValor = periodicidade === 'mensal' ? 4 : periodicidade === 'quinzenal' ? 2 : 1;
+      const fatorValor = fatorValorDesdeSemanal(periodicidade);
       const snap = contrato.snapshotJson as null | { protecao?: { adicionalPorPeriodo?: number } };
       protecaoPorPeriodo = Math.round((ref?.protS ?? 0) * fatorValor) + (snap?.protecao?.adicionalPorPeriodo ?? 0);
     } catch {
@@ -725,7 +725,7 @@ export class ContratoService {
   // encerrado não infla); recebido na semana = parcelas pagas + LANÇAMENTOS
   // (entradas de contrato/acordo) da janela.
   async kpis() {
-    const seteDiasAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const seteDiasAtras = new Date(Date.now() - 7 * DIA_MS);
     const hoje = inicioHojeBrasilUTC();
     const [porStatus, ativosIds, saldo, recebido, lancado] = await Promise.all([
       this.prisma.db.contratoCredito.groupBy({ by: ['status'], _count: { _all: true } }),

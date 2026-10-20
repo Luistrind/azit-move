@@ -19,6 +19,8 @@ import {
   numeroPorExtenso,
   renderTemplate,
   valorPorExtenso,
+  DIA_MS,
+  DIAS_POR_PERIODO,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { ContratoService } from '../contrato/contrato.service';
@@ -32,14 +34,13 @@ import { INSTRUMENTO_NOVACAO_TEMPLATE } from './templates/instrumento-novacao.te
 import { CONTRATO_VEICULO_TEMPLATE } from '../funil/templates/contrato-veiculo.template';
 import { qualificarParte } from '../funil/formalizacao.service';
 
-const DIA_MS = 24 * 60 * 60 * 1000;
 // Data "YYYY-MM-DD" → meia-noite de Brasília (mesma convenção da migração do legado).
 const dataDe = (iso: string) => new Date(`${iso}T03:00:00.000Z`);
 // Avança n períodos a partir da base. Mensal anda por mês do calendário com o
 // dia preservado e clamp no fim do mês (30 → 28/29 em fevereiro), igual ao
 // cronograma; semanal/quinzenal por dias corridos. (doc 02 §7.7b, 15/10)
 function avancarPeriodos(base: Date, frequencia: 'semanal' | 'quinzenal' | 'mensal', n: number): Date {
-  if (frequencia !== 'mensal') return new Date(base.getTime() + n * (frequencia === 'quinzenal' ? 14 : 7) * DIA_MS);
+  if (frequencia !== 'mensal') return new Date(base.getTime() + n * DIAS_POR_PERIODO[frequencia] * DIA_MS);
   const ano = base.getUTCFullYear();
   const mes = base.getUTCMonth() + n;
   const dia = base.getUTCDate();
@@ -217,7 +218,7 @@ export class NovacaoService implements OnModuleInit {
     const periodicidade = (
       { semanal: 'SEMANAL', quinzenal: 'QUINZENAL', mensal: 'MENSAL' } as const
     )[sim.frequencia];
-    const passo = sim.frequencia === 'mensal' ? 30 : sim.frequencia === 'quinzenal' ? 14 : 7;
+    const passo = DIAS_POR_PERIODO[sim.frequencia];
     const credorVeiculo = (origemVeiculo.itensContratados[0]?.credor ?? 'AZIT').toLowerCase() as
       | 'azit' | 'investidor' | 'terceiro';
     const hoje = new Date();
@@ -493,7 +494,7 @@ export class NovacaoService implements OnModuleInit {
     const sim = snap.simulacao;
     const unico = !!snap.dto.contratoUnico;
     if (!novacao.contratoVeiculoId || (!novacao.contratoTermoId && !unico)) return { resultado: 'contratos_ausentes' };
-    const passo = sim.frequencia === 'mensal' ? 30 : sim.frequencia === 'quinzenal' ? 14 : 7;
+    const passo = DIAS_POR_PERIODO[sim.frequencia];
     const novos = [novacao.contratoVeiculoId, novacao.contratoTermoId].filter((x): x is string => !!x);
     const cobrancasNovadas: string[] = [];
 

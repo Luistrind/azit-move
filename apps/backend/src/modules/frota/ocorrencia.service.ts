@@ -3,7 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { Prisma, ResponsavelOcorrencia, StatusOcorrenciaVeiculo, TipoOcorrenciaVeiculo } from '@prisma/client';
-import { formatCurrency, inicioHojeBrasilUTC } from '@azit/utils';
+import { DIA_MS, formatCurrency, inicioHojeBrasilUTC } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
 
@@ -16,7 +16,6 @@ import { NotificacaoService } from '../notificacao/notificacao.service';
 
 const cent = (d: Prisma.Decimal | number): number => Math.round(Number(d.toString()) * 100);
 const reais = (c: number): Prisma.Decimal => new Prisma.Decimal((c / 100).toFixed(2));
-const DIA_MS = 24 * 60 * 60 * 1000;
 const UPLOADS_DIR = join(process.cwd(), 'uploads', 'ocorrencias');
 
 export const ROTULO_TIPO: Record<TipoOcorrenciaVeiculo, string> = {

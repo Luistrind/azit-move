@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException, UnprocessableEntityException } f
 import { Prisma } from '@prisma/client';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { centavosParaReaisString, termosEfetivos, dataCalendarioUTC, dataHojeBrasil, somarDiasISO, type LinhaConciliacao, type ForaDoCronograma, type TermosContratoLegado } from '@azit/utils';
+import { centavosParaReaisString, termosEfetivos, dataCalendarioUTC, dataHojeBrasil, diasCalendarioEntre, DIAS_POR_PERIODO, somarDiasISO, type LinhaConciliacao, type ForaDoCronograma, type TermosContratoLegado } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasLeituraService } from '../asaas/asaas-leitura.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
@@ -34,7 +34,6 @@ import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 
 const UPLOADS_LEGADO = join(process.cwd(), 'uploads', 'legado');
 const UPLOADS_ASSINATURAS = join(process.cwd(), 'uploads', 'assinaturas');
-const DIA_MS = 86_400_000;
 
 // RENEGOCIADA (13/10, acordo em andamento declarado): fatura coberta pelo acordo,
 // sem cobrança própria — a dívida vive nas cotas do acordo.
@@ -103,7 +102,6 @@ export interface PlanoMigracao {
 const d = (iso: string) => new Date(`${iso}T03:00:00.000Z`); // meia-noite de Brasília
 const isoDe = (data: Date) => dataCalendarioUTC(data); // coluna de data gravada às 03:00Z (dia-calendário)
 const addDias = (iso: string, n: number) => somarDiasISO(iso, n);
-const difDias = (a: string, b: string) => Math.round((d(a).getTime() - d(b).getTime()) / DIA_MS);
 const reais = (c: number) => centavosParaReaisString(c);
 
 // Campos do ativo gravados a partir da consulta FIPE (valor de venda = FIPE).
@@ -342,7 +340,7 @@ export class LegadoMigracaoService {
             contaId: conta.id,
             numero: numeroFatura++,
             periodoReferencia: d(f.vencimento),
-            dataFechamento: new Date(d(f.vencimento).getTime() - 5 * DIA_MS),
+            dataFechamento: d(addDias(f.vencimento, -5)),
             dataVencimento: d(f.vencimento),
             dataPagamento: paga && f.pagoEm ? d(f.pagoEm) : null,
             valorTotal: reais(f.valorTotal),
@@ -401,7 +399,7 @@ export class LegadoMigracaoService {
                 valorNominal: reais(cota.valor), dataVencimento: d(cota.vencimento),
                 dataPagamento: cotaPaga ? d(cota.pagoEm ?? f.pagoEm ?? cota.vencimento) : null,
                 valorPago: cotaPaga ? reais(cota.valor) : null,
-                status: cotaPaga ? (difDias(cota.pagoEm ?? f.pagoEm ?? cota.vencimento, cota.vencimento) > 0 ? 'PAGA_EM_ATRASO' : 'PAGA') : null,
+                status: cotaPaga ? (diasCalendarioEntre(cota.vencimento, cota.pagoEm ?? f.pagoEm ?? cota.vencimento) > 0 ? 'PAGA_EM_ATRASO' : 'PAGA') : null,
                 faturaId: fatura.id,
               },
               select: { id: true },
@@ -728,14 +726,14 @@ export class LegadoMigracaoService {
     const modo = caso.modoVencimentos;
     const linhasParcela = conc.linhas.filter((l) => l.serie === 'parcela').sort((a, b) => a.numero - b.numero);
     const ultimaCobrada = [...linhasParcela].reverse().find((l) => l.cobradoEm);
-    const deslocamento = modo === 'ASAAS' && ultimaCobrada?.cobradoEm ? difDias(ultimaCobrada.cobradoEm, ultimaCobrada.esperadoEm) : 0;
+    const deslocamento = modo === 'ASAAS' && ultimaCobrada?.cobradoEm ? diasCalendarioEntre(ultimaCobrada.esperadoEm, ultimaCobrada.cobradoEm) : 0;
 
     const faturas: FaturaPlano[] = [];
     const rps: RpPlano[] = [];
     let rpAberto: { chave: string; idx: number } | null = null;
     const resumo = { faturasPagas: 0, faturasFechadas: 0, faturasAbertas: 0, faturasRenegociadas: 0, parcelasPagas: 0, reembolsos: 0, avulsas: 0, encargos: 0, assinaturaId: caso.assinaturaId, substituidas: 0, emitidasAgora: 0, removidas: 0 };
     // Fatura que já estaria no D-5 (vence em até 5 dias) é emitida na hora.
-    const emitirAgora = (venc: string) => difDias(venc, hoje) <= 5;
+    const emitirAgora = (venc: string) => diasCalendarioEntre(hoje, venc) <= 5;
     // Acordo em andamento declarado (§26.15) + rótulos de item (ex.: resíduo).
     const acordoDecl = conc.acordoEmAndamento ?? null;
     const rotulos = conc.rotulos ?? {};
@@ -743,7 +741,7 @@ export class LegadoMigracaoService {
     // anda por mês do calendário (dia preservado, clamp no fim do mês), como o cronograma.
     const periodicidade: 'semanal' | 'quinzenal' | 'mensal' = conc.periodicidade ?? 'semanal';
     const avancarPeriodo = (iso: string, n: number): string => {
-      if (periodicidade !== 'mensal') return addDias(iso, n * (periodicidade === 'quinzenal' ? 14 : 7));
+      if (periodicidade !== 'mensal') return addDias(iso, n * DIAS_POR_PERIODO[periodicidade]);
       const base = d(iso);
       const ano = base.getUTCFullYear();
       const mes = base.getUTCMonth() + n;
@@ -766,7 +764,7 @@ export class LegadoMigracaoService {
       const pagaReal = l.situacao === 'paga' || l.situacao === 'paga_com_encargo';
       if (pagaReal || (l.situacao === 'valor_diverge' && l.pagoEm)) {
         const pagoEm = l.pagoEm ?? vencFatura;
-        return { status: difDias(pagoEm, vencFatura) > 0 ? 'PAGA_EM_ATRASO' : 'PAGA', pagoEm, valorPago: l.pagoValor ?? l.cobradoValor ?? l.esperadoValor, chargeId, substituir: null, remover: null };
+        return { status: diasCalendarioEntre(vencFatura, pagoEm) > 0 ? 'PAGA_EM_ATRASO' : 'PAGA', pagoEm, valorPago: l.pagoValor ?? l.cobradoValor ?? l.esperadoValor, chargeId, substituir: null, remover: null };
       }
       if (rec?.desfecho === 'PAGA_FORA_ASAAS') return { status: 'PAGA', pagoEm: l.pagoEm ?? vencFatura, valorPago: l.esperadoValor, chargeId: null, substituir: null, remover: null };
       if (rec?.desfecho === 'VALOR_ACEITO') return { status: 'PAGA', pagoEm: l.pagoEm ?? l.cobradoEm ?? vencFatura, valorPago: l.pagoValor ?? l.cobradoValor ?? l.esperadoValor, chargeId, substituir: null, remover: null };
@@ -864,7 +862,7 @@ export class LegadoMigracaoService {
         const cota = pagasPorN.get(n);
         let idx = faturas.findIndex((f) => f.parcela && f.vencimento === venc && f.status !== 'RENEGOCIADA');
         if (idx < 0) {
-          const status: StatusFaturaPlano = cota ? 'PAGA' : difDias(venc, hoje) < 0 ? 'FECHADA' : 'ABERTA';
+          const status: StatusFaturaPlano = cota ? 'PAGA' : diasCalendarioEntre(hoje, venc) < 0 ? 'FECHADA' : 'ABERTA';
           faturas.push({ origem: `acordo:${n}`, vencimento: venc, status, valorTotal: 0, valorPago: cota ? 0 : null, pagoEm: cota?.pagoEm ?? null, asaasChargeId: null, substituirChargeId: null, removerChargeId: null, emitirAgora: false, itens: [], parcela: null });
           idx = faturas.length - 1;
           contar(status, null, venc);
@@ -897,7 +895,7 @@ export class LegadoMigracaoService {
       if (!l.cobradoEm && !reconhecidas.get(l.chave)) continue; // embutida na parcela (já é item) ou futura sem cobrança
       const venc = l.cobradoEm ?? l.esperadoEm;
       const st = statusDe(l, reconhecidas.get(l.chave), venc);
-      if (st.status === 'ABERTA' && difDias(venc, hoje) < 0) continue;
+      if (st.status === 'ABERTA' && diasCalendarioEntre(hoje, venc) < 0) continue;
       faturas.push({ origem: l.chave, vencimento: venc, status: st.status, valorTotal: l.cobradoValor ?? l.esperadoValor, valorPago: st.valorPago, pagoEm: st.pagoEm, asaasChargeId: st.chargeId, substituirChargeId: st.substituir, removerChargeId: null, emitirAgora: !!st.substituir && emitirAgora(venc), itens: [{ tipo: 'INTERMEDIARIA', descricao: `Intermediária ${l.numero} (entrada diluída)`, valor: l.cobradoValor ?? l.esperadoValor, parcela: null }], parcela: null });
       contar(st.status, st.substituir, venc);
     }
@@ -925,7 +923,7 @@ export class LegadoMigracaoService {
       const venc = f.vencimento;
       let status: StatusFaturaPlano;
       let substituir: string | null = null;
-      if (f.classe === 'paga') status = pagoEm && difDias(pagoEm, venc) > 0 ? 'PAGA_EM_ATRASO' : 'PAGA';
+      if (f.classe === 'paga') status = pagoEm && diasCalendarioEntre(venc, pagoEm) > 0 ? 'PAGA_EM_ATRASO' : 'PAGA';
       else if (f.classe === 'pendente') { status = 'ABERTA'; substituir = cob.asaasPaymentId; }
       else if (f.classe === 'vencida') status = 'FECHADA';
       else continue;

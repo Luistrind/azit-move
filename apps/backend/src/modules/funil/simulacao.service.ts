@@ -4,7 +4,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, Periodicidade as PeriodicidadePrisma } from '@prisma/client';
-import { rotuloAtivo, precificarSimulacao, FrequenciaSimulacao } from '@azit/utils';
+import { rotuloAtivo, precificarSimulacao, FrequenciaSimulacao, DIA_MS } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { ParametrosService, ParametrosVigentes } from '../simulador/parametros.service';
 import { OfertaFixaService } from '../simulador/oferta-fixa.service';
@@ -18,7 +18,6 @@ import { CriarSimulacaoDto, SimularOpcaoDto } from './dto/simulacao.dto';
 const cent = (d: Prisma.Decimal | null): number =>
   d !== null ? Math.round(Number(d.toString()) * 100) : 0;
 const reais = (c: number) => (c / 100).toFixed(2);
-const DIA_MS = 24 * 60 * 60 * 1000;
 
 const FREQ_PRISMA: Record<FrequenciaSimulacao, PeriodicidadePrisma> = {
   mensal: 'MENSAL',

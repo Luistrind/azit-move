@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import Anthropic from '@anthropic-ai/sdk';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { FATOR_PRAZO_QUINZENAL, FATOR_PRAZO_SEMANAL, diaBrasil } from '@azit/utils';
+import { fatorPrazoPorFrequencia, diaBrasil } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { PREAMBULO_INSUMOS, PROMPT_ASSISTENTE_ANALISE, REGRAS_DEMONSTRATIVOS } from './prompt-assistente';
 
@@ -221,7 +221,7 @@ export class AssistenteAnaliseService {
         // auditoria, P2-14: era 4,345/2,17 hardcoded, divergindo da casa).
         parcelaMensalEquivalente: (() => {
           const parcela = Number(analise.proposta.valorParcela?.toString() ?? 0);
-          const f = analise.proposta.frequencia === 'MENSAL' ? 1 : analise.proposta.frequencia === 'QUINZENAL' ? FATOR_PRAZO_QUINZENAL : FATOR_PRAZO_SEMANAL;
+          const f = fatorPrazoPorFrequencia(analise.proposta.frequencia ?? 'SEMANAL');
           return Math.round(parcela * f * 100) / 100;
         })(),
       },

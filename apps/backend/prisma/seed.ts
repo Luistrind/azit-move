@@ -13,7 +13,7 @@ import {
   Credor,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
-import { gerarCronograma, centavosParaReaisString } from '@azit/utils';
+import { gerarCronograma, centavosParaReaisString, DIA_MS } from '@azit/utils';
 
 // Seed (Doc 4 §7.4, Doc 7 itens 1.1 e 2.5). Idempotente via upsert.
 // Banco guarda dinheiro em Decimal (reais); o domínio/API trafega centavos.
@@ -438,7 +438,7 @@ async function seedContratos() {
             contaId: conta,
             numero: seqFatura,
             periodoReferencia: venc,
-            dataFechamento: new Date(venc.getTime() - 5 * 24 * 60 * 60 * 1000),
+            dataFechamento: new Date(venc.getTime() - 5 * DIA_MS),
             dataVencimento: venc,
             valorTotal: reais(cron.valorNominal),
             status: 'ABERTA',

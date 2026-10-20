@@ -14,8 +14,11 @@ export interface ParametrosAnalise {
   comprometimentoAlcada: number; // fração (0.40)
   scoreQuodMinimo: number; // 600
   restritivoNaoFinanceiroMax: number; // centavos (50_000)
-  fatorSemanal: number; // 4.345
-  fatorQuinzenal: number; // 2.17
+  // Fatores de PRAZO versionados na análise (padrão da casa: FATOR_PRAZO_SEMANAL
+  // 4,3452 / FATOR_PRAZO_QUINZENAL 2,1726 em calculations.ts; versões antigas
+  // gravadas carregam 4,345 / 2,17 — dado versionado, não constante).
+  fatorSemanal: number;
+  fatorQuinzenal: number;
 }
 
 export interface ConsultaResumo {

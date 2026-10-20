@@ -507,8 +507,8 @@ model VersaoParametrosSimulacao {
   taxaDescontoAntecipacaoCR  Decimal @db.Decimal(8, 6) @default(0.2) // desconto do CR na antecipação (planilha Vicente)
   fatorPrecificacaoSemanal   Decimal @db.Decimal(8, 4) @default(4) // parcela exibida (reunião 11/07)
   fatorPrecificacaoQuinzenal Decimal @db.Decimal(8, 4) @default(2)
-  fatorSemanal       Decimal  @db.Decimal(8, 4) // 4.3450 semanas/mês — Nº de parcelas do CONTRATO
-  fatorQuinzenal     Decimal  @db.Decimal(8, 4) // 2.1725
+  fatorSemanal       Decimal  @db.Decimal(8, 4) // fator de PRAZO congelado na versão (padrão da casa 4,3452 = FATOR_PRAZO_SEMANAL em @azit/utils; versões antigas carregam 4,345)
+  fatorQuinzenal     Decimal  @db.Decimal(8, 4) // idem (padrão 2,1726; versões antigas 2,1725)
   validadeDias       Int      @default(7)
   ofertasPadrao      Json // [{prazoMeses, frequencia, valorEntrada(centavos)}]
   vigenteDesde       DateTime @default(now())

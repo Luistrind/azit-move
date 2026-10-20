@@ -42,6 +42,7 @@ describe('precificarPrice (PROVISÓRIA — Vicente)', () => {
 // VA 50.000, EN 6.500, 30 meses, CI 3.990, CR 599, TR 2% a.m. → PMT R$ 2.719,42
 // ============================================================
 import { precificarSimulacao, precificarCreditoAvulso, precificarReembolsoParcelado, anteciparParcelaComponentes, contribuicaoProtecaoVeicular } from './precificacao';
+import { FATOR_PRAZO_QUINZENAL, FATOR_PRAZO_SEMANAL } from './calculations';
 
 const BASE = {
   valorAvista: 5_000_000,
@@ -52,8 +53,8 @@ const BASE = {
   taxaMensal: 0.02,
   fatorPrecificacaoSemanal: 4,
   fatorPrecificacaoQuinzenal: 2,
-  fatorSemanal: 4.345,
-  fatorQuinzenal: 2.1725,
+  fatorSemanal: FATOR_PRAZO_SEMANAL,
+  fatorQuinzenal: FATOR_PRAZO_QUINZENAL,
 } as const;
 
 describe('precificarSimulacao (V3 — planilha Vicente)', () => {
@@ -66,13 +67,13 @@ describe('precificarSimulacao (V3 — planilha Vicente)', () => {
     expect(r.numeroParcelas).toBe(30);
   });
 
-  it('reunião 11/07: PARCELA divide por 4/2 (precificação); Nº DE PARCELAS usa 4,345 (contrato)', () => {
+  it('reunião 11/07: PARCELA divide por 4/2 (precificação); Nº DE PARCELAS usa o fator de PRAZO (4,3452 / 2,1726)', () => {
     const semanal = precificarSimulacao({ ...BASE, frequencia: 'semanal' });
     expect(semanal.parcelaFinal).toBe(67_986); // PMT/4 = R$ 679,86 (memória validada na reunião)
-    expect(semanal.numeroParcelas).toBe(Math.round(30 * 4.345)); // 130 parcelas
+    expect(semanal.numeroParcelas).toBe(Math.round(30 * FATOR_PRAZO_SEMANAL)); // 130 parcelas
     const quinzenal = precificarSimulacao({ ...BASE, frequencia: 'quinzenal' });
     expect(quinzenal.parcelaFinal).toBe(135_971); // PMT/2 = R$ 1.359,71
-    expect(quinzenal.numeroParcelas).toBe(Math.round(30 * 2.1725)); // 65 parcelas
+    expect(quinzenal.numeroParcelas).toBe(Math.round(30 * FATOR_PRAZO_QUINZENAL)); // 65 parcelas
   });
 
   it('taxa zero: PM1 = VP / PC', () => {

@@ -5,13 +5,15 @@ import {
   AnaliseInput,
   ParticipanteAnaliseInput,
 } from './analise-cadastro';
+import { FATOR_PRAZO_QUINZENAL, FATOR_PRAZO_SEMANAL } from './calculations';
 
 const PARAMS = {
   comprometimentoAlcada: 0.4,
   scoreQuodMinimo: 600,
   restritivoNaoFinanceiroMax: 50_000, // R$ 500
-  fatorSemanal: 4.345,
-  fatorQuinzenal: 2.17,
+  // Fator de PRAZO da casa (fonte única em calculations.ts, Regra 16).
+  fatorSemanal: FATOR_PRAZO_SEMANAL,
+  fatorQuinzenal: FATOR_PRAZO_QUINZENAL,
 };
 
 const consultaOk = { registrada: true, falhou: false };
@@ -53,9 +55,9 @@ function entrada(sobrescreve: Partial<AnaliseInput> = {}): AnaliseInput {
 }
 
 describe('parcelaMensalEquivalente (RF-09)', () => {
-  it('semanal x4,345 / quinzenal x2,17 / mensal x1', () => {
-    expect(parcelaMensalEquivalente(94_200, 'semanal', PARAMS)).toBe(409_299); // R$ 4.092,99
-    expect(parcelaMensalEquivalente(94_200, 'quinzenal', PARAMS)).toBe(204_414);
+  it('semanal x4,3452 / quinzenal x2,1726 / mensal x1 (fator de prazo versionado)', () => {
+    expect(parcelaMensalEquivalente(94_200, 'semanal', PARAMS)).toBe(409_318); // R$ 4.093,18
+    expect(parcelaMensalEquivalente(94_200, 'quinzenal', PARAMS)).toBe(204_659);
     expect(parcelaMensalEquivalente(94_200, 'mensal', PARAMS)).toBe(94_200);
   });
 });
