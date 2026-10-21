@@ -596,18 +596,10 @@ export class LegadoConciliacaoService {
     return { reconhecidas: lista };
   }
 
-  // Doc 02 §26.9 item 4: vencimentos do contrato ou das cobranças do Asaas —
-  // escolha POR CASO, sem regra; a F3 lê daqui qual data cada parcela recebe.
-  async definirModoVencimentos(casoId: string, modo: string, usuarioId: string) {
-    const caso = await this.carregar(casoId);
-    this.exigirEditavel(caso.status);
-    if (!(MODOS_VENCIMENTO as readonly string[]).includes(modo)) {
-      throw new UnprocessableEntityException({ erro: 'modo_invalido', mensagem: 'Vencimentos: CONTRATO ou ASAAS' });
-    }
-    await this.prisma.db.casoMigracaoLegado.update({ where: { id: casoId }, data: { modoVencimentos: modo } });
-    await this.prisma.db.logAuditoria.create({ data: { usuarioId, acao: 'legado_modo_vencimentos', entidade: 'caso_migracao_legado', entidadeId: casoId, antes: { modo: caso.modoVencimentos }, depois: { modo } } });
-    return { modoVencimentos: modo };
-  }
+  // (20/10, doc 02 §26.15 item 5) O modo de vencimentos por caso (§26.9 item 4:
+  // "do contrato" × "das cobranças") deixou de existir: parcela, fatura e
+  // recebível vencem sempre no dia da cobrança real. A coluna `modoVencimentos`
+  // ficou inerte no banco até a migration que a remove.
 
   async desfazerReconhecimento(casoId: string, chave: string, usuarioId: string) {
     const caso = await this.carregar(casoId);
@@ -823,9 +815,6 @@ export const ROTULO_DESFECHO: Record<DesfechoDivergencia, string> = {
 export function desfechosPermitidos(chave: string): DesfechoDivergencia[] {
   return chave.startsWith('cobranca:') ? ['COBRANCA_AVULSA'] : chave.startsWith('parcela:') ? ['PAGA_FORA_ASAAS', 'VALOR_ACEITO', 'ADIADA'] : ['PAGA_FORA_ASAAS', 'VALOR_ACEITO'];
 }
-
-export const MODOS_VENCIMENTO = ['CONTRATO', 'ASAAS'] as const;
-export type ModoVencimentos = (typeof MODOS_VENCIMENTO)[number];
 
 // Preenche só o que está vazio nos termos já gravados.
 function mesclarTermos(atual: TermosContratoLegado | null, extraido: TermosContratoLegado): TermosContratoLegado {

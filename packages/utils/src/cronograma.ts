@@ -26,7 +26,9 @@ export interface ParcelaCronograma {
 
 // Aritmética em UTC puro — determinística independente do fuso do servidor
 // (casa com a convenção UTC-meia-noite das datas do sistema).
-function vencimento(
+// Exportada (Regra 16, 20/10): é o ÚNICO passo de período do sistema — o
+// cronograma nativo e a migração do legado (`avancarPeriodoISO`) andam por ela.
+export function avancarVencimento(
   base: Date,
   indiceZero: number,
   periodicidade: PeriodicidadeCronograma,
@@ -62,7 +64,7 @@ export function gerarCronograma(p: ParametrosCronograma): ParcelaCronograma[] {
       totalParcelas: n,
       display: `${i}/${n}`,
       valorNominal: i < n ? p.valorParcela : ultima,
-      dataVencimento: vencimento(base, i - 1, p.periodicidade),
+      dataVencimento: avancarVencimento(base, i - 1, p.periodicidade),
     });
   }
   return parcelas;

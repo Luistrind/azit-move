@@ -117,15 +117,19 @@ export interface ResumoConciliacao {
   vinculosIgnorados: number; linhasConferir: number; linhasDecidir: number; acordosSemConfirmar: number; deslocamentoSemanas: number;
 }
 export type DesfechoDivergencia = 'PAGA_FORA_ASAAS' | 'VALOR_ACEITO' | 'ADIADA' | 'COBRANCA_AVULSA';
-export type ModoVencimentos = 'CONTRATO' | 'ASAAS';
+// Doc 02 §26.15 item 5: de onde veio a data efetiva de cada parcela migrada.
+export type OrigemVencimentoLegado = 'cobranca' | 'cadencia' | 'contrato';
 export interface DivergenciaReconhecida { chave: string; nota: string; desfecho?: DesfechoDivergencia; em: string; por: string }
 export interface VinculoManual { cobrancaId: string; chave: string; em: string; por: string }
 
 export interface PlanoMigracao {
   titular: { cpfCnpj: string; nome: string; existente: { id: string; nome: string } | null };
   veiculo: { descricao: string; placa: string | null; existente: { id: string; descricao: string } | null; fipe: { valor: number; codigoFipe: string; modeloFipe: string; anoModelo: number; referencia: string; alternativas: string[] } | null; fipeMotivo: string | null };
-  contrato: { numero: string; dataAssinatura: string; dataPrimeiraParcela: string; numeroParcelas: number; valorParcela: number; valorTotal: number; valorEntrada: number; modoVencimentos: string; taxaDescontoMensal: number | null; periodicidade: 'semanal' | 'quinzenal' | 'mensal' };
+  // dataPrimeiraParcela = data do papel; o cronograma vence pelas cobranças reais (`vencimentos`).
+  contrato: { numero: string; dataAssinatura: string; dataPrimeiraParcela: string; numeroParcelas: number; valorParcela: number; valorTotal: number; valorEntrada: number; taxaDescontoMensal: number | null; periodicidade: 'semanal' | 'quinzenal' | 'mensal' };
   entrada: { valor: number; pagoEm: string; asaasChargeId: string | null } | null;
+  // §26.15 item 5: por parcela, data do contrato × data efetiva (parcela = fatura = recebível); aviso quando divergem.
+  vencimentos: { divergentes: number; aviso: string | null; parcelas: { numero: number; contrato: string; efetivo: string; origem: OrigemVencimentoLegado; diverge: boolean; status: string }[] };
   faturas: { origem: string; vencimento: string; status: string; valorTotal: number; valorPago: number | null; pagoEm: string | null; asaasChargeId: string | null; itens: { tipo: string; descricao: string; valor: number }[] }[];
   rps: { rotulo: string; parcelas: { n: number; valor: number }[] }[];
   // Acordo em andamento declarado (doc 02 §26.15): nasce ATIVO na migração.
@@ -159,7 +163,6 @@ export interface CasoLegadoDetalhe extends CasoLegado {
   conciliacaoDeclarada: { em: string | null; por: string | null; origem: string | null; observacao: string | null; parcelas: number } | null;
   divergenciasReconhecidas: DivergenciaReconhecida[];
   vinculosManuais: VinculoManual[];
-  modoVencimentos: ModoVencimentos;
   migracao: MigracaoFeita | null;
   desfechosDivergencia: { valor: DesfechoDivergencia; rotulo: string }[];
   pendenciasParaValidar: string[];
@@ -256,9 +259,6 @@ export const migracaoLegadoService = {
   },
   async desfazerAcordo(id: string, grupo: string): Promise<void> {
     await api.delete(`/api/v1/migracao-legado/casos/${id}/acordos/${encodeURIComponent(grupo)}`);
-  },
-  async definirModoVencimentos(id: string, modo: ModoVencimentos): Promise<void> {
-    await api.put(`/api/v1/migracao-legado/casos/${id}/vencimentos`, { modo });
   },
   async desfazerReconhecimento(id: string, chave: string): Promise<void> {
     await api.delete(`/api/v1/migracao-legado/casos/${id}/divergencias/${encodeURIComponent(chave)}`);

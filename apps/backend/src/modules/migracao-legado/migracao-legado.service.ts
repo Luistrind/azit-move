@@ -321,7 +321,6 @@ export class MigracaoLegadoService {
       })(),
       divergenciasReconhecidas: conc.reconhecidas,
       vinculosManuais: conc.vinculos,
-      modoVencimentos: c.modoVencimentos,
       migracao: c.migradoEm
         ? { em: c.migradoEm.toISOString(), por: c.migradoPor, resumo: c.migracaoResumo, assinaturaParadaEm: c.assinaturaParadaEm?.toISOString() ?? null, assinaturaParadaErro: c.assinaturaParadaErro, assinaturaId: c.assinaturaId }
         : null,
