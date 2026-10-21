@@ -134,11 +134,13 @@ export interface PlanoMigracao {
   rps: { rotulo: string; parcelas: { n: number; valor: number }[] }[];
   // Acordo em andamento declarado (doc 02 §26.15): nasce ATIVO na migração.
   acordo: { entrada: { valor: number; pagoEm: string }; numeroParcelas: number; valorParcela: number; primeiraEm: string; ultimaEm: string; cobertas: number[]; valorCoberto: number; cotas: { n: number; vencimento: string; paga: boolean }[] } | null;
-  resumo: { faturasPagas: number; faturasFechadas: number; faturasAbertas: number; faturasRenegociadas: number; parcelasPagas: number; reembolsos: number; avulsas: number; encargos: number; assinaturaId: string | null; substituidas: number; emitidasAgora: number; removidas: number };
+  // §26.15 item 6: cobrança vencida, de hoje ou de amanhã fica amarrada — não é substituída (aviso por cobrança).
+  cobrancasMantidas: { origem: string; vencimento: string; chargeId: string; aviso: string }[];
+  resumo: { faturasPagas: number; faturasFechadas: number; faturasAbertas: number; faturasRenegociadas: number; parcelasPagas: number; reembolsos: number; avulsas: number; encargos: number; assinaturaId: string | null; substituidas: number; emitidasAgora: number; removidas: number; mantidasProximas: number };
 }
 export interface MigracaoFeita {
   em: string; por: string | null; assinaturaParadaEm: string | null; assinaturaParadaErro: string | null; assinaturaId: string | null;
-  resumo: { contratoNumero?: string; faturas?: number; faturasPagas?: number; faturasFechadas?: number; faturasAbertas?: number; reembolsos?: number; avulsas?: number; pdfCopiado?: boolean; cobrancasApagadas?: number; emitidasAgora?: number; cobrancasMantidas?: { vencimento: string; chargeId: string; erro: string }[]; conciliadasNaMigracao?: number; conciliadasNaMigracaoVencimentos?: string[]; conciliacoesNaoEnfileiradas?: { vencimento: string; chargeId: string; erro: string }[]; orfasApagadas?: number; orfasErro?: string | null } | null;
+  resumo: { contratoNumero?: string; faturas?: number; faturasPagas?: number; faturasFechadas?: number; faturasAbertas?: number; reembolsos?: number; avulsas?: number; pdfCopiado?: boolean; cobrancasApagadas?: number; emitidasAgora?: number; cobrancasMantidas?: { vencimento: string; chargeId: string; erro: string }[]; mantidasProximas?: number; conciliadasNaMigracao?: number; conciliadasNaMigracaoVencimentos?: string[]; conciliacoesNaoEnfileiradas?: { vencimento: string; chargeId: string; erro: string }[]; orfasApagadas?: number; orfasErro?: string | null } | null;
 }
 
 export interface CasoLegadoDetalhe extends CasoLegado {

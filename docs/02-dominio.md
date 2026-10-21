@@ -2071,7 +2071,9 @@ caso validado pode ser cortado sozinho. Ao migrar um caso, atomicamente:
    recebimento (RECEIVED/CONFIRMED/RECEIVED_IN_CASH/DUNNING_RECEIVED), NÃO apaga — a fatura
    nasce FECHADA amarrada a ela e a **mesma conciliação do webhook** é enfileirada na hora (data e
    valor reais); o mesmo vale para a vencida amarrada. O resumo da migração conta
-   "conciliadas na migração". Nunca se baixa fatura sem o Asaas confirmar (Regra 1);
+   "conciliadas na migração". Nunca se baixa fatura sem o Asaas confirmar (Regra 1).
+   **Vencida, de hoje ou de amanhã nunca é apagada nem substituída, e nenhuma é apagada antes
+   de a substituta existir** (decisão Luís 21/10, caso Jucileno — §26.15 item 6);
 3. o sistema **assume a emissão do ciclo seguinte**.
 
 A **data de corte** o Luís define depois, caso a caso; não se crava agora. Como as cobranças são
@@ -2443,4 +2445,25 @@ valer no lugar das regras.
    O modo "vencimentos CONTRATO" do §26.9 item 4 deixou de existir (ver lá). Os dois casos de
    produção foram corrigidos à mão por SQL; a regra vale para as próximas migrações.
    Implementação: `alinharVencimentosLegado` (@azit/utils, puro, testado) e o planner da F3.
+6. **Cobrança vencida, de hoje ou de amanhã nunca é apagada nem substituída** (decisão Luís
+   2026-10-21, "já tínhamos combinado isso" — caso Jucileno Adami, contrato 2026090011). Na
+   migração de 20/10 a parcela 6 (vencimento 19/10, não paga) estava declarada `pendente`; a
+   migração apagou a cobrança do Asaas ANTES de criar a substituta, o Asaas recusou recriar com
+   vencimento no passado (`invalid_dueDate`) e a fatura ficou presa a uma cobrança cancelada —
+   restaurada à mão. Regra, válida para a declarada E para a por regras:
+   - cobrança em aberto do Asaas cujo vencimento é **≤ amanhã** no dia da migração (fuso
+     America/Sao_Paulo) **fica amarrada à fatura** (`asaasChargeId`, FECHADA) como uma vencida,
+     **mesmo declarada `pendente`** — o planner a trata como `vencida`. Só a partir de **D+2**
+     pode ser substituída. A prévia avisa por cobrança ("parcela 6 venceu em 19/10 — mantida a
+     cobrança do Asaas, não será substituída") e não planeja DELETE para ela;
+   - **criar antes de apagar**: na substituição que emite na hora (D-5), a cobrança do sistema
+     é criada primeiro e a antiga só é apagada se a nova existir. Criação falhou → a antiga fica
+     intacta e amarrada, e o erro vai ao resumo da migração. A antiga não saiu → a nova é
+     desfeita (nunca duas cobranças vivas). Depois do D-5 (vencimento ≥ D+6) a antiga é apagada
+     e o fechamento D-5 emite a do sistema — sem risco de data no passado;
+   - a **limpeza de órfãs** (§26.5) nunca apaga cobrança que alguma fatura referencia
+     (`asaasChargeId` — a amarrada não tem `externalReference` e parecia órfã) nem cobrança que
+     vence até amanhã.
+   Uma regra só: `cobrancaIntocavelNaMigracao(vencimento, hoje)` (@azit/utils — Regra 16), lida
+   pelo planner, pelo corte (segunda trava) e pela limpeza de órfãs.
 

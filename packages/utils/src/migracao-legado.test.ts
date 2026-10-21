@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   classificarCobrancaLegada,
+  cobrancaIntocavelNaMigracao,
   decomporParcelaLegada,
   PARCELA_LEGADA_HB20,
   PARCELA_LEGADA_MOBI_KWID,
@@ -99,5 +100,20 @@ describe('decomporParcelaLegada', () => {
   });
   it('valor pequeno demais não é decomposto', () => {
     expect(decomporParcelaLegada(5_000)).toEqual({ parcelamento: 5_000, seguro: 0, taxaMensagens: 0, padrao: false });
+  });
+});
+
+describe('cobrancaIntocavelNaMigracao (doc 02 §26.15 item 6 — caso Jucileno, 21/10)', () => {
+  const hoje = '2026-10-21';
+  it('vencida, de hoje ou de amanhã: nunca apagada nem substituída', () => {
+    expect(cobrancaIntocavelNaMigracao('2026-10-19', hoje)).toBe(true);
+    expect(cobrancaIntocavelNaMigracao('2026-10-20', hoje)).toBe(true);
+    expect(cobrancaIntocavelNaMigracao('2026-10-21', hoje)).toBe(true);
+    expect(cobrancaIntocavelNaMigracao('2026-10-22', hoje)).toBe(true);
+  });
+  it('a partir de D+2 pode ser substituída (inclusive na virada do mês)', () => {
+    expect(cobrancaIntocavelNaMigracao('2026-10-23', hoje)).toBe(false);
+    expect(cobrancaIntocavelNaMigracao('2026-11-02', '2026-10-31')).toBe(false);
+    expect(cobrancaIntocavelNaMigracao('2026-11-01', '2026-10-31')).toBe(true);
   });
 });
