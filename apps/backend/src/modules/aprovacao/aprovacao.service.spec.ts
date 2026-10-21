@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { AprovacaoService } from './aprovacao.service';
 
 // Central de Aprovações (21/10/2026): "sua vez" calculada por quem olha e o
-// pedir complemento (doc 02 §7.9-A — proposta a validar). Sem banco.
+// pedir complemento (doc 02 §7.9-A — decisão Luís 21/10: sem prazo). Sem banco.
 
 const HOJE = '2026-10-21';
 beforeAll(() => { jest.useFakeTimers({ now: new Date(`${HOJE}T15:00:00.000Z`), doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] }); });
@@ -79,26 +79,26 @@ describe('AprovacaoService — vez de quem olha (Central, 21/10)', () => {
     const reg = aprovacao({
       complementos: [{
         id: 'cp-1', aprovacaoId: 'ap-1', pergunta: 'O cliente confirmou a data da entrada?', pedidoPorId: 'luis', pedidoPor: { nome: USUARIOS.luis },
-        prazo: new Date('2026-10-26T15:00:00.000Z'), resposta: null, respondidoPorId: null, respondidoPor: null, respondidoEm: null, createdAt: new Date('2026-10-21T14:00:00.000Z'),
+        resposta: null, respondidoPorId: null, respondidoPor: null, respondidoEm: null, createdAt: new Date('2026-10-21T14:00:00.000Z'),
       }],
     });
     const { service } = montar(reg);
     const [joao] = await service.pendentes('joao');
     expect(joao.minha.vez).toBe('responder_complemento');
     expect(joao.complementoAberto?.pergunta).toBe('O cliente confirmou a data da entrada?');
-    expect(joao.complementoAberto?.vencido).toBe(false);
     const [vicente] = await service.pendentes('vicente');
     expect(vicente.minha.vez).toBe('aguardando_complemento');
   });
 });
 
-describe('AprovacaoService — pedir complemento (doc 02 §7.9-A, proposta 21/10)', () => {
-  it('cria a pergunta com prazo de 3 dias úteis e avisa o solicitante com link para o dossiê', async () => {
+describe('AprovacaoService — pedir complemento (doc 02 §7.9-A, decisão Luís 21/10)', () => {
+  it('cria a pergunta SEM prazo e alerta o solicitante com link para o dossiê', async () => {
     const { service, complementosCriados, notificacao } = montar(aprovacao());
     const r = await service.pedirComplemento('ap-1', 'luis', 'O cliente confirmou a data da entrada?');
     expect(complementosCriados[0]).toMatchObject({ aprovacaoId: 'ap-1', pedidoPorId: 'luis', pergunta: 'O cliente confirmou a data da entrada?' });
-    expect(r.prazo.slice(0, 10)).toBe('2026-10-26'); // quarta + 3 dias úteis = segunda
-    expect(notificacao.emitir).toHaveBeenCalledWith(expect.objectContaining({ usuarioId: 'joao', rota: '/aprovacoes/ap-1' }));
+    expect(complementosCriados[0]).not.toHaveProperty('prazo');
+    expect(r).toEqual({ id: 'cp-1' });
+    expect(notificacao.emitir).toHaveBeenCalledWith(expect.objectContaining({ usuarioId: 'joao', rota: '/aprovacoes/ap-1', corpo: 'O cliente confirmou a data da entrada?' }));
   });
 
   it('segregação: quem solicitou não pede complemento da própria solicitação', async () => {

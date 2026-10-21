@@ -1201,26 +1201,28 @@ Estrutura transversal aplicável a:
 > fatura com o acordo, pela mesma conversão da análise de cadastro §14). Nenhum desses números é
 > gravado: são calculados na leitura (Regra 7).
 
-> **Pedir complemento — PROPOSTA 2026-10-21 (Claude), a validar pelo Luís na homologação.** Ao
-> lado de Aprovar / Recomendar / Reprovar, quem pode decidir uma solicitação pode **pedir
-> complemento** — informação que falta para decidir, não um voto:
-> - **Volta ao solicitante com uma pergunta** (texto obrigatório). O solicitante é avisado pelo
->   sino com link para o dossiê e responde ali mesmo (texto); quem perguntou é avisado da resposta.
-> - **Prazo provisório: 3 dias úteis** (placeholder funcional, Regra 12 — mesmo padrão do
->   complemento da análise de cadastro). Vencido o prazo sem resposta, nada é automático: a
->   Central mostra o atraso e quem decide pode reprovar com parecer.
+> **Pedir complemento — decisão Luís 2026-10-21** (proposta da implementação aprovada com
+> ajuste). Ao lado de Aprovar / Recomendar / Reprovar, quem pode decidir uma solicitação pode
+> **pedir complemento** — informação que falta para decidir, não um voto:
+> - **Volta ao solicitante com uma pergunta** (texto obrigatório). O pedido gera um **alerta**
+>   (sino) para quem solicitou, com link para o dossiê; ele responde ali mesmo (texto) e quem
+>   perguntou é avisado da resposta.
+> - **Sem prazo** (Luís: "só de gerar o alerta a quem pediu já é suficiente no momento"): o
+>   pedido fica aberto até ser respondido; a Central mostra há quanto tempo ele espera.
 > - **Enquanto há complemento aberto**, a solicitação fica *aguardando complemento* (situação
 >   calculada, Regra 7 — o estado gravado continua PENDENTE): ninguém aprova nem recomenda até a
 >   resposta; **reprovar continua possível** (com parecer), para não prender a fila.
 > - Não conta como voto: quem pediu complemento continua podendo decidir depois. Segregação vale:
 >   o solicitante não pede complemento da própria solicitação.
-> - **Trilha:** "X pediu complemento: <pergunta> (prazo dd/mm)" e "Y respondeu: <resposta>",
->   em ordem cronológica junto das decisões.
+> - **Trilha:** "X pediu complemento: <pergunta>" e "Y respondeu: <resposta>", em ordem
+>   cronológica junto das decisões.
 > - **Análise de cadastro (COCAD):** integra-se à pendência que já existe (§14, "Complemento ≠
->   COCAD", RF-15): o pedido na Central cria a pendência de complemento da análise (com o prazo
->   do parâmetro da política) e a análise vai para *pendente de complemento*; cumprida a
->   pendência na análise — ou respondido na Central —, ela volta ao Comitê e o complemento fecha
->   nos dois lugares.
+>   COCAD", RF-15): o pedido na Central cria a pendência de complemento da análise (sem prazo — não
+>   expira) e a análise vai para *pendente de complemento do Comitê*; cumprida a pendência na
+>   análise — ou respondido na Central —, ela volta ao Comitê e o complemento fecha nos dois lugares.
+>
+> **Reprovar exige parecer — decisão Luís 2026-10-21.** Quem pediu precisa saber o porquê: o
+> parecer é obrigatório para reprovar (vai à trilha e à notificação do solicitante).
 
 ---
 

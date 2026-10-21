@@ -17,19 +17,17 @@ export interface ContextoTitular {
   faturasVencidas: number;
 }
 
-// Pedir complemento (doc 02 §7.9-A, proposta 21/10): pergunta de quem decide,
-// resposta de quem solicitou. Não é voto.
+// Pedir complemento (doc 02 §7.9-A, decisão Luís 21/10): pergunta de quem
+// decide, resposta de quem solicitou. Sem prazo. Não é voto.
 export interface ComplementoAprovacao {
   id: string;
   pergunta: string;
   pedidoPor: string;
   pedidoPorId: string;
   pedidoEm: string;
-  prazo: string;
   resposta: string | null;
   respondidoPor: string | null;
   respondidoEm: string | null;
-  vencido: boolean;
 }
 
 export interface Aprovacao {
@@ -150,7 +148,7 @@ export const aprovacaoService = {
     const { data } = await api.post(`/api/v1/aprovacoes/${id}/decidir`, { decisao, parecer });
     return data;
   },
-  async pedirComplemento(id: string, pergunta: string): Promise<{ id: string; prazo: string }> {
+  async pedirComplemento(id: string, pergunta: string): Promise<{ id: string }> {
     const { data } = await api.post(`/api/v1/aprovacoes/${id}/complemento`, { pergunta });
     return data;
   },

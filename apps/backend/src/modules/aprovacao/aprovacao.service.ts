@@ -7,7 +7,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { rotuloAtivo, inicioHojeBrasilUTC, adicionarDiasUteis, formatarInstanteBR } from '@azit/utils';
+import { rotuloAtivo, inicioHojeBrasilUTC } from '@azit/utils';
 import { VezAprovacao } from '@azit/types';
 import { PrismaService } from '../../database/prisma.service';
 import { AlcadaService } from '../alcada/alcada.service';
@@ -28,15 +28,11 @@ export interface AprovacaoEfetivacao {
 export interface EfetivadorAprovacao {
   aprovada: (a: AprovacaoEfetivacao) => Promise<string | void>; // retorna mensagem p/ UI
   reprovada?: (a: AprovacaoEfetivacao) => Promise<void>;
-  // Pedir complemento (doc 02 §7.9-A, 21/10): o domínio que já tem pendência
+  // Pedir complemento (doc 02 §7.9-A, decisão Luís 21/10): o domínio que já tem pendência
   // própria (análise de cadastro, RF-15) se integra a ela — não há fila paralela.
   complementoPedido?: (a: AprovacaoEfetivacao, pergunta: string, usuarioId: string) => Promise<void>;
   complementoRespondido?: (a: AprovacaoEfetivacao, resposta: string, usuarioId: string) => Promise<void>;
 }
-
-// Prazo do complemento: PLACEHOLDER funcional (Regra 12) — mesmo padrão do
-// complemento da análise de cadastro; substituível quando o Luís definir.
-export const PRAZO_COMPLEMENTO_DIAS_UTEIS = 3;
 
 
 // Vigente = fase ATIVO (doc 02 §5.2, 07/09).
@@ -263,8 +259,9 @@ export class AprovacaoService {
     });
   }
 
-  // --- Pedir complemento (doc 02 §7.9-A, proposta 21/10 — a validar) ---------
-  // Pergunta de quem pode decidir ao solicitante, com prazo. Não é voto.
+  // --- Pedir complemento (doc 02 §7.9-A, decisão Luís 21/10) -----------------
+  // Pergunta de quem pode decidir ao solicitante — SEM prazo: o alerta a quem
+  // pediu basta; fica aberto até a resposta. Não é voto.
   async pedirComplemento(aprovacaoId: string, usuarioId: string, pergunta: string) {
     const aprovacao = await this.prisma.db.aprovacao.findFirst({
       where: { id: aprovacaoId },
@@ -280,21 +277,20 @@ export class AprovacaoService {
     if (aprovacao.complementos.length > 0) {
       throw new ConflictException({ erro: 'complemento_aberto', mensagem: 'Já há um pedido de complemento aguardando resposta nesta solicitação' });
     }
-    const prazo = adicionarDiasUteis(new Date(), PRAZO_COMPLEMENTO_DIAS_UTEIS);
     const c = await this.prisma.db.aprovacaoComplemento.create({
-      data: { aprovacaoId, pergunta, pedidoPorId: usuarioId, prazo },
+      data: { aprovacaoId, pergunta, pedidoPorId: usuarioId },
     });
     const ef = this.efetivadores.get(aprovacao.tipoOperacao);
     if (ef?.complementoPedido) await ef.complementoPedido(this.efetivacaoDe(aprovacao, usuarioId), pergunta, usuarioId);
     await this.notificacao.emitir({
       titulo: 'Pediram complemento na sua solicitação',
-      corpo: `${pergunta} — responda até ${formatarInstanteBR(prazo)}`,
+      corpo: pergunta,
       rota: `/aprovacoes/${aprovacaoId}`,
       tipo: 'APROVACAO',
       usuarioId: aprovacao.solicitanteId,
     });
     this.logger.log(`Aprovação ${aprovacaoId}: complemento pedido por ${usuarioId}`);
-    return { id: c.id, prazo: c.prazo.toISOString() };
+    return { id: c.id };
   }
 
   // Resposta do solicitante — fecha o complemento e devolve a solicitação à fila.
@@ -397,7 +393,6 @@ export class AprovacaoService {
       this.contrapartesFinanceiras(rows),
     ]);
     const nomePorTitular = new Map(titulares.map((t) => [t.id, t.nome]));
-    const agora = Date.now();
 
     return Promise.all(
       rows.map(async (r) => {
@@ -414,11 +409,9 @@ export class AprovacaoService {
           pedidoPor: c.pedidoPor.nome,
           pedidoPorId: c.pedidoPorId,
           pedidoEm: c.createdAt.toISOString(),
-          prazo: c.prazo.toISOString(),
           resposta: c.resposta,
           respondidoPor: c.respondidoPor?.nome ?? (c.respondidoEm ? 'sistema' : null),
           respondidoEm: c.respondidoEm?.toISOString() ?? null,
-          vencido: !c.respondidoEm && c.prazo.getTime() < agora,
         }));
         const complementoAberto = complementos.find((c) => !c.respondidoEm) ?? null;
         // De quem é a vez, do ponto de vista de quem olha (calculada — Regra 7).

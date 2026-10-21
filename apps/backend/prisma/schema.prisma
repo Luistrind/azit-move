@@ -1364,15 +1364,15 @@ model AprovacaoDecisao {
   @@map("aprovacao_decisoes")
 }
 
-// Pedir complemento (doc 02 §7.9-A, proposta 21/10/2026 — a validar): pergunta de
-// quem decide ao solicitante, com prazo. NÃO é voto; enquanto aberto (sem
-// resposta) a solicitação fica "aguardando complemento" — situação calculada.
+// Pedir complemento (doc 02 §7.9-A, decisão Luís 21/10/2026): pergunta de quem
+// decide ao solicitante, SEM prazo — alerta a quem pediu e fica aberto até a
+// resposta. NÃO é voto; enquanto aberto a solicitação fica "aguardando
+// complemento" — situação calculada.
 model AprovacaoComplemento {
   id              String    @id @default(cuid())
   aprovacaoId     String
   pergunta        String
   pedidoPorId     String
-  prazo           DateTime
   resposta        String?
   respondidoPorId String?
   respondidoEm    DateTime?

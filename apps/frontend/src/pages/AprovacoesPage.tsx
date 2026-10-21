@@ -165,7 +165,7 @@ function LinhaAprovacao({ a, pendente, onAbrir }: { a: Aprovacao; pendente: bool
       </td>
       <td className="px-[12px] py-[11px] align-middle text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
         {resumoDecisoes(a)}
-        {a.complementoAberto && <div style={{ color: a.complementoAberto.vencido ? TOM_DOSSIE_FG.alerta : TOM_DOSSIE_FG.atencao }}>complemento pedido{a.complementoAberto.vencido ? ' · prazo vencido' : ''}</div>}
+        {a.complementoAberto && <div style={{ color: TOM_DOSSIE_FG.atencao }}>complemento pedido · aguardando resposta</div>}
       </td>
       <td className="px-[12px] py-[11px] align-middle">
         {pendente

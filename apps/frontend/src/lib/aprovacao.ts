@@ -2,7 +2,6 @@ import { ROTULO_CODIGO_ANALISE } from '@azit/utils';
 import type { Aprovacao } from '../services/aprovacao.service';
 import type { EventoTrilhaProps } from '../components/Trilha';
 import { TRILHA_APROVACAO_FG } from '../config/statusColors';
-import { instanteBR } from './datas';
 
 // Textos humanos da Central de Aprovações (lista e dossiê, 21/10/2026) — uma
 // fonte só para as duas telas.
@@ -72,7 +71,7 @@ export function trilhaDaSolicitacao(a: Aprovacao): EventoTrilhaProps[] {
     { em: a.solicitadoEm, titulo: `${a.solicitante} solicitou`, cor: TRILHA_APROVACAO_FG.SOLICITADA },
     ...a.decisoes.map((d) => ({ em: d.em, titulo: `${d.usuario} ${verbos[d.decisao] ?? d.decisao.toLowerCase()}`, detalhe: d.parecer ? `“${d.parecer}”` : null, cor: TRILHA_APROVACAO_FG[d.decisao] })),
     ...a.complementos.flatMap((c) => [
-      { em: c.pedidoEm, titulo: `${c.pedidoPor} pediu complemento`, detalhe: `“${c.pergunta}” · responder até ${instanteBR(c.prazo)}`, cor: TRILHA_APROVACAO_FG.COMPLEMENTO_PEDIDO },
+      { em: c.pedidoEm, titulo: `${c.pedidoPor} pediu complemento`, detalhe: `“${c.pergunta}”`, cor: TRILHA_APROVACAO_FG.COMPLEMENTO_PEDIDO },
       ...(c.respondidoEm ? [{ em: c.respondidoEm, titulo: `${c.respondidoPor ?? 'Solicitante'} respondeu o complemento`, detalhe: c.resposta ? `“${c.resposta}”` : null, cor: TRILHA_APROVACAO_FG.COMPLEMENTO_RESPONDIDO }] : []),
     ]),
   ];
