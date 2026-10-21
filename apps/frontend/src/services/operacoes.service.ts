@@ -56,6 +56,7 @@ export interface ParcelaCoberta {
   dataVencimento: string; // 'YYYY-MM-DD'
   valorNominal: number;
   diasAtrasoNaDataBase: number;
+  encargoMoraNaDataBase: number; // multa + juros da regra do contrato na data-base (RAP007)
   status: string; // rótulo (Em acordo / Paga …)
   faturaId: string | null;
 }
@@ -104,6 +105,8 @@ export interface AcordoDetalhe {
   dataBase: string;
   observacao: string | null;
   plano: { valorTotalRenegociado: number; valorEntrada: number; numeroParcelasNovas: number; valorParcelaNova: number; periodicidade: string; totalPlano: number };
+  // true = acordo ainda sem vínculo nas parcelas: faturasCobertas é a SELEÇÃO do snapshot.
+  coberturaPrevista: boolean;
   totaisCobertura: { quantidadeParcelas: number; quantidadeFaturas: number; valorNominal: number; encargosMora: number | null; valorAtualizado: number | null; moraHerdada: string | null };
   faturasCobertas: FaturaCoberta[];
   cobertasSemFatura: ParcelaCoberta[];

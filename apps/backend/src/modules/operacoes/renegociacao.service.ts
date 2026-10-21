@@ -971,7 +971,7 @@ export class RenegociacaoService implements OnModuleInit {
         parcelasCobertas: {
           orderBy: [{ dataVencimento: 'asc' }, { numero: 'asc' }],
           include: {
-            contrato: { select: { id: true, numero: true, ativo: { select: { descricao: true, placa: true } } } },
+            contrato: { select: { id: true, numero: true, taxaMultaAtraso: true, taxaJurosAtraso: true, ativo: { select: { descricao: true, placa: true } } } },
             fatura: { include: { itensFatura: { orderBy: { tipo: 'asc' } } } },
           },
         },
@@ -993,24 +993,60 @@ export class RenegociacaoService implements OnModuleInit {
     const snap = (a.snapshotJson as SnapshotAcordo | null) ?? {};
     const origem = this.origemAcordo(a.snapshotJson);
     const periodicidade = LABEL_PERIODICIDADE[a.periodicidade];
-    const contratos = this.contratosDoAcordo(a);
     // Data-base do atraso: a do snapshot (nativo) ou a do acordo (legado: dia da entrada).
     const dataBase = snap.dataBase ? new Date(snap.dataBase) : a.dataCriacao;
 
+    // Antes da efetivação (rascunho / aguardando entrada — e proposta cancelada ou
+    // expirada), nenhuma parcela tem o vínculo ainda: a seleção aprovada vive no
+    // snapshot (`faturasSelecionadas`). Mostramos a MESMA visão (fatura → itens →
+    // parcelas) a partir dessas faturas, marcada como cobertura PREVISTA
+    // (achado homolog 21/10: "0 parcela(s) em 0 fatura(s)" num acordo com 8
+    // faturas selecionadas).
+    let coberturaPrevista = false;
+    let parcelasBase = a.parcelasCobertas;
+    if (parcelasBase.length === 0 && snap.faturasSelecionadas?.length) {
+      const faturasSel = await this.prisma.db.fatura.findMany({
+        where: { id: { in: snap.faturasSelecionadas } },
+        include: {
+          itensFatura: { orderBy: { tipo: 'asc' } },
+          parcelas: {
+            where: { deletedAt: null },
+            orderBy: { numero: 'asc' },
+            include: { contrato: { select: { id: true, numero: true, taxaMultaAtraso: true, taxaJurosAtraso: true, ativo: { select: { descricao: true, placa: true } } } } },
+          },
+        },
+      });
+      coberturaPrevista = faturasSel.length > 0;
+      parcelasBase = faturasSel.flatMap((f) => f.parcelas.map((p) => ({ ...p, fatura: { ...f, parcelas: undefined } }))) as typeof a.parcelasCobertas;
+    }
+    // Ordem de leitura: vencimento → contrato → nº da parcela (igual nos dois casos).
+    parcelasBase = [...parcelasBase].sort(
+      (x, y) => x.dataVencimento.getTime() - y.dataVencimento.getTime() || x.contrato.numero.localeCompare(y.contrato.numero) || x.numero - y.numero,
+    );
+    const contratos = this.contratosDoAcordo({ ...a, parcelasCobertas: parcelasBase });
+
     // --- Parcelas cobertas, agrupadas pela fatura em que estavam -------------
-    const cobertas = a.parcelasCobertas.map((p) => ({
-      parcelaId: p.id,
-      contratoId: p.contrato.id,
-      contratoNumero: p.contrato.numero,
-      produto: p.contrato.ativo?.descricao ?? 'Reembolso Parcelado',
-      display: p.display,
-      numero: p.numero,
-      dataVencimento: dataCalendarioUTC(p.dataVencimento),
-      valorNominal: cent(p.valorNominal),
-      diasAtrasoNaDataBase: diasAtrasoCalendario(p.dataVencimento, dataBase),
-      status: parcelaParaApi(p).status, // 'Em acordo' enquanto coberta; muda se a parcela for paga/novada
-      faturaId: p.faturaId,
-    }));
+    // Mora na data-base pela MESMA fórmula da elegibilidade (RAP007): multa e
+    // juros da regra geral do contrato — o que o snapshot soma em `totais`.
+    const encargoNaDataBase = (p: (typeof parcelasBase)[number], diasAtraso: number) =>
+      Math.round(calcularEncargoAtraso(cent(p.valorNominal), diasAtraso, Number(p.contrato.taxaMultaAtraso.toString()), Number(p.contrato.taxaJurosAtraso.toString())));
+    const cobertas = parcelasBase.map((p) => {
+      const diasAtraso = diasAtrasoCalendario(p.dataVencimento, dataBase);
+      return {
+        parcelaId: p.id,
+        contratoId: p.contrato.id,
+        contratoNumero: p.contrato.numero,
+        produto: p.contrato.ativo?.descricao ?? 'Reembolso Parcelado',
+        display: p.display,
+        numero: p.numero,
+        dataVencimento: dataCalendarioUTC(p.dataVencimento),
+        valorNominal: cent(p.valorNominal),
+        diasAtrasoNaDataBase: diasAtraso,
+        encargoMoraNaDataBase: encargoNaDataBase(p, diasAtraso),
+        status: parcelaParaApi(p).status, // 'Em acordo' enquanto coberta; muda se a parcela for paga/novada
+        faturaId: p.faturaId,
+      };
+    });
     const porFatura = new Map<string, {
       id: string; numero: number; dataVencimento: string; status: string; valorTotal: number; valorPago: number;
       dataPagamento: string | null; diasAtrasoNaDataBase: number;
@@ -1018,7 +1054,7 @@ export class RenegociacaoService implements OnModuleInit {
       parcelas: typeof cobertas;
     }>();
     const idsCobertas = new Set(cobertas.map((c) => c.parcelaId));
-    for (const p of a.parcelasCobertas) {
+    for (const p of parcelasBase) {
       if (!p.fatura) continue;
       const f = p.fatura;
       let g = porFatura.get(f.id);
@@ -1237,6 +1273,8 @@ export class RenegociacaoService implements OnModuleInit {
         periodicidade,
         totalPlano: resumoCotas.totalPlano,
       },
+      // Cobertura PREVISTA = seleção do snapshot (acordo ainda sem vínculo nas parcelas).
+      coberturaPrevista,
       // Saldos na data-base (snapshot nativo); no legado só o nominal coberto é conhecido.
       totaisCobertura: {
         quantidadeParcelas: cobertas.length,

@@ -18,7 +18,9 @@ const dia = (iso: string) => new Date(`${iso}T03:00:00.000Z`); // mesmo dia-cale
 const somarDias = (iso: string, n: number) => new Date(dia(iso).getTime() + n * 86_400_000).toISOString().slice(0, 10);
 
 const ativoLeo = { descricao: 'Fiat Mobi 2023', placa: 'ABC1D23' };
-const contratoLeo = { id: 'c-leo', numero: '202512005', ativo: ativoLeo };
+// Multa 2% + juros 1% a.m. (regra geral do contrato) — mora na data-base das cobertas.
+const taxas = { taxaMultaAtraso: dec(2), taxaJurosAtraso: dec(1) };
+const contratoLeo = { id: 'c-leo', numero: '202512005', ativo: ativoLeo, ...taxas };
 
 function parcela(p: {
   id: string; contratoId: string; itemContratadoId: string; numero: number; totalParcelas: number; venc: string;
@@ -43,12 +45,14 @@ function faturaRenegociada(id: string, numero: number, venc: string, parcelaId: 
   };
 }
 
-function montar(acordo: unknown, extras: { aprovacao?: unknown; faturasSnap?: unknown[]; novacao?: unknown } = {}) {
+function montar(acordo: unknown, extras: { aprovacao?: unknown; faturasSnap?: unknown[]; faturasSelecionadas?: unknown[]; novacao?: unknown } = {}) {
   const prisma = {
     db: {
       acordo: { findFirst: jest.fn().mockResolvedValue(acordo) },
       aprovacao: { findFirst: jest.fn().mockResolvedValue(extras.aprovacao ?? null) },
-      fatura: { findMany: jest.fn().mockResolvedValue(extras.faturasSnap ?? []) },
+      // Duas consultas de fatura: a seleção do snapshot (com include — cobertura
+      // prevista) e os metadados de exclusões/vincendas (select).
+      fatura: { findMany: jest.fn().mockImplementation((args: { include?: unknown }) => Promise.resolve(args.include ? (extras.faturasSelecionadas ?? []) : (extras.faturasSnap ?? []))) },
       novacao: { findFirst: jest.fn().mockResolvedValue(extras.novacao ?? null) },
     },
   };
@@ -103,8 +107,11 @@ describe('detalhe do acordo — importado do legado (Leonardo 202512005)', () =>
     const primeira = d.faturasCobertas[0];
     expect(primeira.status).toBe('renegociada');
     expect(primeira.parcelas[0]).toMatchObject({ display: '5/48', valorNominal: 69_900, status: 'Em acordo', contratoNumero: '202512005' });
-    // Dias de atraso na data-base (entrada paga em 26/08): 22/07 → 35 dias.
+    // Dias de atraso na data-base (entrada paga em 26/08): 22/07 → 35 dias; mora
+    // pela regra do contrato: 2% de multa (13,98) + 1% a.m. × 35/30 (8,155) = 22,14.
     expect(primeira.parcelas[0].diasAtrasoNaDataBase).toBe(35);
+    expect(primeira.parcelas[0].encargoMoraNaDataBase).toBe(2_214);
+    expect(d.coberturaPrevista).toBe(false);
     expect(primeira.itens).toEqual([
       { descricao: 'Parcela 5/48 · Compra Parcelada Fiat Mobi 2023', tipo: 'principal', valor: 69_900, credor: 'azit', coberto: true },
       { descricao: 'Proteção veicular', tipo: 'servico', valor: 5_000, credor: 'azit', coberto: false },
@@ -156,8 +163,8 @@ describe('detalhe do acordo — importado do legado (Leonardo 202512005)', () =>
 describe('detalhe do acordo — nativo, aprovado na Central', () => {
   // Conta com 2 faturas vencidas selecionadas e 1 excluída com justificativa;
   // entrada de 400 com data-limite; 4 cotas de 407,94: 2 pagas, 2 a vencer.
-  const contratoA = { id: 'c-a', numero: '2026090010', ativo: { descricao: 'VW Polo 2022', placa: 'XYZ9A87' } };
-  const contratoRp = { id: 'c-rp', numero: '2026090010-RP1', ativo: null };
+  const contratoA = { id: 'c-a', numero: '2026090010', ativo: { descricao: 'VW Polo 2022', placa: 'XYZ9A87' }, ...taxas };
+  const contratoRp = { id: 'c-rp', numero: '2026090010-RP1', ativo: null, ...taxas };
   const cobertas = [
     { ...parcela({ id: 'p-a-10', contratoId: 'c-a', itemContratadoId: 'i-a', numero: 10, totalParcelas: 48, venc: '2026-09-07', valor: 699, faturaId: 'f-1', acordoId: 'ac-1' }), contrato: contratoA, fatura: faturaRenegociada('f-1', 10, '2026-09-07', 'p-a-10', 699) },
     { ...parcela({ id: 'p-rp-2', contratoId: 'c-rp', itemContratadoId: 'i-rp', numero: 2, totalParcelas: 6, venc: '2026-09-07', valor: 120, faturaId: 'f-1', acordoId: 'ac-1' }), contrato: contratoRp, fatura: faturaRenegociada('f-1', 10, '2026-09-07', 'p-a-10', 699) },
@@ -269,12 +276,43 @@ describe('detalhe do acordo — nativo, aprovado na Central', () => {
     expect(d.trilha[3].detalhe).toBe('Reprovado na Central de Aprovações');
   });
 
-  it('aguardando entrada: situação da entrada e sem efetivação', async () => {
-    const { service } = montar({ ...acordo, status: 'AGUARDANDO_ENTRADA', dataEfetivacao: null, parcelasCobertas: [], itensGerados: [], lancamentos: [] }, { aprovacao, faturasSnap });
+  // Achado homolog 21/10: acordo ainda não efetivado mostrava "0 parcela(s) em 0
+  // fatura(s)" — a seleção aprovada vive no snapshot e precisa aparecer na MESMA
+  // visão (fatura → itens → parcelas), como cobertura PREVISTA.
+  it('aguardando entrada: lista as faturas selecionadas no snapshot como cobertura prevista, com contratos, mora e situação própria', async () => {
+    const semVinculo = (p: ReturnType<typeof parcela>) => ({ ...p, acordoId: null });
+    const faturasSelecionadas = [
+      { ...faturaRenegociada('f-1', 10, '2026-09-07', 'p-a-10', 699), status: 'FECHADA', parcelas: [
+        { ...semVinculo(parcela({ id: 'p-a-10', contratoId: 'c-a', itemContratadoId: 'i-a', numero: 10, totalParcelas: 48, venc: '2026-09-07', valor: 699, faturaId: 'f-1' })), contrato: contratoA },
+        { ...semVinculo(parcela({ id: 'p-rp-2', contratoId: 'c-rp', itemContratadoId: 'i-rp', numero: 2, totalParcelas: 6, venc: '2026-09-07', valor: 120, faturaId: 'f-1' })), contrato: contratoRp },
+      ] },
+      { ...faturaRenegociada('f-2', 11, '2026-09-14', 'p-a-11', 699), status: 'FECHADA', parcelas: [
+        { ...semVinculo(parcela({ id: 'p-a-11', contratoId: 'c-a', itemContratadoId: 'i-a', numero: 11, totalParcelas: 48, venc: '2026-09-14', valor: 699, faturaId: 'f-2' })), contrato: contratoA },
+      ] },
+    ];
+    const { service, prisma } = montar(
+      { ...acordo, status: 'AGUARDANDO_ENTRADA', dataEfetivacao: null, parcelasCobertas: [], itensGerados: [], lancamentos: [] },
+      { aprovacao, faturasSnap, faturasSelecionadas },
+    );
     const d = await service.detalhar('ac-1');
     expect(d.entrada.situacao).toBe('aguardando');
     expect(d.entrada.pagaEm).toBeNull();
     expect(d.trilha.map((e) => e.titulo)).not.toContain('Acordo efetivado');
+
+    expect(prisma.db.fatura.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ['f-1', 'f-2'] } } }));
+    expect(d.coberturaPrevista).toBe(true);
+    expect(d.contratos.map((c) => c.numero)).toEqual(['2026090010', '2026090010-RP1']);
+    expect(d.faturasCobertas).toHaveLength(2);
+    expect(d.totaisCobertura.quantidadeParcelas).toBe(3);
+    const f1 = d.faturasCobertas[0];
+    expect(f1).toMatchObject({ numero: 10, dataVencimento: '2026-09-07', status: 'fechada', diasAtrasoNaDataBase: 13 });
+    // Sem vínculo ainda: a parcela mostra a situação própria (vencida), não "Em acordo".
+    expect(f1.parcelas.map((p) => `${p.contratoNumero} ${p.display} ${p.status} ${p.encargoMoraNaDataBase}`)).toEqual([
+      `2026090010 10/48 Vencida ${Math.round(69_900 * 0.02 + (69_900 * 0.01 / 30) * 13)}`,
+      `2026090010-RP1 2/6 Vencida ${Math.round(12_000 * 0.02 + (12_000 * 0.01 / 30) * 13)}`,
+    ]);
+    expect(f1.itens.map((it) => it.coberto)).toEqual([true, false]);
+    expect(d.resumoCotas.quantidade).toBe(0);
   });
 
   it('acordo inexistente → 404', async () => {
