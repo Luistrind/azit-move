@@ -1,3 +1,4 @@
+import { instanteBR, horaBR } from '../lib/datas';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -85,7 +86,7 @@ const PAPEL_SIGNATARIO: Record<string, string> = {
 const fmtDia = (iso: string | null | undefined) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—');
 // Instante ISO → dd/mm/aa hh:mm no relógio do operador.
 const fmtDataHora = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+  iso ? instanteBR(iso) + ' ' + horaBR(iso) : '—';
 
 const card = { background: 'var(--surface)', border: '1px solid var(--border)' } as const;
 const th = 'py-[7px] pr-[10px] text-left font-semibold';
@@ -323,7 +324,7 @@ function CardAcordo({ a, aberto, onAlternar, onTitular, onContrato, acaoDev }: {
             {a.contratos.length === 0 && ' · contratos definidos na efetivação'}
           </div>
           <div className="mt-[2px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
-            {a.origem === 'legado' ? `firmado no legado em ${fmtDataHora(a.dataCriacao).slice(0, 8)} · importado por ${a.criadoPor}` : `proposto por ${a.criadoPor} em ${fmtDataHora(a.dataCriacao)}`}
+            {a.origem === 'legado' ? `firmado no legado em ${instanteBR(a.dataCriacao)} · importado por ${a.criadoPor}` : `proposto por ${a.criadoPor} em ${fmtDataHora(a.dataCriacao)}`}
             {a.dataEfetivacao && a.origem !== 'legado' ? ` · efetivado em ${fmtDataHora(a.dataEfetivacao)}` : ''}
           </div>
         </div>
@@ -367,15 +368,20 @@ function DetalheAcordo({ id, onContrato }: { id: string; onContrato: (id: string
       </div>
 
       {/* O que o acordo cobriu */}
-      <Secao titulo={`O que o acordo cobriu — ${d.totaisCobertura.quantidadeParcelas} parcela(s) em ${d.totaisCobertura.quantidadeFaturas} fatura(s)`}>
+      <Secao titulo={`${d.coberturaPrevista ? 'O que o acordo vai cobrir (seleção aprovada na proposta)' : 'O que o acordo cobriu'} — ${d.totaisCobertura.quantidadeParcelas} parcela(s) em ${d.totaisCobertura.quantidadeFaturas} fatura(s)`}>
         {d.faturasCobertas.length === 0 && d.cobertasSemFatura.length === 0 ? (
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
             {d.status === 'rascunho' || d.status === 'aguardando_entrada'
-              ? 'As parcelas recebem o vínculo do acordo na efetivação (pagamento da entrada). Até lá, a seleção aprovada está no snapshot abaixo.'
+              ? 'Proposta sem faturas selecionadas no snapshot — as parcelas recebem o vínculo do acordo na efetivação (pagamento da entrada).'
               : 'Nenhuma parcela vinculada a este acordo.'}
           </div>
         ) : (
           <div className="flex flex-col gap-[10px]">
+            {d.coberturaPrevista && (
+              <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+                As parcelas abaixo recebem o vínculo do acordo na efetivação (pagamento da entrada); até lá seguem com a situação própria e a cobrança original.
+              </div>
+            )}
             {d.faturasCobertas.map((f) => (
               <div key={f.id} className="rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)' }}>
                 <div className="flex flex-wrap items-center gap-[8px] text-[12px]">
@@ -392,7 +398,7 @@ function DetalheAcordo({ id, onContrato }: { id: string; onContrato: (id: string
                         <td className="py-[5px] pr-[8px]" style={{ color: 'var(--text-body)' }}>
                           <button onClick={() => onContrato(p.contratoId)} className="font-semibold" style={{ color: 'var(--navy)' }}>{p.contratoNumero}</button> · {p.produto}
                         </td>
-                        <td className="py-[5px] pr-[8px] tabular-nums" style={{ color: 'var(--text-muted)' }}>venc. {fmtDia(p.dataVencimento)} · {p.diasAtrasoNaDataBase} dia(s)</td>
+                        <td className="py-[5px] pr-[8px] tabular-nums" style={{ color: 'var(--text-muted)' }}>venc. {fmtDia(p.dataVencimento)} · {p.diasAtrasoNaDataBase} dia(s){p.encargoMoraNaDataBase > 0 ? ` · mora ${formatCurrency(p.encargoMoraNaDataBase)}` : ''}</td>
                         <td className="py-[5px] pr-[8px]"><StatusBadge label={p.status} colors={PARCELA_STATUS_COLORS} /></td>
                         <td className="py-[5px] text-right font-semibold tabular-nums">{formatCurrency(p.valorNominal)}</td>
                       </tr>
@@ -460,7 +466,7 @@ function DetalheAcordo({ id, onContrato }: { id: string; onContrato: (id: string
         <div className="grid grid-cols-2 gap-[8px] text-[12px] sm:grid-cols-5">
           <Campo label="Valor" valor={d.entrada.valor > 0 ? formatCurrency(d.entrada.valor) : 'sem entrada'} />
           <Campo label="Situação"><span className="font-semibold" style={{ color: entradaSit.cor }}>{entradaSit.label}</span></Campo>
-          <Campo label="Data-limite" valor={d.entrada.dataLimite ? fmtDataHora(d.entrada.dataLimite).slice(0, 8) : '—'} />
+          <Campo label="Data-limite" valor={instanteBR(d.entrada.dataLimite)} />
           <Campo label="Paga em" valor={d.entrada.pagaEm ? fmtDataHora(d.entrada.pagaEm) : '—'} />
           <Campo label="Cobrança no Asaas" valor={d.entrada.cobrancaAsaasId ?? '—'} />
         </div>

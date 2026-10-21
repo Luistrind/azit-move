@@ -32,6 +32,22 @@ export function diasAtrasoLocal(iso: string): number {
   return Math.max(0, Math.round((hoje - venc) / 86400000));
 }
 
+// ---- Exibição de INSTANTES (createdAt, assinouEm, dataEfetivacao…) ---------
+// Sempre no fuso do NEGÓCIO (America/Sao_Paulo — Regra 15), nunca no relógio
+// do navegador. Mesmos nomes/assinaturas da branch fix/datas-fuso-brasil, que
+// reescreve este arquivo sobre @azit/utils — na integração, fique com a dela.
+const FUSO_NEGOCIO = 'America/Sao_Paulo';
+
+// INSTANTE → 'DD/MM/YYYY' no fuso do negócio.
+export function instanteBR(iso: string | null | undefined): string {
+  return iso ? new Date(iso).toLocaleDateString('pt-BR', { timeZone: FUSO_NEGOCIO, day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+}
+
+// INSTANTE → 'HH:mm' no fuso do negócio.
+export function horaBR(iso: string): string {
+  return new Date(iso).toLocaleTimeString('pt-BR', { timeZone: FUSO_NEGOCIO, hour: '2-digit', minute: '2-digit' });
+}
+
 // Tempo relativo curto para o sino ("agora", "há 5 min", "há 2 h", "ontem", dd/mm).
 export function tempoRelativo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();

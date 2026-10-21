@@ -11,6 +11,7 @@ import { Queue } from 'bullmq';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import {
   centavosParaReaisString,
+  dataCalendarioUTC,
   dataPorExtenso,
   formatCurrency,
   numeroPorExtenso,
@@ -974,7 +975,7 @@ export class NovacaoService implements OnModuleInit {
         numeroParcelas: c.numeroParcelas,
         valorParcela: cent(c.valorParcelaInicial),
         valorTotal: cent(c.valorTotal),
-        dataPrimeiraParcela: c.dataPrimeiraParcela.toISOString().slice(0, 10),
+        dataPrimeiraParcela: dataCalendarioUTC(c.dataPrimeiraParcela),
         periodicidade: c.periodicidade.toLowerCase(),
         cronogramaGerado: parcelas.length > 0,
         cronograma: {
@@ -982,7 +983,7 @@ export class NovacaoService implements OnModuleInit {
           pagas,
           vencidas: labels.filter((l) => l === 'Vencida').length,
           aVencer: labels.filter((l) => l === 'Em aberto' || l === 'Vence hoje').length,
-          proximoVencimento: parcelas.find((p) => !p.status)?.dataVencimento.toISOString().slice(0, 10) ?? null,
+          proximoVencimento: (() => { const prox = parcelas.find((p) => !p.status); return prox ? dataCalendarioUTC(prox.dataVencimento) : null; })(),
         },
         assinatura: doc
           ? { status: doc.status, simulado: doc.simulado, enviadoEm: doc.enviadoEm.toISOString(), concluidoEm: doc.concluidoEm?.toISOString() ?? null, motivoRecusa: doc.motivoRecusa, signatarios }
