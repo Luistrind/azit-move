@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { dataHojeBrasil } from '@azit/utils';
 
 // Provider BigDataCorp (Plataforma de Dados) — Camada 1 da análise (doc 02 §20).
 // A PLATAFORMA é uma só: /pessoas com o parâmetro Datasets variando por camada
@@ -408,14 +409,11 @@ export class BigDataCorpService {
   }
 
   private idadeDe(iso: string): number | null {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return null;
-    const agora = new Date();
-    let idade = agora.getFullYear() - d.getFullYear();
-    const aniversarioPassou =
-      agora.getMonth() > d.getMonth() ||
-      (agora.getMonth() === d.getMonth() && agora.getDate() >= d.getDate());
-    if (!aniversarioPassou) idade -= 1;
+    const nasc = iso.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nasc)) return null;
+    const hoje = dataHojeBrasil();
+    let idade = Number(hoje.slice(0, 4)) - Number(nasc.slice(0, 4));
+    if (hoje.slice(5) < nasc.slice(5)) idade -= 1; // aniversário ainda não chegou este ano
     return idade;
   }
 

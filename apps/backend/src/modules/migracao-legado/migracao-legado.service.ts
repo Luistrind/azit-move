@@ -11,6 +11,7 @@ import { Prisma, SituacaoCasoLegado, StatusCasoLegado } from '@prisma/client';
 import {
   camposFaltantesTermos,
   centavosParaReaisString,
+  dataCalendarioUTC,
   dataHojeBrasil,
   decomporParcelaLegada,
   TERMOS_VAZIOS,
@@ -294,7 +295,7 @@ export class MigracaoLegadoService {
             status: c.assinaturaStatus,
             valor: centavos(c.assinaturaValor),
             ciclo: c.assinaturaCiclo,
-            proximoVencimento: c.assinaturaProximoVencimento?.toISOString().slice(0, 10) ?? null,
+            proximoVencimento: c.assinaturaProximoVencimento ? dataCalendarioUTC(c.assinaturaProximoVencimento) : null,
             descricao: (c.assinaturaBruto as { description?: string } | null)?.description ?? null,
           }
         : null,
@@ -350,8 +351,8 @@ export class MigracaoLegadoService {
       valorParcelaPadrao: centavos(c.valorParcelaPadrao),
       modeloSugerido: c.modeloSugerido,
       modeloRotulo: c.modeloSugerido ? ROTULO_MODELO[c.modeloSugerido] ?? c.modeloSugerido : null,
-      primeiraCobrancaEm: c.primeiraCobrancaEm?.toISOString().slice(0, 10) ?? null,
-      ultimaCobrancaEm: c.ultimaCobrancaEm?.toISOString().slice(0, 10) ?? null,
+      primeiraCobrancaEm: c.primeiraCobrancaEm ? dataCalendarioUTC(c.primeiraCobrancaEm) : null,
+      ultimaCobrancaEm: c.ultimaCobrancaEm ? dataCalendarioUTC(c.ultimaCobrancaEm) : null,
       assinaturaAtiva: c.assinaturaAtiva,
       // Recente (doc 02 §26.7): assinatura ativa e nenhuma parcela paga ainda —
       // são os clientes novos, já na precificação atual.

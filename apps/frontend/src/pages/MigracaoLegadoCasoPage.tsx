@@ -134,7 +134,7 @@ export function MigracaoLegadoCasoPage() {
   useEffect(() => {
     if (c && !formSujo) setForm(formDosTermos(c.termos));
     if (c) setObs(c.observacao ?? '');
-  }, [c?.id, c?.termosAtualizadosEm, c?.observacao]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [c?.id, c?.termosAtualizadosEm, c?.observacao]);
 
   const set = (k: keyof FormTermos) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const v = e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value;

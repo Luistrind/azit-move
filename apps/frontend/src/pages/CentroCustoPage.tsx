@@ -7,6 +7,7 @@ import { toast } from '../components/Toast';
 import { mensagemErro } from '../lib/permissoes';
 import { reaisParaCentavos } from '../lib/valor';
 import { Metrica } from '../components/Metrica';
+import { dataMistaBR } from '../lib/datas';
 
 const TIPOS_CUSTO = ['manutencao', 'documentacao', 'seguro', 'franquia', 'preparacao', 'outro'];
 const TIPO_LABEL: Record<string, string> = {
@@ -212,7 +213,7 @@ export function CentroCustoPage() {
               {detalhe.data.lancamentos.length === 0 && <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum custo lançado além da aquisição.</div>}
               {detalhe.data.lancamentos.map((l) => (
                 <div key={l.id} className="flex items-center justify-between rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
-                  <span><b>{TIPO_LABEL[l.tipo] ?? l.tipo}</b> · {l.descricao} <span style={{ color: 'var(--text-muted)' }}>· {new Date(l.data).toLocaleDateString('pt-BR')}</span></span>
+                  <span><b>{TIPO_LABEL[l.tipo] ?? l.tipo}</b> · {l.descricao} <span style={{ color: 'var(--text-muted)' }}>· {dataMistaBR(l.data)}</span></span>
                   <span className="flex items-center gap-[8px]">
                     <span className="tabular-nums font-semibold">{formatCurrency(l.valor)}</span>
                     <button onClick={() => remover(l.id)} className="text-[13px]" style={{ color: '#c0392b' }} title="Remover">×</button>

@@ -996,6 +996,30 @@ pnpm lint                # linting em todo o monorepo
 - **Sem status hardcoded como string literal** — usar os enums de `@azit/types`
 - **Comentários em português** — o projeto é em português, comentários também
 
+### 11.5 Datas e fuso (Regra 15 do CLAUDE.md, 20/10/2026)
+
+O servidor roda em **UTC**; o negócio vive em **America/Sao_Paulo**. Das 21h às 24h de Brasília,
+"hoje" em UTC já é amanhã — foi assim que a limpeza de órfãs da migração apagou cobrança válida
+(16/10). Por isso **toda data e todo "hoje" vêm de `packages/utils/src/datas.ts`**, compartilhado
+entre backend e frontend; nenhum outro arquivo deriva dia por conta própria.
+
+| Valor | Exemplos | Helper |
+|---|---|---|
+| "Hoje" | chave diária de job, validações "no futuro", `dataAssinaturaLinha` | `dataHojeBrasil()`, `inicioHojeBrasilUTC()`, `partesBrasil(agora)` (hora/dia da semana) |
+| **Instante** (timestamp real) | `createdAt`, `dataConsulta`, `assinouEm` | `diaBrasil(d)`, `formatarInstanteBR(d)` |
+| **Coluna de data** (dia-calendário gravado como DateTime: meia-noite UTC pelo cronograma, 03:00Z pelo legado/novação) | `dataVencimento`, `dataFechamento`, `dataPrimeiraParcela` | `dataCalendarioUTC(d)`, `formatarDiaBR(d)`, `inicioDiaUTC(iso)` |
+| Coluna **mista** (dia escolhido na tela OU `now()`) | lançamento do centro de custo, vigência de oferta | `diaDeColunaMista(d)` (heurística documentada — Regra 12) |
+| Aritmética de calendário | "+7 dias", "próxima segunda", dias de atraso | `somarDiasISO`, `diaSemanaISO`, `diasCalendarioEntre`, `diasAtrasoCalendario` |
+
+Proibido fora de `datas.ts` (o lint `no-restricted-syntax` em `eslint.config.mjs` derruba o CI):
+`x.toISOString().slice(0, 10)` / `.split('T')[0]` / `.substring(0, 10)`; métodos de hora **local**
+do `Date` (`getDate`, `getDay`, `getHours`, `setHours`…— use os `getUTC*`/`setUTC*` para aritmética
+pura); `toLocaleDateString`/`toLocaleTimeString` sem `{ timeZone }`. Jobs `@Cron` levam
+`{ timeZone: FUSO_NEGOCIO }`. No frontend, `lib/datas.ts` expõe `hojeBrasilISO`, `dataBR`
+(coluna de data), `instanteBR`/`horaBR` (timestamp) e `dataMistaBR` — nunca
+`new Date(iso).toLocaleDateString()`, que em Brasília volta um dia para meia-noite UTC.
+Rodar local: `pnpm lint` na raiz.
+
 ---
 
 ## 12. Ordem de inicialização do projeto

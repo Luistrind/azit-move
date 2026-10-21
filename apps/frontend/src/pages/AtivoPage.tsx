@@ -10,6 +10,7 @@ import { ATIVO_STATUS_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
 import { reaisParaCentavos, inteiroBR } from '../lib/valor';
 import { toast } from '../components/Toast';
+import { instanteBR } from '../lib/datas';
 
 const DOC_TIPOS: { v: string; l: string }[] = [
   { v: 'crlv', l: 'CRLV / documento' },
@@ -273,7 +274,7 @@ export function AtivoPage() {
                 <div className="flex flex-col gap-[4px]">
                   {documentos.data?.map((d) => (
                     <div key={d.id} className="flex items-center justify-between rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
-                      <span><b>{DOC_TIPOS.find((t) => t.v === d.tipo)?.l ?? d.tipo}</b> · {d.nome} <span style={{ color: 'var(--text-muted)' }}>· {new Date(d.anexadoEm).toLocaleDateString('pt-BR')}</span></span>
+                      <span><b>{DOC_TIPOS.find((t) => t.v === d.tipo)?.l ?? d.tipo}</b> · {d.nome} <span style={{ color: 'var(--text-muted)' }}>· {instanteBR(d.anexadoEm)}</span></span>
                       <span className="flex items-center gap-[10px]">
                         <button onClick={() => ativoService.baixarDocumento(d.id, d.nome).catch((e) => toast.erro(mensagemErro(e)))} className="font-semibold" style={{ color: 'var(--navy)' }}>Baixar</button>
                         <button onClick={() => removerDoc(d.id)} className="text-[13px]" style={{ color: '#c0392b' }} title="Remover">×</button>

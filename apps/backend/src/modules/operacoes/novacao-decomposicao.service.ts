@@ -5,9 +5,12 @@ import {
   ComponenteNovacao,
   ComposicaoCoberta,
   decomporSaldoNovacao,
+  dataCalendarioUTC,
+  dataHojeBrasil,
   diasAtrasoCalendario,
   FrequenciaNovacao,
   inicioHojeBrasilUTC,
+  somarDiasISO,
   precificarNovacao,
   ProdutoNovacao,
 } from '@azit/utils';
@@ -393,7 +396,7 @@ export class NovacaoDecomposicaoService {
 
     // 1ª parcela (doc 02 §7.7b, 15/10): sugestão = ciclo da conta (próxima fatura
     // aberta das origens); o operador pode escolher outra, sempre no futuro.
-    const hojeISO = new Date().toISOString().slice(0, 10);
+    const hojeISO = dataHojeBrasil();
     const passoDias = frequencia === 'mensal' ? 30 : frequencia === 'quinzenal' ? 14 : 7;
     const proximaFatura = await this.prisma.db.fatura.findFirst({
       where: { contaId, status: { in: ['ABERTA', 'FECHADA', 'RENEGOCIADA'] }, dataVencimento: { gt: new Date() } },
@@ -401,8 +404,8 @@ export class NovacaoDecomposicaoService {
       select: { dataVencimento: true },
     });
     const dataPrimeiraParcelaPadrao = proximaFatura
-      ? proximaFatura.dataVencimento.toISOString().slice(0, 10)
-      : new Date(Date.now() + passoDias * 86_400_000).toISOString().slice(0, 10);
+      ? dataCalendarioUTC(proximaFatura.dataVencimento)
+      : somarDiasISO(hojeISO, passoDias);
     const dataPrimeiraParcela = dto.dataPrimeiraParcela ?? dataPrimeiraParcelaPadrao;
     if (dataPrimeiraParcela <= hojeISO) {
       throw new UnprocessableEntityException({ erro: 'primeira_parcela_no_passado', mensagem: 'A 1ª parcela precisa vencer depois de hoje' });

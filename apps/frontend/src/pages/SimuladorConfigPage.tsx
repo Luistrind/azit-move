@@ -6,6 +6,7 @@ import { reaisParaCentavos } from '../lib/valor';
 import { usePodeRole, mensagemErro } from '../lib/permissoes';
 import { toast } from '../components/Toast';
 import { Metrica } from '../components/Metrica';
+import { dataMistaBR, instanteBR } from '../lib/datas';
 
 const ROLES_CONFIG = ['ADMIN', 'DIRETOR'];
 const reaisFmt = (c: number) => (c / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
@@ -120,7 +121,7 @@ export function SimuladorConfigPage() {
             <div className="font-display text-[14px] font-bold">Parâmetros do simulador</div>
             <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
               Versionados: salvar publica uma nova versão — simulações antigas preservam a versão que usaram.
-              {p && <> Vigente desde {new Date(p.vigenteDesde).toLocaleDateString('pt-BR')}.</>}
+              {p && <> Vigente desde {instanteBR(p.vigenteDesde)}.</>}
             </div>
           </div>
           {podeEditar && p && !form && (
@@ -208,7 +209,7 @@ export function SimuladorConfigPage() {
                   <td className="py-[10px] font-semibold">{o.nome}</td>
                   <td className="py-[10px]">{formatCurrency(o.valorParcela)} {o.frequencia === 'mensal' ? 'por mês' : o.frequencia === 'quinzenal' ? 'por quinzena' : 'por semana'} · {o.prazoMeses} meses · entrada {formatCurrency(o.valorEntrada)}</td>
                   <td className="py-[10px] text-center tabular-nums">{o.ativosVinculados}</td>
-                  <td className="py-[10px]">{o.vigenciaFim ? `até ${new Date(o.vigenciaFim).toLocaleDateString('pt-BR')}` : 'sem prazo'}</td>
+                  <td className="py-[10px]">{o.vigenciaFim ? `até ${dataMistaBR(o.vigenciaFim)}` : 'sem prazo'}</td>
                   <td className="py-[10px] text-right">
                     {podeEditar ? (
                       <button onClick={() => alternarOferta(o.id, !o.ativa)}

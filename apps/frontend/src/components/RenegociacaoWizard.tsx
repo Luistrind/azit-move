@@ -6,7 +6,7 @@ import { toast } from './Toast';
 import { operacoesService } from '../services/operacoes.service';
 import { reaisParaCentavos } from '../lib/valor';
 import { mensagemErro } from '../lib/permissoes';
-import { somarDiasISO } from '../lib/datas';
+import { dataBR, somarDiasISO } from '../lib/datas';
 
 const STEPS = [
   { key: 'diagnostico', label: 'Diagnóstico' },
@@ -189,7 +189,7 @@ export function RenegociacaoWizard({
                         <div className="flex items-center justify-between gap-[8px] text-[12.5px] font-bold">
                           <label className="flex cursor-pointer items-center gap-[8px]">
                             <input type="checkbox" checked={!excluida} onChange={() => alternarFatura(f.faturaId)} />
-                            <span>Fatura {f.numero ?? '—'}{f.dataVencimento ? ` · venc. ${new Date(f.dataVencimento).toLocaleDateString('pt-BR')}` : ''}</span>
+                            <span>Fatura {f.numero ?? '—'}{f.dataVencimento ? ` · venc. ${dataBR(f.dataVencimento)}` : ''}</span>
                           </label>
                           <span className="tabular-nums" style={excluida ? { textDecoration: 'line-through' } : undefined}>{formatCurrency(f.valorAtualizado)}</span>
                         </div>
@@ -230,7 +230,7 @@ export function RenegociacaoWizard({
                                   checked={incluida}
                                   onChange={() => setVincendas((v) => (v.includes(f.faturaId) ? v.filter((id) => id !== f.faturaId) : [...v, f.faturaId]))}
                                 />
-                                <span>Fatura {f.numero ?? '—'}{f.dataVencimento ? ` · vence ${new Date(f.dataVencimento).toLocaleDateString('pt-BR')}` : ''} · a vencer</span>
+                                <span>Fatura {f.numero ?? '—'}{f.dataVencimento ? ` · vence ${dataBR(f.dataVencimento)}` : ''} · a vencer</span>
                               </label>
                               <span className="tabular-nums">{formatCurrency(f.valorAtualizado)}</span>
                             </div>

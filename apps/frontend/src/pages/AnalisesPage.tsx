@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { analiseService } from '../services/analise.service';
 import { rotuloStatus } from '../lib/rotulos';
+import { horaBR, instanteBR } from '../lib/datas';
 
 // Fila de análises de cadastro (proposta UX: área Análise de Cadastro).
 // Resolve o gap apontado no teste: não havia como voltar a uma análise pelo menu.
@@ -77,8 +78,8 @@ export function AnalisesPage() {
                     {a.comprometimento != null ? `${a.comprometimento.toFixed(0)}%` : '—'}
                   </td>
                   <td className="py-[10px]">
-                    {new Date(a.atualizadaEm).toLocaleDateString('pt-BR')}{' '}
-                    {new Date(a.atualizadaEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    {instanteBR(a.atualizadaEm)}{' '}
+                    {horaBR(a.atualizadaEm)}
                   </td>
                   <td className="py-[10px] text-right">
                     <Link

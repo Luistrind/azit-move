@@ -8,7 +8,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { diasAtrasoCalendario, inicioHojeBrasilUTC, resolverEstagioRegua } from '@azit/utils';
+import { dataHojeBrasil, diasAtrasoCalendario, FUSO_NEGOCIO, inicioHojeBrasilUTC, resolverEstagioRegua } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { FaturaService } from '../cobranca/fatura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
@@ -93,12 +93,13 @@ export class ReguaService {
   // pode disparar via /dev/varrer-regua.
   // ENFILEIRA em vez de rodar in-process (auditoria 15/09, P0-6): o worker da
   // fila REGUA_STEP tem retry/backoff, e o jobId diário deduplica entre réplicas.
-  @Cron(CronExpression.EVERY_DAY_AT_4AM)
+  // Horário e chave do job no fuso do negócio (Regra 15): o container roda em UTC.
+  @Cron(CronExpression.EVERY_DAY_AT_4AM, { timeZone: FUSO_NEGOCIO })
   async cronRegua(): Promise<void> {
     await this.filaRegua.add(
       'rodar',
       {},
-      { jobId: `regua-${new Date().toISOString().slice(0, 10)}`, removeOnComplete: true, removeOnFail: 50 },
+      { jobId: `regua-${dataHojeBrasil()}`, removeOnComplete: true, removeOnFail: 50 },
     );
     this.logger.log('[cron] varredura da régua enfileirada');
   }

@@ -13,6 +13,7 @@
 // confirma. Acordo cobre parcela vencida — nunca empurra o cronograma.
 
 import type { TipoCobrancaLegada } from './legado-interpretacao';
+import { somarDiasISO } from './datas';
 
 export interface CobrancaConciliavel {
   id: string;
@@ -146,7 +147,7 @@ export interface ResultadoConciliacao {
 }
 
 const DIA_MS = 86_400_000;
-const isoMaisDias = (iso: string, dias: number) => new Date(new Date(`${iso}T00:00:00Z`).getTime() + dias * DIA_MS).toISOString().slice(0, 10);
+const isoMaisDias = (iso: string, dias: number) => somarDiasISO(iso, dias);
 const difDias = (a: string, b: string) => Math.round((new Date(`${a}T00:00:00Z`).getTime() - new Date(`${b}T00:00:00Z`).getTime()) / DIA_MS);
 const brl = (c: number) => (c / 100).toFixed(2).replace('.', ',');
 const dataBR = (iso: string) => iso.split('-').reverse().join('/');

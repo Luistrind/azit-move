@@ -29,6 +29,11 @@ jobs:
       - name: Dependências
         run: pnpm install --frozen-lockfile
 
+      # Regra 15 (fuso Brasil): o lint da raiz (eslint.config.mjs) derruba a build
+      # se alguém derivar dia de toISOString()/getDate()/toLocaleDateString sem fuso.
+      - name: Lint — datas e fuso (Regra 15)
+        run: pnpm lint
+
       - name: Pacotes compartilhados (types + utils)
         run: pnpm --filter @azit/types build && pnpm --filter @azit/utils build
 

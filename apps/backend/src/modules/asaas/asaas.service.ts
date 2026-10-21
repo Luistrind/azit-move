@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { centavosParaReaisString } from '@azit/utils';
+import { centavosParaReaisString, dataCalendarioUTC } from '@azit/utils';
 import { IntegracoesService } from '../integracoes/integracoes.service';
 
 // Cliente Asaas (Doc 7 item 4.3). "Asaas executa, Azit controla" (Regra nº 1):
@@ -142,7 +142,7 @@ export class AsaasService {
       // PIX. Antes era UNDEFINED — o cliente escolhia boleto/PIX/cartão na fatura.
       billingType: 'PIX',
       value: Number(centavosParaReaisString(params.valor)),
-      dueDate: params.vencimento.toISOString().slice(0, 10),
+      dueDate: dataCalendarioUTC(params.vencimento), // coluna de data (dia-calendário gravado em UTC)
       externalReference: params.externalReference,
       description: params.descricao,
       ...(params.multaPct ? { fine: { value: params.multaPct, type: 'PERCENTAGE' } } : {}),

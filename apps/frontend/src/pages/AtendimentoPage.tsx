@@ -141,7 +141,6 @@ export function AtendimentoPage() {
       }
     })();
     // roda uma vez, na chegada com o parâmetro
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const ativos = useQuery({

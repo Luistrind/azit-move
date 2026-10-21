@@ -6,6 +6,7 @@ import { titularService, AtualizarTitularBody } from '../services/titular.servic
 import { StatusBadge } from '../components/StatusBadge';
 import { CONTRATO_STATUS_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
+import { instanteBR } from '../lib/datas';
 
 const inputCls = 'h-[34px] rounded-[8px] px-[10px] text-[12.5px]';
 const inStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' };
@@ -149,7 +150,7 @@ export function TitularPage() {
                     </div>
                   </div>
                 )}
-                {f.conta && <div className="mt-[12px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>Conta aberta em {new Date(f.conta.dataAbertura).toLocaleDateString('pt-BR')} · {f.conta.status}</div>}
+                {f.conta && <div className="mt-[12px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>Conta aberta em {instanteBR(f.conta.dataAbertura)} · {f.conta.status}</div>}
               </div>
 
               {/* Contratos pendurados */}

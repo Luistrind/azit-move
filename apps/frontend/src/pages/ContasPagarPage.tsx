@@ -14,7 +14,7 @@ import { mascararDinheiro, dinheiroParaCentavos, mascararCpfCnpj } from '../lib/
 import { Modal } from '../components/Modal';
 import { toast } from '../components/Toast';
 import { CONTAS_PAGAR_STATUS_COLORS } from '../config/statusColors';
-import { hojeLocalISO } from '../lib/datas';
+import { hojeBrasilISO } from '../lib/datas';
 import { mensagemErro } from '../lib/permissoes';
 
 // Contas a Pagar (doc 02 §18) — fila antes de ficha: abas por momento do fluxo,
@@ -318,7 +318,7 @@ function ModalMotivo({ titulo, aviso, ocupado, fechar, confirmar }: { titulo: st
 }
 
 function ModalPagamento({ titulo, ocupado, fechar, confirmar }: { titulo: TituloPagarApi; ocupado: boolean; fechar: () => void; confirmar: (dto: { dataEfetiva: string; valorEfetivo: number; identificador?: string; comprovanteNome: string; divergencia?: string }) => void }) {
-  const [data, setData] = useState(hojeLocalISO());
+  const [data, setData] = useState(hojeBrasilISO());
   const [valor, setValor] = useState(mascararDinheiro(String(titulo.valor)));
   const [identificador, setIdentificador] = useState('');
   const [comprovante, setComprovante] = useState('');
@@ -350,7 +350,7 @@ function ModalPagamento({ titulo, ocupado, fechar, confirmar }: { titulo: Titulo
 
 function ModalConciliacao({ titulo, ocupado, fechar, confirmar }: { titulo: TituloPagarApi; ocupado: boolean; fechar: () => void; confirmar: (pagamentoId: string, dto: { dataSaida: string; valorExtrato: number; observacao?: string }) => void }) {
   const pagamento = titulo.pagamentos.find((p) => !p.conciliacao);
-  const [data, setData] = useState(hojeLocalISO());
+  const [data, setData] = useState(hojeBrasilISO());
   const [valor, setValor] = useState(pagamento ? mascararDinheiro(String(pagamento.valorEfetivo)) : '');
   const [obs, setObs] = useState('');
   if (!pagamento) return null;
@@ -835,7 +835,7 @@ function ModalNovoLote({ config, titulos, fechar, onCriou }: { config: Configura
 // ---------------------------------------------------------------------------
 
 function QuadroCategorias() {
-  const [mes, setMes] = useState(hojeLocalISO().slice(0, 7));
+  const [mes, setMes] = useState(hojeBrasilISO().slice(0, 7));
   const quadro = useQuery({ queryKey: ['fin-por-categoria', mes], queryFn: () => financeiroService.porCategoria(mes) });
   const q = quadro.data;
   const th = 'pb-[6px] text-right font-semibold';

@@ -6,7 +6,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { precificarCreditoAvulso, precificarReembolsoParcelado, centavosParaReaisString, formatCurrency, renderTemplate, valorPorExtenso, numeroPorExtenso, dataPorExtenso } from '@azit/utils';
+import { precificarCreditoAvulso, precificarReembolsoParcelado, centavosParaReaisString, formatCurrency, renderTemplate, valorPorExtenso, numeroPorExtenso, dataPorExtenso, dataHojeBrasil, formatarDiaBR } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { ContratoService } from '../contrato/contrato.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
@@ -524,8 +524,8 @@ export class CreditoService implements OnModuleInit {
       periodicidadePlural: plural,
       valorParcela: `R$ ${centavosParaReaisString(parcela)}`,
       valorParcelaExtenso: valorPorExtenso(parcela),
-      dataPrimeiraParcela: contrato.dataPrimeiraParcela.toLocaleDateString('pt-BR'),
-      dataAssinaturaLinha: `VITÓRIA/ES, ${dataPorExtenso(new Date())}.`,
+      dataPrimeiraParcela: formatarDiaBR(contrato.dataPrimeiraParcela),
+      dataAssinaturaLinha: `VITÓRIA/ES, ${dataPorExtenso(dataHojeBrasil())}.`,
       testemunha1Linha: linhaTest(params.testemunha1Nome, params.testemunha1Cpf),
       testemunha2Linha: linhaTest(params.testemunha2Nome, params.testemunha2Cpf),
     });

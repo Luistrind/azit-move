@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
 import { titularService } from '../services/titular.service';
 import { faturaService, FaturaDetalhe } from '../services/fatura.service';
-import { diasAtrasoLocal, hojeLocalISO } from '../lib/datas';
+import { diasAtrasoBrasil, hojeBrasilISO } from '../lib/datas';
 import { originacaoService } from '../services/originacao.service';
 import { creditoService } from '../services/credito.service';
 import { financeiroService } from '../services/financeiro.service';
@@ -558,7 +558,7 @@ export function TitularDetalhePage() {
             {FERRAMENTAS_TESTE && (() => {
               const fd = faturaDet.data;
               const paga = fd.status === 'paga' || fd.status === 'paga_em_atraso';
-              const atraso = diasAtrasoLocal(fd.dataVencimento);
+              const atraso = diasAtrasoBrasil(fd.dataVencimento);
               return (
                 <div className="flex flex-col gap-[8px] border-t pt-[12px]" style={{ borderColor: 'var(--border)' }}>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>
@@ -761,7 +761,7 @@ export function TitularDetalhePage() {
 // então a vencida sai com vencimento de hoje em diante, com ou sem o encargo
 // corrido — decisão do operador, caso a caso.
 function BlocoReemissao({ fd, ocupado, emitir }: { fd: FaturaDetalhe; ocupado: boolean; emitir: (faturaId: string, vencimento: string, incluirEncargo: boolean) => Promise<void> }) {
-  const [venc, setVenc] = useState(hojeLocalISO());
+  const [venc, setVenc] = useState(hojeBrasilISO());
   const [comEncargo, setComEncargo] = useState(fd.encargoAtual > 0);
   const total = fd.valorTotal + (comEncargo ? fd.encargoAtual : 0);
   return (
@@ -773,7 +773,7 @@ function BlocoReemissao({ fd, ocupado, emitir }: { fd: FaturaDetalhe; ocupado: b
       <div className="flex flex-wrap items-end gap-[10px]">
         <label className="flex flex-col gap-[3px] text-[11px] font-semibold" style={{ color: '#6b5230' }}>
           Vencimento da cobrança
-          <input type="date" value={venc} min={hojeLocalISO()} onChange={(e) => setVenc(e.target.value)} className="rounded-[8px] border px-[8px] py-[6px] text-[12px]" style={{ borderColor: '#e8c9a0', background: 'var(--surface)' }} />
+          <input type="date" value={venc} min={hojeBrasilISO()} onChange={(e) => setVenc(e.target.value)} className="rounded-[8px] border px-[8px] py-[6px] text-[12px]" style={{ borderColor: '#e8c9a0', background: 'var(--surface)' }} />
         </label>
         {fd.encargoAtual > 0 && (
           <label className="flex items-center gap-[6px] pb-[8px] text-[12px]" style={{ color: '#6b5230' }}>

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { dataHojeBrasil, somarDiasISO } from '@azit/utils';
 import { IntegracoesService } from '../integracoes/integracoes.service';
 
 // LEITURA do Asaas para a migração do legado (doc 02 §26): clientes,
@@ -163,10 +164,7 @@ export class AsaasLeituraService {
 // diluída, acordo). Datas relativas a hoje para a triagem não envelhecer.
 // ============================================================
 function dia(deslocamento: number): string {
-  const d = new Date();
-  d.setUTCHours(12, 0, 0, 0);
-  d.setUTCDate(d.getUTCDate() + deslocamento);
-  return d.toISOString().slice(0, 10);
+  return somarDiasISO(dataHojeBrasil(), deslocamento);
 }
 
 function semanais(params: {

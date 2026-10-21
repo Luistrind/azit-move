@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException, UnprocessableEntityException } f
 import { Prisma } from '@prisma/client';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { centavosParaReaisString, termosEfetivos, type LinhaConciliacao, type ForaDoCronograma, type TermosContratoLegado } from '@azit/utils';
+import { centavosParaReaisString, termosEfetivos, dataCalendarioUTC, dataHojeBrasil, somarDiasISO, type LinhaConciliacao, type ForaDoCronograma, type TermosContratoLegado } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasLeituraService } from '../asaas/asaas-leitura.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
@@ -101,8 +101,8 @@ export interface PlanoMigracao {
 }
 
 const d = (iso: string) => new Date(`${iso}T03:00:00.000Z`); // meia-noite de Brasília
-const isoDe = (data: Date) => data.toISOString().slice(0, 10);
-const addDias = (iso: string, n: number) => isoDe(new Date(d(iso).getTime() + n * DIA_MS));
+const isoDe = (data: Date) => dataCalendarioUTC(data); // coluna de data gravada às 03:00Z (dia-calendário)
+const addDias = (iso: string, n: number) => somarDiasISO(iso, n);
 const difDias = (a: string, b: string) => Math.round((d(a).getTime() - d(b).getTime()) / DIA_MS);
 const reais = (c: number) => centavosParaReaisString(c);
 
@@ -515,7 +515,7 @@ export class LegadoMigracaoService {
     if (!caso) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Caso não encontrado' });
     if (caso.status !== 'MIGRADO') throw new UnprocessableEntityException({ erro: 'nao_migrado', mensagem: 'Só um caso migrado tem cobranças órfãs para limpar' });
     if (this.asaasLeitura.ambiente === 'simulado') return { apagadas: 0, erro: null as string | null, vencimentos: [] as string[] };
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = dataHojeBrasil(); // fuso do negócio — em UTC, após as 21h, já era amanhã (bug das órfãs, 16/10)
     const cobrancas = await this.asaasLeitura.listarCobrancas(caso.asaasCustomerId);
     const orfas = cobrancas.filter((c) => !c.deleted && c.status === 'PENDING' && !c.externalReference && c.dueDate >= hoje);
     const vencimentos: string[] = [];
@@ -672,7 +672,7 @@ export class LegadoMigracaoService {
     const reconhecidas = new Map(conc.reconhecidas.map((r) => [r.chave, r]));
     const cobrancas = new Map(caso.cobrancas.map((c) => [c.id, c]));
     const chargeDe = (cobrancaId: string | null | undefined) => (cobrancaId ? cobrancas.get(cobrancaId)?.asaasPaymentId ?? null : null);
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = dataHojeBrasil();
 
     // Quem é o titular
     const cpf = (termos.compradorCpf ?? caso.cpfCnpj ?? '').replace(/\D/g, '');

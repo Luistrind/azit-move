@@ -7,6 +7,7 @@ import { Modal } from '../components/Modal';
 import { toast } from '../components/Toast';
 import { FORNECEDOR_STATUS_COLORS } from '../config/statusColors';
 import { mensagemErro } from '../lib/permissoes';
+import { instanteBR } from '../lib/datas';
 
 // Fornecedores do contas a pagar (FA-CP-01): Financeiro cadastra, Diretor aprova
 // na Central; dados bancários VERSIONADOS; alerta no 1º pagamento após alteração.
@@ -93,7 +94,7 @@ export function FornecedoresPage() {
                       <b>Versão {d.versao}</b>{d.ativo ? ' · vigente' : ' · histórica'} — {[d.banco, d.agencia && `ag ${d.agencia}`, d.conta && `c/c ${d.conta}`, d.chavePix && `Pix ${d.chavePix}`].filter(Boolean).join(' · ') || 'sem dados'}
                       {d.motivo ? ` · ${d.motivo}` : ''}
                     </span>
-                    <span style={{ color: 'var(--text-muted)' }}>{new Date(d.criadoEm).toLocaleDateString('pt-BR')}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>{instanteBR(d.criadoEm)}</span>
                   </div>
                 ))}
               </div>

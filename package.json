@@ -7,7 +7,7 @@
     "dev:frontend": "pnpm --filter frontend dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "lint": "pnpm -r lint",
+    "lint": "eslint .",
     "typecheck": "pnpm -r typecheck",
     "db:migrate": "pnpm --filter backend db:migrate",
     "db:migrate:dev": "pnpm --filter backend db:migrate:dev",
@@ -16,6 +16,8 @@
     "db:reset": "pnpm --filter backend db:reset"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
+    "eslint": "^9",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8"
   }
 }
