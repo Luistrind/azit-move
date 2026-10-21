@@ -1,13 +1,16 @@
 import { Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { centavosParaReaisString, termosEfetivos, dataCalendarioUTC, dataHojeBrasil, diasCalendarioEntre, DIAS_POR_PERIODO, somarDiasISO, type LinhaConciliacao, type ForaDoCronograma, type TermosContratoLegado } from '@azit/utils';
+import { cobrancaAsaasPaga, centavosParaReaisString, termosEfetivos, dataCalendarioUTC, dataHojeBrasil, diasCalendarioEntre, DIAS_POR_PERIODO, somarDiasISO, type LinhaConciliacao, type ForaDoCronograma, type TermosContratoLegado } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasLeituraService } from '../asaas/asaas-leitura.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
 import { LegadoConciliacaoService, type DivergenciaReconhecida } from './legado-conciliacao.service';
-import { FaturaService } from '../cobranca/fatura.service';
+import { FaturaService, eventoConciliacaoDe, type CobrancaAsaasAoVivo } from '../cobranca/fatura.service';
+import { QUEUE_NAMES } from '../queues/queues.module';
 import { FipeService, type ConsultaFipe } from '../fipe/fipe.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 
@@ -99,6 +102,9 @@ export interface PlanoMigracao {
   resumo: { faturasPagas: number; faturasFechadas: number; faturasAbertas: number; faturasRenegociadas: number; parcelasPagas: number; reembolsos: number; avulsas: number; encargos: number; assinaturaId: string | null; substituidas: number; emitidasAgora: number; removidas: number };
 }
 
+// Fatura que nasceu FECHADA amarrada à cobrança antiga do Asaas (vencida).
+interface CobrancaAmarrada { faturaId: string; chargeId: string; vencimento: string }
+
 const d = (iso: string) => new Date(`${iso}T03:00:00.000Z`); // meia-noite de Brasília
 const isoDe = (data: Date) => dataCalendarioUTC(data); // coluna de data gravada às 03:00Z (dia-calendário)
 const addDias = (iso: string, n: number) => somarDiasISO(iso, n);
@@ -122,6 +128,7 @@ export class LegadoMigracaoService {
     private readonly fatura: FaturaService,
     private readonly fipe: FipeService,
     private readonly catalogoFonte: CatalogoFonteService,
+    @InjectQueue(QUEUE_NAMES.PAGAMENTO_RECEBIDO) private readonly filaRecebido: Queue,
   ) {}
 
   // ---------------- Prévia (nada é gravado) ----------------
@@ -333,6 +340,9 @@ export class LegadoMigracaoService {
       const ordenadas = plano.faturas.map((f, idx) => ({ f, idx })).sort((a, b) => a.f.vencimento.localeCompare(b.f.vencimento));
       const faturaIds: string[] = new Array(plano.faturas.length);
       const substituicoes: { faturaId: string; chargeId: string; emitirAgora: boolean; vencimento: string }[] = [];
+      // Faturas que nascem FECHADAS amarradas à cobrança antiga (vencida): depois
+      // do commit o Asaas é lido ao vivo — se já pagou, concilia na migração.
+      const amarradas: CobrancaAmarrada[] = [];
       for (const { f, idx } of ordenadas) {
         const paga = f.status === 'PAGA' || f.status === 'PAGA_EM_ATRASO';
         const fatura = await tx.fatura.create({
@@ -353,6 +363,7 @@ export class LegadoMigracaoService {
         });
         faturaIds[idx] = fatura.id;
         if (f.substituirChargeId) substituicoes.push({ faturaId: fatura.id, chargeId: f.substituirChargeId, emitirAgora: f.emitirAgora, vencimento: f.vencimento });
+        else if (f.status === 'FECHADA' && f.asaasChargeId) amarradas.push({ faturaId: fatura.id, chargeId: f.asaasChargeId, vencimento: f.vencimento });
 
         // Parcela do veículo (+ recebível)
         let parcelaVeiculoId: string | null = null;
@@ -467,16 +478,17 @@ export class LegadoMigracaoService {
         },
       });
       await tx.logAuditoria.create({ data: { usuarioId, acao: 'legado_caso_migrado', entidade: 'caso_migracao_legado', entidadeId: caso.id, depois: resumo as Prisma.InputJsonValue } });
-      return { titularId, contaId: conta.id, contratoId: contrato.id, contratoNumero: contrato.numero, resumo, substituicoes };
+      return { titularId, contaId: conta.id, contratoId: contrato.id, contratoNumero: contrato.numero, resumo, substituicoes, amarradas };
     }, { timeout: 120_000 });
 
     // 9. Corte no Asaas — DEPOIS do commit (§26.5): parar a assinatura preservando
     // as cobranças emitidas. Falha não desfaz a migração: fica visível e repetível.
     const corte = await this.pararAssinatura(casoId, usuarioId);
     const substituicao = await this.substituirCobrancas(casoId, resultado.substituicoes);
+    const amarradas = await this.conciliarAmarradasJaPagas(casoId, resultado.amarradas);
     const removidas = await this.removerCobrancasCobertas(casoId, plano.faturas.map((f) => f.removerChargeId).filter((c): c is string => !!c));
     const orfas = await this.limparCobrancasOrfas(casoId, usuarioId).catch((e) => ({ apagadas: 0, erro: (e as Error).message.slice(0, 200) }));
-    return { titularId: resultado.titularId, contaId: resultado.contaId, contratoId: resultado.contratoId, contratoNumero: resultado.contratoNumero, resumo: resultado.resumo, assinatura: corte, substituicao, removidas, orfas };
+    return { titularId: resultado.titularId, contaId: resultado.contaId, contratoId: resultado.contratoId, contratoNumero: resultado.contratoNumero, resumo: resultado.resumo, assinatura: corte, substituicao, amarradas, removidas, orfas };
   }
 
   // Cobranças antigas de faturas cobertas pelo acordo em andamento (§26.15): a
@@ -533,16 +545,50 @@ export class LegadoMigracaoService {
     return { apagadas: vencimentos.length, erro, vencimentos };
   }
 
+  // Lê a cobrança AO VIVO no Asaas. Devolve a cobrança se o Asaas já registra o
+  // recebimento; null se ainda está em aberto OU se a leitura falhou (aí o fluxo
+  // normal segue — um DELETE de cobrança paga é recusado pelo Asaas de todo modo).
+  private async lerSeJaPaga(casoId: string, chargeId: string): Promise<CobrancaAsaasAoVivo | null> {
+    if (this.asaasLeitura.ambiente === 'simulado') return null;
+    try {
+      const pg = await this.asaasLeitura.requisicao<CobrancaAsaasAoVivo>('GET', `/payments/${chargeId}`);
+      return cobrancaAsaasPaga(pg.status) ? pg : null;
+    } catch (e) {
+      this.logger.warn(`caso ${casoId}: não leu a cobrança ${chargeId} no Asaas (${(e as Error).message.slice(0, 160)})`);
+      return null;
+    }
+  }
+
+  // Cobrança antiga JÁ PAGA no Asaas (caso real 20/10, Carmo/Jonathan/Felipe: o
+  // cliente pagou entre a coleta do caso e a migração; o DELETE era recusado, a
+  // fatura nascia FECHADA/vencida e o pagamento ficava sem webhook — anterior à
+  // fatura). Aqui a fatura fica amarrada (asaasChargeId, FECHADA) e entra na fila
+  // a MESMA conciliação do webhook e do "conferir pagamento" — data e valor
+  // reais do Asaas. Nunca baixa direto: Asaas executa, Azit controla (Regra 1).
+  private async enfileirarConciliacao(faturaId: string, chargeId: string, pg: CobrancaAsaasAoVivo) {
+    await this.prisma.db.fatura.update({ where: { id: faturaId }, data: { status: 'FECHADA', asaasChargeId: chargeId } });
+    await this.filaRecebido.add('conciliar', eventoConciliacaoDe(faturaId, pg));
+  }
+
   // Apaga no Asaas as cobranças A VENCER da assinatura antiga e emite as do
-  // sistema. Por cobrança: DELETE /payments/{id} → ok: fatura segue ABERTA (o
-  // fechamento D-5 emite) ou, se já está no D-5, fecha e emite AGORA; falha:
-  // a fatura volta a ficar amarrada à cobrança antiga (FECHADA), nada se perde.
+  // sistema. Por cobrança: primeiro lê ao vivo — JÁ PAGA: não apaga, amarra e
+  // enfileira a conciliação (conciliadasNaMigracao); em aberto: DELETE
+  // /payments/{id} → ok: fatura segue ABERTA (o fechamento D-5 emite) ou, se já
+  // está no D-5, fecha e emite AGORA; falha do DELETE: a fatura volta a ficar
+  // amarrada à cobrança antiga (FECHADA), nada se perde.
   private async substituirCobrancas(casoId: string, lista: { faturaId: string; chargeId: string; emitirAgora: boolean; vencimento: string }[]) {
-    const r = { apagadas: 0, emitidasAgora: 0, mantidas: [] as { vencimento: string; chargeId: string; erro: string }[] };
+    const r = { apagadas: 0, emitidasAgora: 0, conciliadas: [] as string[], mantidas: [] as { vencimento: string; chargeId: string; erro: string }[] };
     if (!lista.length) return r;
     const simulado = this.asaasLeitura.ambiente === 'simulado';
     for (const s of lista) {
       try {
+        const paga = await this.lerSeJaPaga(casoId, s.chargeId);
+        if (paga) {
+          await this.enfileirarConciliacao(s.faturaId, s.chargeId, paga);
+          r.conciliadas.push(s.vencimento);
+          this.logger.log(`caso ${casoId}: cobrança ${s.chargeId} já paga no Asaas (${paga.status}) — conciliação enfileirada`);
+          continue;
+        }
         if (!simulado) await this.asaasLeitura.requisicao('DELETE', `/payments/${s.chargeId}`);
         r.apagadas++;
         if (s.emitirAgora) {
@@ -559,7 +605,7 @@ export class LegadoMigracaoService {
       }
     }
     const caso = await this.prisma.db.casoMigracaoLegado.findUnique({ where: { id: casoId }, select: { migracaoResumo: true, nome: true } });
-    const resumo = { ...((caso?.migracaoResumo as Record<string, unknown> | null) ?? {}), cobrancasApagadas: r.apagadas, emitidasAgora: r.emitidasAgora, cobrancasMantidas: r.mantidas };
+    const resumo = { ...((caso?.migracaoResumo as Record<string, unknown> | null) ?? {}), cobrancasApagadas: r.apagadas, emitidasAgora: r.emitidasAgora, cobrancasMantidas: r.mantidas, conciliadasNaMigracao: r.conciliadas.length, conciliadasNaMigracaoVencimentos: r.conciliadas };
     await this.prisma.db.casoMigracaoLegado.update({ where: { id: casoId }, data: { migracaoResumo: resumo as Prisma.InputJsonValue } });
     if (r.mantidas.length) {
       await this.notificacao.emitir({
@@ -570,6 +616,39 @@ export class LegadoMigracaoService {
         area: 'CARTEIRA_COBRANCA',
       }).catch(() => undefined);
     }
+    return r;
+  }
+
+  // Fatura declarada/classificada VENCIDA nasce FECHADA amarrada à cobrança antiga
+  // (chargeId sem substituição). Se o Asaas já diz que essa cobrança foi paga
+  // (pagamento entre a coleta e a migração), a conciliação entra na fila agora —
+  // sem isso a fatura ficaria vencida no sistema sem webhook que a baixasse.
+  private async conciliarAmarradasJaPagas(casoId: string, lista: CobrancaAmarrada[]) {
+    const r = { conciliadas: [] as string[], erros: [] as { vencimento: string; chargeId: string; erro: string }[] };
+    if (!lista.length) return r;
+    for (const a of lista) {
+      const paga = await this.lerSeJaPaga(casoId, a.chargeId);
+      if (!paga) continue;
+      try {
+        await this.enfileirarConciliacao(a.faturaId, a.chargeId, paga);
+        r.conciliadas.push(a.vencimento);
+        this.logger.log(`caso ${casoId}: cobrança vencida ${a.chargeId} já paga no Asaas (${paga.status}) — conciliação enfileirada`);
+      } catch (e) {
+        const erro = (e as Error).message.slice(0, 200);
+        r.erros.push({ vencimento: a.vencimento, chargeId: a.chargeId, erro });
+        this.logger.warn(`caso ${casoId}: conciliação da cobrança ${a.chargeId} não enfileirada (${erro})`);
+      }
+    }
+    if (!r.conciliadas.length && !r.erros.length) return r;
+    const caso = await this.prisma.db.casoMigracaoLegado.findUnique({ where: { id: casoId }, select: { migracaoResumo: true } });
+    const atual = (caso?.migracaoResumo as { conciliadasNaMigracao?: number; conciliadasNaMigracaoVencimentos?: string[] } | null) ?? {};
+    const resumo = {
+      ...(atual as Record<string, unknown>),
+      conciliadasNaMigracao: (atual.conciliadasNaMigracao ?? 0) + r.conciliadas.length,
+      conciliadasNaMigracaoVencimentos: [...(atual.conciliadasNaMigracaoVencimentos ?? []), ...r.conciliadas],
+      conciliacoesNaoEnfileiradas: r.erros,
+    };
+    await this.prisma.db.casoMigracaoLegado.update({ where: { id: casoId }, data: { migracaoResumo: resumo as Prisma.InputJsonValue } }).catch(() => undefined);
     return r;
   }
 

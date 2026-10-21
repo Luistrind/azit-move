@@ -134,7 +134,7 @@ export interface PlanoMigracao {
 }
 export interface MigracaoFeita {
   em: string; por: string | null; assinaturaParadaEm: string | null; assinaturaParadaErro: string | null; assinaturaId: string | null;
-  resumo: { contratoNumero?: string; faturas?: number; faturasPagas?: number; faturasFechadas?: number; faturasAbertas?: number; reembolsos?: number; avulsas?: number; pdfCopiado?: boolean; cobrancasApagadas?: number; emitidasAgora?: number; cobrancasMantidas?: { vencimento: string; chargeId: string; erro: string }[]; orfasApagadas?: number; orfasErro?: string | null } | null;
+  resumo: { contratoNumero?: string; faturas?: number; faturasPagas?: number; faturasFechadas?: number; faturasAbertas?: number; reembolsos?: number; avulsas?: number; pdfCopiado?: boolean; cobrancasApagadas?: number; emitidasAgora?: number; cobrancasMantidas?: { vencimento: string; chargeId: string; erro: string }[]; conciliadasNaMigracao?: number; conciliadasNaMigracaoVencimentos?: string[]; conciliacoesNaoEnfileiradas?: { vencimento: string; chargeId: string; erro: string }[]; orfasApagadas?: number; orfasErro?: string | null } | null;
 }
 
 export interface CasoLegadoDetalhe extends CasoLegado {

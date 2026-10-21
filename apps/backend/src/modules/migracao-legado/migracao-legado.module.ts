@@ -13,7 +13,9 @@ import { CatalogoModule } from '../catalogo/catalogo.module';
 // Migração do legado (doc 02 §26): bancada de conciliação dos clientes que já
 // existem no Asaas. F1 = leitura + triagem + tela; o contrato só nasce na F3.
 @Module({
-  imports: [BullModule.registerQueue({ name: QUEUE_NAMES.COLETA_LEGADO }), CobrancaModule, FipeModule, CatalogoModule],
+  // PAGAMENTO_RECEBIDO: a migração enfileira a conciliação de cobrança antiga que
+  // o Asaas já registra como paga (o mesmo job do webhook) — doc 02 §26.5 item 2.
+  imports: [BullModule.registerQueue({ name: QUEUE_NAMES.COLETA_LEGADO }, { name: QUEUE_NAMES.PAGAMENTO_RECEBIDO }), CobrancaModule, FipeModule, CatalogoModule],
   controllers: [MigracaoLegadoController],
   providers: [MigracaoLegadoService, LegadoConciliacaoService, LegadoMigracaoService, ColetaLegadoProcessor],
   exports: [MigracaoLegadoService],

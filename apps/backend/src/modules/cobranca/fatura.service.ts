@@ -21,6 +21,29 @@ export interface WebhookPagamento {
   valor: number; // centavos (informativo; o sistema recalcula)
 }
 
+// Cobrança lida AO VIVO no Asaas (GET /payments/{id}) — o que importa para conciliar.
+export interface CobrancaAsaasAoVivo {
+  status: string;
+  value: number; // reais
+  dueDate: string;
+  paymentDate?: string | null;
+  clientPaymentDate?: string | null;
+  confirmedDate?: string | null;
+}
+
+// Job 'conciliar' montado a partir da cobrança lida ao vivo — o MESMO que o
+// webhook enfileira. Uma montagem só (Regra 16): "conferir pagamento" da fatura e
+// migração do legado (cobrança paga antes de a fatura existir) usam esta função.
+// Data: a que o cliente pagou; sem ela, a da compensação; sem nada, hoje (Brasil).
+export function eventoConciliacaoDe(faturaId: string, pg: CobrancaAsaasAoVivo): WebhookPagamento {
+  return {
+    faturaId,
+    paymentDate: pg.clientPaymentDate ?? pg.paymentDate ?? pg.confirmedDate ?? dataHojeBrasil(),
+    dueDate: pg.dueDate,
+    valor: Math.round(pg.value * 100),
+  };
+}
+
 @Injectable()
 export class FaturaService {
   private readonly logger = new Logger(FaturaService.name);

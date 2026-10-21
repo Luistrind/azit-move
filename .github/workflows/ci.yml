@@ -51,5 +51,8 @@ jobs:
       - name: Tipos do backend
         run: pnpm --filter backend typecheck
 
+      - name: Testes do backend (jest)
+        run: pnpm --filter backend test
+
       - name: Tipos do frontend
         run: pnpm --filter frontend typecheck

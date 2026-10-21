@@ -2065,7 +2065,13 @@ caso validado pode ser cortado sozinho. Ao migrar um caso, atomicamente:
    emite com vencimento no passado, e é ela que um acordo cobre. **Decisão Luís 01/10**, que
    revoga o "amarrar as pendentes" de 21/09: com a assinatura emitindo 4 semanas à frente, o
    cliente migrado ficaria um mês sem poder receber item novo na fatura. Se um DELETE falhar,
-   aquela fatura volta a ficar amarrada à cobrança antiga (FECHADA) e a carteira é avisada;
+   aquela fatura volta a ficar amarrada à cobrança antiga (FECHADA) e a carteira é avisada.
+   **Cobrança já PAGA no Asaas (caso real 20/10, Carmo/Jonathan/Felipe — paga entre a coleta e
+   a migração):** antes de apagar, a migração lê a cobrança ao vivo; se o Asaas já registra o
+   recebimento (RECEIVED/CONFIRMED/RECEIVED_IN_CASH/DUNNING_RECEIVED), NÃO apaga — a fatura
+   nasce FECHADA amarrada a ela e a **mesma conciliação do webhook** é enfileirada na hora (data e
+   valor reais); o mesmo vale para a vencida amarrada. O resumo da migração conta
+   "conciliadas na migração". Nunca se baixa fatura sem o Asaas confirmar (Regra 1);
 3. o sistema **assume a emissão do ciclo seguinte**.
 
 A **data de corte** o Luís define depois, caso a caso; não se crava agora. Como as cobranças são
