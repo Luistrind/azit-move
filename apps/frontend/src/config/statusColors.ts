@@ -245,3 +245,73 @@ export const CONFIANCA_LINHA_COLORS: Record<string, StatusColor> = {
   media: { bg: '#fef6e9', fg: '#c98a0a' },
   baixa: { bg: '#fdeceb', fg: '#e0413c' },
 };
+
+// Central de Aprovações (doc 02 §7.9-A — lista e dossiê, 21/10/2026). Chaves =
+// rótulos exibidos (como os demais mapas); os rótulos vêm dos enums de @azit/types.
+export const APROVACAO_STATUS_LABEL: Record<string, string> = {
+  PENDENTE: 'Pendente',
+  APROVADA: 'Aprovada',
+  REPROVADA: 'Reprovada',
+  CANCELADA: 'Cancelada',
+};
+export const APROVACAO_STATUS_COLORS: Record<string, StatusColor> = {
+  Pendente: { bg: '#fef6e9', fg: '#c98a0a' },
+  Aprovada: { bg: '#eafaf1', fg: '#1f9d5b' },
+  Reprovada: { bg: '#fdeceb', fg: '#e0413c' },
+  Cancelada: { bg: '#f1f4f8', fg: '#8694a4' },
+};
+
+// De quem é a vez (VezAprovacao — calculada pelo backend para quem olha).
+export const VEZ_APROVACAO_LABEL: Record<string, string> = {
+  decidir: 'Sua vez',
+  recomendar: 'Acima da sua alçada',
+  responder_complemento: 'Responder complemento',
+  aguardando_complemento: 'Aguardando complemento',
+  voce_solicitou: 'Você solicitou',
+  voce_decidiu: 'Você já decidiu',
+};
+export const VEZ_APROVACAO_COLORS: Record<string, StatusColor> = {
+  'Sua vez': { bg: '#fef6e9', fg: '#c98a0a' },
+  'Responder complemento': { bg: '#fef6e9', fg: '#c98a0a' },
+  'Acima da sua alçada': { bg: '#f1f4f8', fg: '#5b6b7f' },
+  'Aguardando complemento': { bg: '#eef4ff', fg: '#2456c7' },
+  'Você solicitou': { bg: '#f1f4f8', fg: '#5b6b7f' },
+  'Você já decidiu': { bg: '#f1f4f8', fg: '#5b6b7f' },
+};
+
+// Marcador da trilha da solicitação (decisões + complemento) — cor de texto.
+export const TRILHA_APROVACAO_FG: Record<string, string> = {
+  SOLICITADA: 'var(--navy)',
+  APROVADA: '#1f9d5b',
+  RECOMENDADA: '#c98a0a',
+  REPROVADA: '#e0413c',
+  COMPLEMENTO_PEDIDO: '#2456c7',
+  COMPLEMENTO_RESPONDIDO: '#5b6b7f',
+};
+
+// Tom de um valor no dossiê (atraso, comprometimento acima da política,
+// espera acima de 2 dias…) — cor de texto.
+export const TOM_DOSSIE_FG: Record<string, string> = {
+  alerta: '#e0413c',
+  atencao: '#c98a0a',
+  ok: '#1f9d5b',
+};
+
+// Situação da ENTRADA do acordo e do RECEBIMENTO INICIAL da novação (calculadas
+// pelo backend, chaves lower_snake) — cor de texto. Vieram de mapas locais da
+// tela de Renegociações quando os blocos viraram componentes (21/10).
+export const ENTRADA_ACORDO_FG: Record<string, string> = {
+  sem_entrada: 'var(--text-muted)',
+  paga: '#1f9d5b',
+  aguardando: '#c98a0a',
+  aguardando_aprovacao: 'var(--text-muted)',
+  expirada: '#e0413c',
+  nao_paga: '#e0413c',
+};
+export const RECEBIMENTO_NOVACAO_FG: Record<string, string> = {
+  sem_recebimento: 'var(--text-muted)',
+  pago: '#1f9d5b',
+  aguardando: '#c98a0a',
+  expirado: '#e0413c',
+  pendente: 'var(--text-muted)',
+};

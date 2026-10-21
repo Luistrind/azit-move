@@ -7,7 +7,8 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { rotuloAtivo, inicioHojeBrasilUTC } from '@azit/utils';
+import { rotuloAtivo, inicioHojeBrasilUTC, adicionarDiasUteis, formatarInstanteBR } from '@azit/utils';
+import { VezAprovacao } from '@azit/types';
 import { PrismaService } from '../../database/prisma.service';
 import { AlcadaService } from '../alcada/alcada.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
@@ -27,7 +28,16 @@ export interface AprovacaoEfetivacao {
 export interface EfetivadorAprovacao {
   aprovada: (a: AprovacaoEfetivacao) => Promise<string | void>; // retorna mensagem p/ UI
   reprovada?: (a: AprovacaoEfetivacao) => Promise<void>;
+  // Pedir complemento (doc 02 §7.9-A, 21/10): o domínio que já tem pendência
+  // própria (análise de cadastro, RF-15) se integra a ela — não há fila paralela.
+  complementoPedido?: (a: AprovacaoEfetivacao, pergunta: string, usuarioId: string) => Promise<void>;
+  complementoRespondido?: (a: AprovacaoEfetivacao, resposta: string, usuarioId: string) => Promise<void>;
 }
+
+// Prazo do complemento: PLACEHOLDER funcional (Regra 12) — mesmo padrão do
+// complemento da análise de cadastro; substituível quando o Luís definir.
+export const PRAZO_COMPLEMENTO_DIAS_UTEIS = 3;
+
 
 // Vigente = fase ATIVO (doc 02 §5.2, 07/09).
 
@@ -105,11 +115,12 @@ export class AprovacaoService {
         solicitanteId: params.solicitanteId,
       },
     });
-    // Sino §16.1: quem decide (área Aprovações) fica sabendo na hora.
+    // Sino §16.1: quem decide (área Aprovações) fica sabendo na hora — e o
+    // link abre o dossiê da solicitação (21/10), não a lista.
     await this.notificacao.emitir({
       titulo: 'Aprovação aguardando decisão',
       corpo: params.resumo,
-      rota: '/aprovacoes',
+      rota: `/aprovacoes/${aprovacao.id}`,
       tipo: 'APROVACAO',
       area: 'APROVACOES',
     });
@@ -125,10 +136,23 @@ export class AprovacaoService {
   ) {
     const aprovacao = await this.prisma.db.aprovacao.findFirst({
       where: { id: aprovacaoId },
-      include: { operacao: true, decisoes: true },
+      include: { operacao: true, decisoes: true, complementos: { where: { respondidoEm: null } } },
     });
     if (!aprovacao) {
       throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Solicitação não encontrada' });
+    }
+    // Parecer obrigatório para reprovar (protótipo 14/10): quem pediu precisa
+    // saber o porquê — vai na trilha e na notificação.
+    if (decisao === 'reprovar' && !parecer?.trim()) {
+      throw new UnprocessableEntityException({ erro: 'parecer_obrigatorio', mensagem: 'Escreva o parecer — reprovar exige o motivo' });
+    }
+    // Complemento aberto (doc 02 §7.9-A, 21/10): ninguém aprova nem recomenda
+    // até a resposta; reprovar continua possível para não prender a fila.
+    if (aprovacao.complementos.length > 0 && decisao !== 'reprovar') {
+      throw new UnprocessableEntityException({
+        erro: 'aguardando_complemento',
+        mensagem: 'Há um pedido de complemento aguardando a resposta de quem solicitou — decida depois da resposta (ou reprove com parecer)',
+      });
     }
     if (aprovacao.status !== 'PENDENTE') {
       throw new UnprocessableEntityException({
@@ -185,7 +209,7 @@ export class AprovacaoService {
       // Sino §16.1: o solicitante fica sabendo, com rota para o ocorrido.
       await this.notificacao.emitir({
         titulo: 'Sua solicitação foi reprovada',
-        corpo: aprovacao.resumo,
+        corpo: `${aprovacao.resumo} — ${parecer}`,
         rota: this.rotaDoOcorrido(aprovacao),
         tipo: 'APROVACAO',
         usuarioId: aprovacao.solicitanteId,
@@ -239,6 +263,93 @@ export class AprovacaoService {
     });
   }
 
+  // --- Pedir complemento (doc 02 §7.9-A, proposta 21/10 — a validar) ---------
+  // Pergunta de quem pode decidir ao solicitante, com prazo. Não é voto.
+  async pedirComplemento(aprovacaoId: string, usuarioId: string, pergunta: string) {
+    const aprovacao = await this.prisma.db.aprovacao.findFirst({
+      where: { id: aprovacaoId },
+      include: { complementos: { where: { respondidoEm: null } } },
+    });
+    if (!aprovacao) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Solicitação não encontrada' });
+    if (aprovacao.status !== 'PENDENTE') {
+      throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: 'Solicitação já foi decidida' });
+    }
+    if (aprovacao.solicitanteId === usuarioId) {
+      throw new ForbiddenException({ erro: 'segregacao', mensagem: 'Quem solicita não pede complemento da própria solicitação' });
+    }
+    if (aprovacao.complementos.length > 0) {
+      throw new ConflictException({ erro: 'complemento_aberto', mensagem: 'Já há um pedido de complemento aguardando resposta nesta solicitação' });
+    }
+    const prazo = adicionarDiasUteis(new Date(), PRAZO_COMPLEMENTO_DIAS_UTEIS);
+    const c = await this.prisma.db.aprovacaoComplemento.create({
+      data: { aprovacaoId, pergunta, pedidoPorId: usuarioId, prazo },
+    });
+    const ef = this.efetivadores.get(aprovacao.tipoOperacao);
+    if (ef?.complementoPedido) await ef.complementoPedido(this.efetivacaoDe(aprovacao, usuarioId), pergunta, usuarioId);
+    await this.notificacao.emitir({
+      titulo: 'Pediram complemento na sua solicitação',
+      corpo: `${pergunta} — responda até ${formatarInstanteBR(prazo)}`,
+      rota: `/aprovacoes/${aprovacaoId}`,
+      tipo: 'APROVACAO',
+      usuarioId: aprovacao.solicitanteId,
+    });
+    this.logger.log(`Aprovação ${aprovacaoId}: complemento pedido por ${usuarioId}`);
+    return { id: c.id, prazo: c.prazo.toISOString() };
+  }
+
+  // Resposta do solicitante — fecha o complemento e devolve a solicitação à fila.
+  async responderComplemento(aprovacaoId: string, usuarioId: string, resposta: string) {
+    const aprovacao = await this.prisma.db.aprovacao.findFirst({
+      where: { id: aprovacaoId },
+      include: { complementos: { where: { respondidoEm: null } } },
+    });
+    if (!aprovacao) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Solicitação não encontrada' });
+    if (aprovacao.solicitanteId !== usuarioId) {
+      throw new ForbiddenException({ erro: 'nao_solicitante', mensagem: 'Só quem solicitou responde o complemento' });
+    }
+    const aberto = aprovacao.complementos[0];
+    if (!aberto) throw new UnprocessableEntityException({ erro: 'sem_complemento', mensagem: 'Não há complemento aguardando resposta' });
+    await this.fecharComplemento(aberto.id, usuarioId, resposta);
+    const ef = this.efetivadores.get(aprovacao.tipoOperacao);
+    if (ef?.complementoRespondido) await ef.complementoRespondido(this.efetivacaoDe(aprovacao, usuarioId), resposta, usuarioId);
+    return { status: 'respondido' };
+  }
+
+  // Fecha o complemento aberto quando o domínio resolve a pendência por conta
+  // própria (ex.: analista cumpre a pendência na tela da análise). Idempotente.
+  async fecharComplementoAberto(aprovacaoId: string, usuarioId: string | undefined, resposta: string) {
+    const aberto = await this.prisma.db.aprovacaoComplemento.findFirst({ where: { aprovacaoId, respondidoEm: null } });
+    if (aberto) await this.fecharComplemento(aberto.id, usuarioId, resposta);
+  }
+
+  private async fecharComplemento(complementoId: string, usuarioId: string | undefined, resposta: string) {
+    const c = await this.prisma.db.aprovacaoComplemento.update({
+      where: { id: complementoId },
+      data: { resposta, respondidoPorId: usuarioId, respondidoEm: new Date() },
+    });
+    await this.notificacao.emitir({
+      titulo: 'Complemento respondido',
+      corpo: resposta,
+      rota: `/aprovacoes/${c.aprovacaoId}`,
+      tipo: 'APROVACAO',
+      usuarioId: c.pedidoPorId,
+    });
+  }
+
+  private efetivacaoDe(
+    a: { id: string; referenciaTipo: string; referenciaId: string; valor: Prisma.Decimal; payload: Prisma.JsonValue },
+    usuarioId: string,
+  ): AprovacaoEfetivacao {
+    return { id: a.id, referenciaTipo: a.referenciaTipo, referenciaId: a.referenciaId, valorCentavos: this.cent(a.valor), payload: a.payload, decisorId: usuarioId };
+  }
+
+  // Uma solicitação no mesmo formato da lista (dossiê da Central, 21/10).
+  async obter(aprovacaoId: string, usuarioId: string) {
+    const [item] = await this.listar({ id: aprovacaoId }, usuarioId, 1);
+    if (!item) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Solicitação não encontrada' });
+    return item;
+  }
+
   async pendentes(usuarioId: string) {
     return this.listar({ status: 'PENDENTE' }, usuarioId);
   }
@@ -266,21 +377,27 @@ export class AprovacaoService {
           include: { usuario: { select: { nome: true } } },
           orderBy: { createdAt: 'asc' },
         },
+        complementos: {
+          include: { pedidoPor: { select: { nome: true } }, respondidoPor: { select: { nome: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
 
     const titularIds = Array.from(new Set(rows.map((r) => r.titularId).filter(Boolean))) as string[];
-    const [titulares, contextos, contextosAnalise] = await Promise.all([
+    const [titulares, contextos, contextosAnalise, fornecedores] = await Promise.all([
       this.prisma.db.titular.findMany({
         where: { id: { in: titularIds } },
         select: { id: true, nome: true },
       }),
       this.contextos(titularIds),
       this.contextosAnalise(rows.filter((r) => r.tipoOperacao === 'analise_cadastro').map((r) => r.referenciaId)),
+      this.contrapartesFinanceiras(rows),
     ]);
     const nomePorTitular = new Map(titulares.map((t) => [t.id, t.nome]));
+    const agora = Date.now();
 
     return Promise.all(
       rows.map(async (r) => {
@@ -289,6 +406,29 @@ export class AprovacaoService {
           r.status === 'PENDENTE'
             ? (await this.alcada.verificar(usuarioId, r.tipoOperacao, valorCentavos)).aprovado
             : false;
+        const ehSolicitante = r.solicitanteId === usuarioId;
+        const jaDecidiu = r.decisoes.some((d) => d.usuarioId === usuarioId);
+        const complementos = r.complementos.map((c) => ({
+          id: c.id,
+          pergunta: c.pergunta,
+          pedidoPor: c.pedidoPor.nome,
+          pedidoPorId: c.pedidoPorId,
+          pedidoEm: c.createdAt.toISOString(),
+          prazo: c.prazo.toISOString(),
+          resposta: c.resposta,
+          respondidoPor: c.respondidoPor?.nome ?? (c.respondidoEm ? 'sistema' : null),
+          respondidoEm: c.respondidoEm?.toISOString() ?? null,
+          vencido: !c.respondidoEm && c.prazo.getTime() < agora,
+        }));
+        const complementoAberto = complementos.find((c) => !c.respondidoEm) ?? null;
+        // De quem é a vez, do ponto de vista de quem olha (calculada — Regra 7).
+        let vez: VezAprovacao | null = null;
+        if (r.status === 'PENDENTE') {
+          if (ehSolicitante) vez = complementoAberto ? VezAprovacao.RESPONDER_COMPLEMENTO : VezAprovacao.VOCE_SOLICITOU;
+          else if (complementoAberto) vez = VezAprovacao.AGUARDANDO_COMPLEMENTO;
+          else if (jaDecidiu) vez = VezAprovacao.VOCE_DECIDIU;
+          else vez = podeAprovar ? VezAprovacao.DECIDIR : VezAprovacao.RECOMENDAR;
+        }
         return {
         id: r.id,
         tipoOperacao: r.tipoOperacao,
@@ -317,6 +457,15 @@ export class AprovacaoService {
         titular: r.titularId
           ? { id: r.titularId, nome: nomePorTitular.get(r.titularId) ?? '—' }
           : null,
+        // Com quem é a operação (coluna "Titular / fornecedor" da lista, 21/10).
+        contraparte: r.titularId
+          ? { tipo: 'titular' as const, id: r.titularId, nome: nomePorTitular.get(r.titularId) ?? '—' }
+          : (fornecedores.get(r.id) ?? null),
+        complementos,
+        complementoAberto,
+        aprovacoesFaltando: r.status === 'PENDENTE'
+          ? Math.max(0, r.operacao.aprovacoesNecessarias - r.decisoes.filter((d) => d.decisao === 'APROVADA').length)
+          : 0,
         // Feedback 09/08: aprovação de ANÁLISE DE CADASTRO é sobre a proposta —
         // KPIs de conta (contratos/saldo/atraso) não fazem sentido para cliente
         // novo; o contexto certo é o da análise.
@@ -330,12 +479,55 @@ export class AprovacaoService {
           r.tipoOperacao === 'analise_cadastro' ? (contextosAnalise.get(r.referenciaId) ?? null) : null,
         minha: {
           podeAprovar,
-          ehSolicitante: r.solicitanteId === usuarioId,
-          jaDecidiu: r.decisoes.some((d) => d.usuarioId === usuarioId),
+          ehSolicitante,
+          jaDecidiu,
+          vez,
         },
         };
       }),
     );
+  }
+
+  // Fornecedor das solicitações do contas a pagar (não têm titular): título,
+  // orçamento (cotação escolhida), fornecedor e lote.
+  private async contrapartesFinanceiras(rows: { id: string; referenciaTipo: string; referenciaId: string; titularId: string | null }[]) {
+    const mapa = new Map<string, { tipo: 'fornecedor' | 'lote'; id: string | null; nome: string }>();
+    const ids = (tipo: string) => rows.filter((r) => !r.titularId && r.referenciaTipo === tipo).map((r) => r.referenciaId);
+    const [titulos, cotacoes, fornecedores, lotes] = await Promise.all([
+      ids('titulo_pagar').length
+        ? this.prisma.db.tituloPagar.findMany({ where: { id: { in: ids('titulo_pagar') } }, select: { id: true, fornecedor: { select: { id: true, nome: true } } } })
+        : [],
+      ids('solicitacao_orcamento').length
+        ? this.prisma.db.orcamentoFornecedor.findMany({ where: { solicitacaoId: { in: ids('solicitacao_orcamento') }, selecionado: true }, select: { solicitacaoId: true, fornecedorId: true, nomeFornecedor: true } })
+        : [],
+      ids('fornecedor_financeiro').length
+        ? this.prisma.db.fornecedorFin.findMany({ where: { id: { in: ids('fornecedor_financeiro') } }, select: { id: true, nome: true } })
+        : [],
+      ids('lote_pagamento').length
+        ? this.prisma.db.lotePagamento.findMany({ where: { id: { in: ids('lote_pagamento') } }, select: { id: true, totalItens: true } })
+        : [],
+    ]);
+    const idsFornCotacao = cotacoes.map((c) => c.fornecedorId).filter((x): x is string => !!x);
+    const fornCotacao = idsFornCotacao.length
+      ? await this.prisma.db.fornecedorFin.findMany({ where: { id: { in: idsFornCotacao } }, select: { id: true, nome: true } })
+      : [];
+    for (const r of rows) {
+      if (r.titularId) continue;
+      if (r.referenciaTipo === 'titulo_pagar') {
+        const t = titulos.find((x) => x.id === r.referenciaId);
+        if (t) mapa.set(r.id, { tipo: 'fornecedor', id: t.fornecedor.id, nome: t.fornecedor.nome });
+      } else if (r.referenciaTipo === 'solicitacao_orcamento') {
+        const c = cotacoes.find((x) => x.solicitacaoId === r.referenciaId);
+        if (c) mapa.set(r.id, { tipo: 'fornecedor', id: c.fornecedorId, nome: c.nomeFornecedor ?? fornCotacao.find((f) => f.id === c.fornecedorId)?.nome ?? 'fornecedor da cotação' });
+      } else if (r.referenciaTipo === 'fornecedor_financeiro') {
+        const f = fornecedores.find((x) => x.id === r.referenciaId);
+        if (f) mapa.set(r.id, { tipo: 'fornecedor', id: f.id, nome: f.nome });
+      } else if (r.referenciaTipo === 'lote_pagamento') {
+        const l = lotes.find((x) => x.id === r.referenciaId);
+        if (l) mapa.set(r.id, { tipo: 'lote', id: null, nome: `Lote de pagamento · ${l.totalItens} título(s)` });
+      }
+    }
+    return mapa;
   }
 
   // Contexto da ANÁLISE DE CADASTRO para a decisão do COCAD (feedback 09/08):

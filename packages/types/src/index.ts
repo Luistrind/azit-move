@@ -16,6 +16,7 @@ export * from './enums/titular';
 export * from './enums/ativo';
 export * from './enums/contrato-credito';
 export * from './enums/role-usuario';
+export * from './enums/aprovacao';
 
 // Entidades
 export * from './entities/titular';

@@ -1006,6 +1006,10 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > ela) e auditada no snapshot (`aceiteWhatsapp.confirmadoPeloOperadorEm`). O aceite FORMAL
 > continua sendo o **pagamento da entrada** (data-limite dura, item 5); a mensagem e a flag
 > documentam o de acordo prévio às condições.
+> *Complemento 2026-10-21 (dossiê da Central):* junto da flag, o snapshot guarda a **mensagem
+> enviada** e, opcionalmente, o **texto da resposta do cliente** colado pelo operador; a proposta
+> leva também uma **observação para quem aprova** (`Acordo.observacao`). O print da conversa
+> como anexo fica para depois (não há armazenamento de anexo para o acordo).
 
 > **Decisão 2026-09-09 (Luís, homologação) — limites do acordo.** (1) **Vincendas: só a
 > PRÓXIMA fatura** pode entrar no acordo (revisão da decisão 2026-08-30: a janela de 35 dias
@@ -1182,6 +1186,41 @@ Estrutura transversal aplicável a:
 - **Efetivação:** ao completar as N aprovações, o motor dispara a efetivação da operação (ex.: crédito → ativa/cobra entrada; acordo → cobra entrada; novação → liquida e cria o contrato novo; reajuste → aplica).
 - **Central única:** a tela de Aprovações lista TODAS as solicitações pendentes, com contexto do titular (atraso, contratos, saldo) — aprovar às cegas não é aprovar.
 - Estados da solicitação: `PENDENTE → APROVADA | REPROVADA | CANCELADA`.
+
+> **Dossiê da Central (pedido Luís 21/10/2026, protótipo de 14/10).** Cada solicitação abre um
+> **dossiê** do que está sendo aprovado — aprovar às cegas não é aprovar. A lista mostra tipo,
+> pedido em uma frase, titular ou fornecedor, valor, quem pediu, **espera** (alerta acima de 2
+> dias), aprovações que faltam e **se é a vez de quem está olhando** (sua vez / você solicitou /
+> você já decidiu / acima da sua alçada — recomendar). O dossiê de **acordo** e de **novação**
+> mostra o MESMO detalhe da tela de Renegociações (faturas cobertas com mora na data-base,
+> condições, decomposição, contratos gerados, trilha) — uma fonte só — acrescido do que é próprio
+> da decisão: observação de quem pediu, "de acordo" do cliente (texto da resposta no WhatsApp),
+> fatura do período durante o acordo (próxima fatura da conta + cota), veículo bloqueado desde,
+> e o **histórico de recuperação do titular** (acordos anteriores e situação, novação oferecida e
+> desfecho, parcelas pagas por contrato, renda apurada da última análise e comprometimento da
+> fatura com o acordo, pela mesma conversão da análise de cadastro §14). Nenhum desses números é
+> gravado: são calculados na leitura (Regra 7).
+
+> **Pedir complemento — PROPOSTA 2026-10-21 (Claude), a validar pelo Luís na homologação.** Ao
+> lado de Aprovar / Recomendar / Reprovar, quem pode decidir uma solicitação pode **pedir
+> complemento** — informação que falta para decidir, não um voto:
+> - **Volta ao solicitante com uma pergunta** (texto obrigatório). O solicitante é avisado pelo
+>   sino com link para o dossiê e responde ali mesmo (texto); quem perguntou é avisado da resposta.
+> - **Prazo provisório: 3 dias úteis** (placeholder funcional, Regra 12 — mesmo padrão do
+>   complemento da análise de cadastro). Vencido o prazo sem resposta, nada é automático: a
+>   Central mostra o atraso e quem decide pode reprovar com parecer.
+> - **Enquanto há complemento aberto**, a solicitação fica *aguardando complemento* (situação
+>   calculada, Regra 7 — o estado gravado continua PENDENTE): ninguém aprova nem recomenda até a
+>   resposta; **reprovar continua possível** (com parecer), para não prender a fila.
+> - Não conta como voto: quem pediu complemento continua podendo decidir depois. Segregação vale:
+>   o solicitante não pede complemento da própria solicitação.
+> - **Trilha:** "X pediu complemento: <pergunta> (prazo dd/mm)" e "Y respondeu: <resposta>",
+>   em ordem cronológica junto das decisões.
+> - **Análise de cadastro (COCAD):** integra-se à pendência que já existe (§14, "Complemento ≠
+>   COCAD", RF-15): o pedido na Central cria a pendência de complemento da análise (com o prazo
+>   do parâmetro da política) e a análise vai para *pendente de complemento*; cumprida a
+>   pendência na análise — ou respondido na Central —, ela volta ao Comitê e o complemento fecha
+>   nos dois lugares.
 
 ---
 

@@ -21,6 +21,11 @@ export const criarRenegociacaoSchema = z.object({
   // De acordo do cliente via WhatsApp (doc 02 §7.7, 2026-09-09) — obrigatório
   // no CRIAR (o service valida); ignorado na simulação.
   aceiteWhatsapp: z.boolean().optional(),
+  // Dossiê da Central (21/10): mensagem enviada, resposta do cliente colada pelo
+  // operador e observação para quem aprova — vão ao snapshot/observação do acordo.
+  mensagemWhatsapp: z.string().trim().max(4000).optional(),
+  respostaCliente: z.string().trim().max(2000).optional(),
+  observacao: z.string().trim().max(2000).optional(),
 });
 export type CriarRenegociacaoBody = z.infer<typeof criarRenegociacaoSchema>;
 

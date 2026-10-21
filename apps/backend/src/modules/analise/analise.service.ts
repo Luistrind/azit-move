@@ -38,6 +38,9 @@ const reais = (c: number) => (c / 100).toFixed(2);
 
 
 // Transições permitidas além das controladas por ação dedicada (RF-14).
+// Pendência aberta pelo Comitê via 'Pedir complemento' na Central (21/10).
+const CODIGO_PENDENCIA_COCAD = 'COCAD';
+
 const TRANSICOES_LIVRES: Partial<Record<StatusAnalise, StatusAnalise[]>> = {
   CADASTRO_EM_PREENCHIMENTO: ['DOCUMENTOS_ENVIADOS'],
   DOCUMENTOS_ENVIADOS: ['CONSULTA_INICIAL_REALIZADA'],
@@ -164,6 +167,35 @@ export class AnaliseService implements OnModuleInit {
           a.decisorId,
           'COCAD devolveu: sem aprovação nesta submissão (não aprovação exige ação humana dedicada)',
         );
+      },
+      // Pedir complemento na Central (doc 02 §7.9-A, 21/10) = a pendência que a
+      // análise já tem (RF-15, "Complemento ≠ COCAD"): prazo da política e o
+      // estado que esperava por isso (PENDENTE_COMPLEMENTO_COCAD).
+      complementoPedido: async (a, pergunta, usuarioId) => {
+        const an = await this.carregar(a.referenciaId);
+        if (an.status !== 'AGUARDANDO_COCAD') return;
+        await this.prisma.db.pendenciaAnalise.create({
+          data: {
+            analiseId: an.id,
+            codigo: CODIGO_PENDENCIA_COCAD,
+            descricao: `Pedido do Comitê: ${pergunta}`,
+            prazo: adicionarDiasUteis(new Date(), an.parametroVersao.prazoComplementoDiasUteis),
+            origemStatus: an.status,
+            criadaPor: usuarioId,
+          },
+        });
+        await this.mudarStatus(an.id, 'PENDENTE_COMPLEMENTO_COCAD', usuarioId, 'Comitê pediu complemento (Central de Aprovações)');
+      },
+      complementoRespondido: async (a, resposta, usuarioId) => {
+        const an = await this.carregar(a.referenciaId);
+        const abertas = an.pendencias.filter((p) => p.codigo === CODIGO_PENDENCIA_COCAD && p.situacao === 'ABERTA');
+        for (const p of abertas) {
+          await this.prisma.db.pendenciaAnalise.update({ where: { id: p.id }, data: { situacao: 'CUMPRIDA', resolvidaEm: new Date(), resolvidaPor: usuarioId } });
+        }
+        const outrasAbertas = an.pendencias.some((p) => p.situacao === 'ABERTA' && !abertas.includes(p));
+        if (an.status === 'PENDENTE_COMPLEMENTO_COCAD' && !outrasAbertas) {
+          await this.mudarStatus(an.id, abertas[0]?.origemStatus ?? 'AGUARDANDO_COCAD', usuarioId, `Complemento respondido na Central: ${resposta}`);
+        }
       },
     });
   }
@@ -980,9 +1012,14 @@ export class AnaliseService implements OnModuleInit {
       data: { situacao: 'CUMPRIDA', resolvidaEm: new Date(), resolvidaPor: usuarioId },
     });
     const restantes = a.pendencias.filter((x) => x.situacao === 'ABERTA' && x.id !== pendenciaId).length;
-    if (restantes === 0 && a.status === 'PENDENTE_DE_COMPLEMENTO') {
+    if (restantes === 0 && (a.status === 'PENDENTE_DE_COMPLEMENTO' || a.status === 'PENDENTE_COMPLEMENTO_COCAD')) {
       // Retorna à etapa que originou a pendência (RF-15).
       await this.mudarStatus(analiseId, pend.origemStatus, usuarioId, 'Complemento cumprido — retorno à etapa de origem');
+    }
+    // Pendência pedida pelo Comitê na Central (21/10): cumprida aqui, o pedido
+    // de complemento da solicitação fecha junto — uma pendência, dois lugares.
+    if (pend.codigo === CODIGO_PENDENCIA_COCAD && a.aprovacaoId) {
+      await this.aprovacao.fecharComplementoAberto(a.aprovacaoId, usuarioId, 'Pendência cumprida na análise de cadastro');
     }
     return this.dossie(analiseId);
   }

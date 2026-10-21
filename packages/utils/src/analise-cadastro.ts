@@ -90,6 +90,19 @@ export function parcelaMensalEquivalente(
   return Math.round(valorParcela * fator);
 }
 
+// Comprometimento de renda (RF-09): parcela mensal equivalente ÷ renda mensal
+// (fração). Fonte ÚNICA (Regra 16) — o motor da análise e o dossiê da Central
+// de Aprovações (comprometimento da fatura com o acordo/novação, 21/10) usam esta.
+export function comprometimentoRenda(
+  valorParcela: number,
+  frequencia: FrequenciaAnalise,
+  rendaMensal: number | null,
+  parametros: Pick<ParametrosAnalise, 'fatorSemanal' | 'fatorQuinzenal'>,
+): number | null {
+  if (!rendaMensal || rendaMensal <= 0) return null;
+  return parcelaMensalEquivalente(valorParcela, frequencia, parametros) / rendaMensal;
+}
+
 export function avaliarAnaliseCadastro(input: AnaliseInput): ResultadoAnalise {
   const c: CriterioAvaliado[] = [];
   const p = input.parametros;
@@ -99,7 +112,7 @@ export function avaliarAnaliseCadastro(input: AnaliseInput): ResultadoAnalise {
   // Renda apurada total: soma apenas dos COMPRADORES (garantidor nunca soma — Política §21).
   const rendas = compradores.map((x) => x.rendaApurada).filter((v): v is number => v !== null && v > 0);
   const rendaTotal = rendas.length === compradores.length ? rendas.reduce((a, b) => a + b, 0) : null;
-  const comprometimento = rendaTotal ? pme / rendaTotal : null;
+  const comprometimento = comprometimentoRenda(input.valorParcela, input.frequencia, rendaTotal, p);
 
   // --- Critérios por participante (Política §13; falha de qualquer um afeta a proposta inteira — §12) ---
   for (const part of input.participantes) {

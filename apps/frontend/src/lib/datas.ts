@@ -61,6 +61,27 @@ export function diasAtrasoBrasil(iso: string): number {
   return Math.max(0, diasCalendarioEntre(iso.slice(0, 10), hojeBrasilISO()));
 }
 
+// INSTANTE → 'mar/2025' no fuso do negócio (cliente desde, acordo de quando).
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+export function mesAnoBR(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const [y, m] = diaBrasil(new Date(iso)).split('-');
+  return `${MESES_CURTOS[Number(m) - 1]}/${y}`;
+}
+
+// Tempo de ESPERA desde um instante (Central de Aprovações, 21/10): "20 min",
+// "5 h", "3 dias" — duração decorrida, não dia-calendário. `horas` serve ao
+// alerta de fila parada.
+export function esperaDesde(iso: string, ate?: string | null): { texto: string; horas: number } {
+  const fim = ate ? new Date(ate).getTime() : Date.now();
+  const min = Math.max(0, Math.floor((fim - new Date(iso).getTime()) / 60000));
+  const horas = Math.floor(min / 60);
+  if (min < 60) return { texto: `${Math.max(1, min)} min`, horas };
+  if (horas < 24) return { texto: `${horas} h`, horas };
+  const dias = Math.floor(horas / 24);
+  return { texto: `${dias} ${dias === 1 ? 'dia' : 'dias'}`, horas };
+}
+
 // Tempo relativo curto para o sino ("agora", "há 5 min", "há 2 h", "ontem", dd/mm).
 export function tempoRelativo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();

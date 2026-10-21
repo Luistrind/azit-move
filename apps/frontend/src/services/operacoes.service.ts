@@ -116,7 +116,8 @@ export interface AcordoDetalhe {
   exclusoes: { faturaId: string; numero: number | null; dataVencimento: string | null; valorTotal: number | null; justificativa: string }[];
   vincendasIncluidas: { faturaId: string; numero: number | null; dataVencimento: string | null; valorTotal: number | null }[];
   calculo: (Partial<PreviaAcordo> & { motor: 'catalogo' | 'placeholder' }) | null;
-  aceiteWhatsapp: { confirmadoPeloOperadorEm: string } | null;
+  // De acordo pelo WhatsApp: flag + (desde 21/10) mensagem enviada e resposta do cliente.
+  aceiteWhatsapp: { confirmadoPeloOperadorEm: string; mensagemEnviada?: string; respostaCliente?: string } | null;
   temTermoAntigo: boolean;
   legado: { casoId: string; parcelasCobertasDeclaradas: number[]; primeiraCotaEm: string; ultimaCotaEm: string } | null;
   aprovacao: AprovacaoResumo | null;
@@ -408,6 +409,10 @@ export const operacoesService = {
       faturasVincendasIncluidas?: string[];
       // De acordo do cliente via WhatsApp (doc 02 §7.7, 09/09) — obrigatório.
       aceiteWhatsapp: boolean;
+      // Dossiê da Central (21/10): o que foi enviado, a resposta e a observação.
+      mensagemWhatsapp?: string;
+      respostaCliente?: string;
+      observacao?: string;
     },
   ): Promise<{ id: string; status: string; valorTotalRenegociado: number; valorParcela: number; periodicidade: string; motor: string; excecoes: string[]; contratosAfetados: number }> {
     const { data } = await api.post(`/api/v1/contas/${contaId}/renegociacao`, body);
