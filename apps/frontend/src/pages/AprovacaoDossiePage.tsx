@@ -124,7 +124,7 @@ export function AprovacaoDossiePage() {
             {a.status === 'PENDENTE' && (
               <div className="mt-[6px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
                 {a.complementoAberto
-                  ? `Aguardando ${a.solicitante} responder o complemento${a.complementoAberto.vencido ? ' — prazo vencido' : ` até ${instanteBR(a.complementoAberto.prazo)}`}.`
+                  ? `Aguardando ${a.solicitante} responder o complemento (pedido há ${esperaDesde(a.complementoAberto.pedidoEm).texto}).`
                   : `Aguardando ${a.aprovacoesFaltando} aprovação(ões) · segregação: quem solicitou não decide.`}
               </div>
             )}
@@ -550,8 +550,8 @@ function PainelDecisao({ a }: { a: AprovacaoDossie }) {
     });
   const pedirComplemento = () =>
     agir(async () => {
-      const r = await aprovacaoService.pedirComplemento(a.id, texto.trim());
-      return `Complemento pedido a ${a.solicitante} — prazo até ${instanteBR(r.prazo)}.`;
+      await aprovacaoService.pedirComplemento(a.id, texto.trim());
+      return `Complemento pedido — ${a.solicitante} recebeu o alerta.`;
     });
   const responder = () =>
     agir(async () => {
@@ -585,7 +585,7 @@ function PainelDecisao({ a }: { a: AprovacaoDossie }) {
     corpo = (
       <div className="flex flex-col gap-[8px]">
         {aviso(<><b>{a.complementoAberto.pedidoPor}</b> pediu complemento em {quando(a.complementoAberto.pedidoEm)}:<div className="mt-[4px] whitespace-pre-wrap">“{a.complementoAberto.pergunta}”</div></>)}
-        <div className="text-[11.5px]" style={{ color: a.complementoAberto.vencido ? TOM_DOSSIE_FG.alerta : 'var(--text-muted)' }}>Responder até {instanteBR(a.complementoAberto.prazo)}{a.complementoAberto.vencido ? ' — prazo vencido' : ''}.</div>
+        <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>Aprovar e recomendar ficam parados até a sua resposta.</div>
         {area('Sua resposta para quem perguntou')}
         <button disabled={ocupado || texto.trim().length < 2} onClick={() => void responder()} className={btn} style={{ background: 'var(--accent)', color: 'var(--navy)' }}>Enviar resposta</button>
       </div>
@@ -594,8 +594,8 @@ function PainelDecisao({ a }: { a: AprovacaoDossie }) {
     corpo = (
       <div className="flex flex-col gap-[8px]">
         {aviso(<><b>{a.complementoAberto.pedidoPor}</b> pediu complemento a {a.solicitante}:<div className="mt-[4px] whitespace-pre-wrap">“{a.complementoAberto.pergunta}”</div></>)}
-        <div className="text-[11.5px]" style={{ color: a.complementoAberto.vencido ? TOM_DOSSIE_FG.alerta : 'var(--text-muted)' }}>
-          Aprovar e recomendar voltam depois da resposta (prazo {instanteBR(a.complementoAberto.prazo)}{a.complementoAberto.vencido ? ', vencido' : ''}). Reprovar continua possível, com parecer.
+        <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+          Pedido há {esperaDesde(a.complementoAberto.pedidoEm).texto}. Aprovar e recomendar voltam depois da resposta; reprovar continua possível, com parecer.
         </div>
         {a.minha.podeAprovar && (
           <>
@@ -625,7 +625,7 @@ function PainelDecisao({ a }: { a: AprovacaoDossie }) {
           {podeAprovar
             ? notaAoAprovar(a)
             : `Sua alçada não cobre ${formatCurrency(a.valor)}: a recomendação fica na trilha e a solicitação segue para quem pode aprovar.`}
-          {' '}Pedir complemento devolve a pergunta a quem solicitou (prazo de 3 dias úteis) — não é voto.
+          {' '}Pedir complemento alerta quem solicitou com a sua pergunta e segura a decisão até a resposta — não é voto.
         </div>
       </div>
     );

@@ -168,9 +168,10 @@ export class AnaliseService implements OnModuleInit {
           'COCAD devolveu: sem aprovação nesta submissão (não aprovação exige ação humana dedicada)',
         );
       },
-      // Pedir complemento na Central (doc 02 §7.9-A, 21/10) = a pendência que a
-      // análise já tem (RF-15, "Complemento ≠ COCAD"): prazo da política e o
-      // estado que esperava por isso (PENDENTE_COMPLEMENTO_COCAD).
+      // Pedir complemento na Central (doc 02 §7.9-A, decisão Luís 21/10) = a
+      // pendência que a análise já tem (RF-15, "Complemento ≠ COCAD") e o estado
+      // que esperava por isso (PENDENTE_COMPLEMENTO_COCAD). SEM prazo: fica
+      // aberta até a resposta (a expiração de pendências ignora prazo nulo).
       complementoPedido: async (a, pergunta, usuarioId) => {
         const an = await this.carregar(a.referenciaId);
         if (an.status !== 'AGUARDANDO_COCAD') return;
@@ -179,7 +180,6 @@ export class AnaliseService implements OnModuleInit {
             analiseId: an.id,
             codigo: CODIGO_PENDENCIA_COCAD,
             descricao: `Pedido do Comitê: ${pergunta}`,
-            prazo: adicionarDiasUteis(new Date(), an.parametroVersao.prazoComplementoDiasUteis),
             origemStatus: an.status,
             criadaPor: usuarioId,
           },
