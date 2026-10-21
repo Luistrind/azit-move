@@ -62,8 +62,8 @@ function montar(caso: { termos: TermosContratoLegado; cobrancas: ReturnType<type
   const conciliacao = new LegadoConciliacaoService(prisma as never);
   const fipe = { consultar: jest.fn().mockResolvedValue({ ok: false, motivo: 'sem FIPE no teste' }) };
   const catalogoFonte = { compraParcelada: jest.fn().mockRejectedValue(new Error('sem catálogo')) };
-  // Quem instanciar com mais dependências (fila de pagamento recebido, branch fix/legado-cobranca-ja-paga) acrescenta o parâmetro aqui.
-  return new LegadoMigracaoService(prisma as never, conciliacao, {} as never, {} as never, {} as never, fipe as never, catalogoFonte as never);
+  // Fila de pagamento recebido (8º parâmetro, branch fix/legado-cobranca-ja-paga): o planejamento não enfileira nada — stub.
+  return new LegadoMigracaoService(prisma as never, conciliacao, {} as never, {} as never, {} as never, fipe as never, catalogoFonte as never, { add: jest.fn() } as never);
 }
 
 const porParcela = (plano: PlanoMigracao) => Object.fromEntries(plano.faturas.filter((f) => f.parcela).map((f) => [f.parcela!.numero, f]));
