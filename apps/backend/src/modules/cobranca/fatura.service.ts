@@ -3,14 +3,13 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { calcularEncargoAtraso, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, dataCalendarioUTC, diasAtrasoCalendario, FUSO_NEGOCIO, inicioDiaUTC, somarDiasISO } from '@azit/utils';
+import { calcularEncargoAtraso, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, dataCalendarioUTC, diasAtrasoCalendario, DIA_MS, FUSO_NEGOCIO, inicioDiaUTC, somarDiasISO } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { cumprirAcordosSePagos } from '../operacoes/acordo-cumprimento';
 
-const DIA_MS = 24 * 60 * 60 * 1000;
 const reais = (centavos: number) => centavosParaReaisString(centavos);
 const cent = (d: Prisma.Decimal | null): number =>
   d !== null ? Math.round(Number(d.toString()) * 100) : 0;

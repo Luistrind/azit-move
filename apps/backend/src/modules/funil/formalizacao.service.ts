@@ -14,6 +14,8 @@ import {
   dataPorExtenso,
   formatCurrency,
   formatarDiaBR,
+  DIA_MS,
+  DIAS_POR_PERIODO,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { ContratoService } from '../contrato/contrato.service';
@@ -23,7 +25,6 @@ import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
 
 const cent = (d: Prisma.Decimal): number => reaisParaCentavos(d.toString());
-const DIA_MS = 24 * 60 * 60 * 1000;
 
 // Contrato PADRÃO de compra e venda de veículo (modelo oficial — layout fixo,
 // dados por placeholder). Ver templates/contrato-veiculo.template.ts.
@@ -187,7 +188,7 @@ export class FormalizacaoService {
       | 'semanal'
       | 'quinzenal'
       | 'mensal';
-    const passoDias = periodicidadeApi === 'mensal' ? 30 : periodicidadeApi === 'quinzenal' ? 14 : 7;
+    const passoDias = DIAS_POR_PERIODO[periodicidadeApi];
     // Parametrização do contrato (reunião 11/07): o operador define a data da
     // primeira parcela (ex.: "toda segunda"); sem escolha, cai no passo padrão.
     const dataPrimeira =

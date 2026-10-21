@@ -1,21 +1,16 @@
-import { calcularEncargoAtraso } from './calculations';
-import { valorPresenteMensal } from './precificacao';
+import {
+  calcularEncargoAtraso,
+  DIAS_POR_PERIODO,
+  FrequenciaPeriodo,
+  parcelasPorPrazoMeses,
+  pmtPrice,
+  taxaPeriodoEquivalente,
+  valorPresenteMensal,
+} from './calculations';
 
-const DIAS_FREQUENCIA = { semanal: 7, quinzenal: 14, mensal: 30 } as const;
-export type FrequenciaNovacao = keyof typeof DIAS_FREQUENCIA;
-
-// Fatores de PRAZO padrão da casa (reunião 04/07 + Catálogo, decisão 02/08):
-// número de parcelas por mês de prazo. FONTE ÚNICA — o FATORES_CATALOGO do
-// backend importa daqui; nunca converter meses↔parcelas por dias corridos
-// (60×30/7 = 257 cortava um contrato real de 260 semanais = 60 meses).
-export const FATOR_PRAZO_SEMANAL = 4.3452;
-export const FATOR_PRAZO_QUINZENAL = 2.1726;
-
-/** Converte prazo em meses para número de parcelas na frequência (fator padrão). */
-export function parcelasPorPrazoMeses(prazoMeses: number, frequencia: FrequenciaNovacao): number {
-  const fator = frequencia === 'mensal' ? 1 : frequencia === 'quinzenal' ? FATOR_PRAZO_QUINZENAL : FATOR_PRAZO_SEMANAL;
-  return Math.round(prazoMeses * fator);
-}
+// Fatores de PRAZO (FATOR_PRAZO_SEMANAL/QUINZENAL) e parcelasPorPrazoMeses
+// vivem em calculations.ts — fonte única (Regra 16), reexportados pelo índice.
+export type FrequenciaNovacao = FrequenciaPeriodo;
 
 // ============================================================
 // NOVAÇÃO — F1: decomposição do saldo por produto (A7 passos 1–2 do doc
@@ -391,6 +386,8 @@ export interface ResultadoPrecificacaoNovacao {
   tpFinanciada: number; // parte da taxa inicial não coberta pelo recebimento
   amortizacaoInicial: number; // o que do recebimento inicial abate o saldo
   saldoAParcelarVeiculo: number; // SP antes da antecipação da transição
+  /** TR usada (fração a.m.) — a tela exibe ESTA; nunca reconverter de taxaPeriodo (Regra 16). */
+  taxaMensal: number;
   taxaPeriodo: number; // fração por período
   valorParcela: number; // componente FINANCEIRO do período (Price)
   comissaoPorPeriodo: number; // A4.2 — receita de administração por período
@@ -453,9 +450,9 @@ export function precificarNovacao(p: ParametrosPrecificacaoNovacao): ResultadoPr
   const amortizacaoInicial = Math.max(0, recebimento - taxaInicial);
   const sp = saldoNovado - amortizacaoInicial + tpFinanciada;
 
-  const dias = DIAS_FREQUENCIA[p.frequencia];
-  const i = Math.pow(1 + taxaMensal, dias / 30) - 1;
-  const pmt = i === 0 ? sp / n1 : (sp * (i * Math.pow(1 + i, n1))) / (Math.pow(1 + i, n1) - 1);
+  const dias = DIAS_POR_PERIODO[p.frequencia];
+  const i = taxaPeriodoEquivalente(taxaMensal, dias);
+  const pmt = pmtPrice(sp, i, n1);
   // Para CIMA: com o PMT arredondado para baixo sobraria um resíduo de centavos
   // além da parcela n1 — o ajuste residual fica sempre NA última, para menos.
   const valorParcela = Math.ceil(pmt);
@@ -502,6 +499,7 @@ export function precificarNovacao(p: ParametrosPrecificacaoNovacao): ResultadoPr
     tpFinanciada,
     amortizacaoInicial,
     saldoAParcelarVeiculo: sp,
+    taxaMensal,
     taxaPeriodo: i,
     valorParcela,
     comissaoPorPeriodo: cr,

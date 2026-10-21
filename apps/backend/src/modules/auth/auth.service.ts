@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { RoleUsuario } from '@prisma/client';
+import { DIA_MS } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { JwtPayload } from './strategies/jwt.strategy';
 
@@ -108,7 +109,7 @@ export class AuthService {
 
     const refreshToken = randomBytes(48).toString('hex');
     const dias = this.config.get<number>('jwt.refreshExpiresInDays') ?? 7;
-    const expiraEm = new Date(Date.now() + dias * 24 * 60 * 60 * 1000);
+    const expiraEm = new Date(Date.now() + dias * DIA_MS);
 
     await this.prisma.db.refreshToken.create({
       data: { usuarioId: usuario.id, token: refreshToken, expiraEm },

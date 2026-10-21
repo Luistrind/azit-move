@@ -7,6 +7,7 @@ import {
 import { Prisma, StatusAnalise, PapelTitular } from '@prisma/client';
 import {
   adicionarDiasUteis,
+  DIA_MS,
   FUSO_NEGOCIO,
   avaliarAnaliseCadastro,
   AnaliseInput,
@@ -35,7 +36,6 @@ const cent = (d: Prisma.Decimal | null): number =>
   d !== null ? Math.round(Number(d.toString()) * 100) : 0;
 const reais = (c: number) => (c / 100).toFixed(2);
 
-const DIA_MS = 24 * 60 * 60 * 1000;
 
 // Transições permitidas além das controladas por ação dedicada (RF-14).
 const TRANSICOES_LIVRES: Partial<Record<StatusAnalise, StatusAnalise[]>> = {

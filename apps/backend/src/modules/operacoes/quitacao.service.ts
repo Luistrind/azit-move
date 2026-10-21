@@ -1,11 +1,10 @@
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { anteciparParcela, anteciparParcelaComponentes, centavosParaReaisString, inicioHojeBrasilUTC } from '@azit/utils';
+import { anteciparParcela, anteciparParcelaComponentes, centavosParaReaisString, DIA_MS, fatorValorPorFrequencia, inicioHojeBrasilUTC } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { cumprirAcordosSePagos } from './acordo-cumprimento';
 import { CatalogoFonteService, ParametrosCatalogoCompraParcelada } from '../catalogo/catalogo-fonte.service';
 
-const DIA_MS = 24 * 60 * 60 * 1000;
 const reais = (c: number) => centavosParaReaisString(c);
 const cent = (d: Prisma.Decimal | null): number =>
   d !== null ? Math.round(Number(d.toString()) * 100) : 0;
@@ -14,7 +13,8 @@ const frac = (d: Prisma.Decimal | null | undefined): number =>
 
 // 6.6 — Quitação antecipada (Doc 2 §7.4; fórmula da planilha do Vicente, 11/07/2026).
 // Cada parcela em aberto separa em CR (comissão recorrente) e PS (capital + remuneração):
-//   VP = CR/(1+dcr)^dias + PS/(1+dps)^dias, com d = (1+taxaMensal)^(1/30) − 1 (taxa diária).
+//   VP = CR/(1+dcr)^dias + PS/(1+dps)^dias, com d = (1+taxaMensal)^(1/30) − 1 (taxa diária) —
+//   a conta vive em @azit/utils (valorPresenteMensal / anteciparParcela*), nunca aqui (Regra 16).
 // dcr = taxaDescontoAntecipacaoCR da versão de parâmetros (default 20% a.m. — serviço
 // distante "isenta" na prática); dps = TR do contrato (a mesma da precificação).
 // Contrato sem versão de parâmetros (legado/crédito avulso): CR = 0 e taxa única
@@ -138,7 +138,7 @@ export class QuitacaoService {
 
       if (cat) {
         // F4 — por componente (bem / comissão / proteção) com as regras da versão.
-        const fatorValor = freqApi === 'semanal' ? 4 : freqApi === 'quinzenal' ? 2 : 1;
+        const fatorValor = fatorValorPorFrequencia(freqApi);
         const comissao = Math.round(cat.comissaoRecorrenteMensal / fatorValor);
         const protecao = this.catalogoFonte.protecaoPorPeriodo(cat.protecaoSemanal, freqApi);
         const r = anteciparParcelaComponentes({

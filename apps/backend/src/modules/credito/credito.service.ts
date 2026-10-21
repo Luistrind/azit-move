@@ -6,7 +6,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { precificarCreditoAvulso, precificarReembolsoParcelado, centavosParaReaisString, formatCurrency, renderTemplate, valorPorExtenso, numeroPorExtenso, dataPorExtenso, dataHojeBrasil, formatarDiaBR } from '@azit/utils';
+import { precificarCreditoAvulso, precificarReembolsoParcelado, centavosParaReaisString, formatCurrency, renderTemplate, valorPorExtenso, numeroPorExtenso, dataPorExtenso, dataHojeBrasil, DIA_MS, DIAS_POR_PERIODO, formatarDiaBR } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { ContratoService } from '../contrato/contrato.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
@@ -22,7 +22,6 @@ import {
   SimularCreditoDto,
 } from './dto/credito.dto';
 
-const DIA_MS = 24 * 60 * 60 * 1000;
 
 // Contratação avulsa para cliente já ativo (Doc 2 §4.7-A) — Reembolso Parcelado é o
 // caso principal. É um ContratoCredito COMPRA_PARCELADA SEM ativo (doc 02 §19,
@@ -125,7 +124,8 @@ export class CreditoService implements OnModuleInit {
   }
 
   private passoDias(periodicidade: string): number {
-    return periodicidade === 'mensal' ? 30 : periodicidade === 'quinzenal' ? 14 : 7;
+    // Mesmo padrão antigo: valor desconhecido cai no semanal (7).
+    return (DIAS_POR_PERIODO as Record<string, number>)[periodicidade] ?? DIAS_POR_PERIODO.semanal;
   }
 
   // Precificação. Se o produto Reembolso Parcelado está ATIVO no Catálogo (F3),

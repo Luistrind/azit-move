@@ -13,11 +13,13 @@ import {
   somarDiasISO,
   precificarNovacao,
   ProdutoNovacao,
+  DIA_MS,
+  DIAS_POR_PERIODO,
+  fatorValorPorFrequencia,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 
-const DIA_MS = 24 * 60 * 60 * 1000;
 const cent = (d: Prisma.Decimal | null): number =>
   d !== null ? Math.round(Number(d.toString()) * 100) : 0;
 const frac = (d: Prisma.Decimal | null | undefined): number =>
@@ -82,7 +84,7 @@ export class NovacaoDecomposicaoService {
           // fora da parcela migrada (§26.10).
           if (ref.legado && c.ativoId) {
             const nv = await this.catalogoFonte.novacao();
-            const fatorValor = c.periodicidade === 'SEMANAL' ? 4 : c.periodicidade === 'QUINZENAL' ? 2 : 1;
+            const fatorValor = fatorValorPorFrequencia(c.periodicidade);
             infos.set(c.id, {
               taxa: nv?.taxaMensal ?? frac(c.taxaDescontoQuitacao),
               crPorParcela: nv ? Math.max(0, Math.round(nv.comissaoRecorrenteMensal / fatorValor)) : 0,
@@ -397,7 +399,7 @@ export class NovacaoDecomposicaoService {
     // 1ª parcela (doc 02 §7.7b, 15/10): sugestão = ciclo da conta (próxima fatura
     // aberta das origens); o operador pode escolher outra, sempre no futuro.
     const hojeISO = dataHojeBrasil();
-    const passoDias = frequencia === 'mensal' ? 30 : frequencia === 'quinzenal' ? 14 : 7;
+    const passoDias = DIAS_POR_PERIODO[frequencia];
     const proximaFatura = await this.prisma.db.fatura.findFirst({
       where: { contaId, status: { in: ['ABERTA', 'FECHADA', 'RENEGOCIADA'] }, dataVencimento: { gt: new Date() } },
       orderBy: { dataVencimento: 'asc' },
@@ -472,7 +474,7 @@ export class NovacaoDecomposicaoService {
     // CR da novação por período = mensal ÷ fator de VALOR (4/2/1, como a venda);
     // proteção Essencial calculada do produto PV sobre o veículo PÓS-novação
     // (na troca, o que ENTRA), congelada aqui (semanal exata) para o contrato.
-    const fatorValor = frequencia === 'semanal' ? 4 : frequencia === 'quinzenal' ? 2 : 1;
+    const fatorValor = fatorValorPorFrequencia(frequencia);
     const comissaoPorPeriodo = Math.max(0, Math.round(params.comissaoRecorrenteMensal / fatorValor));
     const avisos: string[] = [];
     let protecaoSemanalExata = 0;

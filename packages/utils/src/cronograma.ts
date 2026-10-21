@@ -4,6 +4,7 @@
 // Regra de valor (decisão de domínio): parcelas 1..n-1 = valorParcela; a ÚLTIMA
 // absorve o arredondamento para que a soma == valorTotal (fecha o razão ao centavo).
 // Tudo em CENTAVOS inteiros. Reajuste IPCA é fluxo separado (não entra aqui).
+import { DIA_MS } from './datas';
 
 export type PeriodicidadeCronograma = 'semanal' | 'quinzenal' | 'mensal';
 
@@ -22,8 +23,6 @@ export interface ParcelaCronograma {
   valorNominal: number; // centavos
   dataVencimento: Date;
 }
-
-const DIA_MS = 24 * 60 * 60 * 1000;
 
 // Aritmética em UTC puro — determinística independente do fuso do servidor
 // (casa com a convenção UTC-meia-noite das datas do sistema).

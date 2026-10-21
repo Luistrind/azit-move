@@ -1,4 +1,7 @@
 // Precificação da oferta (Doc 7 item 7.4 / Doc 2 §4-A.2). Função PURA — centavos.
+// As FÓRMULAS (Price, valor presente, equivalência de taxa, fatores) vivem em
+// calculations.ts — fonte única (Regra 16); aqui só a composição por produto.
+import { DIAS_POR_PERIODO, fatorValorPorFrequencia, pmtPrice, taxaPeriodoEquivalente, valorPresenteMensal } from './calculations';
 //
 // ⚠️ PROVISÓRIA — SUBSTITUIR (Vicente). A fórmula definitiva ainda não foi
 // fechada. Usamos a Tabela Price (sistema francês) com taxa de 0,5%/semana
@@ -54,9 +57,10 @@ export interface ParametrosSimulacaoV3 {
   // PRECIFICAÇÃO (reunião 11/07): parcela exibida divide por 4 / 2 (números comerciais).
   fatorPrecificacaoSemanal: number; // 4
   fatorPrecificacaoQuinzenal: number; // 2
-  // CONTRATO (parametrização): nº exato de parcelas usa semanas/mês reais.
-  fatorSemanal: number; // 4.345
-  fatorQuinzenal: number; // 2.1725
+  // CONTRATO (parametrização): nº exato de parcelas usa o fator de PRAZO da
+  // versão congelada (padrão da casa: FATOR_PRAZO_SEMANAL / _QUINZENAL em calculations.ts).
+  fatorSemanal: number;
+  fatorQuinzenal: number;
 }
 
 export interface ResultadoSimulacaoV3 {
@@ -76,8 +80,7 @@ export function precificarSimulacao(p: ParametrosSimulacaoV3): ResultadoSimulaca
   const vp = Math.max(0, p.valorAvista + p.comissaoInicial - p.valorEntrada);
   const i = p.taxaMensal;
   const pc = p.prazoMeses;
-  const pm1 =
-    vp === 0 ? 0 : i === 0 ? vp / pc : (vp * (i * Math.pow(1 + i, pc))) / (Math.pow(1 + i, pc) - 1);
+  const pm1 = pmtPrice(vp, i, pc);
   const pmt = pm1 + p.comissaoRecorrente;
   const fatorPrec =
     p.frequencia === 'mensal'
@@ -101,6 +104,9 @@ export function precificarSimulacao(p: ParametrosSimulacaoV3): ResultadoSimulaca
 // Crédito avulso com a taxa vigente: Price na taxa periódica EQUIVALENTE à TR
 // mensal — i_p = (1+TR)^(1/fator) − 1 (fator = períodos por mês). Provisório
 // até o Vicente formalizar a régua do crédito avulso.
+// ⚠️ Mantém a forma algébrica PV·i/(1−(1+i)^−n) de propósito: trocar por
+// pmtPrice() muda 1 centavo em empates exatos de meio centavo (verificado em
+// grade, 20/10/2026). Unificar quando a régua definitiva for fechada.
 export function precificarCreditoAvulso(p: {
   valorFinanciado: number; // centavos
   numeroParcelas: number;
@@ -119,15 +125,10 @@ export function precificarCreditoAvulso(p: {
 // ============================================================
 // ANTECIPAÇÃO DE PARCELA (planilha do Vicente, 11/07/2026): cada parcela em
 // aberto separa em CR (comissão) e PS (capital + remuneração). Valor presente
-// com taxa DIÁRIA equivalente à mensal: VP = VF / (1+d)^dias, d = (1+tm)^(1/30)−1.
+// pela fórmula única valorPresenteMensal (calculations.ts, doc 02 §7.4).
 // CR desconta forte (20% a.m. — "isenção" prática do serviço distante); PS
 // desconta na TR do contrato (a mesma da precificação).
 // ============================================================
-export function valorPresenteMensal(vf: number, taxaMensal: number, dias: number): number {
-  if (dias <= 0 || taxaMensal <= 0) return vf;
-  const d = Math.pow(1 + taxaMensal, 1 / 30) - 1;
-  return vf / Math.pow(1 + d, dias);
-}
 
 export function anteciparParcela(p: {
   valorNominal: number; // centavos
@@ -144,6 +145,7 @@ export function anteciparParcela(p: {
 }
 
 // PMT da Tabela Price: PV * i / (1 - (1+i)^-n). Para i=0, PMT = PV/n.
+// (Placeholder com taxa 0 — mesma ressalva do crédito avulso quanto à forma algébrica.)
 export function precificarPrice(p: ParametrosPrecificacao): ResultadoPrecificacao {
   const i = p.taxaSemanal ?? TAXA_SEMANAL_PROVISORIA;
   const n = p.prazoSemanas;
@@ -180,12 +182,6 @@ export function precificarPrice(p: ParametrosPrecificacao): ResultadoPrecificaca
 
 export type FrequenciaReembolso = 'mensal' | 'quinzenal' | 'semanal';
 
-const DIAS_INTERVALO: Record<FrequenciaReembolso, number> = {
-  mensal: 30,
-  quinzenal: 14,
-  semanal: 7,
-};
-
 export interface ParametrosReembolso {
   valorReembolso: number; // centavos (VR)
   numeroParcelas: number;
@@ -209,10 +205,10 @@ export function precificarReembolsoParcelado(p: ParametrosReembolso): ResultadoR
   }
   const taxaInicial = Math.max(Math.round(p.valorReembolso * p.taxaInicialPct), p.taxaInicialMinima);
   const vf = p.valorReembolso + taxaInicial;
-  const dias = DIAS_INTERVALO[p.frequencia];
-  const i = Math.pow(1 + p.encargoMensal, dias / 30) - 1;
+  const dias = DIAS_POR_PERIODO[p.frequencia];
+  const i = taxaPeriodoEquivalente(p.encargoMensal, dias);
   const n = p.numeroParcelas;
-  const pmt = i === 0 ? vf / n : (vf * (i * Math.pow(1 + i, n))) / (Math.pow(1 + i, n) - 1);
+  const pmt = pmtPrice(vf, i, n);
   const valorParcela = Math.round(pmt);
   return {
     taxaInicial,
@@ -265,10 +261,10 @@ export function precificarAcordoPagamento(p: ParametrosAcordoPagamento): Resulta
   const tpFinanciada = taxaInicial - tpNaEntrada;
   const amortizacaoEntrada = Math.max(0, p.valorEntrada - taxaInicial);
   const sp = p.saldoNegociado - amortizacaoEntrada + tpFinanciada;
-  const dias = DIAS_INTERVALO[p.frequencia];
-  const i = Math.pow(1 + p.encargoMensal, dias / 30) - 1;
+  const dias = DIAS_POR_PERIODO[p.frequencia];
+  const i = taxaPeriodoEquivalente(p.encargoMensal, dias);
   const n = p.numeroParcelas;
-  const pmt = i === 0 ? sp / n : (sp * (i * Math.pow(1 + i, n))) / (Math.pow(1 + i, n) - 1);
+  const pmt = pmtPrice(sp, i, n);
   const valorParcela = Math.round(pmt);
   return {
     entradaMinima,
@@ -286,8 +282,8 @@ export function precificarAcordoPagamento(p: ParametrosAcordoPagamento): Resulta
 // ============================================================
 // ANTECIPAÇÃO POR COMPONENTE (Catálogo F4 — Requisitos v0.3 §7)
 //   Cada parcela separa em BEM (capital+remuneração), COMISSÃO e PROTEÇÃO.
-//   VP de cada componente = valor ÷ (1 + taxa_diária)^dias, com
-//   taxa_diária = (1 + taxaMensal)^(1/30) − 1. Taxa 0 → componente CHEIO.
+//   VP de cada componente pela fórmula única valorPresenteMensal (taxa mensal
+//   → diária equivalente, calculations.ts). Taxa 0 → componente CHEIO.
 //   LIQUIDAÇÃO TOTAL: comissão e proteção futuras podem ser ISENTAS (flags da
 //   versão do produto). Antecipação PARCIAL: cobra comissão e proteção cheias.
 // ============================================================
@@ -312,24 +308,23 @@ export interface ResultadoAntecipacaoComponentes {
   protecaoCobrada: number; // 0 quando isenta
 }
 
-function vpDiario(valor: number, taxaMensal: number, dias: number): number {
+// Componente ausente/negativo vale 0; o resto segue a fórmula única.
+function vpComponente(valor: number, taxaMensal: number, dias: number): number {
   if (valor <= 0) return 0;
-  if (taxaMensal <= 0 || dias <= 0) return valor;
-  const d = Math.pow(1 + taxaMensal, 1 / 30) - 1;
-  return valor / Math.pow(1 + d, dias);
+  return valorPresenteMensal(valor, taxaMensal, dias);
 }
 
 export function anteciparParcelaComponentes(
   p: ParametrosAntecipacaoComponentes,
 ): ResultadoAntecipacaoComponentes {
   const bemNominal = Math.max(0, p.valorNominal - p.componenteComissao - p.componenteProtecao);
-  const bemPresente = Math.round(vpDiario(bemNominal, p.taxaDescontoBem, p.dias));
+  const bemPresente = Math.round(vpComponente(bemNominal, p.taxaDescontoBem, p.dias));
   const comissaoCobrada = p.isentarComissao
     ? 0
-    : Math.round(vpDiario(p.componenteComissao, p.taxaDescontoComissao, p.dias));
+    : Math.round(vpComponente(p.componenteComissao, p.taxaDescontoComissao, p.dias));
   const protecaoCobrada = p.isentarProtecao
     ? 0
-    : Math.round(vpDiario(p.componenteProtecao, p.taxaDescontoProtecao, p.dias));
+    : Math.round(vpComponente(p.componenteProtecao, p.taxaDescontoProtecao, p.dias));
   return {
     valorPresente: bemPresente + comissaoCobrada + protecaoCobrada,
     bemNominal,
@@ -370,7 +365,7 @@ export function contribuicaoProtecaoVeicular(p: ParametrosProtecao): ResultadoPr
     p.taxaAdministracaoMensal +
     p.custoAssistenciaMensal +
     p.acrescimoPerfilMensal;
-  const divisor = p.frequencia === 'semanal' ? 4 : p.frequencia === 'quinzenal' ? 2 : 1;
+  const divisor = fatorValorPorFrequencia(p.frequencia);
   return {
     baseFipe,
     contribuicaoMensal,

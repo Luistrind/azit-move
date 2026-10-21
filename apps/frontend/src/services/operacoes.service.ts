@@ -148,6 +148,7 @@ export interface SimulacaoNovacao {
   tpFinanciada: number;
   amortizacaoInicial: number;
   saldoAParcelarVeiculo: number;
+  taxaMensal: number; // TR (fração a.m.) — exibida como vem do servidor, nunca reconvertida de taxaPeriodo (Regra 16)
   taxaPeriodo: number;
   valorParcela: number; // componente FINANCEIRO (Price)
   // F4 (A3/A4, 15/09): parcela composta — o valor real assinado/cobrado.

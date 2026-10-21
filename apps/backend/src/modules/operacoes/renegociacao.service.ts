@@ -14,13 +14,14 @@ import {
   diasAtrasoCalendario,
   inicioHojeBrasilUTC,
   calcularEncargoAtraso,
+  DIA_MS,
+  DIAS_POR_PERIODO,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 
-const DIA_MS = 24 * 60 * 60 * 1000;
 const reais = (c: number) => centavosParaReaisString(c);
 const cent = (d: Prisma.Decimal | null): number =>
   d !== null ? Math.round(Number(d.toString()) * 100) : 0;
@@ -639,7 +640,7 @@ export class RenegociacaoService implements OnModuleInit {
     const periodicidadeApi = (
       { SEMANAL: 'semanal', QUINZENAL: 'quinzenal', MENSAL: 'mensal' } as const
     )[acordo.periodicidade];
-    const passo = periodicidadeApi === 'mensal' ? 30 : periodicidadeApi === 'quinzenal' ? 14 : 7;
+    const passo = DIAS_POR_PERIODO[periodicidadeApi];
     const dataEfetivacao = new Date(paymentDateISO || new Date().toISOString());
     // Parcelas do acordo caem NAS DATAS das faturas futuras da conta (doc 02
     // §7.7, 2026-08-18 — conceito de fatura/cartão): 1ª parcela = próxima fatura

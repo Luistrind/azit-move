@@ -474,7 +474,7 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
           </div>
 
           <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
-            Taxa financeira de {(Math.pow(1 + sim.taxaPeriodo, 30 / (sim.frequencia === 'semanal' ? 7 : sim.frequencia === 'quinzenal' ? 14 : 30)) * 100 - 100).toFixed(2).replace('.', ',')}% ao mês
+            Taxa financeira de {(sim.taxaMensal * 100).toFixed(2).replace('.', ',')}% ao mês
             (equivalente por {FREQ_LABEL[sim.frequencia].toLowerCase()}) · parâmetros {sim.produtoAtivo ? `da versão ${sim.versaoParametros} do Catálogo` : 'padrão do produto (V1.0)'}
           </div>
 

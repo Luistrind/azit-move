@@ -716,39 +716,29 @@ packages/utils/
 └── package.json
 ```
 
-**calculations.ts:**
+**calculations.ts** — a casa ÚNICA das fórmulas e constantes de negócio (Regra 16, §11.6).
+A versão original (23/06) trazia `calcularValorPresente(vf, taxaDiária, dias)`; ela foi removida em
+20/10/2026 porque o domínio (doc 02 §7.4) trabalha com taxa **mensal** convertida à diária
+equivalente — e essa é a única implementação que existe:
 ```typescript
-/**
- * Calcula o valor presente de uma parcela futura para quitação antecipada.
- * Fórmula validada com Vicente em 23/06/2025.
- *
- * VP = VF / (1 + taxa)^tempo
- *
- * @param vf    Valor futuro da parcela
- * @param taxa  Taxa diária parametrizável (ex: 0.001 = 0.1% ao dia)
- * @param tempo Número de dias entre hoje e o vencimento
- */
-export function calcularValorPresente(
-  vf: number,
-  taxa: number,
-  tempo: number,
-): number {
-  return vf / Math.pow(1 + taxa, tempo);
-}
+// Convenção: taxa de negócio é MENSAL; desconto por dias usa a diária equivalente (base 30).
+export function taxaDiariaEquivalente(taxaMensal: number): number;          // (1+tm)^(1/30) − 1
+export function taxaPeriodoEquivalente(taxaMensal: number, dias: number): number; // (1+tm)^(dias/30) − 1
+export function valorPresenteMensal(vf: number, taxaMensal: number, dias: number): number; // VF/(1+d)^dias
+export function pmtPrice(pv: number, i: number, n: number): number;          // Tabela Price
+export function calcularEncargoAtraso(valor, diasAtraso, multa% = 2, juros% a.m. = 1): number;
 
-/**
- * Calcula o total de quitação antecipada para um conjunto de parcelas.
- */
-export function calcularQuitacaoTotal(
-  parcelas: Array<{ valorFuturo: number; diasAteVencimento: number }>,
-  taxa: number,
-): number {
-  return parcelas.reduce(
-    (acc, p) => acc + calcularValorPresente(p.valorFuturo, taxa, p.diasAteVencimento),
-    0,
-  );
-}
+export const FATOR_PRAZO_SEMANAL = 4.3452;   // nº de parcelas por mês de prazo (Catálogo)
+export const FATOR_PRAZO_QUINZENAL = 2.1726;
+export const FATOR_VALOR_SEMANAL = 4;        // parcela exibida = mensal ÷ 4 (reunião 11/07)
+export const FATOR_VALOR_QUINZENAL = 2;
+export const DIAS_POR_PERIODO = { semanal: 7, quinzenal: 14, mensal: 30 };
+export function parcelasPorPrazoMeses(prazoMeses, frequencia): number;
+export function fatorPrazoPorFrequencia / fatorValorPorFrequencia / fatorValorDesdeSemanal(frequencia): number;
 ```
+Os motores por produto (`precificacao.ts`: simulação V3, reembolso parcelado, acordo de pagamento,
+antecipação; `novacao.ts`: decomposição e precificação da novação) **compõem** essas funções — nunca
+repetem a conta. `datas.ts` guarda `DIA_MS` e a aritmética de calendário.
 
 **formatters.ts:**
 ```typescript
@@ -1019,6 +1009,37 @@ pura); `toLocaleDateString`/`toLocaleTimeString` sem `{ timeZone }`. Jobs `@Cron
 (coluna de data), `instanteBR`/`horaBR` (timestamp) e `dataMistaBR` — nunca
 `new Date(iso).toLocaleDateString()`, que em Brasília volta um dia para meia-noite UTC.
 Rodar local: `pnpm lint` na raiz.
+
+### 11.6 Uma conta, uma função (Regra 16 do CLAUDE.md, 20/10/2026)
+
+Toda fórmula de negócio existe **uma vez**, em `packages/utils`, e backend e frontend a chamam de lá.
+O levantamento de 20/10 encontrou o valor presente em **duas** funções (uma morta, com taxa diária),
+`difDias`/`DIA_MS` copiados em 14 arquivos, a Price repetida 4× e o fator 4,345 solto em
+comentários, testes e parâmetros — foi tudo consolidado nesta tabela:
+
+| Conta / constante | Onde vive (única) | Quem chama |
+|---|---|---|
+| Valor presente (taxa mensal → diária equivalente) | `calculations.ts` `valorPresenteMensal` | `anteciparParcela`, `anteciparParcelaComponentes` (quitação), `decomporSaldoNovacao` |
+| Taxa diária / do período equivalente | `taxaDiariaEquivalente`, `taxaPeriodoEquivalente` | reembolso, acordo, novação, antecipação |
+| Tabela Price (PMT) | `pmtPrice` | simulação V3, reembolso, acordo, novação (crédito avulso e `precificarPrice` mantêm a forma `PV·i/(1−(1+i)^−n)` até a régua definitiva — ver comentário) |
+| Encargo de atraso (§7.2) | `calcularEncargoAtraso` | fatura, renegociação, novação |
+| Fator de PRAZO 4,3452 / 2,1726 | `FATOR_PRAZO_*`, `fatorPrazoPorFrequencia`, `parcelasPorPrazoMeses` | Catálogo (`FATORES_CATALOGO`), simulador, novação, assistente de análise, tela de novação |
+| Fator de VALOR 4 / 2 | `FATOR_VALOR_*`, `fatorValorPorFrequencia`, `fatorValorDesdeSemanal` | proteção, quitação, decomposição, contrato, proposta |
+| Dia em ms | `datas.ts` `DIA_MS` | todos os services (deslocar instantes); contar dias é `diasCalendarioEntre`/`diasAtrasoCalendario` |
+
+Regras práticas:
+- **A tela não recalcula.** Se precisa de um número derivado (ex.: taxa mensal da novação), o motor
+  devolve o número e a tela exibe. `NovacaoDecomposicao` mostra `sim.taxaMensal`, não `Math.pow`.
+- **Parâmetro versionado ≠ constante.** `fatorSemanal` gravado numa `VersaoParametrosSimulacao`
+  antiga pode ser 4,345; é dado histórico. A constante da casa é `FATOR_PRAZO_SEMANAL`.
+- **Arredonda uma vez**, no fim, quem compõe (as funções devolvem fração de centavo).
+- **Regressão fixa:** `packages/utils/src/formulas-regressao.test.ts` compara os números de
+  antecipação, novação, reembolso, acordo, simulação e conciliação do legado com o fixture gerado
+  ANTES da consolidação — mudou um centavo, mudou a regra.
+
+Proibido fora de `packages/utils` (lint `no-restricted-syntax` em `eslint.config.mjs`, roda no CI):
+`Math.pow(...)`, o operador `**`, os literais `86400000`/`86_400_000`/`864e5` e o produto
+`24 * 60 * 60 * 1000`. Isentos só `datas.ts`, `calculations.ts` e `precificacao.ts` (e testes).
 
 ---
 

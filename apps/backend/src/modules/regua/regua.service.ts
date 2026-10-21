@@ -8,12 +8,11 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { dataHojeBrasil, diasAtrasoCalendario, FUSO_NEGOCIO, inicioHojeBrasilUTC, resolverEstagioRegua } from '@azit/utils';
+import { dataHojeBrasil, diasAtrasoCalendario, DIA_MS, FUSO_NEGOCIO, inicioHojeBrasilUTC, resolverEstagioRegua } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { FaturaService } from '../cobranca/fatura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
 
-const DIA_MS = 24 * 60 * 60 * 1000;
 const cent = (d: Prisma.Decimal | null): number =>
   d !== null ? Math.round(Number(d.toString()) * 100) : 0;
 

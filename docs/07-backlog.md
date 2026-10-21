@@ -27,7 +27,7 @@ Nada funciona sem isto. É a base de toda a esteira.
 |---|---|---|---|
 | 0.1 | Monorepo e workspace | Estrutura pnpm, tsconfig base, scripts globais (Doc 4) | — |
 | 0.2 | Pacote @azit/types | Enums e interfaces compartilhadas | 0.1 |
-| 0.3 | Pacote @azit/utils | Formatters, `calcularValorPresente`, `resolverStatusParcela` | 0.1 |
+| 0.3 | Pacote @azit/utils | Formatters, `valorPresenteMensal` (era `calcularValorPresente`, consolidado 20/10/2026), `resolverStatusParcela` | 0.1 |
 | 0.4 | Backend base (NestJS + Fastify) | App sobe, health check, config de ambiente | 0.1 |
 | 0.5 | Banco e Prisma | PostgreSQL local, schema do Doc 5, primeira migration, PrismaService | 0.4 |
 | 0.6 | Extensão de soft delete | Filtro global `deletedAt: null` via Prisma extension | 0.5 |

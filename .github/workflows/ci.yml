@@ -29,9 +29,11 @@ jobs:
       - name: Dependências
         run: pnpm install --frozen-lockfile
 
-      # Regra 15 (fuso Brasil): o lint da raiz (eslint.config.mjs) derruba a build
-      # se alguém derivar dia de toISOString()/getDate()/toLocaleDateString sem fuso.
-      - name: Lint — datas e fuso (Regra 15)
+      # Regra 15 (fuso Brasil) e Regra 16 (uma conta, uma função): o lint da raiz
+      # (eslint.config.mjs) derruba a build se alguém derivar dia de
+      # toISOString()/getDate()/toLocaleDateString sem fuso, ou reescrever
+      # fórmula (Math.pow / **) e "dia em ms" fora de packages/utils.
+      - name: Lint — datas/fuso (Regra 15) e fórmulas/constantes (Regra 16)
         run: pnpm lint
 
       - name: Pacotes compartilhados (types + utils)
