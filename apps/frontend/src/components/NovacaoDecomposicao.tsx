@@ -117,6 +117,60 @@ function TabelaMemoria({ componentes, rotuloGrupo }: { componentes: ComponenteDe
   );
 }
 
+// Decomposição do saldo por produto — Contrato 1 (veículo) × Contrato 2 (demais)
+// e o total a reorganizar. Um só componente para a prévia (ficha do titular) e
+// para o detalhe da novação em Renegociações (snapshot congelado), 21/10.
+export function BlocoDecomposicao({
+  parteVeiculo,
+  demaisProdutos,
+  totalGeral,
+  rotuloTotal,
+}: {
+  parteVeiculo: { vencido: number; futuro: number; deAcordos: number; total: number };
+  demaisProdutos: { porProduto: { produto: string; total: number }[]; total: number };
+  totalGeral: number;
+  rotuloTotal?: string;
+}) {
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2">
+        {/* Contrato 1 — parte do veículo */}
+        <div className="rounded-[12px] p-[14px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+          <div className="mb-[8px] font-display text-[12.5px] font-bold">Contrato 1 — Novação do veículo</div>
+          <div className="flex flex-col gap-[4px]">
+            <LinhaValor label="Vencido (com multa e mora)" valor={parteVeiculo.vencido} />
+            <LinhaValor label="Futuro a valor presente" valor={parteVeiculo.futuro} />
+            <LinhaValor label="Parte do veículo em acordos" valor={parteVeiculo.deAcordos} />
+            <div className="my-[4px]" style={{ borderTop: '1px solid var(--border)' }} />
+            <LinhaValor label="Saldo da parte do veículo" valor={parteVeiculo.total} forte />
+          </div>
+        </div>
+
+        {/* Contrato 2 — demais produtos */}
+        <div className="rounded-[12px] p-[14px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+          <div className="mb-[8px] font-display text-[12.5px] font-bold">Contrato 2 — Termo de Regularização de Débitos</div>
+          {demaisProdutos.porProduto.length === 0 ? (
+            <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nada além do veículo — a novação teria só o Contrato 1.</div>
+          ) : (
+            <div className="flex flex-col gap-[4px]">
+              {demaisProdutos.porProduto.map((l) => (
+                <LinhaValor key={l.produto} label={PRODUTO_LABEL[l.produto] ?? l.produto} valor={l.total} />
+              ))}
+              <div className="my-[4px]" style={{ borderTop: '1px solid var(--border)' }} />
+              <LinhaValor label="Saldo dos demais produtos" valor={demaisProdutos.total} forte />
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between rounded-[10px] px-[14px] py-[10px]" style={{ background: 'var(--navy)', color: '#fff' }}>
+        <span className="text-[12.5px] font-semibold">{rotuloTotal ?? 'Saldo total a reorganizar'}</span>
+        <span className="font-display text-[15px] font-bold" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(totalGeral)}</span>
+      </div>
+    </>
+  );
+}
+
 export function NovacaoDecomposicaoModal({ contaId, open, onClose }: { contaId: string; open: boolean; onClose: () => void }) {
   const [memoriaAberta, setMemoriaAberta] = useState(false);
   const dec = useQuery({
@@ -139,40 +193,7 @@ export function NovacaoDecomposicaoModal({ contaId, open, onClose }: { contaId: 
             composição original, com os juros divididos em partes iguais entre os produtos.
           </div>
 
-          <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2">
-            {/* Contrato 1 — parte do veículo */}
-            <div className="rounded-[12px] p-[14px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
-              <div className="mb-[8px] font-display text-[12.5px] font-bold">Contrato 1 — Novação do veículo</div>
-              <div className="flex flex-col gap-[4px]">
-                <LinhaValor label="Vencido (com multa e mora)" valor={d.parteVeiculo.vencido} />
-                <LinhaValor label="Futuro a valor presente" valor={d.parteVeiculo.futuro} />
-                <LinhaValor label="Parte do veículo em acordos" valor={d.parteVeiculo.deAcordos} />
-                <div className="my-[4px]" style={{ borderTop: '1px solid var(--border)' }} />
-                <LinhaValor label="Saldo da parte do veículo" valor={d.parteVeiculo.total} forte />
-              </div>
-            </div>
-
-            {/* Contrato 2 — demais produtos */}
-            <div className="rounded-[12px] p-[14px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
-              <div className="mb-[8px] font-display text-[12.5px] font-bold">Contrato 2 — Termo de Regularização de Débitos</div>
-              {d.demaisProdutos.porProduto.length === 0 ? (
-                <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nada além do veículo — a novação teria só o Contrato 1.</div>
-              ) : (
-                <div className="flex flex-col gap-[4px]">
-                  {d.demaisProdutos.porProduto.map((l) => (
-                    <LinhaValor key={l.produto} label={PRODUTO_LABEL[l.produto] ?? l.produto} valor={l.total} />
-                  ))}
-                  <div className="my-[4px]" style={{ borderTop: '1px solid var(--border)' }} />
-                  <LinhaValor label="Saldo dos demais produtos" valor={d.demaisProdutos.total} forte />
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between rounded-[10px] px-[14px] py-[10px]" style={{ background: 'var(--navy)', color: '#fff' }}>
-            <span className="text-[12.5px] font-semibold">Saldo total a reorganizar</span>
-            <span className="font-display text-[15px] font-bold" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(d.totalGeral)}</span>
-          </div>
+          <BlocoDecomposicao parteVeiculo={d.parteVeiculo} demaisProdutos={d.demaisProdutos} totalGeral={d.totalGeral} />
 
           {d.memoria.ignorados.length > 0 && (
             <div className="rounded-[10px] px-[12px] py-[8px] text-[11.5px]" style={{ background: '#fff8e6', border: '1px solid #f0dfae', color: '#8a6d1a' }}>

@@ -388,6 +388,13 @@ export function TitularDetalhePage() {
             <Metrica label="Acordos" valor={String(rf.quantidadeAcordos)} />
             <Metrica label="Contratos ativos" valor={`${rf.contratosAtivos} de ${rf.contratosTotal}`} />
           </div>
+          {/* O detalhe de acordos e novações vive em UMA tela (Renegociações,
+              21/10) — a ficha leva até lá filtrada por este titular. */}
+          {(rf.quantidadeAcordos > 0 || rf.quantidadeNovacoes > 0) && (
+            <button onClick={() => navigate(`/acordos?titular=${id}`)} className="mt-[10px] text-[12px] font-semibold" style={{ color: 'var(--navy)' }}>
+              Ver {rf.quantidadeAcordos > 0 ? `${rf.quantidadeAcordos} acordo(s)` : ''}{rf.quantidadeAcordos > 0 && rf.quantidadeNovacoes > 0 ? ' e ' : ''}{rf.quantidadeNovacoes > 0 ? `${rf.quantidadeNovacoes} novação(ões)` : ''} desta conta em Renegociações →
+            </button>
+          )}
         </div>
       </div>
 
@@ -443,6 +450,9 @@ export function TitularDetalhePage() {
                       </span>
                     )}
                     <span style={{ color: 'var(--text-body)' }}>{l.descricao}</span>
+                    {l.acordoId && (
+                      <button onClick={() => navigate(`/acordos?acordo=${l.acordoId}`)} className="ml-[8px] text-[11.5px] font-semibold" style={{ color: 'var(--navy)' }}>ver o acordo →</button>
+                    )}
                     {!pendente && <span style={{ color: 'var(--text-muted)' }}> · pago em {fmtData(l.dataPagamento ?? '')}</span>}
                   </span>
                   <span className="font-bold tabular-nums">{formatCurrency(l.valor)}</span>

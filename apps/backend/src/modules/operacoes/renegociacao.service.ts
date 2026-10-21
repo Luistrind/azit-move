@@ -14,16 +14,64 @@ import {
   diasAtrasoCalendario,
   inicioHojeBrasilUTC,
   calcularEncargoAtraso,
+  dataCalendarioUTC,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
+import { parcelaParaApi } from '../contrato/contrato.mapper';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 const reais = (c: number) => centavosParaReaisString(c);
 const cent = (d: Prisma.Decimal | null): number =>
   d !== null ? Math.round(Number(d.toString()) * 100) : 0;
+
+// Fotografia gravada na proposta (RAP034) — acordos nativos. Os de origem LEGADO
+// (migração declarada, doc 02 §26.15) gravam só `legado`.
+type SnapshotAcordo = {
+  dataBase?: string;
+  faturasSelecionadas?: string[];
+  exclusoes?: { faturaId: string; justificativa: string }[];
+  vincendasIncluidas?: string[];
+  totais?: { valorNominal: number; encargosMora: number; valorAtualizado: number };
+  moraHerdada?: string;
+  calculo?: {
+    motor: 'catalogo' | 'placeholder';
+    periodicidade: string;
+    saldoNegociado: number;
+    entradaMinima: number;
+    taxaInicial: number;
+    tpFinanciada?: number;
+    amortizacaoEntrada?: number;
+    taxaPeriodo: number;
+    encargoMensal?: number;
+    saldoAParcelar: number;
+    valorParcela: number;
+    valorMinimoParcela?: number;
+    totalAPagar: number;
+    excecoes: string[];
+  };
+  dataLimiteEntrada?: string;
+  dataPagamentoEntrada?: string; // retrocompat (acordos antigos)
+  aceiteWhatsapp?: { confirmadoPeloOperadorEm: string };
+  termo?: string; // termo de confissão dos acordos anteriores a 09/09 (histórico)
+  legado?: { casoId: string; parcelasCobertas: number[]; primeiraEm: string; ultimaEm: string; declarado?: boolean };
+};
+
+// Evento da trilha do acordo (tela Renegociações, 21/10): texto humano, sem id.
+export interface EventoTrilha {
+  em: string | null; // ISO do instante (null = sem data registrada)
+  titulo: string;
+  por: string | null;
+  detalhe: string | null;
+}
+
+const LABEL_PERIODICIDADE = { SEMANAL: 'semanal', QUINZENAL: 'quinzenal', MENSAL: 'mensal' } as const;
+const PARCELA_PAGA_LABELS = new Set(['Paga', 'Paga em atraso', 'Paga antecipada']);
+
+const ordenarTrilha = (t: EventoTrilha[]) =>
+  [...t].sort((a, b) => (a.em ?? '9999').localeCompare(b.em ?? '9999'));
 
 export interface CriarRenegociacaoDto {
   valorEntrada: number; // centavos
@@ -844,28 +892,398 @@ export class RenegociacaoService implements OnModuleInit {
     return { resultado: 'efetivado', contratos: planos.length, parcelasNovas: acordo.numeroParcelasNovas };
   }
 
-  // Lista de acordos (acompanhamento).
+  // Lista de acordos (acompanhamento). Desde 21/10 traz o que a tela precisa
+  // para o card ser legível sem abrir o detalhe: contratos com placa, ritmo do
+  // plano, origem (nativo × importado do legado) e quem propôs.
   async listar() {
     const acordos = await this.prisma.db.acordo.findMany({
+      where: { deletedAt: null },
       orderBy: { createdAt: 'desc' },
       include: {
-        conta: { select: { titular: { select: { id: true, nome: true } } } },
-        contrato: { select: { numero: true } },
-        itensGerados: { select: { contratoId: true } },
+        conta: { select: { id: true, titular: { select: { id: true, nome: true } } } },
+        operador: { select: { nome: true } },
+        contrato: { select: { id: true, numero: true, ativo: { select: { descricao: true, placa: true } } } },
+        itensGerados: { select: { contrato: { select: { id: true, numero: true, ativo: { select: { descricao: true, placa: true } } } } } },
+        parcelasCobertas: { select: { contrato: { select: { id: true, numero: true, ativo: { select: { descricao: true, placa: true } } } } } },
       },
     });
-    return acordos.map((a) => ({
+    return acordos.map((a) => {
+      const contratos = this.contratosDoAcordo(a);
+      return {
+        id: a.id,
+        status: a.status.toLowerCase(),
+        origem: this.origemAcordo(a.snapshotJson),
+        contratoNumero: contratos.length === 1 ? contratos[0].numero : `Conta (${contratos.length || '—'} contratos)`,
+        contratos,
+        contaId: a.conta.id,
+        titularId: a.conta.titular.id,
+        titular: a.conta.titular.nome,
+        criadoPor: a.operador.nome,
+        valorTotalRenegociado: cent(a.valorTotalRenegociado),
+        valorEntrada: cent(a.valorEntrada),
+        numeroParcelasNovas: a.numeroParcelasNovas,
+        valorParcelaNova: cent(a.valorParcelaNova),
+        periodicidade: LABEL_PERIODICIDADE[a.periodicidade],
+        dataCriacao: a.dataCriacao.toISOString(),
+        dataEfetivacao: a.dataEfetivacao ? a.dataEfetivacao.toISOString() : null,
+      };
+    });
+  }
+
+  private origemAcordo(snapshotJson: Prisma.JsonValue | null): 'nativo' | 'legado' {
+    return (snapshotJson as SnapshotAcordo | null)?.legado ? 'legado' : 'nativo';
+  }
+
+  // Contratos tocados pelo acordo: o do legado (contratoId), os que receberam
+  // item ACORDO e os donos das parcelas cobertas — sem repetição.
+  private contratosDoAcordo(a: {
+    contrato: { id: string; numero: string; ativo: { descricao: string; placa: string | null } | null } | null;
+    itensGerados: { contrato: { id: string; numero: string; ativo: { descricao: string; placa: string | null } | null } }[];
+    parcelasCobertas: { contrato: { id: string; numero: string; ativo: { descricao: string; placa: string | null } | null } }[];
+  }) {
+    const mapa = new Map<string, { id: string; numero: string; descricao: string; placa: string | null }>();
+    const por = (c: { id: string; numero: string; ativo: { descricao: string; placa: string | null } | null } | null) => {
+      if (!c || mapa.has(c.id)) return;
+      // Sem ativo = Reembolso Parcelado (doc 02 §19, 12/09).
+      mapa.set(c.id, { id: c.id, numero: c.numero, descricao: c.ativo?.descricao ?? 'Reembolso Parcelado', placa: c.ativo?.placa ?? null });
+    };
+    por(a.contrato);
+    for (const i of a.itensGerados) por(i.contrato);
+    for (const p of a.parcelasCobertas) por(p.contrato);
+    return [...mapa.values()].sort((x, y) => x.numero.localeCompare(y.numero));
+  }
+
+  // Detalhe do acordo (feedback Luís 21/10 — a tela Renegociações só listava):
+  // parcelas cobertas com o que a fatura delas carregava, entrada, cotas novas
+  // com situação, exclusões e saldos da data-base do snapshot, e a trilha
+  // (proposta → Central de Aprovações → entrada → efetivação → cumprimento).
+  // Acordos importados do legado (§26.15) saem com o MESMO detalhe: o que a
+  // migração gravou está nas parcelas (vínculo acordoId), nas faturas
+  // RENEGOCIADAS e nos lançamentos — nada é lido do caso de migração.
+  async detalhar(acordoId: string) {
+    const a = await this.prisma.db.acordo.findFirst({
+      where: { id: acordoId, deletedAt: null },
+      include: {
+        conta: { select: { id: true, titular: { select: { id: true, nome: true } } } },
+        operador: { select: { nome: true } },
+        contrato: { select: { id: true, numero: true, ativo: { select: { descricao: true, placa: true } } } },
+        parcelasCobertas: {
+          orderBy: [{ dataVencimento: 'asc' }, { numero: 'asc' }],
+          include: {
+            contrato: { select: { id: true, numero: true, ativo: { select: { descricao: true, placa: true } } } },
+            fatura: { include: { itensFatura: { orderBy: { tipo: 'asc' } } } },
+          },
+        },
+        itensGerados: {
+          include: {
+            contrato: { select: { id: true, numero: true, ativo: { select: { descricao: true, placa: true } } } },
+            parcelas: {
+              where: { deletedAt: null },
+              orderBy: { numero: 'asc' },
+              include: { fatura: { select: { id: true, numero: true, dataVencimento: true, status: true, dataPagamento: true } } },
+            },
+          },
+        },
+        lancamentos: { orderBy: { dataPagamento: 'asc' } },
+      },
+    });
+    if (!a) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Acordo não encontrado' });
+
+    const snap = (a.snapshotJson as SnapshotAcordo | null) ?? {};
+    const origem = this.origemAcordo(a.snapshotJson);
+    const periodicidade = LABEL_PERIODICIDADE[a.periodicidade];
+    const contratos = this.contratosDoAcordo(a);
+    // Data-base do atraso: a do snapshot (nativo) ou a do acordo (legado: dia da entrada).
+    const dataBase = snap.dataBase ? new Date(snap.dataBase) : a.dataCriacao;
+
+    // --- Parcelas cobertas, agrupadas pela fatura em que estavam -------------
+    const cobertas = a.parcelasCobertas.map((p) => ({
+      parcelaId: p.id,
+      contratoId: p.contrato.id,
+      contratoNumero: p.contrato.numero,
+      produto: p.contrato.ativo?.descricao ?? 'Reembolso Parcelado',
+      display: p.display,
+      numero: p.numero,
+      dataVencimento: dataCalendarioUTC(p.dataVencimento),
+      valorNominal: cent(p.valorNominal),
+      diasAtrasoNaDataBase: diasAtrasoCalendario(p.dataVencimento, dataBase),
+      status: parcelaParaApi(p).status, // 'Em acordo' enquanto coberta; muda se a parcela for paga/novada
+      faturaId: p.faturaId,
+    }));
+    const porFatura = new Map<string, {
+      id: string; numero: number; dataVencimento: string; status: string; valorTotal: number; valorPago: number;
+      dataPagamento: string | null; diasAtrasoNaDataBase: number;
+      itens: { descricao: string; tipo: string; valor: number; credor: string; coberto: boolean }[];
+      parcelas: typeof cobertas;
+    }>();
+    const idsCobertas = new Set(cobertas.map((c) => c.parcelaId));
+    for (const p of a.parcelasCobertas) {
+      if (!p.fatura) continue;
+      const f = p.fatura;
+      let g = porFatura.get(f.id);
+      if (!g) {
+        g = {
+          id: f.id,
+          numero: f.numero,
+          dataVencimento: dataCalendarioUTC(f.dataVencimento),
+          status: f.status.toLowerCase(),
+          valorTotal: cent(f.valorTotal),
+          valorPago: cent(f.valorPago),
+          dataPagamento: f.dataPagamento ? dataCalendarioUTC(f.dataPagamento) : null,
+          diasAtrasoNaDataBase: diasAtrasoCalendario(f.dataVencimento, dataBase),
+          itens: f.itensFatura.map((it) => ({
+            descricao: it.descricao,
+            tipo: it.tipo.toLowerCase(),
+            valor: cent(it.valor),
+            credor: it.credor.toLowerCase(),
+            coberto: !!it.parcelaId && idsCobertas.has(it.parcelaId),
+          })),
+          parcelas: [],
+        };
+        porFatura.set(f.id, g);
+      }
+      g.parcelas.push(cobertas.find((c) => c.parcelaId === p.id)!);
+    }
+    const faturasCobertas = [...porFatura.values()].sort((x, y) => x.dataVencimento.localeCompare(y.dataVencimento));
+    const cobertasSemFatura = cobertas.filter((c) => !c.faturaId);
+    const nominalCoberto = cobertas.reduce((s, c) => s + c.valorNominal, 0);
+
+    // --- Cotas novas (parcelas dos itens de origem ACORDO) --------------------
+    const cotas = a.itensGerados
+      .flatMap((item) =>
+        item.parcelas.map((p) => {
+          const api = parcelaParaApi(p);
+          return {
+            parcelaId: p.id,
+            contratoId: item.contrato.id,
+            contratoNumero: item.contrato.numero,
+            numero: p.numero,
+            totalParcelas: p.totalParcelas,
+            display: p.display,
+            dataVencimento: dataCalendarioUTC(p.dataVencimento),
+            valorNominal: cent(p.valorNominal),
+            status: api.status,
+            dataPagamento: p.dataPagamento ? dataCalendarioUTC(p.dataPagamento) : null,
+            valorPago: cent(p.valorPago),
+            valorEncargo: cent(p.valorEncargo),
+            fatura: p.fatura
+              ? { id: p.fatura.id, numero: p.fatura.numero, dataVencimento: dataCalendarioUTC(p.fatura.dataVencimento), status: p.fatura.status.toLowerCase() }
+              : null,
+          };
+        }),
+      )
+      .sort((x, y) => x.numero - y.numero || x.contratoNumero.localeCompare(y.contratoNumero));
+    const pagas = cotas.filter((c) => PARCELA_PAGA_LABELS.has(c.status));
+    const resumoCotas = {
+      quantidade: cotas.length,
+      pagas: pagas.length,
+      vencidas: cotas.filter((c) => c.status === 'Vencida').length,
+      venceHoje: cotas.filter((c) => c.status === 'Vence hoje').length,
+      aVencer: cotas.filter((c) => c.status === 'Em aberto').length,
+      novadas: cotas.filter((c) => c.status === 'Novada').length,
+      // Juros e multa NÃO são valor pago (decisão Luís 02/10) — linha própria.
+      valorPago: pagas.reduce((s, c) => s + c.valorPago - c.valorEncargo, 0),
+      encargosPagos: pagas.reduce((s, c) => s + c.valorEncargo, 0),
+      valorAPagar: cotas.filter((c) => c.status === 'Vencida' || c.status === 'Vence hoje' || c.status === 'Em aberto').reduce((s, c) => s + c.valorNominal, 0),
+      valorVencido: cotas.filter((c) => c.status === 'Vencida').reduce((s, c) => s + c.valorNominal, 0),
+      totalPlano: cent(a.valorParcelaNova) * a.numeroParcelasNovas,
+    };
+
+    // --- Entrada ----------------------------------------------------------------
+    const lancEntrada = a.lancamentos.find((l) => l.tipo === 'ENTRADA_ACORDO') ?? null;
+    const efetivado = a.status === 'ATIVO' || a.status === 'CUMPRIDO' || a.status === 'NOVADO';
+    const valorEntrada = cent(a.valorEntrada);
+    const entrada = {
+      valor: valorEntrada,
+      dataLimite: snap.dataLimiteEntrada ?? snap.dataPagamentoEntrada ?? null,
+      pagaEm: lancEntrada ? lancEntrada.dataPagamento.toISOString() : efetivado && a.dataEfetivacao ? a.dataEfetivacao.toISOString() : null,
+      cobrancaAsaasId: lancEntrada?.asaasChargeId ?? a.asaasChargeIdEntrada,
+      situacao:
+        valorEntrada === 0 ? ('sem_entrada' as const)
+        : lancEntrada || efetivado ? ('paga' as const)
+        : a.status === 'AGUARDANDO_ENTRADA' ? ('aguardando' as const)
+        : a.status === 'RASCUNHO' ? ('aguardando_aprovacao' as const)
+        : a.status === 'EXPIRADO' ? ('expirada' as const)
+        : ('nao_paga' as const),
+    };
+
+    // --- Exclusões e vincendas incluídas (snapshot) → com número/vencimento da fatura
+    const idsSnap = [...new Set([...(snap.exclusoes ?? []).map((e) => e.faturaId), ...(snap.vincendasIncluidas ?? [])])];
+    const faturasSnap = idsSnap.length
+      ? await this.prisma.db.fatura.findMany({ where: { id: { in: idsSnap } }, select: { id: true, numero: true, dataVencimento: true, valorTotal: true } })
+      : [];
+    const faturaSnap = (id: string) => {
+      const f = faturasSnap.find((x) => x.id === id);
+      return { faturaId: id, numero: f?.numero ?? null, dataVencimento: f ? dataCalendarioUTC(f.dataVencimento) : null, valorTotal: f ? cent(f.valorTotal) : null };
+    };
+    const exclusoes = (snap.exclusoes ?? []).map((e) => ({ ...faturaSnap(e.faturaId), justificativa: e.justificativa }));
+    const vincendasIncluidas = (snap.vincendasIncluidas ?? []).map((id) => faturaSnap(id));
+
+    // --- Trilha ------------------------------------------------------------------
+    const [aprovacao, novacaoAbsorveu] = await Promise.all([
+      this.prisma.db.aprovacao.findFirst({
+        where: { referenciaTipo: 'acordo', referenciaId: a.id },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          solicitante: { select: { nome: true } },
+          decisoes: { include: { usuario: { select: { nome: true } } }, orderBy: { createdAt: 'asc' } },
+        },
+      }),
+      a.status === 'NOVADO'
+        ? this.prisma.db.novacao.findFirst({
+            where: { contaId: a.conta.id, status: 'ATIVO', dataAtivacao: { gte: a.dataCriacao }, deletedAt: null },
+            orderBy: { dataAtivacao: 'asc' },
+            select: { id: true, dataAtivacao: true },
+          })
+        : null,
+    ]);
+    const trilha: EventoTrilha[] = [];
+    const resumoPlano = `${a.numeroParcelasNovas}× ${formatCurrency(cent(a.valorParcelaNova))} (${periodicidade})`;
+    if (origem === 'legado') {
+      trilha.push({
+        em: a.dataCriacao.toISOString(),
+        titulo: 'Acordo firmado no legado (Asaas)',
+        por: null,
+        detalhe: `Entrada ${formatCurrency(valorEntrada)} paga nesta data · plano ${resumoPlano} · ${cobertas.length} parcela(s) coberta(s)`,
+      });
+      trilha.push({
+        em: a.createdAt.toISOString(),
+        titulo: 'Importado pela migração do legado',
+        por: a.operador.nome,
+        detalhe: `Conciliação declarada (doc 02 §26.15): parcelas cobertas, faturas renegociadas, cotas já pagas e entrada vieram do Asaas. ${a.observacao ?? ''}`.trim(),
+      });
+    } else {
+      trilha.push({
+        em: a.dataCriacao.toISOString(),
+        titulo: 'Proposta de acordo criada',
+        por: a.operador.nome,
+        detalhe: `${(snap.faturasSelecionadas ?? []).length || faturasCobertas.length || '—'} fatura(s) renegociada(s) · entrada ${formatCurrency(valorEntrada)} · ${resumoPlano}${snap.aceiteWhatsapp ? ' · de acordo do cliente registrado (WhatsApp)' : ''}`,
+      });
+    }
+    if (aprovacao) {
+      trilha.push({
+        em: aprovacao.createdAt.toISOString(),
+        titulo: 'Enviado à Central de Aprovações',
+        por: aprovacao.solicitante.nome,
+        detalhe: aprovacao.resumo,
+      });
+      const verbo = { APROVADA: 'aprovou', RECOMENDADA: 'recomendou a aprovação', REPROVADA: 'reprovou' } as Record<string, string>;
+      for (const d of aprovacao.decisoes) {
+        trilha.push({ em: d.createdAt.toISOString(), titulo: `${d.usuario.nome} ${verbo[d.decisao] ?? d.decisao.toLowerCase()}`, por: null, detalhe: d.parecer });
+      }
+      const ultimaAprovacao = [...aprovacao.decisoes].reverse().find((d) => d.decisao === 'APROVADA');
+      if (aprovacao.status === 'APROVADA' && valorEntrada > 0) {
+        trilha.push({
+          em: ultimaAprovacao?.createdAt.toISOString() ?? aprovacao.updatedAt.toISOString(),
+          titulo: 'Aprovado — cobrança da entrada gerada no Asaas',
+          por: null,
+          detalhe: entrada.dataLimite ? `Data-limite dura: ${this.diaBR(entrada.dataLimite)} — depois dela a cobrança não aceita pagamento e a proposta expira` : null,
+        });
+      }
+    }
+    if (lancEntrada) {
+      trilha.push({
+        em: lancEntrada.dataPagamento.toISOString(),
+        titulo: 'Entrada paga',
+        por: null,
+        detalhe: `${formatCurrency(cent(lancEntrada.valor))}${lancEntrada.asaasChargeId ? ` · cobrança ${lancEntrada.asaasChargeId}` : ''} — o pagamento é o aceite formal do cliente`,
+      });
+    }
+    if (a.dataEfetivacao && origem === 'nativo') {
+      trilha.push({
+        em: a.dataEfetivacao.toISOString(),
+        titulo: 'Acordo efetivado',
+        por: null,
+        detalhe: `${cobertas.length} parcela(s) coberta(s) recebeu(ram) o vínculo do acordo, ${faturasCobertas.length} fatura(s) viraram "Renegociada" e ${cotas.length} cota(s) nova(s) entraram nas faturas seguintes`,
+      });
+    }
+    if (a.status === 'CUMPRIDO') {
+      const ultimaPaga = pagas.map((c) => c.dataPagamento).filter((d): d is string => !!d).sort().pop() ?? null;
+      trilha.push({ em: ultimaPaga ? `${ultimaPaga}T12:00:00.000Z` : a.updatedAt.toISOString(), titulo: 'Acordo cumprido', por: null, detalhe: 'Todas as cotas do plano foram pagas — o acordo se cumpre, não se quita' });
+    }
+    if (a.status === 'NOVADO') {
+      trilha.push({ em: novacaoAbsorveu?.dataAtivacao?.toISOString() ?? a.updatedAt.toISOString(), titulo: 'Saldo absorvido por novação', por: null, detalhe: 'As cotas em aberto foram extintas e entraram no saldo do contrato novo' });
+    }
+    if (a.status === 'CANCELADO') {
+      trilha.push({
+        em: a.updatedAt.toISOString(),
+        titulo: 'Acordo cancelado',
+        por: null,
+        detalhe: aprovacao?.status === 'REPROVADA' ? 'Reprovado na Central de Aprovações' : 'Proposta não efetivada (cancelada ou substituída por novação)',
+      });
+    }
+    if (a.status === 'EXPIRADO') {
+      trilha.push({ em: a.updatedAt.toISOString(), titulo: 'Proposta expirada', por: null, detalhe: 'A entrada venceu sem pagamento — recálculo obrigatório antes de nova proposta (o saldo seguiu acumulando mora)' });
+    }
+
+    return {
       id: a.id,
       status: a.status.toLowerCase(),
-      contratoNumero: a.contrato?.numero ?? `Conta (${new Set(a.itensGerados.map((i) => i.contratoId)).size || '—'} contratos)`,
-      titularId: a.conta.titular.id,
-      titular: a.conta.titular.nome,
-      valorTotalRenegociado: cent(a.valorTotalRenegociado),
-      valorEntrada: cent(a.valorEntrada),
-      numeroParcelasNovas: a.numeroParcelasNovas,
-      valorParcelaNova: cent(a.valorParcelaNova),
-      dataCriacao: a.dataCriacao.toISOString(),
-      dataEfetivacao: a.dataEfetivacao ? a.dataEfetivacao.toISOString() : null,
-    }));
+      origem,
+      contaId: a.conta.id,
+      titular: a.conta.titular,
+      contratos,
+      criadoEm: a.dataCriacao.toISOString(),
+      criadoPor: a.operador.nome,
+      efetivadoEm: a.dataEfetivacao?.toISOString() ?? null,
+      dataBase: dataBase.toISOString(),
+      observacao: a.observacao,
+      plano: {
+        valorTotalRenegociado: cent(a.valorTotalRenegociado),
+        valorEntrada,
+        numeroParcelasNovas: a.numeroParcelasNovas,
+        valorParcelaNova: cent(a.valorParcelaNova),
+        periodicidade,
+        totalPlano: resumoCotas.totalPlano,
+      },
+      // Saldos na data-base (snapshot nativo); no legado só o nominal coberto é conhecido.
+      totaisCobertura: {
+        quantidadeParcelas: cobertas.length,
+        quantidadeFaturas: faturasCobertas.length,
+        valorNominal: snap.totais?.valorNominal ?? nominalCoberto,
+        encargosMora: snap.totais?.encargosMora ?? null,
+        valorAtualizado: snap.totais?.valorAtualizado ?? null,
+        moraHerdada: snap.moraHerdada ?? null,
+      },
+      faturasCobertas,
+      cobertasSemFatura,
+      cotas,
+      resumoCotas,
+      entrada,
+      exclusoes,
+      vincendasIncluidas,
+      calculo: snap.calculo ?? null,
+      aceiteWhatsapp: snap.aceiteWhatsapp ?? null,
+      temTermoAntigo: !!snap.termo,
+      legado: snap.legado
+        ? { casoId: snap.legado.casoId, parcelasCobertasDeclaradas: snap.legado.parcelasCobertas, primeiraCotaEm: snap.legado.primeiraEm, ultimaCotaEm: snap.legado.ultimaEm }
+        : null,
+      aprovacao: aprovacao
+        ? {
+            id: aprovacao.id,
+            status: aprovacao.status,
+            resumo: aprovacao.resumo,
+            solicitante: aprovacao.solicitante.nome,
+            solicitadoEm: aprovacao.createdAt.toISOString(),
+            decisoes: aprovacao.decisoes.map((d) => ({ usuario: d.usuario.nome, decisao: d.decisao, parecer: d.parecer, em: d.createdAt.toISOString() })),
+          }
+        : null,
+      novacaoId: novacaoAbsorveu?.id ?? null,
+      lancamentos: a.lancamentos.map((l) => ({
+        id: l.id,
+        tipo: l.tipo.toLowerCase(),
+        descricao: l.descricao,
+        valor: cent(l.valor),
+        dataPagamento: l.dataPagamento.toISOString(),
+        cobrancaAsaasId: l.asaasChargeId,
+      })),
+      trilha: ordenarTrilha(trilha),
+    };
+  }
+
+  // dd/mm/aaaa de um instante ISO ou de uma data 'YYYY-MM-DD' (fuso do negócio).
+  private diaBR(iso: string): string {
+    const dia = iso.length === 10 ? iso : new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    return dia.split('-').reverse().join('/');
   }
 }
