@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { nomeDiaSemanaISO, type DeclaracaoConciliacao, type TermosContratoLegado } from '@azit/utils';
+import { nomeDiaSemanaISO, somarDiasISO, type DeclaracaoConciliacao, type TermosContratoLegado } from '@azit/utils';
 import { LegadoConciliacaoService } from './legado-conciliacao.service';
 import { LegadoMigracaoService, type PlanoMigracao } from './legado-migracao.service';
 
@@ -165,8 +165,10 @@ describe('prévia da migração — vencimentos (doc 02 §26.15 item 5)', () => 
     expect(f[8].parcela).toMatchObject({ vencimentoContrato: '2026-11-02', origemVencimento: 'cadencia' });
     expect(plano.vencimentos.divergentes).toBe(8);
     expect(plano.vencimentos.aviso).toContain('contrato: segunda-feira · cobrança: terça-feira');
-    // Hoje (20/10) a parcela 6 vence: a vencer, substituída e emitida na hora; nada em atraso.
-    expect(f[6]).toMatchObject({ status: 'ABERTA', substituirChargeId: 'pay_6', emitirAgora: true });
+    // Hoje (20/10) a parcela 6 vence: a cobrança do Asaas fica amarrada (§26.15 item 6), não é substituída.
+    expect(f[6]).toMatchObject({ status: 'FECHADA', asaasChargeId: 'pay_6', substituirChargeId: null, emitirAgora: false });
+    // A 7 (27/10, D+7) segue substituída; o D-5 do sistema a emite.
+    expect(f[7]).toMatchObject({ status: 'ABERTA', substituirChargeId: 'pay_7', emitirAgora: false });
     expect(plano.contrato.dataPrimeiraParcela).toBe('2026-09-14');
   });
 
@@ -208,5 +210,64 @@ describe('prévia da migração — vencimentos (doc 02 §26.15 item 5)', () => 
     expect([1, 2, 3, 4].map((n) => f[n].vencimento)).toEqual(['2026-07-15', '2026-08-15', '2026-09-15', '2026-10-15']);
     expect(plano.vencimentos.aviso).toContain('contrato: dia 12 · cobrança: dia 15');
     expect(plano.contrato.periodicidade).toBe('mensal');
+  });
+});
+
+// Doc 02 §26.15 item 6 (decisão Luís 21/10/2026, caso Jucileno 2026090011): parcela não paga cuja
+// cobrança do Asaas venceu, vence hoje ou vence amanhã fica AMARRADA — mesmo declarada `pendente`.
+// Nenhum DELETE planejado para ela; a prévia avisa. Só a partir de D+2 é substituída.
+describe('prévia da migração — cobrança que vence até amanhã não é substituída (doc 02 §26.15 item 6)', () => {
+  // Contrato semanal de segunda 21/09; 1–4 pagas; a 5 com cobrança em `venc5`, a 6 uma semana depois.
+  function casoJucileno(venc5: string, extra: { cobrancas?: ReturnType<typeof cobranca>[]; fora?: { cobranca: string }[] } = {}) {
+    const venc6 = somarDiasISO(venc5, 7);
+    const pagas = ['2026-09-21', '2026-09-28', '2026-10-05', '2026-10-12'];
+    return montar({
+      termos: termos('2026-09-21', 8),
+      cobrancas: [...pagas.map((v, i) => cobranca(`pay_${i + 1}`, v, 'paga')), cobranca('pay_5', venc5, 'pendente'), cobranca('pay_6', venc6, 'pendente'), ...(extra.cobrancas ?? [])],
+      declaracao: {
+        parcelas: [
+          ...pagas.map((v, i) => ({ numero: i + 1, vencimento: v, situacao: 'paga' as const, cobrancas: [`pay_${i + 1}`] })),
+          { numero: 5, vencimento: '2026-10-19', situacao: 'pendente', cobrancas: ['pay_5'] },
+          { numero: 6, vencimento: '2026-10-26', situacao: 'pendente', cobrancas: ['pay_6'] },
+          { numero: 7, vencimento: '2026-11-02', situacao: 'futura' },
+          { numero: 8, vencimento: '2026-11-09', situacao: 'futura' },
+        ],
+        fora: extra.fora,
+      },
+    });
+  }
+  const deletesPlanejados = (plano: PlanoMigracao) => plano.faturas.flatMap((x) => [x.substituirChargeId, x.removerChargeId]).filter(Boolean);
+
+  it.each([
+    ['ontem (caso Jucileno)', '2026-10-19', 'parcela 5 venceu em 19/10 — mantida a cobrança do Asaas, não será substituída'],
+    ['hoje', '2026-10-20', 'parcela 5 vence hoje, 20/10 — mantida a cobrança do Asaas, não será substituída'],
+    ['amanhã', '2026-10-21', 'parcela 5 vence amanhã, 21/10 — mantida a cobrança do Asaas, não será substituída'],
+  ])('pendente vencendo %s: mantida e amarrada, sem DELETE planejado', async (_q, venc5, aviso) => {
+    const plano = await casoJucileno(venc5).previa('caso1');
+    const f = porParcela(plano);
+    expect(f[5]).toMatchObject({ vencimento: venc5, status: 'FECHADA', asaasChargeId: 'pay_5', substituirChargeId: null, removerChargeId: null, emitirAgora: false });
+    expect(deletesPlanejados(plano)).not.toContain('pay_5');
+    expect(plano.cobrancasMantidas).toEqual([{ origem: 'parcela:5', vencimento: venc5, chargeId: 'pay_5', aviso }]);
+    expect(plano.resumo).toMatchObject({ mantidasProximas: 1, faturasFechadas: 1, substituidas: 1 });
+    // A 6 (D+6 em diante) segue a regra de 01/10: substituída pelo sistema.
+    expect(f[6]).toMatchObject({ status: 'ABERTA', substituirChargeId: 'pay_6', asaasChargeId: null });
+  });
+
+  it('pendente vencendo depois de amanhã (D+2): substituída e emitida na hora (D-5), sem aviso', async () => {
+    const plano = await casoJucileno('2026-10-22').previa('caso1');
+    const f = porParcela(plano);
+    expect(f[5]).toMatchObject({ status: 'ABERTA', substituirChargeId: 'pay_5', asaasChargeId: null, emitirAgora: true });
+    expect(plano.cobrancasMantidas).toEqual([]);
+    expect(plano.resumo).toMatchObject({ mantidasProximas: 0, substituidas: 2, emitidasAgora: 1 });
+  });
+
+  it('cobrança avulsa (fora do cronograma) em aberto vencendo amanhã: mantida e amarrada, com aviso', async () => {
+    const avulsa = { ...cobranca('pay_av', '2026-10-21', 'pendente', 150), tipoInterpretado: 'outra' };
+    const plano = await casoJucileno('2026-10-26', { cobrancas: [avulsa], fora: [{ cobranca: 'pay_av' }] }).previa('caso1');
+    const fav = plano.faturas.find((x) => x.origem === 'cobranca:pay_av')!;
+    expect(fav).toMatchObject({ status: 'FECHADA', asaasChargeId: 'pay_av', substituirChargeId: null });
+    expect(deletesPlanejados(plano)).not.toContain('pay_av');
+    expect(plano.cobrancasMantidas.map((m) => m.chargeId)).toEqual(['pay_av']);
+    expect(plano.cobrancasMantidas[0].aviso).toContain('vence amanhã, 21/10 — mantida a cobrança do Asaas');
   });
 });

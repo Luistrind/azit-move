@@ -4,7 +4,7 @@ import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { cobrancaAsaasPaga, centavosParaReaisString, termosEfetivos, dataCalendarioUTC, dataHojeBrasil, diasCalendarioEntre, DIAS_POR_PERIODO, somarDiasISO, type LinhaConciliacao, type ForaDoCronograma, type TermosContratoLegado, alinharVencimentosLegado, avancarPeriodoISO, nomeDiaSemanaISO, type OrigemVencimentoLegado } from '@azit/utils';
+import { cobrancaAsaasPaga, cobrancaIntocavelNaMigracao,centavosParaReaisString, termosEfetivos, dataCalendarioUTC, dataHojeBrasil, diasCalendarioEntre, DIAS_POR_PERIODO, somarDiasISO, type LinhaConciliacao, type ForaDoCronograma, type TermosContratoLegado, alinharVencimentosLegado, avancarPeriodoISO, nomeDiaSemanaISO, type OrigemVencimentoLegado } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasLeituraService } from '../asaas/asaas-leitura.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
@@ -111,7 +111,10 @@ export interface PlanoMigracao {
   faturas: FaturaPlano[];
   rps: RpPlano[];
   acordo: AcordoPlano | null;
-  resumo: { faturasPagas: number; faturasFechadas: number; faturasAbertas: number; faturasRenegociadas: number; parcelasPagas: number; reembolsos: number; avulsas: number; encargos: number; assinaturaId: string | null; substituidas: number; emitidasAgora: number; removidas: number };
+  // §26.15 item 6 (21/10, Jucileno): cobrança em aberto que vence até AMANHÃ (ou já venceu)
+  // não é substituída — fica amarrada à fatura, mesmo declarada `pendente`. Um aviso por cobrança.
+  cobrancasMantidas: { origem: string; vencimento: string; chargeId: string; aviso: string }[];
+  resumo: { faturasPagas: number; faturasFechadas: number; faturasAbertas: number; faturasRenegociadas: number; parcelasPagas: number; reembolsos: number; avulsas: number; encargos: number; assinaturaId: string | null; substituidas: number; emitidasAgora: number; removidas: number; mantidasProximas: number };
 }
 
 // Fatura que nasceu FECHADA amarrada à cobrança antiga do Asaas (vencida).
@@ -121,6 +124,7 @@ const d = (iso: string) => new Date(`${iso}T03:00:00.000Z`); // meia-noite de Br
 // Dias de calendário a − b (Regra 16: a conta vive em @azit/utils).
 const difDias = (a: string, b: string) => diasCalendarioEntre(b, a);
 const reais = (c: number) => centavosParaReaisString(c);
+const diaMes = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 
 // Campos do ativo gravados a partir da consulta FIPE (valor de venda = FIPE).
 function dadosFipe(f: ConsultaFipe | null) {
@@ -533,6 +537,9 @@ export class LegadoMigracaoService {
   // estava no caso, logo não foi substituída. Lê as cobranças do cliente AO
   // VIVO e apaga as pendentes A VENCER sem externalReference (as do sistema
   // sempre têm). A fatura daquela semana já existe ABERTA; o sistema emite.
+  // Nunca apaga (§26.15 item 6, 21/10): cobrança que alguma fatura referencia
+  // (`asaasChargeId` — a amarrada não tem externalReference e parecia órfã) nem
+  // cobrança que vence até AMANHÃ.
   async limparCobrancasOrfas(casoId: string, usuarioId: string) {
     const caso = await this.prisma.db.casoMigracaoLegado.findUnique({ where: { id: casoId }, select: { id: true, status: true, asaasCustomerId: true, nome: true, migracaoResumo: true } });
     if (!caso) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Caso não encontrado' });
@@ -540,7 +547,11 @@ export class LegadoMigracaoService {
     if (this.asaasLeitura.ambiente === 'simulado') return { apagadas: 0, erro: null as string | null, vencimentos: [] as string[] };
     const hoje = dataHojeBrasil();
     const cobrancas = await this.asaasLeitura.listarCobrancas(caso.asaasCustomerId);
-    const orfas = cobrancas.filter((c) => !c.deleted && c.status === 'PENDING' && !c.externalReference && c.dueDate >= hoje);
+    const candidatas = cobrancas.filter((c) => !c.deleted && c.status === 'PENDING' && !c.externalReference && !cobrancaIntocavelNaMigracao(c.dueDate, hoje));
+    const amarradas = candidatas.length
+      ? new Set((await this.prisma.db.fatura.findMany({ where: { asaasChargeId: { in: candidatas.map((c) => c.id) } }, select: { asaasChargeId: true } })).map((f) => f.asaasChargeId))
+      : new Set<string | null>();
+    const orfas = candidatas.filter((c) => !amarradas.has(c.id));
     const vencimentos: string[] = [];
     let erro: string | null = null;
     for (const c of orfas) {
@@ -583,17 +594,26 @@ export class LegadoMigracaoService {
     await this.filaRecebido.add('conciliar', eventoConciliacaoDe(faturaId, pg));
   }
 
-  // Apaga no Asaas as cobranças A VENCER da assinatura antiga e emite as do
+  // Substitui no Asaas as cobranças A VENCER da assinatura antiga pelas do
   // sistema. Por cobrança: primeiro lê ao vivo — JÁ PAGA: não apaga, amarra e
-  // enfileira a conciliação (conciliadasNaMigracao); em aberto: DELETE
-  // /payments/{id} → ok: fatura segue ABERTA (o fechamento D-5 emite) ou, se já
-  // está no D-5, fecha e emite AGORA; falha do DELETE: a fatura volta a ficar
-  // amarrada à cobrança antiga (FECHADA), nada se perde.
+  // enfileira a conciliação (conciliadasNaMigracao). Em aberto:
+  //  - vence até AMANHÃ (§26.15 item 6, 21/10 — caso Jucileno): não toca; fica
+  //    amarrada (o planner já não a manda para cá — esta é a segunda trava);
+  //  - no D-5 (emitirAgora): CRIA a nova primeiro e só então apaga a antiga.
+  //    Criação falhou → antiga intacta e amarrada. Antiga não saiu → a nova é
+  //    desfeita e a antiga volta a ser a da fatura (nunca duas vivas);
+  //  - depois do D-5: apaga a antiga; a fatura segue ABERTA e o fechamento D-5
+  //    emite a do sistema (vencimento ≥ D+6: o Asaas nunca recusa por data).
+  // Qualquer falha: a fatura fica amarrada à cobrança antiga (FECHADA), nada se perde.
   private async substituirCobrancas(casoId: string, lista: { faturaId: string; chargeId: string; emitirAgora: boolean; vencimento: string }[]) {
     const r = { apagadas: 0, emitidasAgora: 0, conciliadas: [] as string[], mantidas: [] as { vencimento: string; chargeId: string; erro: string }[] };
     if (!lista.length) return r;
     const simulado = this.asaasLeitura.ambiente === 'simulado';
+    const hoje = dataHojeBrasil();
+    const amarrarAntiga = (s: { faturaId: string; chargeId: string }) =>
+      this.prisma.db.fatura.update({ where: { id: s.faturaId }, data: { status: 'FECHADA', asaasChargeId: s.chargeId } }).catch(() => undefined);
     for (const s of lista) {
+      let nova: string | null = null;
       try {
         const paga = await this.lerSeJaPaga(casoId, s.chargeId);
         if (paga) {
@@ -602,17 +622,40 @@ export class LegadoMigracaoService {
           this.logger.log(`caso ${casoId}: cobrança ${s.chargeId} já paga no Asaas (${paga.status}) — conciliação enfileirada`);
           continue;
         }
-        if (!simulado) await this.asaasLeitura.requisicao('DELETE', `/payments/${s.chargeId}`);
-        r.apagadas++;
+        if (cobrancaIntocavelNaMigracao(s.vencimento, hoje)) {
+          await amarrarAntiga(s);
+          r.mantidas.push({ vencimento: s.vencimento, chargeId: s.chargeId, erro: 'vence até amanhã — mantida, não substituída (doc 02 §26.15 item 6)' });
+          continue;
+        }
         if (s.emitirAgora) {
           await this.prisma.db.fatura.update({ where: { id: s.faturaId }, data: { status: 'FECHADA' } });
           await this.fatura.gerarCobranca(s.faturaId);
-          r.emitidasAgora++;
+          nova = (await this.prisma.db.fatura.findUnique({ where: { id: s.faturaId }, select: { asaasChargeId: true } }))?.asaasChargeId ?? null;
+          if (!nova || nova === s.chargeId) { nova = null; throw new Error('a cobrança nova não foi criada no Asaas'); }
         }
       } catch (e) {
         const erro = (e as Error).message.slice(0, 200);
-        // Não conseguiu apagar (ou emitir): mantém a cobrança antiga amarrada.
-        await this.prisma.db.fatura.update({ where: { id: s.faturaId }, data: { status: 'FECHADA', asaasChargeId: s.chargeId } }).catch(() => undefined);
+        // Não conseguiu ler ou criar a nova: a antiga fica intacta e amarrada.
+        await amarrarAntiga(s);
+        r.mantidas.push({ vencimento: s.vencimento, chargeId: s.chargeId, erro });
+        this.logger.warn(`caso ${casoId}: cobrança ${s.chargeId} mantida (${erro})`);
+        continue;
+      }
+      try {
+        if (!simulado) await this.asaasLeitura.requisicao('DELETE', `/payments/${s.chargeId}`);
+        r.apagadas++;
+        if (nova) r.emitidasAgora++;
+      } catch (e) {
+        let erro = (e as Error).message.slice(0, 200);
+        // A antiga não saiu: desfaz a nova para o cliente não ter duas cobranças vivas.
+        if (nova) {
+          try {
+            if (!simulado) await this.asaasLeitura.requisicao('DELETE', `/payments/${nova}`);
+          } catch (e2) {
+            erro = `${erro} · a nova ${nova} também ficou viva — apague uma delas no painel do Asaas (${(e2 as Error).message.slice(0, 120)})`;
+          }
+        }
+        await amarrarAntiga(s);
         r.mantidas.push({ vencimento: s.vencimento, chargeId: s.chargeId, erro });
         this.logger.warn(`caso ${casoId}: cobrança ${s.chargeId} mantida (${erro})`);
       }
@@ -818,7 +861,7 @@ export class LegadoMigracaoService {
     const faturas: FaturaPlano[] = [];
     const rps: RpPlano[] = [];
     let rpAberto: { chave: string; idx: number } | null = null;
-    const resumo = { faturasPagas: 0, faturasFechadas: 0, faturasAbertas: 0, faturasRenegociadas: 0, parcelasPagas: 0, reembolsos: 0, avulsas: 0, encargos: 0, assinaturaId: caso.assinaturaId, substituidas: 0, emitidasAgora: 0, removidas: 0 };
+    const resumo = { faturasPagas: 0, faturasFechadas: 0, faturasAbertas: 0, faturasRenegociadas: 0, parcelasPagas: 0, reembolsos: 0, avulsas: 0, encargos: 0, assinaturaId: caso.assinaturaId, substituidas: 0, emitidasAgora: 0, removidas: 0, mantidasProximas: 0 };
     // Fatura que já estaria no D-5 (vence em até 5 dias) é emitida na hora.
     const emitirAgora = (venc: string) => diasCalendarioEntre(hoje, venc) <= 5;
     // Acordo em andamento declarado (§26.15) + rótulos de item (ex.: resíduo).
@@ -828,6 +871,22 @@ export class LegadoMigracaoService {
     // (semanal/quinzenal/mensal com clamp) é o do cronograma nativo — @azit/utils.
     const periodicidade: 'semanal' | 'quinzenal' | 'mensal' = conc.periodicidade ?? 'semanal';
     const avancarPeriodo = (iso: string, n: number): string => avancarPeriodoISO(iso, n, periodicidade);
+    // Cobrança antiga em aberto que vence até AMANHÃ (§26.15 item 6, decisão Luís
+    // 21/10 — caso Jucileno): nunca é apagada nem substituída, mesmo declarada
+    // `pendente`. A fatura nasce FECHADA amarrada a ela, como uma vencida.
+    const cobrancasMantidas: PlanoMigracao['cobrancasMantidas'] = [];
+    const vencimentoCobranca = (cobrancaId: string | null | undefined) => {
+      const c = cobrancaId ? cobrancas.get(cobrancaId) : undefined;
+      return c ? dataCalendarioUTC(c.vencimento) : null;
+    };
+    const manterSeProxima = (origem: string, rotulo: string, chargeId: string, venc: string): boolean => {
+      if (!cobrancaIntocavelNaMigracao(venc, hoje)) return false;
+      const dif = diasCalendarioEntre(hoje, venc);
+      const quando = dif < 0 ? `venceu em ${diaMes(venc)}` : dif === 0 ? `vence hoje, ${diaMes(venc)}` : `vence amanhã, ${diaMes(venc)}`;
+      cobrancasMantidas.push({ origem, vencimento: venc, chargeId, aviso: `${rotulo} ${quando} — mantida a cobrança do Asaas, não será substituída` });
+      resumo.mantidasProximas++;
+      return true;
+    };
 
     const statusDe = (l: LinhaConciliacao, rec: DivergenciaReconhecida | undefined, vencFatura: string): { status: StatusFaturaPlano; pagoEm: string | null; valorPago: number | null; chargeId: string | null; substituir: string | null; remover: string | null } => {
       const chargeId = chargeDe(l.cobrancaId) ?? chargeDe(l.partes[0]?.cobrancaId);
@@ -847,8 +906,15 @@ export class LegadoMigracaoService {
       }
       if (rec?.desfecho === 'PAGA_FORA_ASAAS') return { status: 'PAGA', pagoEm: l.pagoEm ?? vencFatura, valorPago: l.esperadoValor, chargeId: null, substituir: null, remover: null };
       if (rec?.desfecho === 'VALOR_ACEITO') return { status: 'PAGA', pagoEm: l.pagoEm ?? l.cobradoEm ?? vencFatura, valorPago: l.pagoValor ?? l.cobradoValor ?? l.esperadoValor, chargeId, substituir: null, remover: null };
-      // A vencer: a cobrança antiga é substituída pela do sistema (decisão 01/10).
-      if (l.situacao === 'pendente' && chargeId) return { status: 'ABERTA', pagoEm: null, valorPago: null, chargeId: null, substituir: chargeId, remover: null };
+      // A vencer: a cobrança antiga é substituída pela do sistema (decisão 01/10) —
+      // só a partir de D+2; vencida/hoje/amanhã fica amarrada (§26.15 item 6). Vale
+      // a data mais cedo entre as cobranças da linha.
+      if (l.situacao === 'pendente' && chargeId) {
+        const datas = [l.cobrancaId, ...l.partes.map((x) => x.cobrancaId)].map(vencimentoCobranca).filter((x): x is string => !!x).sort();
+        const rotulo = l.serie === 'parcela' ? `parcela ${l.numero}` : l.serie === 'intermediaria' ? `intermediária ${l.numero}` : 'entrada';
+        if (manterSeProxima(l.chave, rotulo, chargeId, datas[0] ?? l.cobradoEm ?? vencFatura)) return { status: 'FECHADA', pagoEm: null, valorPago: null, chargeId, substituir: null, remover: null };
+        return { status: 'ABERTA', pagoEm: null, valorPago: null, chargeId: null, substituir: chargeId, remover: null };
+      }
       if (l.situacao === 'vencida') return { status: 'FECHADA', pagoEm: null, valorPago: null, chargeId, substituir: null, remover: null };
       return { status: 'ABERTA', pagoEm: null, valorPago: null, chargeId: null, substituir: null, remover: null };
     };
@@ -1027,6 +1093,7 @@ export class LegadoMigracaoService {
       let status: StatusFaturaPlano;
       let substituir: string | null = null;
       if (f.classe === 'paga') status = pagoEm && diasCalendarioEntre(venc, pagoEm) > 0 ? 'PAGA_EM_ATRASO' : 'PAGA';
+      else if (f.classe === 'pendente' && manterSeProxima(`cobranca:${f.cobrancaId}`, `cobrança avulsa (${f.tipo})`, cob.asaasPaymentId, dataCalendarioUTC(cob.vencimento))) status = 'FECHADA';
       else if (f.classe === 'pendente') { status = 'ABERTA'; substituir = cob.asaasPaymentId; }
       else if (f.classe === 'vencida') status = 'FECHADA';
       else continue;
@@ -1055,6 +1122,7 @@ export class LegadoMigracaoService {
       faturas,
       rps,
       acordo,
+      cobrancasMantidas,
       resumo,
     };
   }

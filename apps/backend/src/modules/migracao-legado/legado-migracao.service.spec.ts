@@ -8,17 +8,28 @@ import { LegadoMigracaoService } from './legado-migracao.service';
 
 type Dubles = ReturnType<typeof montar>;
 
+// Dia da migração fixo (fuso Brasil): a regra de 21/10 depende de "hoje" (§26.15 item 6).
+const HOJE = '2026-10-21';
+beforeAll(() => { jest.useFakeTimers({ now: new Date(`${HOJE}T15:00:00.000Z`), doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] }); });
+afterAll(() => { jest.useRealTimers(); });
+
 function montar(ambiente: 'sandbox' | 'simulado' = 'sandbox') {
   const prisma = {
     db: {
-      fatura: { update: jest.fn().mockResolvedValue({}) },
+      fatura: {
+        update: jest.fn().mockResolvedValue({}),
+        // Depois do gerarCobranca: o id da cobrança NOVA gravado na fatura.
+        findUnique: jest.fn().mockResolvedValue({ asaasChargeId: 'pay_novo' }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      logAuditoria: { create: jest.fn().mockResolvedValue({}) },
       casoMigracaoLegado: {
         findUnique: jest.fn().mockResolvedValue({ migracaoResumo: { faturas: 3 }, nome: 'Cliente Teste' }),
         update: jest.fn().mockResolvedValue({}),
       },
     },
   };
-  const asaasLeitura = { ambiente, requisicao: jest.fn() };
+  const asaasLeitura = { ambiente, requisicao: jest.fn(), listarCobrancas: jest.fn().mockResolvedValue([]) };
   const notificacao = { emitir: jest.fn().mockResolvedValue(undefined) };
   const fatura = { gerarCobranca: jest.fn().mockResolvedValue(undefined) };
   const fila = { add: jest.fn().mockResolvedValue(undefined) };
@@ -35,6 +46,7 @@ function montar(ambiente: 'sandbox' | 'simulado' = 'sandbox') {
   // Os métodos são privados (internos ao corte); o teste os alcança por índice.
   const s = svc as unknown as {
     substituirCobrancas: (casoId: string, lista: { faturaId: string; chargeId: string; emitirAgora: boolean; vencimento: string }[]) => Promise<{ apagadas: number; emitidasAgora: number; conciliadas: string[]; mantidas: { vencimento: string; chargeId: string; erro: string }[] }>;
+    limparCobrancasOrfas: (casoId: string, usuarioId: string) => Promise<{ apagadas: number; erro: string | null; vencimentos: string[] }>;
     conciliarAmarradasJaPagas: (casoId: string, lista: { faturaId: string; chargeId: string; vencimento: string }[]) => Promise<{ conciliadas: string[]; erros: { vencimento: string; chargeId: string; erro: string }[] }>;
   };
   return { prisma, asaasLeitura, notificacao, fatura, fila, s };
@@ -97,6 +109,9 @@ describe('substituirCobrancas — cobrança antiga a vencer', () => {
     expect(d.fatura.gerarCobranca).toHaveBeenCalledWith('fat1');
     expect(d.fila.add).not.toHaveBeenCalled();
     expect(r).toMatchObject({ apagadas: 2, emitidasAgora: 1, conciliadas: [], mantidas: [] });
+    // §26.15 item 6: no D-5 a nova é CRIADA antes de a antiga ser apagada.
+    const ordemDelete = d.asaasLeitura.requisicao.mock.invocationCallOrder[d.asaasLeitura.requisicao.mock.calls.findIndex((c: unknown[]) => c[0] === 'DELETE' && c[1] === '/payments/pay_1')];
+    expect(d.fatura.gerarCobranca.mock.invocationCallOrder[0]).toBeLessThan(ordemDelete);
   });
 
   it('erro real no DELETE: a fatura fica FECHADA amarrada à cobrança antiga (mantida) e a carteira é avisada', async () => {
@@ -162,5 +177,87 @@ describe('conciliarAmarradasJaPagas — fatura vencida amarrada à cobrança ant
     expect(r.erros).toEqual([{ vencimento: '2026-10-12', chargeId: 'pay_v', erro: 'Redis fora' }]);
     const resumo = d.prisma.db.casoMigracaoLegado.update.mock.calls[0][0].data.migracaoResumo;
     expect(resumo).toMatchObject({ conciliadasNaMigracao: 0, conciliacoesNaoEnfileiradas: r.erros });
+  });
+});
+
+// Doc 02 §26.15 item 6 (decisão Luís 21/10/2026, caso Jucileno 2026090011): a migração apagou a
+// cobrança ANTES de criar a substituta, o Asaas recusou recriar (`invalid_dueDate`) e a fatura
+// ficou presa a uma cobrança cancelada. Agora: vencida/hoje/amanhã não é tocada; criar antes de apagar.
+describe('substituirCobrancas — criar antes de apagar, nunca a que vence até amanhã', () => {
+  it('criação da nova falhou: a antiga NÃO é apagada, fica amarrada e o erro vai ao resumo', async () => {
+    const d = montar();
+    asaasResponde(d, PENDENTE_NO_ASAAS);
+    d.fatura.gerarCobranca.mockRejectedValue(new Error('Asaas 400: invalid_dueDate'));
+    const r = await d.s.substituirCobrancas('caso1', [{ faturaId: 'fat1', chargeId: 'pay_1', emitirAgora: true, vencimento: '2026-10-24' }]);
+    expect(chamadas(d, 'DELETE')).toHaveLength(0);
+    expect(d.prisma.db.fatura.update).toHaveBeenLastCalledWith({ where: { id: 'fat1' }, data: { status: 'FECHADA', asaasChargeId: 'pay_1' } });
+    expect(r).toMatchObject({ apagadas: 0, emitidasAgora: 0, mantidas: [{ vencimento: '2026-10-24', chargeId: 'pay_1', erro: 'Asaas 400: invalid_dueDate' }] });
+    const resumo = d.prisma.db.casoMigracaoLegado.update.mock.calls[0][0].data.migracaoResumo;
+    expect(resumo).toMatchObject({ cobrancasApagadas: 0, cobrancasMantidas: r.mantidas });
+    expect(d.notificacao.emitir).toHaveBeenCalledTimes(1);
+  });
+
+  it('gerarCobranca não gravou cobrança nova na fatura: a antiga não é apagada', async () => {
+    const d = montar();
+    asaasResponde(d, PENDENTE_NO_ASAAS);
+    d.prisma.db.fatura.findUnique.mockResolvedValue({ asaasChargeId: null });
+    const r = await d.s.substituirCobrancas('caso1', [{ faturaId: 'fat1', chargeId: 'pay_1', emitirAgora: true, vencimento: '2026-10-24' }]);
+    expect(chamadas(d, 'DELETE')).toHaveLength(0);
+    expect(d.prisma.db.fatura.update).toHaveBeenLastCalledWith({ where: { id: 'fat1' }, data: { status: 'FECHADA', asaasChargeId: 'pay_1' } });
+    expect(r.mantidas[0]).toMatchObject({ chargeId: 'pay_1', erro: 'a cobrança nova não foi criada no Asaas' });
+  });
+
+  it('nova criada mas a antiga não saiu: desfaz a nova (nunca duas vivas) e amarra a antiga', async () => {
+    const d = montar();
+    d.asaasLeitura.requisicao.mockImplementation((metodo: string, rota: string) => {
+      if (metodo === 'GET') return Promise.resolve(PENDENTE_NO_ASAAS);
+      if (rota === '/payments/pay_1') return Promise.reject(new Error('Asaas 400: não pode ser removida'));
+      return Promise.resolve({});
+    });
+    const r = await d.s.substituirCobrancas('caso1', [{ faturaId: 'fat1', chargeId: 'pay_1', emitirAgora: true, vencimento: '2026-10-24' }]);
+    expect(chamadas(d, 'DELETE')).toEqual([['DELETE', '/payments/pay_1'], ['DELETE', '/payments/pay_novo']]);
+    expect(d.prisma.db.fatura.update).toHaveBeenLastCalledWith({ where: { id: 'fat1' }, data: { status: 'FECHADA', asaasChargeId: 'pay_1' } });
+    expect(r).toMatchObject({ apagadas: 0, emitidasAgora: 0, mantidas: [{ chargeId: 'pay_1', erro: 'Asaas 400: não pode ser removida' }] });
+  });
+
+  it.each([['ontem', '2026-10-20'], ['hoje', '2026-10-21'], ['amanhã', '2026-10-22']])('segunda trava — vence %s: não cria nem apaga, fica amarrada', async (_q, vencimento) => {
+    const d = montar();
+    asaasResponde(d, { ...PENDENTE_NO_ASAAS, dueDate: vencimento });
+    const r = await d.s.substituirCobrancas('caso1', [{ faturaId: 'fat1', chargeId: 'pay_1', emitirAgora: true, vencimento }]);
+    expect(chamadas(d, 'DELETE')).toHaveLength(0);
+    expect(d.fatura.gerarCobranca).not.toHaveBeenCalled();
+    expect(d.prisma.db.fatura.update).toHaveBeenCalledWith({ where: { id: 'fat1' }, data: { status: 'FECHADA', asaasChargeId: 'pay_1' } });
+    expect(r.mantidas).toEqual([{ vencimento, chargeId: 'pay_1', erro: expect.stringContaining('vence até amanhã') }]);
+  });
+
+  it('depois de amanhã (D+2) no D-5: substituída — nova criada, antiga apagada', async () => {
+    const d = montar();
+    asaasResponde(d, { ...PENDENTE_NO_ASAAS, dueDate: '2026-10-23' });
+    const r = await d.s.substituirCobrancas('caso1', [{ faturaId: 'fat1', chargeId: 'pay_1', emitirAgora: true, vencimento: '2026-10-23' }]);
+    expect(d.fatura.gerarCobranca).toHaveBeenCalledWith('fat1');
+    expect(chamadas(d, 'DELETE')).toEqual([['DELETE', '/payments/pay_1']]);
+    expect(r).toMatchObject({ apagadas: 1, emitidasAgora: 1, mantidas: [] });
+  });
+});
+
+describe('limparCobrancasOrfas — nunca a amarrada nem a que vence até amanhã', () => {
+  it('apaga só a órfã de D+2 em diante sem fatura que a referencie', async () => {
+    const d = montar();
+    d.prisma.db.casoMigracaoLegado.findUnique.mockResolvedValue({ id: 'caso1', status: 'MIGRADO', asaasCustomerId: 'cus_1', nome: 'Cliente Teste', migracaoResumo: {} });
+    const pendente = (id: string, dueDate: string, externalReference: string | null = null) => ({ id, dueDate, status: 'PENDING', deleted: false, externalReference });
+    d.asaasLeitura.listarCobrancas.mockResolvedValue([
+      pendente('pay_ontem', '2026-10-20'),
+      pendente('pay_hoje', '2026-10-21'),
+      pendente('pay_amanha', '2026-10-22'),
+      pendente('pay_amarrada', '2026-10-28'), // fatura FECHADA amarrada (DELETE falhou na migração) — sem externalReference
+      pendente('pay_orfa', '2026-10-29'),
+      pendente('pay_sistema', '2026-10-30', 'fatura-x'),
+    ]);
+    d.prisma.db.fatura.findMany.mockResolvedValue([{ asaasChargeId: 'pay_amarrada' }]);
+    d.asaasLeitura.requisicao.mockResolvedValue({});
+    const r = await d.s.limparCobrancasOrfas('caso1', 'usuario1');
+    expect(d.prisma.db.fatura.findMany).toHaveBeenCalledWith({ where: { asaasChargeId: { in: ['pay_amarrada', 'pay_orfa'] } }, select: { asaasChargeId: true } });
+    expect(chamadas(d, 'DELETE')).toEqual([['DELETE', '/payments/pay_orfa']]);
+    expect(r).toEqual({ apagadas: 1, erro: null, vencimentos: ['2026-10-29'] });
   });
 });

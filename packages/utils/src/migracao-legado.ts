@@ -10,6 +10,8 @@
 // último. Quem não tem assinatura ativa nem cobrança em aberto provavelmente
 // não é cliente ativo e vai para o fim, como sugestão de descarte.
 
+import { diasCalendarioEntre } from './datas';
+
 export type StatusCobrancaAsaas =
   | 'PENDING'
   | 'RECEIVED'
@@ -74,6 +76,16 @@ const EM_ABERTO: ReadonlySet<string> = new Set(['PENDING', 'OVERDUE', 'AWAITING_
 // já paga entre a coleta e o corte, caso Carmo/Jonathan/Felipe 20/10) leem daqui.
 export function cobrancaAsaasPaga(status: string | null | undefined): boolean {
   return !!status && PAGA.has(status);
+}
+
+// Cobrança que a migração NUNCA apaga nem substitui (doc 02 §26.15 item 6,
+// decisão Luís 21/10/2026 — caso Jucileno): vencida, vencendo hoje ou amanhã
+// no dia da migração (fuso Brasil). O Asaas recusa recriar com vencimento no
+// passado e o cliente pode estar pagando o PIX que já tem; ela fica amarrada à
+// fatura. Só a partir de D+2 pode ser substituída. Uma regra só: o planner, o
+// corte e a limpeza de órfãs leem daqui (Regra 16).
+export function cobrancaIntocavelNaMigracao(vencimento: string, hoje: string): boolean {
+  return diasCalendarioEntre(hoje, vencimento) <= 1;
 }
 
 export function classificarCobrancaLegada(
