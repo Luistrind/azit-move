@@ -612,8 +612,46 @@ Cria um acordo (recuperação branda) em rascunho. Dilui parcelas em atraso sem 
 }
 ```
 
+#### GET `/api/v1/acordos`
+Lista de acordos (acompanhamento). Desde 21/10 cada linha traz `origem` (`nativo` | `legado` —
+importado pela migração do Asaas, doc 02 §26.15), `contratos[]` (`{ id, numero, descricao, placa }`),
+`contaId`, `criadoPor` e `periodicidade`, além de totais/entrada/plano em centavos.
+
 #### GET `/api/v1/acordos/:id`
-Detalhes de um acordo.
+Detalhe do acordo — a tela Renegociações mostra ao clicar (feedback Luís 21/10: "quantas parcelas
+o acordo engloba, quais foram, o que tinha nelas"). Dinheiro em centavos; datas-calendário
+`YYYY-MM-DD`; instantes em ISO. Nada é lido do caso de migração: o acordo legado sai com o MESMO
+detalhe a partir do que a migração gravou (parcelas com `acordoId`, faturas RENEGOCIADAS, lançamentos).
+
+| Campo | Conteúdo |
+|---|---|
+| `plano` | `valorTotalRenegociado`, `valorEntrada`, `numeroParcelasNovas`, `valorParcelaNova`, `periodicidade`, `totalPlano` (= N × parcela) |
+| `faturasCobertas[]` | fatura em que cada parcela coberta estava: `numero`, `dataVencimento`, `status`, `valorTotal`, `diasAtrasoNaDataBase`, `itens[]` (`descricao`, `tipo`, `valor`, `credor`, `coberto` = item é de parcela coberta) e `parcelas[]` (`display`, `contratoNumero`, `produto`, `dataVencimento`, `valorNominal`, `diasAtrasoNaDataBase`, `status` = rótulo "Em acordo"…) |
+| `totaisCobertura` | `quantidadeParcelas`, `quantidadeFaturas`, `valorNominal`, `encargosMora` e `valorAtualizado` do snapshot (null no legado), `moraHerdada` |
+| `cotas[]` | parcelas novas do item ACORDO: `display`, `contratoNumero`, `dataVencimento`, `valorNominal`, `status` (rótulo runtime — Regra 7), `dataPagamento`, `valorPago`, `valorEncargo`, `fatura { numero, dataVencimento, status }` |
+| `resumoCotas` | `quantidade`, `pagas`, `vencidas`, `venceHoje`, `aVencer`, `novadas`, `valorPago` (sem juros), `encargosPagos`, `valorAPagar`, `valorVencido`, `totalPlano` |
+| `entrada` | `valor`, `dataLimite`, `pagaEm`, `cobrancaAsaasId`, `situacao` (`sem_entrada` / `paga` / `aguardando` / `aguardando_aprovacao` / `expirada` / `nao_paga`) |
+| `exclusoes[]`, `vincendasIncluidas[]` | seleção do snapshot resolvida para `numero`/`dataVencimento`/`valorTotal` da fatura; exclusão traz `justificativa` |
+| `calculo` | prévia congelada (motor `catalogo` ou `placeholder`, taxas, saldo a parcelar, total, exceções) ou null |
+| `aprovacao` | solicitação na Central: `status`, `resumo`, `solicitante`, `decisoes[]` (`usuario`, `decisao`, `parecer`, `em`) |
+| `trilha[]` | eventos humanos em ordem: `em`, `titulo`, `por`, `detalhe` — proposta → Central → cobrança da entrada → entrada paga → efetivado → cumprido / novado / cancelado / expirado; legado: "firmado no legado" + "importado pela migração" |
+| `legado` | `casoId`, `parcelasCobertasDeclaradas[]`, `primeiraCotaEm`, `ultimaCotaEm` (null no nativo) |
+| `novacaoId` | novação que absorveu o acordo (status `novado`) |
+
+#### GET `/api/v1/novacoes/:id`
+Detalhe da novação (21/10): `origens[]` (contratos encerrados por novação com `parcelasNovadas`,
+`valorNominalNovado`, `acordosNovados[]`, `encerradoEm`), `faturasNovadas`, `termos` (o que o
+operador escolheu: prazo, frequência, desconto, acréscimo, troca, 1ª parcela), `simulacao`
+(congelada — mesma forma de `POST contas/:id/novacao/simular`), `contratoVeiculo` e
+`contratoTermo` (`numero`, `status`, plano, 1ª parcela, `cronograma { total, pagas, vencidas,
+aVencer, proximoVencimento }`, `assinatura { status, enviadoEm, concluidoEm, signatarios[] }` —
+o instrumento é um só, anexado ao contrato do veículo), `recebimentoInicial` (`valor`,
+`cobrancaAsaasId`, `pagoEm`, `situacao`), `aprovacao` e `trilha[]` (proposta → Central →
+contratos criados → instrumento enviado → assinaturas → recebimento → ativada / cancelada /
+expirada; inclui alterações da 1ª parcela do log de auditoria).
+
+`GET /api/v1/contratos/:id` passou a trazer `novacaoOrigemId` (contrato encerrado por novação →
+link para o detalhe).
 
 #### PATCH `/api/v1/acordos/:id/cancelar`
 Cancela um acordo em rascunho.

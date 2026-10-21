@@ -30,6 +30,8 @@ import { AsaasService } from '../asaas/asaas.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 import { NovacaoDecomposicaoService } from './novacao-decomposicao.service';
 import { SimularNovacaoBody } from './dto/novacao.dto';
+import { parcelaParaApi } from '../contrato/contrato.mapper';
+import type { EventoTrilha } from './renegociacao.service';
 import { INSTRUMENTO_NOVACAO_TEMPLATE } from './templates/instrumento-novacao.template';
 import { CONTRATO_VEICULO_TEMPLATE } from '../funil/templates/contrato-veiculo.template';
 import { qualificarParte } from '../funil/formalizacao.service';
@@ -867,14 +869,21 @@ export class NovacaoService implements OnModuleInit {
       where: { deletedAt: null },
       orderBy: { createdAt: 'desc' },
       include: {
-        conta: { select: { titularId: true, titular: { select: { nome: true } } } },
-        contratoVeiculo: { select: { id: true, numero: true, dataPrimeiraParcela: true, periodicidade: true, documentoAssinatura: { select: { status: true } } } },
+        conta: { select: { id: true, titularId: true, titular: { select: { nome: true } } } },
+        operador: { select: { nome: true } },
+        contratoVeiculo: { select: { id: true, numero: true, dataPrimeiraParcela: true, periodicidade: true, documentoAssinatura: { select: { status: true } }, ativo: { select: { placa: true, descricao: true } } } },
         contratoTermo: { select: { id: true, numero: true, dataPrimeiraParcela: true } },
+        contratosOrigem: { select: { id: true, numero: true } },
       },
     });
     return novacoes.map((n) => ({
       id: n.id,
       status: n.status.toLowerCase(),
+      contaId: n.conta.id,
+      criadaPor: n.operador.nome,
+      contratoUnico: !!(n.snapshotJson as unknown as SnapshotNovacao | null)?.dto?.contratoUnico,
+      veiculo: n.contratoVeiculo?.ativo ? { placa: n.contratoVeiculo.ativo.placa, descricao: n.contratoVeiculo.ativo.descricao } : null,
+      contratosOrigem: n.contratosOrigem.map((c) => c.numero).sort(),
       // 1ª parcela do relacionamento novo (Termo, se houver; senão veículo) e se
       // ainda pode ser trocada (aguardando assinatura, ninguém assinou) — 15/10.
       primeiraParcela: ((d) => (d ? dataCalendarioUTC(d) : null))(n.contratoTermo?.dataPrimeiraParcela ?? n.contratoVeiculo?.dataPrimeiraParcela),
@@ -897,4 +906,261 @@ export class NovacaoService implements OnModuleInit {
       criadaEm: n.createdAt.toISOString(),
     }));
   }
+
+  // Detalhe da novação (feedback Luís 21/10): contratos de origem liquidados
+  // com o que foi extinto, decomposição e simulação congeladas no snapshot,
+  // contratos novos (assinatura ZapSign + cronograma), recebimento inicial e
+  // a trilha (proposta → Central de Aprovações → contratos → assinatura →
+  // recebimento → ativação).
+  async detalhar(novacaoId: string) {
+    const n = await this.prisma.db.novacao.findFirst({
+      where: { id: novacaoId, deletedAt: null },
+      include: {
+        conta: { select: { id: true, titular: { select: { id: true, nome: true } } } },
+        operador: { select: { nome: true } },
+        contratoVeiculo: { include: { ativo: { select: { descricao: true, placa: true } }, documentoAssinatura: true } },
+        contratoTermo: { include: { ativo: { select: { descricao: true, placa: true } } } },
+        contratosOrigem: { include: { ativo: { select: { descricao: true, placa: true } } }, orderBy: { numero: 'asc' } },
+      },
+    });
+    if (!n) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Novação não encontrada' });
+    const snap = (n.snapshotJson as unknown as SnapshotNovacao | null) ?? null;
+    const sim = snap?.simulacao ?? null;
+    const unico = !!snap?.dto?.contratoUnico || (!!n.contratoVeiculoId && !n.contratoTermoId);
+
+    // --- Origens extintas: o que cada contrato tinha em aberto ao ser novado ----
+    const origens = await Promise.all(
+      n.contratosOrigem.map(async (c) => {
+        const [novadas, acordos] = await Promise.all([
+          this.prisma.db.parcela.aggregate({ where: { contratoId: c.id, status: 'NOVADA' }, _count: { _all: true }, _sum: { valorNominal: true } }),
+          this.prisma.db.acordo.findMany({
+            where: { status: 'NOVADO', deletedAt: null, OR: [{ contratoId: c.id }, { itensGerados: { some: { contratoId: c.id } } }] },
+            select: { id: true, numeroParcelasNovas: true, valorParcelaNova: true },
+          }),
+        ]);
+        return {
+          id: c.id,
+          numero: c.numero,
+          descricao: c.ativo?.descricao ?? 'Reembolso Parcelado',
+          placa: c.ativo?.placa ?? null,
+          encerradoEm: c.dataEncerramento?.toISOString() ?? null,
+          parcelasNovadas: novadas._count._all,
+          valorNominalNovado: cent(novadas._sum.valorNominal ?? null),
+          acordosNovados: acordos.map((a) => ({ id: a.id, plano: `${a.numeroParcelasNovas}× ${formatCurrency(cent(a.valorParcelaNova))}` })),
+        };
+      }),
+    );
+    const faturasNovadas = await this.prisma.db.fatura.count({ where: { contaId: n.conta.id, status: 'NOVADA' } });
+
+    // --- Contratos novos ---------------------------------------------------------
+    const novo = async (
+      papel: 'veiculo' | 'termo',
+      c: (typeof n)['contratoTermo'] | (typeof n)['contratoVeiculo'],
+      doc: (typeof n)['contratoVeiculo'] extends infer V ? (V extends { documentoAssinatura: infer D } ? D : null) : null,
+    ) => {
+      if (!c) return null;
+      const parcelas = await this.prisma.db.parcela.findMany({ where: { contratoId: c.id, deletedAt: null }, orderBy: { numero: 'asc' } });
+      const labels = parcelas.map((p) => parcelaParaApi(p).status);
+      const pagas = labels.filter((l) => PARCELA_PAGA_LABELS.has(l)).length;
+      const signatarios = (Array.isArray(doc?.signatarios) ? (doc!.signatarios as unknown as SignatarioResumo[]) : []).map((s) => ({
+        papel: s.papel,
+        nome: s.nome,
+        visualizouEm: s.visualizouEm ?? null,
+        assinouEm: s.assinouEm ?? null,
+      }));
+      return {
+        papel,
+        id: c.id,
+        numero: c.numero,
+        status: c.status.toLowerCase(),
+        descricao: c.ativo?.descricao ?? (papel === 'termo' ? 'Termo de Regularização de Débitos' : 'Veículo'),
+        placa: c.ativo?.placa ?? null,
+        numeroParcelas: c.numeroParcelas,
+        valorParcela: cent(c.valorParcelaInicial),
+        valorTotal: cent(c.valorTotal),
+        dataPrimeiraParcela: c.dataPrimeiraParcela.toISOString().slice(0, 10),
+        periodicidade: c.periodicidade.toLowerCase(),
+        cronogramaGerado: parcelas.length > 0,
+        cronograma: {
+          total: parcelas.length,
+          pagas,
+          vencidas: labels.filter((l) => l === 'Vencida').length,
+          aVencer: labels.filter((l) => l === 'Em aberto' || l === 'Vence hoje').length,
+          proximoVencimento: parcelas.find((p) => !p.status)?.dataVencimento.toISOString().slice(0, 10) ?? null,
+        },
+        assinatura: doc
+          ? { status: doc.status, simulado: doc.simulado, enviadoEm: doc.enviadoEm.toISOString(), concluidoEm: doc.concluidoEm?.toISOString() ?? null, motivoRecusa: doc.motivoRecusa, signatarios }
+          : null,
+      };
+    };
+    const docVeiculo = n.contratoVeiculo?.documentoAssinatura ?? null;
+    const [contratoVeiculo, contratoTermo] = await Promise.all([
+      novo('veiculo', n.contratoVeiculo, docVeiculo),
+      // O instrumento é um só, anexado ao contrato do veículo — o Termo é
+      // assinado no mesmo ato (doc 02 §7.7b).
+      novo('termo', n.contratoTermo, docVeiculo),
+    ]);
+
+    // --- Recebimento inicial -----------------------------------------------------
+    const recebimento = cent(n.recebimentoInicial);
+    const recebimentoInicial = {
+      valor: recebimento,
+      cobrancaAsaasId: n.asaasChargeIdRecebimento,
+      pagoEm: recebimento > 0 && n.status === 'ATIVO' ? n.dataAtivacao?.toISOString() ?? null : null,
+      situacao:
+        recebimento === 0 ? ('sem_recebimento' as const)
+        : n.status === 'ATIVO' ? ('pago' as const)
+        : n.status === 'AGUARDANDO_RECEBIMENTO' ? ('aguardando' as const)
+        : n.status === 'EXPIRADO' ? ('expirado' as const)
+        : ('pendente' as const),
+    };
+
+    // --- Trilha ------------------------------------------------------------------
+    const [aprovacao, logs] = await Promise.all([
+      this.prisma.db.aprovacao.findFirst({
+        where: { referenciaTipo: 'novacao', referenciaId: n.id },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          solicitante: { select: { nome: true } },
+          decisoes: { include: { usuario: { select: { nome: true } } }, orderBy: { createdAt: 'asc' } },
+        },
+      }),
+      this.prisma.db.logAuditoria.findMany({ where: { entidade: 'novacao', entidadeId: n.id }, orderBy: { createdAt: 'asc' } }),
+    ]);
+    const usuariosLog = await this.prisma.db.usuario.findMany({
+      where: { id: { in: [...new Set(logs.map((l) => l.usuarioId).filter((x): x is string => !!x))] } },
+      select: { id: true, nome: true },
+    });
+    const nomeUsuario = (id: string | null) => usuariosLog.find((u) => u.id === id)?.nome ?? null;
+
+    const trilha: EventoTrilha[] = [];
+    const parcelaTxt = `${formatCurrency(cent(n.valorParcela))} (${sim?.frequencia ?? contratoVeiculo?.periodicidade ?? '—'})`;
+    trilha.push({
+      em: n.createdAt.toISOString(),
+      titulo: 'Proposta de novação criada',
+      por: n.operador.nome,
+      detalhe: `${formatCurrency(cent(n.saldoVeiculo) + cent(n.saldoDemais))} reorganizados · parcela única ${parcelaTxt}${unico ? ' · contrato único' : ' · veículo + Termo'}${recebimento > 0 ? ` · recebimento inicial ${formatCurrency(recebimento)}` : ''}${n.observacao ? ` · ${n.observacao}` : ''}`,
+    });
+    if (aprovacao) {
+      trilha.push({ em: aprovacao.createdAt.toISOString(), titulo: 'Enviada à Central de Aprovações', por: aprovacao.solicitante.nome, detalhe: aprovacao.resumo });
+      const verbo = { APROVADA: 'aprovou', RECOMENDADA: 'recomendou a aprovação', REPROVADA: 'reprovou' } as Record<string, string>;
+      for (const d of aprovacao.decisoes) {
+        trilha.push({ em: d.createdAt.toISOString(), titulo: `${d.usuario.nome} ${verbo[d.decisao] ?? d.decisao.toLowerCase()}`, por: null, detalhe: d.parecer });
+      }
+    }
+    if (n.contratoVeiculo) {
+      trilha.push({
+        em: n.contratoVeiculo.createdAt.toISOString(),
+        titulo: unico ? `Contrato ${n.contratoVeiculo.numero} criado (contrato único)` : `Contratos ${n.contratoVeiculo.numero} (veículo) e ${n.contratoTermo?.numero ?? '—'} (Termo) criados`,
+        por: null,
+        detalhe: 'Aguardando assinatura — sem cronograma até a ativação (Regra 2: o cronograma nasce no dia zero)',
+      });
+    }
+    if (docVeiculo) {
+      trilha.push({
+        em: docVeiculo.enviadoEm.toISOString(),
+        titulo: docVeiculo.simulado ? 'Instrumento enviado para assinatura (simulado)' : 'Instrumento enviado para assinatura (ZapSign)',
+        por: null,
+        detalhe: `Signatários: ${(contratoVeiculo?.assinatura?.signatarios ?? []).map((s) => s.nome).join(', ') || '—'}`,
+      });
+      for (const s of contratoVeiculo?.assinatura?.signatarios ?? []) {
+        if (s.assinouEm) trilha.push({ em: s.assinouEm, titulo: `${s.nome} assinou`, por: null, detalhe: null });
+      }
+      if (docVeiculo.status === 'recusado') trilha.push({ em: docVeiculo.concluidoEm?.toISOString() ?? null, titulo: 'Assinatura recusada', por: null, detalhe: docVeiculo.motivoRecusa });
+    }
+    for (const l of logs) {
+      if (l.acao === 'novacao_primeira_parcela_alterada') {
+        const antes = (l.antes as { dataPrimeiraParcela?: string | null } | null)?.dataPrimeiraParcela ?? null;
+        const depois = (l.depois as { dataPrimeiraParcela?: string; assinaturaReenviada?: boolean } | null) ?? null;
+        trilha.push({
+          em: l.createdAt.toISOString(),
+          titulo: '1ª parcela alterada antes da assinatura',
+          por: nomeUsuario(l.usuarioId),
+          detalhe: `${antes ? `de ${this.diaBR(antes)} ` : ''}para ${depois?.dataPrimeiraParcela ? this.diaBR(depois.dataPrimeiraParcela) : '—'} · instrumento regenerado${depois?.assinaturaReenviada ? ' e reenviado' : ' (reenvio falhou — reenviar pela tela do contrato)'}`,
+        });
+      }
+    }
+    if (n.dataAssinatura) {
+      trilha.push({
+        em: n.dataAssinatura.toISOString(),
+        titulo: 'Instrumento assinado por todos',
+        por: null,
+        detalhe: recebimento > 0 ? `Cobrança do recebimento inicial (${formatCurrency(recebimento)}) gerada no Asaas — o pagamento ativa a novação` : 'Sem recebimento inicial — ativação enfileirada',
+      });
+    }
+    if (n.dataAtivacao) {
+      trilha.push({
+        em: n.dataAtivacao.toISOString(),
+        titulo: 'Novação ativada',
+        por: null,
+        detalhe: `${origens.length} contrato(s) de origem encerrado(s) por novação, ${origens.reduce((s, o) => s + o.parcelasNovadas, 0)} parcela(s) e ${faturasNovadas} fatura(s) extintas, ${origens.reduce((s, o) => s + o.acordosNovados.length, 0)} acordo(s) absorvido(s); cronograma(s) do(s) contrato(s) novo(s) gerado(s)`,
+      });
+    }
+    if (n.status === 'CANCELADO') trilha.push({ em: n.updatedAt.toISOString(), titulo: 'Novação cancelada', por: null, detalhe: n.observacao });
+    if (n.status === 'EXPIRADO') trilha.push({ em: n.updatedAt.toISOString(), titulo: 'Novação expirada', por: null, detalhe: 'O recebimento inicial venceu sem pagamento — os contratos novos foram cancelados; simule de novo (o saldo de origem seguiu acumulando mora)' });
+
+    return {
+      id: n.id,
+      status: n.status.toLowerCase(),
+      contaId: n.conta.id,
+      titular: n.conta.titular,
+      criadaEm: n.createdAt.toISOString(),
+      criadaPor: n.operador.nome,
+      observacao: n.observacao,
+      dataBase: snap?.dataBase ?? null,
+      contratoUnico: unico,
+      saldoVeiculo: cent(n.saldoVeiculo),
+      saldoDemais: cent(n.saldoDemais),
+      valorParcela: cent(n.valorParcela),
+      recebimentoInicial,
+      // Termos escolhidos pelo operador na proposta (centavos; datas 'YYYY-MM-DD').
+      termos: snap?.dto
+        ? {
+            prazoMeses: snap.dto.prazoMeses ?? null,
+            numeroParcelasVeiculo: snap.dto.numeroParcelasVeiculo ?? null,
+            frequencia: snap.dto.frequencia ?? sim?.frequencia ?? null,
+            desconto: snap.dto.desconto ?? 0,
+            acrescimo: snap.dto.acrescimo ?? 0,
+            acrescimoMotivo: snap.dto.acrescimoMotivo ?? null,
+            trocaAtivoId: snap.dto.trocaAtivoId ?? null,
+            dataPrimeiraParcela: sim?.dataPrimeiraParcela ?? snap.dto.dataPrimeiraParcela ?? null,
+          }
+        : null,
+      // Simulação congelada (números do servidor na data-base) — mesma forma da
+      // prévia na ficha do titular (SimulacaoNovacao).
+      simulacao: sim,
+      origens,
+      faturasNovadas,
+      contratoVeiculo,
+      contratoTermo,
+      aprovacao: aprovacao
+        ? {
+            id: aprovacao.id,
+            status: aprovacao.status,
+            resumo: aprovacao.resumo,
+            solicitante: aprovacao.solicitante.nome,
+            solicitadoEm: aprovacao.createdAt.toISOString(),
+            decisoes: aprovacao.decisoes.map((d) => ({ usuario: d.usuario.nome, decisao: d.decisao, parecer: d.parecer, em: d.createdAt.toISOString() })),
+          }
+        : null,
+      dataAssinatura: n.dataAssinatura?.toISOString() ?? null,
+      dataAtivacao: n.dataAtivacao?.toISOString() ?? null,
+      trilha: [...trilha].sort((a, b) => (a.em ?? '9999').localeCompare(b.em ?? '9999')),
+    };
+  }
+
+  private diaBR(iso: string): string {
+    const dia = iso.length === 10 ? iso : new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    return dia.split('-').reverse().join('/');
+  }
 }
+
+// Signatário como gravado em DocumentoAssinatura.signatarios (assinatura.service).
+interface SignatarioResumo {
+  papel: string;
+  nome: string;
+  visualizouEm?: string;
+  assinouEm?: string;
+}
+
+const PARCELA_PAGA_LABELS = new Set(['Paga', 'Paga em atraso', 'Paga antecipada']);

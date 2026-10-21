@@ -265,6 +265,14 @@ export function ContratoDetalhePage() {
                 )}
               </div>
             </div>
+            {/* Encerrado por novação: o detalhe da operação (origens, contratos
+                novos, trilha) vive em Renegociações — uma tela só (21/10). */}
+            {c.status === 'Encerrado' && c.motivoEncerramento === 'novacao' && c.novacaoOrigemId && (
+              <div className="mt-[12px] text-[12px]" style={{ color: 'var(--navy-text-body)' }}>
+                Este contrato foi extinto por uma novação.{' '}
+                <button onClick={() => navigate(`/acordos?novacao=${c.novacaoOrigemId}`)} className="font-semibold underline" style={{ color: 'var(--accent)' }}>Ver a novação →</button>
+              </div>
+            )}
             {/* Transferência da reserva de domínio (doc 02 §5.2): ação manual do
                 encerrado por quitação. */}
             {c.status === 'Encerrado' && c.motivoEncerramento === 'quitacao' && (

@@ -818,6 +818,9 @@ export class ContratoService {
       ...contratoParaApi(contrato),
       situacaoFinanceira,
       diasAtraso,
+      // Novação que extinguiu este contrato (encerrado por NOVACAO) — a tela
+      // leva ao detalhe da operação em Renegociações (21/10).
+      novacaoOrigemId: contrato.novacaoOrigemId,
       titular: contrato.conta.titular,
       // null = contrato sem ativo (RP — doc 02 §19, 12/09).
       ativo: contrato.ativo

@@ -1,24 +1,136 @@
 import { api } from '../lib/api';
 
 // Operações sobre contratos (Bloco 6). Valores em centavos.
+export interface ContratoResumo {
+  id: string;
+  numero: string;
+  descricao: string; // ativo (veículo) ou "Reembolso Parcelado"
+  placa: string | null;
+}
+
 export interface Acordo {
   id: string;
   status: string;
+  origem: 'nativo' | 'legado'; // legado = importado pela migração do Asaas (doc 02 §26.15)
   contratoNumero: string;
+  contratos: ContratoResumo[];
+  contaId: string;
   titularId: string;
   titular: string;
+  criadoPor: string;
   valorTotalRenegociado: number;
   valorEntrada: number;
   numeroParcelasNovas: number;
   valorParcelaNova: number;
+  periodicidade: 'semanal' | 'quinzenal' | 'mensal';
   dataCriacao: string;
   dataEfetivacao: string | null;
+}
+
+// Evento da trilha (acordo/novação): texto humano, sem id — mesmo padrão da
+// trilha de decisões da Central de Aprovações.
+export interface EventoTrilha {
+  em: string | null;
+  titulo: string;
+  por: string | null;
+  detalhe: string | null;
+}
+
+export interface AprovacaoResumo {
+  id: string;
+  status: 'PENDENTE' | 'APROVADA' | 'REPROVADA' | 'CANCELADA';
+  resumo: string;
+  solicitante: string;
+  solicitadoEm: string;
+  decisoes: { usuario: string; decisao: 'APROVADA' | 'RECOMENDADA' | 'REPROVADA'; parecer: string | null; em: string }[];
+}
+
+// Parcela coberta pelo acordo (vínculo acordoId — Regra 5: não é status).
+export interface ParcelaCoberta {
+  parcelaId: string;
+  contratoId: string;
+  contratoNumero: string;
+  produto: string;
+  display: string;
+  numero: number;
+  dataVencimento: string; // 'YYYY-MM-DD'
+  valorNominal: number;
+  diasAtrasoNaDataBase: number;
+  status: string; // rótulo (Em acordo / Paga …)
+  faturaId: string | null;
+}
+
+export interface FaturaCoberta {
+  id: string;
+  numero: number;
+  dataVencimento: string;
+  status: string; // renegociada | novada | paga …
+  valorTotal: number;
+  valorPago: number;
+  dataPagamento: string | null;
+  diasAtrasoNaDataBase: number;
+  itens: { descricao: string; tipo: string; valor: number; credor: string; coberto: boolean }[];
+  parcelas: ParcelaCoberta[];
+}
+
+// Cota nova do plano (parcela do ItemContratado de origem ACORDO).
+export interface CotaAcordo {
+  parcelaId: string;
+  contratoId: string;
+  contratoNumero: string;
+  numero: number;
+  totalParcelas: number;
+  display: string;
+  dataVencimento: string;
+  valorNominal: number;
+  status: string; // rótulo (Paga / Vencida / Em aberto …)
+  dataPagamento: string | null;
+  valorPago: number;
+  valorEncargo: number;
+  fatura: { id: string; numero: number; dataVencimento: string; status: string } | null;
+}
+
+// Detalhe do acordo (GET acordos/:id) — tela Renegociações, 21/10.
+export interface AcordoDetalhe {
+  id: string;
+  status: string;
+  origem: 'nativo' | 'legado';
+  contaId: string;
+  titular: { id: string; nome: string };
+  contratos: ContratoResumo[];
+  criadoEm: string;
+  criadoPor: string;
+  efetivadoEm: string | null;
+  dataBase: string;
+  observacao: string | null;
+  plano: { valorTotalRenegociado: number; valorEntrada: number; numeroParcelasNovas: number; valorParcelaNova: number; periodicidade: string; totalPlano: number };
+  totaisCobertura: { quantidadeParcelas: number; quantidadeFaturas: number; valorNominal: number; encargosMora: number | null; valorAtualizado: number | null; moraHerdada: string | null };
+  faturasCobertas: FaturaCoberta[];
+  cobertasSemFatura: ParcelaCoberta[];
+  cotas: CotaAcordo[];
+  resumoCotas: { quantidade: number; pagas: number; vencidas: number; venceHoje: number; aVencer: number; novadas: number; valorPago: number; encargosPagos: number; valorAPagar: number; valorVencido: number; totalPlano: number };
+  entrada: { valor: number; dataLimite: string | null; pagaEm: string | null; cobrancaAsaasId: string | null; situacao: 'sem_entrada' | 'paga' | 'aguardando' | 'aguardando_aprovacao' | 'expirada' | 'nao_paga' };
+  exclusoes: { faturaId: string; numero: number | null; dataVencimento: string | null; valorTotal: number | null; justificativa: string }[];
+  vincendasIncluidas: { faturaId: string; numero: number | null; dataVencimento: string | null; valorTotal: number | null }[];
+  calculo: (Partial<PreviaAcordo> & { motor: 'catalogo' | 'placeholder' }) | null;
+  aceiteWhatsapp: { confirmadoPeloOperadorEm: string } | null;
+  temTermoAntigo: boolean;
+  legado: { casoId: string; parcelasCobertasDeclaradas: number[]; primeiraCotaEm: string; ultimaCotaEm: string } | null;
+  aprovacao: AprovacaoResumo | null;
+  novacaoId: string | null;
+  lancamentos: { id: string; tipo: string; descricao: string; valor: number; dataPagamento: string; cobrancaAsaasId: string | null }[];
+  trilha: EventoTrilha[];
 }
 
 // Novação CONTA-cêntrica (F2, 14/09): dois contratos novos assinados juntos.
 export interface Novacao {
   id: string;
   status: string;
+  contaId: string;
+  criadaPor: string;
+  contratoUnico: boolean;
+  veiculo: { placa: string | null; descricao: string } | null;
+  contratosOrigem: string[]; // números dos contratos extintos (após a ativação)
   titularId: string;
   titular: string;
   saldoVeiculo: number;
@@ -35,6 +147,58 @@ export interface Novacao {
   dataAssinatura: string | null;
   dataAtivacao: string | null;
   criadaEm: string;
+}
+
+// Contrato gerado pela novação (veículo ou Termo), com assinatura e cronograma.
+export interface ContratoNovacao {
+  papel: 'veiculo' | 'termo';
+  id: string;
+  numero: string;
+  status: string; // lower (ativo, aguardando_assinatura, encerrado…)
+  descricao: string;
+  placa: string | null;
+  numeroParcelas: number;
+  valorParcela: number;
+  valorTotal: number;
+  dataPrimeiraParcela: string;
+  periodicidade: string;
+  cronogramaGerado: boolean;
+  cronograma: { total: number; pagas: number; vencidas: number; aVencer: number; proximoVencimento: string | null };
+  assinatura: {
+    status: string; // enviado | parcialmente_assinado | assinado | recusado | cancelado
+    simulado: boolean;
+    enviadoEm: string;
+    concluidoEm: string | null;
+    motivoRecusa: string | null;
+    signatarios: { papel: string; nome: string; visualizouEm: string | null; assinouEm: string | null }[];
+  } | null;
+}
+
+// Detalhe da novação (GET novacoes/:id) — tela Renegociações, 21/10.
+export interface NovacaoDetalhe {
+  id: string;
+  status: string;
+  contaId: string;
+  titular: { id: string; nome: string };
+  criadaEm: string;
+  criadaPor: string;
+  observacao: string | null;
+  dataBase: string | null;
+  contratoUnico: boolean;
+  saldoVeiculo: number;
+  saldoDemais: number;
+  valorParcela: number;
+  recebimentoInicial: { valor: number; cobrancaAsaasId: string | null; pagoEm: string | null; situacao: 'sem_recebimento' | 'pago' | 'aguardando' | 'expirado' | 'pendente' };
+  termos: { prazoMeses: number | null; numeroParcelasVeiculo: number | null; frequencia: string | null; desconto: number; acrescimo: number; acrescimoMotivo: string | null; trocaAtivoId: string | null; dataPrimeiraParcela: string | null } | null;
+  simulacao: SimulacaoNovacao | null; // congelada na proposta (números do servidor na data-base)
+  origens: { id: string; numero: string; descricao: string; placa: string | null; encerradoEm: string | null; parcelasNovadas: number; valorNominalNovado: number; acordosNovados: { id: string; plano: string }[] }[];
+  faturasNovadas: number;
+  contratoVeiculo: ContratoNovacao | null;
+  contratoTermo: ContratoNovacao | null;
+  aprovacao: AprovacaoResumo | null;
+  dataAssinatura: string | null;
+  dataAtivacao: string | null;
+  trilha: EventoTrilha[];
 }
 
 export interface ParcelaElegivel {
@@ -204,6 +368,16 @@ export interface SimulacaoQuitacao {
 export const operacoesService = {
   async acordos(): Promise<Acordo[]> {
     const { data } = await api.get<Acordo[]>('/api/v1/acordos');
+    return data;
+  },
+  // Detalhe do acordo (21/10): cobertas, entrada, cotas, snapshot e trilha.
+  async acordo(id: string): Promise<AcordoDetalhe> {
+    const { data } = await api.get<AcordoDetalhe>(`/api/v1/acordos/${id}`);
+    return data;
+  },
+  // Detalhe da novação (21/10): origens, decomposição, contratos novos e trilha.
+  async novacao(id: string): Promise<NovacaoDetalhe> {
+    const { data } = await api.get<NovacaoDetalhe>(`/api/v1/novacoes/${id}`);
     return data;
   },
   async elegivelConta(contaId: string): Promise<ElegivelConta> {

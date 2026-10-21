@@ -89,6 +89,13 @@ export class OperacoesController {
     return this.renegociacao.listar();
   }
 
+  // Detalhe do acordo (tela Renegociações, 21/10): parcelas cobertas com a
+  // composição da fatura, entrada, cotas novas com situação, snapshot e trilha.
+  @Get('acordos/:id')
+  acordo(@Param('id') id: string) {
+    return this.renegociacao.detalhar(id);
+  }
+
   // Dev: simula o pagamento da entrada (enfileira efetivação, como o webhook).
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
   @UseGuards(DevOnlyGuard)
@@ -126,6 +133,13 @@ export class OperacoesController {
   @Get('novacoes')
   novacoes() {
     return this.novacao.listar();
+  }
+
+  // Detalhe da novação (21/10): origens liquidadas, decomposição congelada no
+  // snapshot, contratos novos com assinatura e cronograma, recebimento, trilha.
+  @Get('novacoes/:id')
+  novacaoDetalhe(@Param('id') id: string) {
+    return this.novacao.detalhar(id);
   }
 
   // Propõe a novação CONTA-cêntrica (F2, 14/09): snapshot congela decomposição

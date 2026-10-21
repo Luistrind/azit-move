@@ -52,6 +52,8 @@ export interface ContratoDetalhe {
   recuperacaoIniciadaEm: string | null;
   transferenciaEfetivadaEm: string | null;
   motivoEncerramento: string | null;
+  // Novação que extinguiu este contrato (encerrado por novação) — link para o detalhe em Renegociações.
+  novacaoOrigemId: string | null;
   titular: { id: string; nome: string; cpfCnpj: string; whatsapp: string };
   // null = contrato sem ativo (Reembolso Parcelado — doc 02 §19, 12/09).
   ativo: {
