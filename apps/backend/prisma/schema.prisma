@@ -1337,6 +1337,7 @@ model Aprovacao {
   operacao    TipoOperacaoAlcada @relation(fields: [tipoOperacao], references: [chave])
   solicitante Usuario            @relation("AprovacaoSolicitante", fields: [solicitanteId], references: [id])
   decisoes    AprovacaoDecisao[]
+  complementos AprovacaoComplemento[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1361,6 +1362,29 @@ model AprovacaoDecisao {
 
   @@index([aprovacaoId])
   @@map("aprovacao_decisoes")
+}
+
+// Pedir complemento (doc 02 §7.9-A, proposta 21/10/2026 — a validar): pergunta de
+// quem decide ao solicitante, com prazo. NÃO é voto; enquanto aberto (sem
+// resposta) a solicitação fica "aguardando complemento" — situação calculada.
+model AprovacaoComplemento {
+  id              String    @id @default(cuid())
+  aprovacaoId     String
+  pergunta        String
+  pedidoPorId     String
+  prazo           DateTime
+  resposta        String?
+  respondidoPorId String?
+  respondidoEm    DateTime?
+
+  aprovacao     Aprovacao @relation(fields: [aprovacaoId], references: [id])
+  pedidoPor     Usuario   @relation("ComplementoPedidoPor", fields: [pedidoPorId], references: [id])
+  respondidoPor Usuario?  @relation("ComplementoRespondidoPor", fields: [respondidoPorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([aprovacaoId])
+  @@map("aprovacao_complementos")
 }
 
 // Novação: recuperação RADICAL. Liquida o contrato inteiro e gera um novo.
@@ -1490,6 +1514,8 @@ model Usuario {
   refreshTokens         RefreshToken[]
   aprovacoesSolicitadas Aprovacao[]        @relation("AprovacaoSolicitante")
   decisoesAprovacao     AprovacaoDecisao[] @relation("DecisaoUsuario")
+  complementosPedidos     AprovacaoComplemento[] @relation("ComplementoPedidoPor")
+  complementosRespondidos AprovacaoComplemento[] @relation("ComplementoRespondidoPor")
 
   permissoesArea PermissaoUsuarioArea[]
 

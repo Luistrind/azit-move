@@ -1,351 +1,177 @@
-import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
-import { formatCurrency, ROTULO_CODIGO_ANALISE } from '@azit/utils';
-import { aprovacaoService, Aprovacao, DecisaoInput } from '../services/aprovacao.service';
-import { mensagemErro } from '../lib/permissoes';
-import { toast } from '../components/Toast';
-import { Modal } from '../components/Modal';
-import { instanteCurtoBR } from '../lib/datas';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import { formatCurrency } from '@azit/utils';
+import { VezAprovacao } from '@azit/types';
+import { aprovacaoService, Aprovacao } from '../services/aprovacao.service';
+import { StatusBadge } from '../components/StatusBadge';
+import { esperaDesde, instanteCurtoBR } from '../lib/datas';
+import { motivosDe, resumoDecisoes, tituloHumano } from '../lib/aprovacao';
+import {
+  APROVACAO_STATUS_COLORS,
+  APROVACAO_STATUS_LABEL,
+  TOM_DOSSIE_FG,
+  VEZ_APROVACAO_COLORS,
+  VEZ_APROVACAO_LABEL,
+} from '../config/statusColors';
 
-function fmtDataHora(iso: string): string {
-  return instanteCurtoBR(iso);
-}
+// Fila parada: acima de 2 dias a espera fica em alerta (protótipo de 14/10).
+const ESPERA_ALERTA_HORAS = 48;
+// "Minhas para decidir": o que depende de quem está olhando.
+const VEZ_MINHA = new Set<string>([VezAprovacao.DECIDIR, VezAprovacao.RECOMENDAR, VezAprovacao.RESPONDER_COMPLEMENTO]);
 
-// Central legível (feedback Luís 07/09): título sem id interno nem códigos —
-// aprovações antigas gravaram "proposta cmXXXX (COC-08, ...)" no resumo.
-function tituloHumano(resumo: string): string {
-  return resumo
-    .replace(/\bcm[a-z0-9]{16,}\b/g, '') // ids internos somem
-    .replace(/\(?\b(?:COC|COM|APR)-\d+(?:,\s*(?:COC|COM|APR)-\d+)*\)?/g, '') // códigos viram bullets
-    .replace(/COCAD — análise da proposta\s*/,'Análise de cadastro · decisão do Comitê ')
-    .replace(/\(exceção\)/, '· exceção encaminhada pelo analista')
-    .replace(/\(\s*\)/g, '')
-    .replace(/\s{2,}/g, ' ')
-    .replace(/[\s—·:]+$/, '')
-    .trim();
-}
+const card = { background: 'var(--surface)', border: '1px solid var(--border)' } as const;
+const th = 'px-[12px] py-[10px] text-left text-[11px] font-semibold uppercase tracking-[.04em]';
 
-// Motivos por extenso: payload das aprovações novas; nas antigas, traduz os
-// códigos que estiverem no resumo pelo dicionário da política.
-function motivosDe(a: Aprovacao): string[] {
-  if (a.motivos?.length) return a.motivos;
-  const codigos = [...new Set(a.resumo.match(/\b(?:COC|COM|APR)-\d+\b/g) ?? [])];
-  return codigos.map((c) => ROTULO_CODIGO_ANALISE[c] ?? c);
-}
-
-const DECISAO_LABEL: Record<string, { rotulo: string; cor: string }> = {
-  APROVADA: { rotulo: 'aprovou', cor: '#1f9d5b' },
-  RECOMENDADA: { rotulo: 'recomendou', cor: '#b8860b' },
-  REPROVADA: { rotulo: 'reprovou', cor: '#c0392b' },
-};
-
-// Central única de aprovações (Doc 2 §7.9-A): todas as operações sujeitas a alçada,
-// com contexto do titular e trilha de decisões. Aprovar às cegas não é aprovar.
+// Central única de aprovações (Doc 2 §7.9-A) — LISTA (protótipo de 14/10,
+// implementado em 21/10): tipo, pedido em uma frase, com quem é a operação,
+// valor, quem pediu, espera, decisões e de quem é a vez. A linha abre o
+// dossiê (/aprovacoes/:id) — aprovar às cegas não é aprovar.
 export function AprovacoesPage() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [aba, setAba] = useState<'pendentes' | 'historico'>('pendentes');
+  const [escopo, setEscopo] = useState<'minhas' | 'todas' | null>(null); // null = automático
   const [filtroTipo, setFiltroTipo] = useState('');
-  const [ocupado, setOcupado] = useState<string | null>(null);
-  const [parecerDe, setParecerDe] = useState<{ id: string; decisao: DecisaoInput } | null>(null);
-  const [parecer, setParecer] = useState('');
 
-  const pendentes = useQuery({
-    queryKey: ['aprovacoes-pendentes'],
-    queryFn: () => aprovacaoService.pendentes(),
-  });
-  const historico = useQuery({
-    queryKey: ['aprovacoes-historico'],
-    queryFn: () => aprovacaoService.historico(),
-    enabled: aba === 'historico',
-  });
-
-  async function recarregar() {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['aprovacoes-pendentes'] }),
-      queryClient.invalidateQueries({ queryKey: ['aprovacoes-historico'] }),
-      queryClient.invalidateQueries({ queryKey: ['aprovacoes-contagem'] }),
-    ]);
-  }
-
-  async function decidir(id: string, decisao: DecisaoInput, textoParecer?: string) {
-    setOcupado(id);
-    try {
-      const r = await aprovacaoService.decidir(id, decisao, textoParecer);
-      await recarregar();
-      if (decisao === 'aprovar') {
-        toast.sucesso(r.efetivada ? (r.mensagem ?? 'Aprovada e efetivada.') : 'Aprovação registrada — aguarda as demais.');
-      } else if (decisao === 'recomendar') {
-        toast.info('Recomendação registrada — escalada para alçada superior.');
-      } else {
-        toast.info('Solicitação reprovada.');
-      }
-    } catch (e) {
-      toast.erro(mensagemErro(e));
-    } finally {
-      setOcupado(null);
-      setParecerDe(null);
-      setParecer('');
-    }
-  }
+  const pendentes = useQuery({ queryKey: ['aprovacoes-pendentes'], queryFn: () => aprovacaoService.pendentes() });
+  const historico = useQuery({ queryKey: ['aprovacoes-historico'], queryFn: () => aprovacaoService.historico(), enabled: aba === 'historico' });
 
   const lista = (aba === 'pendentes' ? pendentes.data : historico.data) ?? [];
-  const tipos = Array.from(new Set(lista.map((a) => a.tipoOperacaoNome)));
-  const filtrada = filtroTipo ? lista.filter((a) => a.tipoOperacaoNome === filtroTipo) : lista;
+  const minhas = (pendentes.data ?? []).filter((a) => a.minha.vez && VEZ_MINHA.has(a.minha.vez));
+  const escopoEfetivo = aba === 'historico' ? 'todas' : (escopo ?? (minhas.length > 0 ? 'minhas' : 'todas'));
+  const tipos = useMemo(() => Array.from(new Set(lista.map((a) => a.tipoOperacaoNome))).sort(), [lista]);
+  const filtrada = lista
+    .filter((a) => escopoEfetivo === 'todas' || (a.minha.vez && VEZ_MINHA.has(a.minha.vez)))
+    .filter((a) => !filtroTipo || a.tipoOperacaoNome === filtroTipo);
   const carregando = aba === 'pendentes' ? pendentes.isLoading : historico.isLoading;
 
+  const maisAntiga = (pendentes.data ?? []).reduce<string | null>((min, a) => (!min || a.solicitadoEm < min ? a.solicitadoEm : min), null);
+
+  const chip = (on: boolean) =>
+    on
+      ? { background: 'var(--surface-input)', color: 'var(--navy)', border: '1px solid var(--navy)' }
+      : { background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)' };
+
   return (
-    <div className="flex flex-col gap-[16px]">
-      <div className="flex items-center gap-[10px]">
+    <div className="flex flex-col gap-[14px]">
+      <div className="flex flex-wrap items-center gap-[10px]">
+        <div className="min-w-[220px] flex-1 text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
+          {pendentes.data
+            ? [
+                `${pendentes.data.length} pendente(s)`,
+                `${minhas.length} ${minhas.length === 1 ? 'depende' : 'dependem'} de você`,
+                maisAntiga ? `a mais antiga espera há ${esperaDesde(maisAntiga).texto}` : null,
+              ].filter(Boolean).join(' · ')
+            : ' '}
+        </div>
         {(['pendentes', 'historico'] as const).map((t) => (
           <button
             key={t}
-            onClick={() => setAba(t)}
+            onClick={() => { setAba(t); setFiltroTipo(''); }}
             className="h-[32px] rounded-[9px] px-[14px] text-[12.5px] font-semibold"
-            style={
-              aba === t
-                ? { background: 'var(--navy)', color: '#fff' }
-                : { background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)' }
-            }
+            style={aba === t ? { background: 'var(--navy)', color: '#fff' } : { background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)' }}
           >
             {t === 'pendentes' ? `Pendentes${pendentes.data ? ` (${pendentes.data.length})` : ''}` : 'Histórico'}
           </button>
         ))}
-        <div className="flex-1" />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-[8px]">
+        {aba === 'pendentes' && (
+          <>
+            <button onClick={() => setEscopo('minhas')} className="h-[28px] rounded-[9px] px-[10px] text-[12px] font-semibold" style={chip(escopoEfetivo === 'minhas')}>
+              Minhas para decidir ({minhas.length})
+            </button>
+            <button onClick={() => setEscopo('todas')} className="h-[28px] rounded-[9px] px-[10px] text-[12px] font-semibold" style={chip(escopoEfetivo === 'todas')}>
+              Todas
+            </button>
+          </>
+        )}
         {tipos.length > 1 && (
-          <select
-            value={filtroTipo}
-            onChange={(e) => setFiltroTipo(e.target.value)}
-            className="h-[32px] rounded-[9px] px-[10px] text-[12px]"
-            style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-          >
-            <option value="">Todos os tipos</option>
+          <>
+            <span className="mx-[4px] text-[12px]" style={{ color: 'var(--text-muted)' }}>Tipo:</span>
             {tipos.map((t) => (
-              <option key={t} value={t}>{t}</option>
+              <button key={t} onClick={() => setFiltroTipo(filtroTipo === t ? '' : t)} className="h-[28px] rounded-[9px] px-[10px] text-[12px] font-semibold" style={chip(filtroTipo === t)}>
+                {t}
+              </button>
             ))}
-          </select>
+          </>
         )}
       </div>
 
       {carregando ? (
         <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
       ) : filtrada.length === 0 ? (
-        <div className="rounded-[14px] py-[32px] text-center text-[13px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-          {aba === 'pendentes' ? 'Nenhuma solicitação aguardando aprovação.' : 'Sem histórico ainda.'}
+        <div className="rounded-[14px] py-[32px] text-center text-[13px]" style={{ ...card, color: 'var(--text-muted)' }}>
+          {aba === 'historico'
+            ? 'Sem histórico ainda.'
+            : escopoEfetivo === 'minhas'
+              ? 'Nada depende de você agora — veja "Todas" para acompanhar a fila.'
+              : 'Nenhuma solicitação aguardando aprovação.'}
         </div>
       ) : (
-        <div className="flex flex-col gap-[12px]">
-          {filtrada.map((a) => (
-            <CardAprovacao
-              key={a.id}
-              a={a}
-              ocupado={ocupado === a.id}
-              pendente={aba === 'pendentes'}
-              onTitular={(id) => navigate(`/titulares/${id}`)}
-              onDecidir={(decisao) => {
-                if (decisao === 'aprovar') void decidir(a.id, 'aprovar');
-                else setParecerDe({ id: a.id, decisao });
-              }}
-            />
-          ))}
+        <div className="overflow-x-auto rounded-[14px]" style={card}>
+          <table className="w-full min-w-[980px] border-collapse text-[12.5px]">
+            <thead>
+              <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
+                <th className={th}>Tipo</th>
+                <th className={th}>Pedido</th>
+                <th className={th}>Titular / fornecedor</th>
+                <th className={th + ' text-right'}>Valor</th>
+                <th className={th}>Solicitante</th>
+                <th className={th}>{aba === 'pendentes' ? 'Espera' : 'Pedido em'}</th>
+                <th className={th}>Decisões</th>
+                <th className={th}>{aba === 'pendentes' ? 'Sua vez?' : 'Resultado'}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtrada.map((a) => (
+                <LinhaAprovacao key={a.id} a={a} pendente={aba === 'pendentes'} onAbrir={() => navigate(`/aprovacoes/${a.id}`)} />
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
-
-      {/* Parecer para recomendar/reprovar */}
-      <Modal
-        open={!!parecerDe}
-        onClose={() => setParecerDe(null)}
-        title={parecerDe?.decisao === 'reprovar' ? 'Reprovar solicitação' : 'Recomendar aprovação'}
-      >
-        <div className="flex flex-col gap-[12px]">
-          <p className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
-            {parecerDe?.decisao === 'reprovar'
-              ? 'A solicitação será encerrada. Registre o motivo:'
-              : 'Sua alçada não cobre o valor — a recomendação fica registrada na trilha e a solicitação segue para quem pode aprovar.'}
-          </p>
-          <textarea
-            value={parecer}
-            onChange={(e) => setParecer(e.target.value)}
-            rows={3}
-            placeholder="Parecer (opcional)"
-            className="rounded-[8px] p-[10px] text-[13px]"
-            style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
-          />
-          <button
-            onClick={() => parecerDe && decidir(parecerDe.id, parecerDe.decisao, parecer || undefined)}
-            className="h-[36px] rounded-[9px] text-[13px] font-semibold"
-            style={
-              parecerDe?.decisao === 'reprovar'
-                ? { background: '#c0392b', color: '#fff' }
-                : { background: 'var(--navy)', color: '#fff' }
-            }
-          >
-            {parecerDe?.decisao === 'reprovar' ? 'Confirmar reprovação' : 'Registrar recomendação'}
-          </button>
-        </div>
-      </Modal>
     </div>
   );
 }
 
-function CardAprovacao({
-  a,
-  ocupado,
-  pendente,
-  onTitular,
-  onDecidir,
-}: {
-  a: Aprovacao;
-  ocupado: boolean;
-  pendente: boolean;
-  onTitular: (id: string) => void;
-  onDecidir: (d: DecisaoInput) => void;
-}) {
-  const statusCor =
-    a.status === 'APROVADA' ? '#1f9d5b' : a.status === 'REPROVADA' ? '#c0392b' : a.status === 'CANCELADA' ? 'var(--text-muted)' : '#b8860b';
+function LinhaAprovacao({ a, pendente, onAbrir }: { a: Aprovacao; pendente: boolean; onAbrir: () => void }) {
+  const espera = esperaDesde(a.solicitadoEm);
+  const motivos = motivosDe(a);
+  const vez = a.minha.vez ? VEZ_APROVACAO_LABEL[a.minha.vez] : null;
   return (
-    <div className="rounded-[14px] p-[16px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-      <div className="flex flex-wrap items-start gap-[12px]">
-        <div className="min-w-[220px] flex-1">
-          <div className="flex items-center gap-[8px]">
-            <span
-              className="rounded-[6px] px-[8px] py-[3px] text-[10.5px] font-bold uppercase tracking-[0.04em]"
-              style={{ background: 'var(--surface-input)', color: 'var(--text-label)' }}
-            >
-              {a.tipoOperacaoNome}
-            </span>
-            {!pendente && (
-              <span className="text-[11px] font-bold" style={{ color: statusCor }}>{a.status}</span>
-            )}
-          </div>
-          <div className="mt-[6px] text-[14px] font-bold">{tituloHumano(a.resumo)}</div>
-          {/* Motivos por extenso (07/09): ninguém decora COC-08 — novos vêm no
-              payload; legados são traduzidos do próprio resumo. */}
-          {motivosDe(a).length > 0 && (
-            <ul className="mt-[6px] flex flex-col gap-[3px]">
-              {motivosDe(a).map((m) => (
-                <li key={m} className="flex items-start gap-[6px] text-[12.5px]" style={{ color: 'var(--text-body)' }}>
-                  <span style={{ color: '#c98a0a' }}>⚠</span>
-                  <span>{m}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="mt-[2px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
-            {a.titular ? (
-              <button onClick={() => onTitular(a.titular!.id)} className="font-semibold" style={{ color: 'var(--navy)' }}>
-                {a.titular.nome}
-              </button>
-            ) : '—'}
-            {' · '}solicitado por {a.solicitante} em {fmtDataHora(a.solicitadoEm)}
-          </div>
-        </div>
-
-        <div className="text-right">
-          <div className="text-[16px] font-bold tabular-nums">{formatCurrency(a.valor)}</div>
-          <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-            {a.aprovacoesFeitas}/{a.aprovacoesNecessarias} aprovação(ões)
-          </div>
-        </div>
-      </div>
-
-      {/* Contexto financeiro do titular — base da decisão */}
-      {a.contexto && (
-        <div className="mt-[12px] grid grid-cols-2 gap-[8px] rounded-[10px] p-[10px] text-[12px] sm:grid-cols-4" style={{ background: 'var(--surface-input)' }}>
-          <div><span style={{ color: 'var(--text-muted)' }}>Contratos ativos</span><div className="font-bold">{a.contexto.contratosAtivos}</div></div>
-          <div><span style={{ color: 'var(--text-muted)' }}>Saldo devedor</span><div className="font-bold tabular-nums">{formatCurrency(a.contexto.saldoDevedor)}</div></div>
-          <div><span style={{ color: 'var(--text-muted)' }}>Em atraso</span><div className="font-bold tabular-nums" style={{ color: a.contexto.valorEmAtraso > 0 ? '#c0392b' : undefined }}>{formatCurrency(a.contexto.valorEmAtraso)}</div></div>
-          <div><span style={{ color: 'var(--text-muted)' }}>Faturas vencidas</span><div className="font-bold" style={{ color: a.contexto.faturasVencidas > 0 ? '#c0392b' : undefined }}>{a.contexto.faturasVencidas}</div></div>
-        </div>
-      )}
-
-      {/* Contexto de análise de cadastro (COCAD): a decisão é sobre a PROPOSTA
-          nova — parcela, rendas e o caminho para o dossiê completo. */}
-      {a.contextoAnalise && (
-        <div className="mt-[12px] rounded-[10px] p-[10px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
-          <div className="grid grid-cols-2 gap-[8px] sm:grid-cols-4">
-            <div>
-              <span style={{ color: 'var(--text-muted)' }}>Ativo da proposta</span>
-              <div className="font-bold">{a.contextoAnalise.ativo}</div>
-              {/* Quilometragem e contratos anteriores do carro (pedido Luís 14/10):
-                  dizem o quanto ele está rodado — faltava na decisão. */}
-              {a.contextoAnalise.veiculo && (
-                <div className="text-[11.5px]" style={{ color: 'var(--text-secondary)' }}>
-                  {[
-                    a.contextoAnalise.veiculo.ano,
-                    a.contextoAnalise.veiculo.quilometragem != null ? `${a.contextoAnalise.veiculo.quilometragem.toLocaleString('pt-BR')} km na entrada` : 'km não informada',
-                    a.contextoAnalise.veiculo.contratosAnteriores === 0 ? '1º contrato do veículo' : `${a.contextoAnalise.veiculo.contratosAnteriores} contrato(s) anterior(es)`,
-                  ].filter(Boolean).join(' · ')}
-                </div>
-              )}
-            </div>
-            <div><span style={{ color: 'var(--text-muted)' }}>Parcela{a.contextoAnalise.frequencia ? ` (${a.contextoAnalise.frequencia})` : ''}</span><div className="font-bold tabular-nums">{formatCurrency(a.contextoAnalise.valorParcela)}</div></div>
-            <div><span style={{ color: 'var(--text-muted)' }}>Renda declarada</span><div className="font-bold tabular-nums">{a.contextoAnalise.rendaDeclarada !== null ? formatCurrency(a.contextoAnalise.rendaDeclarada) : '—'}</div></div>
-            <div><span style={{ color: 'var(--text-muted)' }}>Renda apurada</span><div className="font-bold tabular-nums">{a.contextoAnalise.rendaApurada !== null ? formatCurrency(a.contextoAnalise.rendaApurada) : '—'}</div></div>
-          </div>
-          {/* Parecer do analista (22/09): antes o aprovador via só "Ver parecer" e
-              não tinha onde ler o texto — agora ele está aqui, na decisão. */}
-          {a.contextoAnalise.parecer ? (
-            <div className="mt-[10px] rounded-[8px] p-[10px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-              <div className="text-[11px] font-bold uppercase tracking-[.04em]" style={{ color: 'var(--text-muted)' }}>
-                Parecer do analista · {a.contextoAnalise.parecer.emitidoPor} · {fmtDataHora(a.contextoAnalise.parecer.emitidoEm)}
-              </div>
-              <div className="mt-[4px] whitespace-pre-wrap text-[12.5px]" style={{ color: 'var(--text-body)' }}>{a.contextoAnalise.parecer.texto}</div>
-            </div>
-          ) : (
-            <div className="mt-[8px] text-[11.5px]" style={{ color: '#c98a0a' }}>Sem parecer emitido para esta análise.</div>
-          )}
-          <Link to={`/analises/${a.contextoAnalise.analiseId}`} className="mt-[8px] inline-block text-[12px] font-semibold" style={{ color: 'var(--navy)' }}>
-            Abrir o dossiê completo da análise →
-          </Link>
-        </div>
-      )}
-
-      {/* Trilha de decisões */}
-      {a.decisoes.length > 0 && (
-        <div className="mt-[10px] flex flex-col gap-[4px]">
-          {a.decisoes.map((d, i) => {
-            const m = DECISAO_LABEL[d.decisao] ?? { rotulo: d.decisao, cor: 'var(--text-muted)' };
-            return (
-              <div key={i} className="text-[12px]" style={{ color: 'var(--text-body)' }}>
-                <span className="font-semibold" style={{ color: m.cor }}>● {d.usuario} {m.rotulo}</span>
-                {' '}em {fmtDataHora(d.em)}{d.parecer ? <span style={{ color: 'var(--text-muted)' }}> — “{d.parecer}”</span> : null}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Ações do usuário logado */}
-      {pendente && (
-        <div className="mt-[12px] flex items-center gap-[8px] border-t pt-[12px]" style={{ borderColor: 'var(--border-light)' }}>
-          {a.minha.ehSolicitante ? (
-            <span className="text-[12px] font-semibold" style={{ color: 'var(--text-muted)' }}>
-              Você solicitou — a decisão é de outra pessoa (segregação).
-            </span>
-          ) : a.minha.jaDecidiu ? (
-            <span className="text-[12px] font-semibold" style={{ color: 'var(--text-muted)' }}>
-              Você já registrou sua decisão nesta solicitação.
-            </span>
-          ) : (
-            <>
-              {a.minha.podeAprovar ? (
-                <button disabled={ocupado} onClick={() => onDecidir('aprovar')} className="h-[32px] rounded-[8px] px-[14px] text-[12px] font-semibold disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>
-                  Aprovar
-                </button>
-              ) : (
-                <button disabled={ocupado} onClick={() => onDecidir('recomendar')} className="h-[32px] rounded-[8px] px-[14px] text-[12px] font-semibold disabled:opacity-50" style={{ background: 'var(--navy)', color: '#fff' }} title="Sua alçada não cobre o valor — endosse e escale">
-                  Recomendar ↑
-                </button>
-              )}
-              <button disabled={ocupado || !a.minha.podeAprovar} onClick={() => onDecidir('reprovar')} className="h-[32px] rounded-[8px] px-[14px] text-[12px] font-semibold disabled:opacity-40" style={{ background: '#fdeceb', color: '#c0392b' }} title={a.minha.podeAprovar ? undefined : 'Reprovar exige alçada para o valor'}>
-                Reprovar
-              </button>
-            </>
-          )}
-        </div>
-      )}
-    </div>
+    <tr onClick={onAbrir} className="cursor-pointer hover:bg-[var(--surface-muted)]" style={{ borderBottom: '1px solid var(--border-light)' }}>
+      <td className="px-[12px] py-[11px] align-middle">
+        <span className="whitespace-nowrap rounded-[6px] px-[8px] py-[2px] text-[10.5px] font-bold uppercase tracking-[.04em]" style={{ background: 'var(--surface-input)', color: 'var(--text-label)' }}>
+          {a.tipoOperacaoNome}
+        </span>
+      </td>
+      <td className="px-[12px] py-[11px] align-middle">
+        <div className="font-bold" style={{ color: 'var(--text-primary)' }}>{tituloHumano(a.resumo)}</div>
+        {motivos.length > 0 && (
+          <div className="mt-[2px] text-[11.5px]" style={{ color: TOM_DOSSIE_FG.atencao }}>⚠ {motivos[0]}{motivos.length > 1 ? ` (+${motivos.length - 1})` : ''}</div>
+        )}
+      </td>
+      <td className="px-[12px] py-[11px] align-middle">{a.contraparte?.nome ?? '—'}</td>
+      <td className="whitespace-nowrap px-[12px] py-[11px] text-right align-middle font-bold tabular-nums">{formatCurrency(a.valor)}</td>
+      <td className="px-[12px] py-[11px] align-middle">{a.solicitante}</td>
+      <td className="whitespace-nowrap px-[12px] py-[11px] align-middle text-[11.5px]">
+        {pendente ? (
+          <span style={espera.horas >= ESPERA_ALERTA_HORAS ? { color: TOM_DOSSIE_FG.alerta, fontWeight: 700 } : { color: 'var(--text-muted)' }}>{espera.texto}</span>
+        ) : (
+          <span style={{ color: 'var(--text-muted)' }}>{instanteCurtoBR(a.solicitadoEm)}</span>
+        )}
+      </td>
+      <td className="px-[12px] py-[11px] align-middle text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+        {resumoDecisoes(a)}
+        {a.complementoAberto && <div style={{ color: a.complementoAberto.vencido ? TOM_DOSSIE_FG.alerta : TOM_DOSSIE_FG.atencao }}>complemento pedido{a.complementoAberto.vencido ? ' · prazo vencido' : ''}</div>}
+      </td>
+      <td className="px-[12px] py-[11px] align-middle">
+        {pendente
+          ? vez && <StatusBadge label={vez} colors={VEZ_APROVACAO_COLORS} />
+          : <StatusBadge label={APROVACAO_STATUS_LABEL[a.status] ?? a.status} colors={APROVACAO_STATUS_COLORS} />}
+      </td>
+    </tr>
   );
 }

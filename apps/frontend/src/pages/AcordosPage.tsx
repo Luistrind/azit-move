@@ -1,4 +1,4 @@
-import { instanteBR, horaBR } from '../lib/datas';
+import { instanteBR, dataBR } from '../lib/datas';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -8,23 +8,18 @@ import {
   type Acordo,
   type AcordoDetalhe,
   type AprovacaoResumo,
-  type ContratoNovacao,
   type Novacao,
   type NovacaoDetalhe,
 } from '../services/operacoes.service';
 import { StatusBadge } from '../components/StatusBadge';
 import { Trilha } from '../components/Trilha';
-import { Metrica, Campo } from '../components/Metrica';
-import { BlocoDecomposicao } from '../components/NovacaoDecomposicao';
+import { Metrica } from '../components/Metrica';
+import { Secao } from '../components/Secao';
 import {
-  ACORDO_STATUS_COLORS,
-  NOVACAO_STATUS_COLORS,
-  PARCELA_STATUS_COLORS,
-  FATURA_SITUACAO_COLORS,
-  FATURA_SITUACAO_LABEL,
-  CONTRATO_STATUS_COLORS,
-} from '../config/statusColors';
-import { ROTULO_STATUS_CONTRATO } from '../lib/rotulos';
+  CoberturaAcordo, SelecaoAcordo, EntradaAcordo, CalculoAcordo, CotasAcordo, LegadoAcordo, PERIODICIDADE_LABEL, fmtDataHora,
+} from '../components/renegociacao/AcordoBlocos';
+import { OrigensNovacao, DecomposicaoNovacao, ContratosNovacao, RecebimentoNovacao } from '../components/renegociacao/NovacaoBlocos';
+import { ACORDO_STATUS_COLORS, NOVACAO_STATUS_COLORS, TOM_DOSSIE_FG } from '../config/statusColors';
 import { usePodeRole, ROLE_RENEGOCIACAO, ROLE_NOVACAO, mensagemErro } from '../lib/permissoes';
 import { toast } from '../components/Toast';
 import { FERRAMENTAS_TESTE } from '../lib/ambiente';
@@ -55,42 +50,8 @@ const LABEL_STATUS_NOVACAO: Record<string, string> = {
 const ACORDO_EM_ANDAMENTO = new Set(['rascunho', 'aguardando_entrada', 'ativo']);
 const NOVACAO_EM_ANDAMENTO = new Set(['rascunho', 'aguardando_assinatura', 'aguardando_recebimento']);
 
-const PERIODICIDADE_LABEL: Record<string, string> = { semanal: 'semanal', quinzenal: 'quinzenal', mensal: 'mensal' };
-const ENTRADA_SITUACAO: Record<string, { label: string; cor: string }> = {
-  sem_entrada: { label: 'Sem entrada', cor: 'var(--text-muted)' },
-  paga: { label: 'Paga', cor: '#1f9d5b' },
-  aguardando: { label: 'Aguardando pagamento', cor: '#c98a0a' },
-  aguardando_aprovacao: { label: 'Aguardando aprovação', cor: 'var(--text-muted)' },
-  expirada: { label: 'Venceu sem pagamento', cor: '#e0413c' },
-  nao_paga: { label: 'Não paga', cor: '#e0413c' },
-};
-const RECEBIMENTO_SITUACAO: Record<string, { label: string; cor: string }> = {
-  sem_recebimento: { label: 'Sem recebimento inicial', cor: 'var(--text-muted)' },
-  pago: { label: 'Pago', cor: '#1f9d5b' },
-  aguardando: { label: 'Aguardando pagamento', cor: '#c98a0a' },
-  expirado: { label: 'Venceu sem pagamento', cor: '#e0413c' },
-  pendente: { label: 'Ainda não cobrado', cor: 'var(--text-muted)' },
-};
-const ASSINATURA_LABEL: Record<string, string> = {
-  enviado: 'Enviado — aguardando assinaturas',
-  parcialmente_assinado: 'Parcialmente assinado',
-  assinado: 'Assinado por todos',
-  recusado: 'Recusado',
-  cancelado: 'Cancelado',
-};
-const PAPEL_SIGNATARIO: Record<string, string> = {
-  titular: 'Titular', solidario: 'Comprador solidário', garantidor: 'Garantidor', azit: 'Pela Azit', testemunha1: 'Testemunha', testemunha2: 'Testemunha',
-};
-
-// 'YYYY-MM-DD' → dd/mm/aaaa (data-calendário, sem fuso).
-const fmtDia = (iso: string | null | undefined) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—');
-// Instante ISO → dd/mm/aa hh:mm no relógio do operador.
-const fmtDataHora = (iso: string | null | undefined) =>
-  iso ? instanteBR(iso) + ' ' + horaBR(iso) : '—';
-
+const fmtDia = dataBR;
 const card = { background: 'var(--surface)', border: '1px solid var(--border)' } as const;
-const th = 'py-[7px] pr-[10px] text-left font-semibold';
-const thR = 'py-[7px] pl-[10px] text-right font-semibold';
 
 // Acompanhamento de acordos e novações. A CRIAÇÃO nasce da ficha do titular
 // (Renegociar atraso / Novação) — aqui é esteira: status, entrada, efetivação
@@ -349,12 +310,11 @@ function DetalheAcordo({ id, onContrato }: { id: string; onContrato: (id: string
   const navigate = useNavigate();
   const det = useQuery({ queryKey: ['acordo-detalhe', id], queryFn: () => operacoesService.acordo(id) });
   if (det.isLoading) return <div className="mt-[12px] text-[12px]" style={{ color: 'var(--text-muted)' }}>Carregando o detalhe…</div>;
-  if (det.isError || !det.data) return <div className="mt-[12px] text-[12px]" style={{ color: '#c0392b' }}>Não foi possível carregar o detalhe: {det.error ? mensagemErro(det.error) : 'tente de novo'}</div>;
+  if (det.isError || !det.data) return <div className="mt-[12px] text-[12px]" style={{ color: TOM_DOSSIE_FG.alerta }}>Não foi possível carregar o detalhe: {det.error ? mensagemErro(det.error) : 'tente de novo'}</div>;
   const d: AcordoDetalhe = det.data;
   const r = d.resumoCotas;
-  const entradaSit = ENTRADA_SITUACAO[d.entrada.situacao] ?? { label: d.entrada.situacao, cor: 'var(--text-muted)' };
-  const periodicidade = PERIODICIDADE_LABEL[d.plano.periodicidade] ?? d.plano.periodicidade;
 
+  // Os blocos são os MESMOS do dossiê da Central de Aprovações (21/10).
   return (
     <div className="mt-[14px] flex flex-col gap-[16px]">
       {/* Resumo em números */}
@@ -366,194 +326,13 @@ function DetalheAcordo({ id, onContrato }: { id: string; onContrato: (id: string
         <Metrica label="A pagar" valor={formatCurrency(r.valorAPagar)} />
         <Metrica label="Vencido" valor={formatCurrency(r.valorVencido)} alerta={r.valorVencido > 0} />
       </div>
-
-      {/* O que o acordo cobriu */}
-      <Secao titulo={`${d.coberturaPrevista ? 'O que o acordo vai cobrir (seleção aprovada na proposta)' : 'O que o acordo cobriu'} — ${d.totaisCobertura.quantidadeParcelas} parcela(s) em ${d.totaisCobertura.quantidadeFaturas} fatura(s)`}>
-        {d.faturasCobertas.length === 0 && d.cobertasSemFatura.length === 0 ? (
-          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-            {d.status === 'rascunho' || d.status === 'aguardando_entrada'
-              ? 'Proposta sem faturas selecionadas no snapshot — as parcelas recebem o vínculo do acordo na efetivação (pagamento da entrada).'
-              : 'Nenhuma parcela vinculada a este acordo.'}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-[10px]">
-            {d.coberturaPrevista && (
-              <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
-                As parcelas abaixo recebem o vínculo do acordo na efetivação (pagamento da entrada); até lá seguem com a situação própria e a cobrança original.
-              </div>
-            )}
-            {d.faturasCobertas.map((f) => (
-              <div key={f.id} className="rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)' }}>
-                <div className="flex flex-wrap items-center gap-[8px] text-[12px]">
-                  <span className="font-bold">Fatura #{f.numero}</span>
-                  <span style={{ color: 'var(--text-muted)' }}>venceu em {fmtDia(f.dataVencimento)} · {f.diasAtrasoNaDataBase} dia(s) de atraso na data-base</span>
-                  <StatusBadge label={FATURA_SITUACAO_LABEL[f.status] ?? f.status} colors={FATURA_SITUACAO_COLORS} />
-                  <span className="ml-auto font-semibold tabular-nums">total {formatCurrency(f.valorTotal)}</span>
-                </div>
-                <table className="mt-[6px] w-full text-[12px]">
-                  <tbody>
-                    {f.parcelas.map((p) => (
-                      <tr key={p.parcelaId} style={{ borderTop: '1px solid var(--border)' }}>
-                        <td className="py-[5px] pr-[8px] font-semibold">Parcela {p.display}</td>
-                        <td className="py-[5px] pr-[8px]" style={{ color: 'var(--text-body)' }}>
-                          <button onClick={() => onContrato(p.contratoId)} className="font-semibold" style={{ color: 'var(--navy)' }}>{p.contratoNumero}</button> · {p.produto}
-                        </td>
-                        <td className="py-[5px] pr-[8px] tabular-nums" style={{ color: 'var(--text-muted)' }}>venc. {fmtDia(p.dataVencimento)} · {p.diasAtrasoNaDataBase} dia(s){p.encargoMoraNaDataBase > 0 ? ` · mora ${formatCurrency(p.encargoMoraNaDataBase)}` : ''}</td>
-                        <td className="py-[5px] pr-[8px]"><StatusBadge label={p.status} colors={PARCELA_STATUS_COLORS} /></td>
-                        <td className="py-[5px] text-right font-semibold tabular-nums">{formatCurrency(p.valorNominal)}</td>
-                      </tr>
-                    ))}
-                    {f.itens.filter((it) => !it.coberto).map((it, i) => (
-                      <tr key={i} style={{ borderTop: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-                        <td className="py-[4px] pr-[8px]" colSpan={2}>{it.descricao}</td>
-                        <td className="py-[4px] pr-[8px]" colSpan={2}>também nesta fatura · {it.tipo}</td>
-                        <td className="py-[4px] text-right tabular-nums">{formatCurrency(it.valor)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
-            {d.cobertasSemFatura.length > 0 && (
-              <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
-                <div className="font-bold">Parcelas cobertas sem fatura</div>
-                {d.cobertasSemFatura.map((p) => (
-                  <div key={p.parcelaId} className="flex justify-between py-[3px]">
-                    <span>Parcela {p.display} · {p.contratoNumero} · venc. {fmtDia(p.dataVencimento)} · {p.diasAtrasoNaDataBase} dia(s)</span>
-                    <span className="tabular-nums">{formatCurrency(p.valorNominal)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-[8px] text-[12px] sm:grid-cols-4">
-              <Campo label="Nominal coberto" valor={formatCurrency(d.totaisCobertura.valorNominal)} />
-              <Campo label="Multa e juros na data-base" valor={d.totaisCobertura.encargosMora !== null ? formatCurrency(d.totaisCobertura.encargosMora) : 'não registrado (legado)'} />
-              <Campo label="Saldo atualizado (renegociado)" valor={d.totaisCobertura.valorAtualizado !== null ? formatCurrency(d.totaisCobertura.valorAtualizado) : formatCurrency(d.plano.valorTotalRenegociado)} />
-              <Campo label="Data-base" valor={fmtDataHora(d.dataBase)} />
-            </div>
-            {d.totaisCobertura.moraHerdada && <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>Mora: {d.totaisCobertura.moraHerdada}.</div>}
-          </div>
-        )}
-      </Secao>
-
-      {/* Seleção aprovada: exclusões com justificativa e vincendas incluídas (snapshot) */}
-      {(d.exclusoes.length > 0 || d.vincendasIncluidas.length > 0) && (
-        <Secao titulo="Seleção aprovada na proposta">
-          {d.exclusoes.length > 0 && (
-            <ul className="flex flex-col gap-[3px] text-[12px]">
-              {d.exclusoes.map((e) => (
-                <li key={e.faturaId} className="flex items-start gap-[6px]">
-                  <span style={{ color: '#c98a0a' }}>⚠</span>
-                  <span>
-                    Fatura {e.numero !== null ? `#${e.numero}` : ''} {e.dataVencimento ? `de ${fmtDia(e.dataVencimento)}` : ''}{e.valorTotal !== null ? ` (${formatCurrency(e.valorTotal)})` : ''} <b>excluída</b> — {e.justificativa}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {d.vincendasIncluidas.length > 0 && (
-            <ul className="mt-[4px] flex flex-col gap-[3px] text-[12px]">
-              {d.vincendasIncluidas.map((v) => (
-                <li key={v.faturaId}>Fatura vincenda {v.numero !== null ? `#${v.numero}` : ''} {v.dataVencimento ? `de ${fmtDia(v.dataVencimento)}` : ''} <b>incluída</b> por opção do operador (entra pelo nominal, sem mora).</li>
-              ))}
-            </ul>
-          )}
-        </Secao>
-      )}
-
-      {/* Entrada */}
-      <Secao titulo="Entrada">
-        <div className="grid grid-cols-2 gap-[8px] text-[12px] sm:grid-cols-5">
-          <Campo label="Valor" valor={d.entrada.valor > 0 ? formatCurrency(d.entrada.valor) : 'sem entrada'} />
-          <Campo label="Situação"><span className="font-semibold" style={{ color: entradaSit.cor }}>{entradaSit.label}</span></Campo>
-          <Campo label="Data-limite" valor={instanteBR(d.entrada.dataLimite)} />
-          <Campo label="Paga em" valor={d.entrada.pagaEm ? fmtDataHora(d.entrada.pagaEm) : '—'} />
-          <Campo label="Cobrança no Asaas" valor={d.entrada.cobrancaAsaasId ?? '—'} />
-        </div>
-        {d.aceiteWhatsapp && (
-          <div className="mt-[6px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>De acordo do cliente pelo WhatsApp confirmado pelo operador em {fmtDataHora(d.aceiteWhatsapp.confirmadoPeloOperadorEm)}.</div>
-        )}
-        {d.temTermoAntigo && <div className="mt-[4px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>Acordo anterior a 09/09: possui termo de confissão gravado no histórico.</div>}
-      </Secao>
-
-      {/* Cálculo do plano (motor do Catálogo ou placeholder) */}
-      {d.calculo && (
-        <Secao titulo={d.calculo.motor === 'catalogo' ? 'Cálculo do plano — motor do Catálogo (Acordo de Pagamento)' : 'Cálculo do plano — divisão simples (produto do Catálogo em rascunho)'}>
-          <div className="grid grid-cols-2 gap-[8px] text-[12px] sm:grid-cols-4">
-            <Campo label="Saldo negociado" valor={formatCurrency(d.calculo.saldoNegociado ?? d.plano.valorTotalRenegociado)} />
-            <Campo label="Entrada mínima" valor={formatCurrency(d.calculo.entradaMinima ?? 0)} />
-            <Campo label="Taxa inicial" valor={formatCurrency(d.calculo.taxaInicial ?? 0)} />
-            <Campo label="Encargo do período" valor={d.calculo.taxaPeriodo ? `${(d.calculo.taxaPeriodo * 100).toFixed(2)}% (${d.calculo.encargoMensal ? `${(d.calculo.encargoMensal * 100).toFixed(2)}% a.m.` : periodicidade})` : '—'} />
-            <Campo label="Saldo a parcelar" valor={formatCurrency(d.calculo.saldoAParcelar ?? 0)} />
-            <Campo label="Parcela" valor={`${d.plano.numeroParcelasNovas} × ${formatCurrency(d.calculo.valorParcela ?? d.plano.valorParcelaNova)}`} />
-            <Campo label="Total a pagar" valor={formatCurrency(d.calculo.totalAPagar ?? d.plano.totalPlano)} />
-            <Campo label="Exceções" valor={d.calculo.excecoes?.length ? d.calculo.excecoes.join('; ') : 'nenhuma'} />
-          </div>
-        </Secao>
-      )}
-
-      {/* Cotas novas */}
-      <Secao titulo={`Cotas do plano — ${r.quantidade} de ${d.plano.numeroParcelasNovas} · ${r.pagas} paga(s) · ${r.vencidas} vencida(s)${r.venceHoje ? ` · ${r.venceHoje} vence(m) hoje` : ''} · ${r.aVencer} a vencer${r.novadas ? ` · ${r.novadas} novada(s)` : ''}`}>
-        {d.cotas.length === 0 ? (
-          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-            {d.status === 'rascunho' || d.status === 'aguardando_entrada' ? 'As cotas nascem na efetivação (pagamento da entrada) e entram nas faturas seguintes da conta.' : 'Nenhuma cota gerada.'}
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-[12px]">
-                <thead>
-                  <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
-                    <th className={th}>Cota</th>
-                    <th className={th}>Contrato</th>
-                    <th className={th}>Vencimento</th>
-                    <th className={thR}>Valor</th>
-                    <th className={th + ' pl-[10px]'}>Fatura</th>
-                    <th className={th}>Paga em</th>
-                    <th className={th}>Situação</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {d.cotas.map((c) => (
-                    <tr key={c.parcelaId} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                      <td className="py-[6px] pr-[10px] font-semibold tabular-nums">{c.display}</td>
-                      <td className="py-[6px] pr-[10px]"><button onClick={() => onContrato(c.contratoId)} className="font-semibold" style={{ color: 'var(--navy)' }}>{c.contratoNumero}</button></td>
-                      <td className="py-[6px] pr-[10px] tabular-nums">{fmtDia(c.dataVencimento)}</td>
-                      <td className="py-[6px] pl-[10px] text-right tabular-nums">{formatCurrency(c.valorNominal)}</td>
-                      <td className="py-[6px] pl-[10px]" style={{ color: 'var(--text-body)' }}>{c.fatura ? `#${c.fatura.numero} · ${fmtDia(c.fatura.dataVencimento)}` : <span style={{ color: 'var(--text-muted)' }}>ainda sem fatura</span>}</td>
-                      <td className="py-[6px] pr-[10px] tabular-nums">{c.dataPagamento ? `${fmtDia(c.dataPagamento)}${c.valorEncargo > 0 ? ` (+${formatCurrency(c.valorEncargo)} de juros)` : ''}` : '—'}</td>
-                      <td className="py-[6px]"><StatusBadge label={c.status} colors={PARCELA_STATUS_COLORS} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="mt-[8px] flex flex-wrap gap-[14px] text-[12px]" style={{ color: 'var(--text-body)' }}>
-              <span>Plano: <b className="tabular-nums">{formatCurrency(r.totalPlano)}</b></span>
-              <span>Pago: <b className="tabular-nums">{formatCurrency(r.valorPago)}</b>{r.encargosPagos > 0 ? <span style={{ color: 'var(--text-muted)' }}> (+{formatCurrency(r.encargosPagos)} de juros e multa)</span> : null}</span>
-              <span>A pagar: <b className="tabular-nums">{formatCurrency(r.valorAPagar)}</b></span>
-              {r.valorVencido > 0 && <span style={{ color: '#e0413c' }}>Vencido: <b className="tabular-nums">{formatCurrency(r.valorVencido)}</b></span>}
-            </div>
-            <div className="mt-[4px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
-              Cota vencida é parcela vencida do contrato: conta como atraso na régua de cobrança e na carteira. As parcelas cobertas não contam enquanto o acordo estiver ativo.
-            </div>
-          </>
-        )}
-      </Secao>
-
-      {/* Origem legado */}
-      {d.legado && (
-        <Secao titulo="Importado do legado (Asaas)">
-          <div className="text-[12px]" style={{ color: 'var(--text-body)' }}>
-            Declarado na migração: parcelas {d.legado.parcelasCobertasDeclaradas.join(', ')} cobertas · cotas de {fmtDia(d.legado.primeiraCotaEm)} a {fmtDia(d.legado.ultimaCotaEm)}.{' '}
-            <button onClick={() => navigate(`/migracao-legado/${d.legado!.casoId}`)} className="font-semibold" style={{ color: 'var(--navy)' }}>Abrir o caso de migração →</button>
-          </div>
-          {d.observacao && <div className="mt-[4px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>{d.observacao}</div>}
-        </Secao>
-      )}
+      <CoberturaAcordo d={d} onContrato={onContrato} />
+      <SelecaoAcordo d={d} />
+      <EntradaAcordo d={d} />
+      <CalculoAcordo d={d} />
+      <CotasAcordo d={d} onContrato={onContrato} />
+      <LegadoAcordo d={d} />
       {!d.legado && d.observacao && <Secao titulo="Observação"><div className="text-[12px]">{d.observacao}</div></Secao>}
-
-      {/* Trilha */}
       <Secao titulo="Trilha">
         <Trilha eventos={d.trilha} />
         {d.aprovacao && <LinhaAprovacao ap={d.aprovacao} />}
@@ -615,15 +394,13 @@ function CardNovacao({ nv, aberto, onAlternar, onTitular, onContrato, podeEditar
 }
 
 function DetalheNovacao({ id, onContrato }: { id: string; onContrato: (id: string) => void }) {
-  const navigate = useNavigate();
   const det = useQuery({ queryKey: ['novacao-detalhe', id], queryFn: () => operacoesService.novacao(id) });
   if (det.isLoading) return <div className="mt-[12px] text-[12px]" style={{ color: 'var(--text-muted)' }}>Carregando o detalhe…</div>;
-  if (det.isError || !det.data) return <div className="mt-[12px] text-[12px]" style={{ color: '#c0392b' }}>Não foi possível carregar o detalhe: {det.error ? mensagemErro(det.error) : 'tente de novo'}</div>;
+  if (det.isError || !det.data) return <div className="mt-[12px] text-[12px]" style={{ color: TOM_DOSSIE_FG.alerta }}>Não foi possível carregar o detalhe: {det.error ? mensagemErro(det.error) : 'tente de novo'}</div>;
   const d: NovacaoDetalhe = det.data;
-  const sim = d.simulacao;
-  const recSit = RECEBIMENTO_SITUACAO[d.recebimentoInicial.situacao] ?? { label: d.recebimentoInicial.situacao, cor: 'var(--text-muted)' };
   const freq = d.termos?.frequencia ? PERIODICIDADE_LABEL[d.termos.frequencia] ?? d.termos.frequencia : null;
 
+  // Os blocos são os MESMOS do dossiê da Central de Aprovações (21/10).
   return (
     <div className="mt-[14px] flex flex-col gap-[16px]">
       <div className="grid grid-cols-2 gap-[8px] sm:grid-cols-3 lg:grid-cols-5">
@@ -633,144 +410,14 @@ function DetalheNovacao({ id, onContrato }: { id: string; onContrato: (id: strin
         <Metrica label="Parcela única" valor={`${formatCurrency(d.valorParcela)}${freq ? ` · ${freq}` : ''}`} />
         <Metrica label="Recebimento inicial" valor={d.recebimentoInicial.valor > 0 ? formatCurrency(d.recebimentoInicial.valor) : '—'} />
       </div>
-
-      {/* Origens liquidadas */}
-      <Secao titulo={`Contratos de origem liquidados por novação — ${d.origens.length}`}>
-        {d.origens.length === 0 ? (
-          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-            {d.status === 'ativo' ? 'Nenhum contrato de origem vinculado.' : 'Os contratos de origem são extintos na ativação (depois da assinatura e do recebimento inicial, se houver). Até lá seguem vivos.'}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-[12px]">
-              <thead>
-                <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
-                  <th className={th}>Contrato</th>
-                  <th className={th}>Produto</th>
-                  <th className={thR}>Parcelas extintas</th>
-                  <th className={thR}>Nominal extinto</th>
-                  <th className={th + ' pl-[10px]'}>Acordos absorvidos</th>
-                  <th className={th}>Encerrado em</th>
-                </tr>
-              </thead>
-              <tbody>
-                {d.origens.map((o) => (
-                  <tr key={o.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                    <td className="py-[6px] pr-[10px]"><button onClick={() => onContrato(o.id)} className="font-semibold" style={{ color: 'var(--navy)' }}>{o.numero}</button></td>
-                    <td className="py-[6px] pr-[10px]">{o.descricao}{o.placa ? ` · ${o.placa}` : ''}</td>
-                    <td className="py-[6px] pl-[10px] text-right tabular-nums">{o.parcelasNovadas}</td>
-                    <td className="py-[6px] pl-[10px] text-right tabular-nums">{formatCurrency(o.valorNominalNovado)}</td>
-                    <td className="py-[6px] pl-[10px]">
-                      {o.acordosNovados.length === 0 ? <span style={{ color: 'var(--text-muted)' }}>—</span> : o.acordosNovados.map((a) => (
-                        <button key={a.id} onClick={() => navigate(`/acordos?acordo=${a.id}`)} className="mr-[8px] font-semibold" style={{ color: 'var(--navy)' }}>acordo {a.plano} →</button>
-                      ))}
-                    </td>
-                    <td className="py-[6px] tabular-nums">{o.encerradoEm ? fmtDataHora(o.encerradoEm) : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="mt-[6px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
-              {d.faturasNovadas} fatura(s) da conta extinta(s) ("Novada") — a dívida não some (Regra 3): ela vive agora nos contratos novos. Parcelas extintas são o valor nominal; o saldo reorganizado (acima) é a valor presente na data-base.
-            </div>
-          </div>
-        )}
-      </Secao>
-
-      {/* Decomposição + termos (snapshot) */}
-      <Secao titulo={`Decomposição do saldo na data-base${d.dataBase ? ` (${fmtDataHora(d.dataBase)})` : ''}`}>
-        {sim ? (
-          <div className="flex flex-col gap-[12px]">
-            <BlocoDecomposicao parteVeiculo={sim.decomposicao.parteVeiculo} demaisProdutos={sim.decomposicao.demaisProdutos} totalGeral={sim.decomposicao.totalGeral} rotuloTotal="Saldo total reorganizado" />
-            <div className="grid grid-cols-2 gap-[8px] text-[12px] sm:grid-cols-4">
-              <Campo label="Prazo" valor={d.termos?.prazoMeses ? `${d.termos.prazoMeses} meses` : d.termos?.numeroParcelasVeiculo ? `${d.termos.numeroParcelasVeiculo} parcelas` : '—'} />
-              <Campo label="Frequência" valor={freq ?? '—'} />
-              <Campo label="1ª parcela" valor={fmtDia(d.termos?.dataPrimeiraParcela)} />
-              <Campo label="Taxa inicial" valor={formatCurrency(sim.taxaInicial)} />
-              <Campo label="Desconto (comitê)" valor={d.termos?.desconto ? formatCurrency(d.termos.desconto) : '—'} />
-              <Campo label="Acréscimo" valor={d.termos?.acrescimo ? `${formatCurrency(d.termos.acrescimo)} — ${d.termos.acrescimoMotivo ?? 'sem motivo'}` : '—'} />
-              <Campo label="Troca de veículo" valor={sim.troca ? `sai ${sim.troca.saiDescricao} · entra ${sim.troca.entraDescricao} (ajuste ${formatCurrency(sim.troca.ajuste)})` : 'não'} />
-              <Campo label="Total a pagar" valor={formatCurrency(sim.totalAPagar)} />
-            </div>
-            <div className="text-[12px]" style={{ color: 'var(--text-body)' }}>
-              {d.contratoUnico
-                ? `Contrato único: ${sim.contrato2.totalParcelas + sim.contrato1.totalParcelas} parcelas de ${formatCurrency(sim.valorParcelaTotal ?? sim.valorParcela)}.`
-                : `Termo primeiro: ${sim.contrato2.totalParcelas} parcela(s)${sim.contrato2.antecipacaoTransicao > 0 ? ` (a última com antecipação do veículo de ${formatCurrency(sim.contrato2.antecipacaoTransicao)} — fatura de transição)` : ''}; depois o veículo: ${sim.contrato1.totalParcelas} parcelas. Parcela composta ${formatCurrency(sim.valorParcelaTotal ?? sim.valorParcela)} = financeira ${formatCurrency(sim.valorParcela)}${sim.comissaoPorPeriodo ? ` + comissão ${formatCurrency(sim.comissaoPorPeriodo)}` : ''}${sim.protecaoPorPeriodo ? ` + proteção ${formatCurrency(sim.protecaoPorPeriodo)}` : ''}.`}
-            </div>
-            {sim.excecoes?.length > 0 && (
-              <ul className="flex flex-col gap-[3px] text-[12px]">
-                {sim.excecoes.map((e) => <li key={e} className="flex gap-[6px]"><span style={{ color: '#c98a0a' }}>⚠</span><span>{e}</span></li>)}
-              </ul>
-            )}
-          </div>
-        ) : (
-          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Proposta sem snapshot de simulação.</div>
-        )}
-      </Secao>
-
-      {/* Contratos novos */}
-      <Secao titulo="Contratos gerados">
-        {!d.contratoVeiculo && !d.contratoTermo ? (
-          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Os contratos nascem na aprovação pela Central (CONAC), já com o instrumento enviado à assinatura.</div>
-        ) : (
-          <div className="grid grid-cols-1 gap-[10px] lg:grid-cols-2">
-            {[d.contratoTermo, d.contratoVeiculo].filter((c): c is ContratoNovacao => !!c).map((c) => <CartaoContratoNovo key={c.id} c={c} unico={d.contratoUnico} onContrato={onContrato} />)}
-          </div>
-        )}
-      </Secao>
-
-      {/* Recebimento inicial */}
-      <Secao titulo="Recebimento inicial">
-        <div className="grid grid-cols-2 gap-[8px] text-[12px] sm:grid-cols-4">
-          <Campo label="Valor" valor={d.recebimentoInicial.valor > 0 ? formatCurrency(d.recebimentoInicial.valor) : 'não há — a taxa inicial é diluída nas parcelas'} />
-          <Campo label="Situação"><span className="font-semibold" style={{ color: recSit.cor }}>{recSit.label}</span></Campo>
-          <Campo label="Pago em" valor={d.recebimentoInicial.pagoEm ? fmtDataHora(d.recebimentoInicial.pagoEm) : '—'} />
-          <Campo label="Cobrança no Asaas" valor={d.recebimentoInicial.cobrancaAsaasId ?? '—'} />
-        </div>
-      </Secao>
-
+      <OrigensNovacao d={d} onContrato={onContrato} />
+      <DecomposicaoNovacao d={d} />
+      <ContratosNovacao d={d} onContrato={onContrato} />
+      <RecebimentoNovacao d={d} />
       <Secao titulo="Trilha">
         <Trilha eventos={d.trilha} />
         {d.aprovacao && <LinhaAprovacao ap={d.aprovacao} />}
       </Secao>
-    </div>
-  );
-}
-
-function CartaoContratoNovo({ c, unico, onContrato }: { c: ContratoNovacao; unico: boolean; onContrato: (id: string) => void }) {
-  const statusLabel = ROTULO_STATUS_CONTRATO[c.status.toUpperCase()] ?? c.status;
-  return (
-    <div className="rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)' }}>
-      <div className="flex flex-wrap items-center gap-[8px]">
-        <span className="text-[11px] font-bold uppercase tracking-[.04em]" style={{ color: 'var(--text-label)' }}>{unico ? 'Contrato único' : c.papel === 'termo' ? 'Contrato 2 — Termo' : 'Contrato 1 — Veículo'}</span>
-        <button onClick={() => onContrato(c.id)} className="text-[13px] font-bold" style={{ color: 'var(--navy)' }}>{c.numero} →</button>
-        <StatusBadge label={statusLabel} colors={CONTRATO_STATUS_COLORS} />
-      </div>
-      <div className="mt-[4px] text-[12px]" style={{ color: 'var(--text-body)' }}>{c.descricao}{c.placa ? ` · ${c.placa}` : ''}</div>
-      <div className="mt-[6px] grid grid-cols-2 gap-[6px] text-[12px]">
-        <Campo label="Plano" valor={`${c.numeroParcelas} × ${formatCurrency(c.valorParcela)} (${PERIODICIDADE_LABEL[c.periodicidade] ?? c.periodicidade})`} />
-        <Campo label="1ª parcela" valor={fmtDia(c.dataPrimeiraParcela)} />
-        <Campo label="Cronograma" valor={c.cronogramaGerado ? `${c.cronograma.total} parcelas · ${c.cronograma.pagas} paga(s) · ${c.cronograma.vencidas} vencida(s) · ${c.cronograma.aVencer} a vencer${c.cronograma.proximoVencimento ? ` · próxima ${fmtDia(c.cronograma.proximoVencimento)}` : ''}` : 'ainda não gerado (nasce na ativação)'} />
-        <Campo label="Assinatura digital">
-          {c.assinatura ? (
-            <div>
-              <div className="font-semibold">{ASSINATURA_LABEL[c.assinatura.status] ?? c.assinatura.status}{c.assinatura.simulado ? ' (simulada)' : ''}</div>
-              <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>enviado {fmtDataHora(c.assinatura.enviadoEm)}{c.assinatura.concluidoEm ? ` · concluído ${fmtDataHora(c.assinatura.concluidoEm)}` : ''}</div>
-              <ul className="mt-[2px] text-[11.5px]">
-                {c.assinatura.signatarios.map((s, i) => (
-                  <li key={i} style={{ color: s.assinouEm ? '#1f9d5b' : 'var(--text-muted)' }}>
-                    {s.assinouEm ? '✓' : '○'} {s.nome} ({PAPEL_SIGNATARIO[s.papel] ?? s.papel}){s.assinouEm ? ` — assinou ${fmtDataHora(s.assinouEm)}` : s.visualizouEm ? ` — visualizou ${fmtDataHora(s.visualizouEm)}` : ''}
-                  </li>
-                ))}
-              </ul>
-              {c.assinatura.motivoRecusa && <div className="text-[11.5px]" style={{ color: '#e0413c' }}>Recusa: {c.assinatura.motivoRecusa}</div>}
-              {c.papel === 'termo' && !unico && <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Instrumento único: o Termo é assinado no mesmo ato do contrato do veículo.</div>}
-            </div>
-          ) : (
-            <span style={{ color: 'var(--text-muted)' }}>sem documento enviado</span>
-          )}
-        </Campo>
-      </div>
     </div>
   );
 }
@@ -780,17 +427,8 @@ function CartaoContratoNovo({ c, unico, onContrato }: { c: ContratoNovacao; unic
 function LinhaAprovacao({ ap }: { ap: AprovacaoResumo }) {
   if (ap.status !== 'PENDENTE') return null;
   return (
-    <div className="mt-[6px] text-[12px]" style={{ color: '#c98a0a' }}>
+    <div className="mt-[6px] text-[12px]" style={{ color: TOM_DOSSIE_FG.atencao }}>
       Aguardando decisão na Central de Aprovações ({ap.decisoes.filter((d) => d.decisao === 'APROVADA').length} aprovação(ões) registrada(s)).
-    </div>
-  );
-}
-
-function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="mb-[6px] text-[11px] font-bold uppercase tracking-[.04em]" style={{ color: 'var(--text-label)' }}>{titulo}</div>
-      {children}
     </div>
   );
 }

@@ -44,6 +44,10 @@ export function RenegociacaoWizard({
   // confissão — sem a flag, o envio para aprovação fica travado.
   const [aceite, setAceite] = useState(false);
   const [copiado, setCopiado] = useState(false);
+  // Dossiê da Central (21/10): a resposta do cliente e a observação de quem
+  // propõe chegam a quem aprova — antes só a flag subia.
+  const [respostaCliente, setRespostaCliente] = useState('');
+  const [observacao, setObservacao] = useState('');
 
   const eleg = useQuery({
     queryKey: ['renegociacao-elegivel', contaId],
@@ -121,6 +125,9 @@ export function RenegociacaoWizard({
         faturasExcluidas: listaExclusoes,
         faturasVincendasIncluidas: vincendas,
         aceiteWhatsapp: aceite,
+        mensagemWhatsapp: mensagemWhatsApp(),
+        respostaCliente: respostaCliente.trim() || undefined,
+        observacao: observacao.trim() || undefined,
       });
       setResultado({ contratosAfetados: r.contratosAfetados });
       setStep(3);
@@ -342,7 +349,26 @@ export function RenegociacaoWizard({
                   <input type="checkbox" checked={aceite} onChange={(e) => setAceite(e.target.checked)} className="mt-[2px]" />
                   O cliente respondeu o "de acordo" no WhatsApp com estas condições
                 </label>
+                <textarea
+                  value={respostaCliente}
+                  onChange={(e) => setRespostaCliente(e.target.value)}
+                  rows={2}
+                  placeholder='Cole aqui a resposta do cliente (ex.: "De acordo, pago a entrada quinta") — quem aprova lê na Central'
+                  className="rounded-[8px] p-[10px] text-[12.5px]"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                />
               </div>
+              <label className="flex flex-col gap-[4px] text-[12px] font-semibold" style={{ color: 'var(--text-body)' }}>
+                Observação para quem aprova
+                <textarea
+                  value={observacao}
+                  onChange={(e) => setObservacao(e.target.value)}
+                  rows={3}
+                  placeholder="Contexto da negociação: o que o cliente pediu, por que este plano, o que pesa na decisão…"
+                  className="rounded-[8px] p-[10px] text-[12.5px] font-normal"
+                  style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
+                />
+              </label>
               <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
                 Com o de acordo registrado, a proposta segue para a <b>Central de Aprovações</b> (alçada).
                 Aprovada, a cobrança da entrada é gerada no Asaas — o pagamento da entrada é o aceite

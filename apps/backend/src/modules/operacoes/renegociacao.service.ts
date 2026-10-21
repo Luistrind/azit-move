@@ -55,7 +55,7 @@ type SnapshotAcordo = {
   };
   dataLimiteEntrada?: string;
   dataPagamentoEntrada?: string; // retrocompat (acordos antigos)
-  aceiteWhatsapp?: { confirmadoPeloOperadorEm: string };
+  aceiteWhatsapp?: { confirmadoPeloOperadorEm: string; mensagemEnviada?: string; respostaCliente?: string };
   termo?: string; // termo de confissão dos acordos anteriores a 09/09 (histórico)
   legado?: { casoId: string; parcelasCobertas: number[]; primeiraEm: string; ultimaEm: string; declarado?: boolean };
 };
@@ -88,6 +88,11 @@ export interface CriarRenegociacaoDto {
   faturasVincendasIncluidas?: string[];
   // De acordo do cliente via WhatsApp (doc 02 §7.7, 2026-09-09) — obrigatório.
   aceiteWhatsapp?: boolean;
+  // Dossiê da Central (21/10): o que foi enviado, o que o cliente respondeu e a
+  // observação de quem propõe para quem aprova.
+  mensagemWhatsapp?: string;
+  respostaCliente?: string;
+  observacao?: string;
 }
 
 // Renegociação (Acordo) CONTA-CÊNTRICA — Doc 2 §7.7 (Decisão 2026-07-03): a fatura
@@ -489,7 +494,11 @@ export class RenegociacaoService implements OnModuleInit {
       dataLimiteEntrada: dataLimiteEntrada.toISOString(),
       // De acordo do cliente pelo WhatsApp (doc 02 §7.7, decisão 2026-09-09):
       // substitui o termo de confissão; a flag é obrigatória e fica auditada.
-      aceiteWhatsapp: { confirmadoPeloOperadorEm: new Date().toISOString() },
+      aceiteWhatsapp: {
+        confirmadoPeloOperadorEm: new Date().toISOString(),
+        ...(dto.mensagemWhatsapp ? { mensagemEnviada: dto.mensagemWhatsapp } : {}),
+        ...(dto.respostaCliente ? { respostaCliente: dto.respostaCliente } : {}),
+      },
     };
 
     const acordo = await this.prisma.db.acordo.create({
@@ -501,6 +510,7 @@ export class RenegociacaoService implements OnModuleInit {
         numeroParcelasNovas: dto.numeroParcelasNovas,
         valorParcelaNova: reais(valorParcela),
         periodicidade,
+        observacao: dto.observacao || null,
         snapshotJson: snapshot as unknown as Prisma.InputJsonValue,
       },
     });

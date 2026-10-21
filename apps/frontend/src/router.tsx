@@ -26,6 +26,7 @@ import { AssinaturaConfigPage } from './pages/AssinaturaConfigPage';
 import { TitularPage } from './pages/TitularPage';
 import { TitularDetalhePage } from './pages/TitularDetalhePage';
 import { AprovacoesPage } from './pages/AprovacoesPage';
+import { AprovacaoDossiePage } from './pages/AprovacaoDossiePage';
 import { AlcadasPage } from './pages/AlcadasPage';
 import { SimuladorConfigPage } from './pages/SimuladorConfigPage';
 import { UsuariosPage } from './pages/UsuariosPage';
@@ -140,6 +141,10 @@ export const router = createBrowserRouter([
       {
         path: 'aprovacoes',
         element: <AprovacoesPage />,
+      },
+      {
+        path: 'aprovacoes/:id',
+        element: <AprovacaoDossiePage />,
       },
       {
         path: 'configuracoes/alcadas',

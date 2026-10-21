@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   avaliarAnaliseCadastro,
+  comprometimentoRenda,
   parcelaMensalEquivalente,
   AnaliseInput,
   ParticipanteAnaliseInput,
@@ -59,6 +60,16 @@ describe('parcelaMensalEquivalente (RF-09)', () => {
     expect(parcelaMensalEquivalente(94_200, 'semanal', PARAMS)).toBe(409_318); // R$ 4.093,18
     expect(parcelaMensalEquivalente(94_200, 'quinzenal', PARAMS)).toBe(204_659);
     expect(parcelaMensalEquivalente(94_200, 'mensal', PARAMS)).toBe(94_200);
+  });
+});
+
+describe('comprometimentoRenda (RF-09 — fonte única, 21/10)', () => {
+  it('parcela mensal equivalente ÷ renda; sem renda → null', () => {
+    // R$ 1.520,61 semanal → R$ 6.607,55/mês; renda R$ 6.100 → 108,3%
+    expect(comprometimentoRenda(152_061, 'semanal', 610_000, PARAMS)).toBeCloseTo(parcelaMensalEquivalente(152_061, 'semanal', PARAMS) / 610_000, 12);
+    expect(comprometimentoRenda(94_200, 'mensal', 942_000, PARAMS)).toBe(0.1);
+    expect(comprometimentoRenda(94_200, 'semanal', null, PARAMS)).toBeNull();
+    expect(comprometimentoRenda(94_200, 'semanal', 0, PARAMS)).toBeNull();
   });
 });
 

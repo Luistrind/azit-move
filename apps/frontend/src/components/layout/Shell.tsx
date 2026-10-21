@@ -49,6 +49,8 @@ export function Shell() {
         ? { title: 'Proposta', subtitle: 'Detalhe e formalização' }
         : pathname.startsWith('/analises/')
           ? { title: 'Análise de cadastro', subtitle: 'Dossiê e decisão' }
+          : pathname.startsWith('/aprovacoes/')
+            ? { title: 'Aprovação', subtitle: 'Dossiê do que está sendo aprovado e decisão' }
           : pathname.startsWith('/migracao-legado/')
             ? { title: 'Caso do legado', subtitle: 'Termos do contrato, leitura das cobranças e conciliação' }
             : TITULOS[pathname] ?? { title: 'Azit Move', subtitle: '' };
