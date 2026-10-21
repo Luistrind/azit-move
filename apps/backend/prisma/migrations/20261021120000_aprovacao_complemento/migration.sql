@@ -1,10 +1,9 @@
--- Pedir complemento na Central de Aprovações (doc 02 §7.9-A, proposta 21/10/2026).
+-- Pedir complemento na Central de Aprovações (doc 02 §7.9-A, decisão Luís 21/10/2026 — sem prazo).
 CREATE TABLE "aprovacao_complementos" (
     "id" TEXT NOT NULL,
     "aprovacaoId" TEXT NOT NULL,
     "pergunta" TEXT NOT NULL,
     "pedidoPorId" TEXT NOT NULL,
-    "prazo" TIMESTAMP(3) NOT NULL,
     "resposta" TEXT,
     "respondidoPorId" TEXT,
     "respondidoEm" TIMESTAMP(3),
