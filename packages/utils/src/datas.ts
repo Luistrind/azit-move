@@ -54,12 +54,6 @@ export function inicioDiaUTC(iso: string): Date {
   return new Date(`${iso.slice(0, 10)}T00:00:00.000Z`);
 }
 
-// Meia-noite UTC de um dia-calendário 'YYYY-MM-DD' — a forma como o cronograma
-// grava vencimentos/fechamentos.
-export function inicioDiaUTC(iso: string): Date {
-  return new Date(`${iso.slice(0, 10)}T00:00:00.000Z`);
-}
-
 // Dia da semana (0 = domingo … 6 = sábado) de um 'YYYY-MM-DD'.
 export function diaSemanaISO(iso: string): number {
   return inicioDiaUTC(iso).getUTCDay();
@@ -99,11 +93,6 @@ export function diaDeColunaMista(d: Date): string {
 export function somarDiasISO(iso: string, dias: number): string {
   const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d + dias)).toISOString().slice(0, 10);
-}
-
-// Dia da semana (0 = domingo … 6 = sábado) de um 'YYYY-MM-DD'.
-export function diaSemanaISO(iso: string): number {
-  return inicioDiaUTC(iso).getUTCDay();
 }
 
 // 'YYYY-MM-DD' → 'DD/MM/YYYY'.

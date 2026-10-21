@@ -1,3 +1,4 @@
+import { instanteBR, horaBR } from '../lib/datas';
 // Trilha de eventos GENÉRICA (21/10): lista cronológica "● título · por X em
 // dd/mm hh:mm — detalhe", no padrão da trilha de decisões da Central de
 // Aprovações. Configurada por props (eventos + formatação); quem chama decide a
@@ -11,7 +12,7 @@ export interface EventoTrilhaProps {
 }
 
 function fmtDataHora(iso: string): string {
-  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return instanteBR(iso) + ' ' + horaBR(iso);
 }
 
 export function Trilha({ eventos, vazio }: { eventos: EventoTrilhaProps[]; vazio?: string }) {

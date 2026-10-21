@@ -1,3 +1,4 @@
+import { instanteBR, horaBR } from '../lib/datas';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -85,7 +86,7 @@ const PAPEL_SIGNATARIO: Record<string, string> = {
 const fmtDia = (iso: string | null | undefined) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—');
 // Instante ISO → dd/mm/aa hh:mm no relógio do operador.
 const fmtDataHora = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+  iso ? instanteBR(iso) + ' ' + horaBR(iso) : '—';
 
 const card = { background: 'var(--surface)', border: '1px solid var(--border)' } as const;
 const th = 'py-[7px] pr-[10px] text-left font-semibold';
