@@ -474,14 +474,23 @@ export class FormalizacaoService {
 
   // Status do PACOTE de contratos de uma proposta (veículo + apartados) para a
   // tela de conclusão: assina cada contrato; cobra a entrada quando todos assinados.
+  // Contrato CANCELADO (ENCERRADO) que ficou no pacote de uma reformalização
+  // (caso Tatiana 27/10: 2026100005 cancelado → 2026100006) sai da lista: não
+  // é assinável nem bloqueia a entrada do contrato novo — só é citado como
+  // "anterior cancelado" para o operador saber que existiu.
   async statusPacote(propostaId: string) {
     const contratos = await this.prisma.db.contratoCredito.findMany({
-      where: { propostaPacoteId: propostaId },
+      where: { propostaPacoteId: propostaId, status: { not: 'ENCERRADO' } },
       select: {
         id: true, numero: true, status: true, valorEntrada: true, entradaParcelada: true,
         assinaturaTitularEm: true, assinaturaAzitEm: true, cronogramaGeradoEm: true,
         itensContratados: { where: { natureza: 'PARCELADO' }, select: { descricao: true }, take: 1 },
       },
+      orderBy: { createdAt: 'asc' },
+    });
+    const cancelados = await this.prisma.db.contratoCredito.findMany({
+      where: { propostaPacoteId: propostaId, status: 'ENCERRADO' },
+      select: { id: true, numero: true, dataEncerramento: true },
       orderBy: { createdAt: 'asc' },
     });
     const lista = contratos.map((c) => {
@@ -509,6 +518,7 @@ export class FormalizacaoService {
       entradaAVista: ancora?.entradaAVista ?? 0,
       entradaParcelada: ancora?.entradaParcelada ?? false,
       contratos: lista,
+      contratosCancelados: cancelados.map((c) => ({ id: c.id, numero: c.numero, canceladoEm: c.dataEncerramento?.toISOString() ?? null })),
       todasAssinaturas: lista.length > 0 && lista.every((c) => c.ambasAssinaturas),
       cronogramaGerado: lista.length > 0 && lista.every((c) => c.cronogramaGerado),
     };
@@ -525,12 +535,15 @@ export class FormalizacaoService {
       include: { conta: { include: { titular: { select: { id: true, nome: true, cpfCnpj: true, email: true, whatsapp: true, asaasCustomerId: true } } } } },
     });
     if (!contrato) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Contrato não encontrado' });
-    // Pacote: todos os contratos da proposta (veículo + apartados) precisam estar
-    // assinados pelo titular e pela Azit antes de cobrar a entrada.
+    // Pacote: todos os contratos VIVOS da proposta (veículo + apartados) precisam
+    // estar assinados pelo titular e pela Azit antes de cobrar a entrada. O
+    // contrato cancelado de uma formalização anterior (ENCERRADO) não conta —
+    // senão bloquearia a entrada do contrato novo para sempre.
     if (contrato.propostaPacoteId) {
       const pendente = await this.prisma.db.contratoCredito.findFirst({
         where: {
           propostaPacoteId: contrato.propostaPacoteId,
+          status: { not: 'ENCERRADO' },
           OR: [{ assinaturaTitularEm: null }, { assinaturaAzitEm: null }],
         },
         select: { numero: true },

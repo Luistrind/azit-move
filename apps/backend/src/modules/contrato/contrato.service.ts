@@ -55,6 +55,15 @@ export class ContratoService {
     this.cancelamentosDedicados.push(handler);
   }
 
+  // Efeitos colaterais do cancelamento genérico, registrados por outros módulos
+  // (assinatura digital: cancelar o documento NA ZapSign — caso Tatiana 27/10).
+  // Rodam para CADA contrato do pacote cancelado; falha de um hook é logada e
+  // nunca impede o cancelamento.
+  private aoCancelar: ((contratoId: string, motivo: string, usuarioId?: string) => Promise<void>)[] = [];
+  registrarAoCancelar(handler: (contratoId: string, motivo: string, usuarioId?: string) => Promise<void>) {
+    this.aoCancelar.push(handler);
+  }
+
   async cancelarNaoEfetivado(contratoId: string, motivo: string, usuarioId?: string) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id: contratoId },
@@ -83,6 +92,18 @@ export class ContratoService {
       : [{ id: contrato.id, ativoId: contrato.ativoId }];
     const ids = doPacote.map((c) => c.id);
     const ativoIds = doPacote.map((c) => c.ativoId).filter((x): x is string => !!x);
+
+    // Hooks ANTES da transação (chamada externa à ZapSign não roda dentro dela);
+    // o updateMany do documento abaixo é a rede de segurança para o que sobrar.
+    for (const id of ids) {
+      for (const h of this.aoCancelar) {
+        try {
+          await h(id, motivo, usuarioId);
+        } catch (e) {
+          console.warn(`hook de cancelamento falhou (contrato ${id}): ${(e as Error).message} — cancelamento segue`);
+        }
+      }
+    }
 
     await this.prisma.db.$transaction(async (tx) => {
       await tx.contratoCredito.updateMany({
