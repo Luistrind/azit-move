@@ -664,7 +664,7 @@ export class NovacaoService implements OnModuleInit {
       include: { conta: { select: { titular: { select: { nome: true } } } } },
     });
     if (!novacao) return { resultado: 'ignorado' };
-    await this.cancelarContratosNovos(novacao.id);
+    await this.cancelarContratosNovos(novacao.id, 'Novação expirada: recebimento inicial venceu sem pagamento');
     await this.prisma.db.novacao.update({ where: { id: novacao.id }, data: { status: 'EXPIRADO' } });
     await this.prisma.db.notificacao.create({
       data: {
@@ -683,7 +683,7 @@ export class NovacaoService implements OnModuleInit {
       where: { id: novacaoId, status: { in: ['RASCUNHO', 'AGUARDANDO_ASSINATURA'] } },
     });
     if (!novacao) return;
-    await this.cancelarContratosNovos(novacao.id);
+    await this.cancelarContratosNovos(novacao.id, motivo);
     await this.prisma.db.novacao.update({
       where: { id: novacao.id },
       data: { status: 'CANCELADO', observacao: [novacao.observacao, motivo].filter(Boolean).join(' · ') },
@@ -693,13 +693,23 @@ export class NovacaoService implements OnModuleInit {
   // Contratos novos ainda sem cronograma (novação não ativada) são encerrados
   // por cancelamento — nunca chegaram a existir como obrigação. Com TROCA de
   // veículo, o ativo novo reservado volta a DISPONÍVEL.
-  private async cancelarContratosNovos(novacaoId: string) {
+  private async cancelarContratosNovos(novacaoId: string, motivo: string) {
     const novacao = await this.prisma.db.novacao.findFirst({
       where: { id: novacaoId },
       select: { contratoVeiculoId: true, contratoTermoId: true, snapshotJson: true },
     });
     const ids = [novacao?.contratoVeiculoId, novacao?.contratoTermoId].filter((x): x is string => !!x);
     if (ids.length === 0) return;
+    // Instrumento em andamento é cancelado também NA ZapSign (27/10) — a
+    // novação não passa pelo cancelamento genérico do contrato (handler
+    // dedicado tem precedência), então chama direto. Falha não trava.
+    for (const id of ids) {
+      try {
+        await this.assinatura.cancelarDocumentoDoContrato(id, motivo);
+      } catch (e) {
+        this.logger.warn(`Cancelamento do documento de assinatura falhou (contrato ${id}): ${(e as Error).message} — novação segue cancelando`);
+      }
+    }
     await this.prisma.db.contratoCredito.updateMany({
       where: { id: { in: ids }, status: 'AGUARDANDO_ASSINATURA' },
       data: { status: 'ENCERRADO', motivoEncerramento: 'CANCELAMENTO', dataEncerramento: new Date() },

@@ -180,3 +180,47 @@ describe('detalhe da novação (Idanilza — veículo + Termo, ativa)', () => {
     await expect(service.detalhar('x')).rejects.toMatchObject({ response: { erro: 'nao_encontrado' } });
   });
 });
+
+// Cancelamento da novação não assinada (doc 02 §21.1 item 4) — 27/10/2026: o
+// par de contratos novos encerra E o instrumento em andamento é cancelado na
+// ZapSign (a novação não passa pelo cancelamento genérico do contrato).
+describe('cancelar novação aguardando assinatura — documento cancelado na ZapSign (27/10)', () => {
+  function montarCancelamento() {
+    const prisma = {
+      db: {
+        novacao: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'nv-2', status: 'AGUARDANDO_ASSINATURA', observacao: null, contratoVeiculoId: 'c1', contratoTermoId: 'c2', snapshotJson: { simulacao: { troca: { ativoEntraId: 'ativo-novo' } } } }),
+          update: jest.fn().mockResolvedValue({}),
+        },
+        contratoCredito: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
+        ativo: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      },
+    };
+    const assinatura = { cancelarDocumentoDoContrato: jest.fn().mockResolvedValue(true) };
+    const service = new NovacaoService(prisma as never, {} as never, {} as never, assinatura as never, {} as never, {} as never, {} as never, {} as never);
+    return { service, prisma, assinatura };
+  }
+
+  it('cancela o documento de CADA contrato do par com o motivo, encerra os dois e devolve o ativo da troca', async () => {
+    const { service, prisma, assinatura } = montarCancelamento();
+    await service.cancelar('nv-2', 'Reprovada na aprovação');
+
+    expect(assinatura.cancelarDocumentoDoContrato).toHaveBeenCalledTimes(2);
+    expect(assinatura.cancelarDocumentoDoContrato).toHaveBeenCalledWith('c1', 'Reprovada na aprovação');
+    expect(assinatura.cancelarDocumentoDoContrato).toHaveBeenCalledWith('c2', 'Reprovada na aprovação');
+    expect(prisma.db.contratoCredito.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['c1', 'c2'] }, status: 'AGUARDANDO_ASSINATURA' },
+      data: expect.objectContaining({ status: 'ENCERRADO', motivoEncerramento: 'CANCELAMENTO' }),
+    });
+    expect(prisma.db.ativo.updateMany).toHaveBeenCalledWith({ where: { id: 'ativo-novo', status: 'EM_CONTRATO' }, data: { status: 'DISPONIVEL' } });
+    expect(prisma.db.novacao.update).toHaveBeenCalledWith({ where: { id: 'nv-2' }, data: { status: 'CANCELADO', observacao: 'Reprovada na aprovação' } });
+  });
+
+  it('falha ao cancelar o documento não impede o cancelamento da novação', async () => {
+    const { service, prisma, assinatura } = montarCancelamento();
+    assinatura.cancelarDocumentoDoContrato.mockRejectedValue(new Error('banco indisponível'));
+    await service.cancelar('nv-2', 'Expirada');
+    expect(prisma.db.contratoCredito.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.db.novacao.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'CANCELADO' }) }));
+  });
+});

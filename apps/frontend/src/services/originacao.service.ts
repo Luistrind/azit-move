@@ -265,6 +265,8 @@ export const originacaoService = {
     propostaId: string; ancoraId: string | null; entrada: number; entradaAVista: number; entradaParcelada: boolean;
     todasAssinaturas: boolean; cronogramaGerado: boolean;
     contratos: { id: string; numero: string; descricao: string; status: string; entrada: number; entradaAVista: number; entradaParcelada: boolean; ancora: boolean; assinadoTitular: boolean; assinadoAzit: boolean; ambasAssinaturas: boolean; cronogramaGerado: boolean }[];
+    // Contratos de formalizações anteriores cancelados — fora do pacote vivo (27/10).
+    contratosCancelados?: { id: string; numero: string; canceladoEm: string | null }[];
   }> {
     const { data } = await api.get(`/api/v1/propostas/${propostaId}/status-pacote`);
     return data;
