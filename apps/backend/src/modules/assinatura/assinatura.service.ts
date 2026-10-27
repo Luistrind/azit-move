@@ -2,12 +2,14 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { PrismaService } from '../../database/prisma.service';
+import { ContratoService } from '../contrato/contrato.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
 import { ZapSignService, SignatarioEntrada } from './zapsign.service';
 
@@ -61,7 +63,7 @@ export interface ParametrosAssinaturaDto {
 }
 
 @Injectable()
-export class AssinaturaService {
+export class AssinaturaService implements OnModuleInit {
   private readonly logger = new Logger(AssinaturaService.name);
 
   // Registry pós-assinatura (13/09 — mesmo padrão do motor de aprovação): outros
@@ -77,7 +79,20 @@ export class AssinaturaService {
     private readonly prisma: PrismaService,
     private readonly zapSign: ZapSignService,
     private readonly notificacao: NotificacaoService,
+    private readonly contrato: ContratoService,
   ) {}
+
+  // Contrato NÃO efetivado cancelado (manual ou por expiração — doc 02 §21.1)
+  // → o documento em andamento é cancelado também NA ZapSign, senão o link
+  // antigo segue assinável (caso Tatiana, 27/10: contrato 2026100005 cancelado
+  // para trocar datas, reformalizado como 2026100006, e o instrumento velho
+  // continuou aberto). Registrado como hook para não criar import cruzado
+  // contrato ↔ assinatura (mesmo padrão do cancelamento dedicado da novação).
+  onModuleInit() {
+    this.contrato.registrarAoCancelar(async (contratoId, motivo, usuarioId) => {
+      await this.cancelarDocumentoDoContrato(contratoId, motivo, usuarioId);
+    });
+  }
 
   // Linha única, criada sob demanda com o seed — consumida pelo envio à
   // ZapSign e pela formalização (testemunhas impressas no contrato).
@@ -241,22 +256,44 @@ export class AssinaturaService {
       throw new UnprocessableEntityException({ erro: 'ja_assinado', mensagem: 'O documento já tem assinatura — não pode ser substituído' });
     }
     if (d && d.status !== 'cancelado' && d.status !== 'recusado') {
-      if (!d.simulado && d.docToken) {
-        try {
-          await this.zapSign.cancelarDocumento(d.docToken);
-        } catch (e) {
-          this.logger.warn(`ZapSign não cancelou o documento ${d.docToken} (contrato ${contratoId}): ${(e as Error).message} — seguindo com o reenvio`);
-        }
-      }
-      await this.prisma.db.documentoAssinatura.update({
-        where: { id: d.id },
-        data: { status: 'cancelado', motivoRecusa: 'Substituído por reenvio (instrumento alterado antes da assinatura)' },
-      });
-      await this.prisma.db.logAuditoria.create({
-        data: { usuarioId, acao: 'assinatura_digital_cancelada', entidade: 'contrato_credito', entidadeId: contratoId, antes: { docToken: d.docToken, status: d.status } },
-      });
+      await this.cancelarDocumento(d, 'Substituído por reenvio (instrumento alterado antes da assinatura)', usuarioId);
     }
     return this.enviar(contratoId, usuarioId);
+  }
+
+  // Cancela o documento EM ANDAMENTO de um contrato (na ZapSign e aqui) quando
+  // o próprio contrato é cancelado antes de virar obrigação. Documento já
+  // assinado por todos, recusado ou já cancelado fica como está (o histórico
+  // jurídico não se apaga). Devolve se havia documento vivo para cancelar.
+  async cancelarDocumentoDoContrato(contratoId: string, motivo: string, usuarioId?: string): Promise<boolean> {
+    const d = await this.prisma.db.documentoAssinatura.findFirst({ where: { contratoCreditoId: contratoId } });
+    if (!d || !['enviado', 'parcialmente_assinado'].includes(d.status)) return false;
+    await this.cancelarDocumento(d, motivo, usuarioId);
+    return true;
+  }
+
+  // Núcleo compartilhado por reenvio e cancelamento de contrato: a ZapSign é
+  // avisada primeiro (falha dela NÃO trava o fluxo — warn e segue; o espelho
+  // local é a verdade do sistema), depois o espelho local e a auditoria.
+  private async cancelarDocumento(
+    d: { id: string; contratoCreditoId: string; docToken: string | null; status: string; simulado: boolean },
+    motivo: string,
+    usuarioId?: string,
+  ) {
+    if (!d.simulado && d.docToken) {
+      try {
+        await this.zapSign.cancelarDocumento(d.docToken);
+      } catch (e) {
+        this.logger.warn(`ZapSign não cancelou o documento ${d.docToken} (contrato ${d.contratoCreditoId}): ${(e as Error).message} — seguindo com o cancelamento local`);
+      }
+    }
+    await this.prisma.db.documentoAssinatura.update({
+      where: { id: d.id },
+      data: { status: 'cancelado', motivoRecusa: motivo },
+    });
+    await this.prisma.db.logAuditoria.create({
+      data: { usuarioId, acao: 'assinatura_digital_cancelada', entidade: 'contrato_credito', entidadeId: d.contratoCreditoId, antes: { docToken: d.docToken, status: d.status }, depois: { motivo } },
+    });
   }
 
   // Estado para a tela de conclusão (cartão por signatário + links).
@@ -363,8 +400,10 @@ export class AssinaturaService {
     // campos que o gate da ativação já valida. Placeholder F1.2 (mock removido
     // 18/08): a assinatura do contrato ÂNCORA vale para TODO o pacote (apartados
     // como o seguro) até o envelope da F2 assinar cada instrumento na ZapSign.
+    // Contrato cancelado (ENCERRADO) que ficou no pacote não recebe carimbo —
+    // a assinatura vale para os contratos VIVOS da proposta.
     const alvoPacote = d.contrato.propostaPacoteId
-      ? { propostaPacoteId: d.contrato.propostaPacoteId }
+      ? { propostaPacoteId: d.contrato.propostaPacoteId, status: { not: 'ENCERRADO' as const } }
       : { id: d.contratoCreditoId };
     const carimbos = {
       ...(clientesOk ? { assinaturaTitularEm: new Date(clientes[0].assinouEm as string) } : {}),

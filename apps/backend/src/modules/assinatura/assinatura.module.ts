@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { QUEUE_NAMES } from '../queues/queues.module';
+import { ContratoModule } from '../contrato/contrato.module';
 import { NotificacaoModule } from '../notificacao/notificacao.module';
 import { AssinaturaController } from './assinatura.controller';
 import { AssinaturaService } from './assinatura.service';
@@ -9,7 +10,9 @@ import { ZapSignService } from './zapsign.service';
 
 // Assinatura digital ZapSign F1 (doc 02 §21).
 @Module({
-  imports: [NotificacaoModule, BullModule.registerQueue({ name: QUEUE_NAMES.ASSINATURA_EVENTO })],
+  // ContratoModule: o cancelamento de contrato não efetivado dispara o hook que
+  // cancela o documento na ZapSign (ContratoModule não importa ninguém — sem ciclo).
+  imports: [ContratoModule, NotificacaoModule, BullModule.registerQueue({ name: QUEUE_NAMES.ASSINATURA_EVENTO })],
   controllers: [AssinaturaController],
   providers: [AssinaturaService, AssinaturaProcessor, ZapSignService],
   exports: [AssinaturaService],

@@ -638,6 +638,14 @@ export function PropostaDetalhePage() {
                       </div>
                     ))}
                   </div>
+                  {/* Formalização anterior cancelada (ex.: datas trocadas e reformalizada):
+                      o contrato velho saiu do pacote — fica só a citação (27/10). */}
+                  {(pacote.data.contratosCancelados ?? []).length > 0 && (
+                    <div className="mt-[8px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+                      {(pacote.data.contratosCancelados ?? []).length === 1 ? '1 contrato anterior cancelado' : `${(pacote.data.contratosCancelados ?? []).length} contratos anteriores cancelados`}
+                      {' '}(nº {(pacote.data.contratosCancelados ?? []).map((c) => c.numero).join(', ')}) — fora do pacote; não conta para a assinatura nem para a entrada.
+                    </div>
+                  )}
 
                   {/* Todos assinados → cobrar a entrada (no contrato âncora) */}
                   {pacote.data.todasAssinaturas && pacote.data.ancoraId && (
