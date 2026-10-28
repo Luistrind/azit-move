@@ -68,14 +68,22 @@ export function RenegociacaoWizard({
   // mínima + frequência herdada) quando o produto está ATIVO; senão divisão simples.
   const listaExclusoes = Object.entries(exclusoes).map(([faturaId, justificativa]) => ({ faturaId, justificativa: justificativa.trim() }));
   const previa = useQuery({
-    queryKey: ['renegociacao-previa', contaId, entradaCent, nParcelas, listaExclusoes.map((e) => e.faturaId).join(','), vincendas.join(',')],
-    queryFn: () => operacoesService.simularRenegociacaoConta(contaId, { valorEntrada: entradaCent, numeroParcelasNovas: nParcelas, faturasExcluidas: listaExclusoes, faturasVincendasIncluidas: vincendas }),
+    queryKey: ['renegociacao-previa', contaId, entradaCent, nParcelas, listaExclusoes.map((e) => e.faturaId).join(','), vincendas.join(','), dataEntrada],
+    queryFn: () => operacoesService.simularRenegociacaoConta(contaId, { valorEntrada: entradaCent, numeroParcelasNovas: nParcelas, faturasExcluidas: listaExclusoes, faturasVincendasIncluidas: vincendas, dataLimiteEntrada: dataEntrada || undefined }),
     enabled: total > 0 && nParcelas > 0 && entradaCent < total && justificativasOk,
     retry: false,
   });
   const p = previa.data;
   const valorParcela = p?.valorParcela ?? (nParcelas > 0 ? Math.round(Math.max(0, total - entradaCent) / nParcelas) : 0);
   const propostaValida = total > 0 && entradaCent < total && nParcelas > 0 && valorParcela > 0 && justificativasOk && !!dataEntrada;
+  // Parcela do cliente DURANTE o acordo (decisão Luís 28/10): parcelas futuras
+  // (o que a próxima fatura já carrega, proteção incluída, sem discriminar item)
+  // + cota = total — é o número que o cliente precisa saber antes do de acordo.
+  const durante = p?.parcelaDuranteAcordo;
+  const periodoDurante = durante ? `${dataBR(durante.primeiraEm)} a ${dataBR(durante.ultimaEm)}` : '';
+  const rotuloPeriodo = nParcelas === 1
+    ? (({ semanal: 'semana', quinzenal: 'quinzena', mensal: 'mês' } as Record<string, string>)[p?.periodicidade ?? 'semanal'] ?? 'parcela')
+    : (({ semanal: 'semanas', quinzenal: 'quinzenas', mensal: 'meses' } as Record<string, string>)[p?.periodicidade ?? 'semanal'] ?? 'parcelas');
 
   function alternarFatura(faturaId: string) {
     setExclusoes((atual) => {
@@ -98,6 +106,13 @@ export function RenegociacaoWizard({
       `• Valor em atraso renegociado: ${formatCurrency(total)}`,
       ...(entradaCent > 0 ? [`• Entrada: ${formatCurrency(entradaCent)}, a pagar até ${dataEntrada.split('-').reverse().join('/')}`] : []),
       `• Novo plano: ${nParcelas} parcela${s} ${plural} de ${formatCurrency(valorParcela)}, somada${s} às suas próximas faturas`,
+      ...(durante
+        ? [
+            durante.valorParcela > 0
+              ? `• Na prática: sua${s} ${nParcelas} parcela${s} de ${periodoDurante} fica${nParcelas > 1 ? 'm' : ''} em ${formatCurrency(durante.valorTotal)} (${formatCurrency(durante.valorParcela)} da parcela + ${formatCurrency(durante.valorCota)} do acordo). Depois a parcela volta a ${formatCurrency(durante.valorParcela)}.`
+              : `• Na prática: a${s} ${nParcelas} parcela${s} do acordo vence${nParcelas > 1 ? 'm' : ''} de ${periodoDurante}, ${formatCurrency(durante.valorCota)} cada.`,
+          ]
+        : []),
       '',
       entradaCent > 0
         ? 'Se estiver de acordo, responda "DE ACORDO" aqui nesta conversa para enviarmos a sua solicitação para aprovação. Aprovada, você recebe a cobrança da entrada — o pagamento dela confirma o acordo.'
@@ -304,6 +319,20 @@ export function RenegociacaoWizard({
                 <div className="flex justify-between border-t pt-[6px]" style={{ borderColor: 'var(--border)' }}><span style={{ color: 'var(--text-muted)' }}>Novo plano</span><span className="font-bold tabular-nums">{nParcelas}× {formatCurrency(valorParcela)}</span></div>
                 {p && <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Total a pagar (entrada + parcelas)</span><span className="font-bold tabular-nums">{formatCurrency(p.totalAPagar)}</span></div>}
               </div>
+              {durante && (
+                <div className="flex flex-col gap-[6px] rounded-[10px] p-[12px] text-[12.5px]" style={{ background: '#e9f6ef', border: '1px solid #bfe3cf' }}>
+                  <div className="text-[13px] font-bold">Parcela do cliente durante o acordo</div>
+                  <div className="flex justify-between"><span style={{ color: 'var(--text-label)' }}>Parcelas futuras</span><span className="font-bold tabular-nums">{formatCurrency(durante.valorParcela)}</span></div>
+                  <div className="flex justify-between"><span style={{ color: 'var(--text-label)' }}>+ Acordo</span><span className="font-bold tabular-nums">{formatCurrency(durante.valorCota)}</span></div>
+                  <div className="flex items-baseline justify-between border-t pt-[6px]" style={{ borderColor: '#bfe3cf' }}>
+                    <span className="font-bold">= Total, por {nParcelas} {rotuloPeriodo}</span>
+                    <span className="rounded-[5px] px-[6px] text-[15px] font-bold tabular-nums" style={{ background: 'var(--accent)', color: '#fff' }}>{formatCurrency(durante.valorTotal)}</span>
+                  </div>
+                  <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+                    De {periodoDurante}. {durante.valorParcela > 0 ? `Depois a parcela volta a ${formatCurrency(durante.valorParcela)}.` : 'Não há parcela futura do contrato nessas datas: a cota vai sozinha.'} Estimativa com a entrada paga na data-limite; paga antes, a 1ª cota pode entrar na parcela anterior.
+                  </div>
+                </div>
+              )}
               {p?.motor === 'placeholder' && (
                 <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
                   Cálculo provisório (divisão simples) — ative o produto <b>Acordo de Pagamento</b> no Catálogo para ligar TP, TR e entrada mínima.
@@ -332,6 +361,7 @@ export function RenegociacaoWizard({
                   <div className="flex justify-between"><span>Total renegociado (com mora)</span><b className="tabular-nums">{formatCurrency(total)}</b></div>
                   <div className="flex justify-between"><span>Entrada (aceite do cliente)</span><b className="tabular-nums">{formatCurrency(entradaCent)}</b></div>
                   <div className="flex justify-between"><span>Plano novo</span><b className="tabular-nums">{nParcelas}× {formatCurrency(valorParcela)} ({p?.periodicidade ?? 'semanal'} · herdada)</b></div>
+                  {durante && <div className="flex justify-between" style={{ color: '#1f7a4c' }}><span className="font-semibold">Parcela durante o acordo</span><b className="tabular-nums">{nParcelas}× {formatCurrency(durante.valorTotal)} ({periodoDurante})</b></div>}
                   <div className="flex justify-between"><span>Entrada paga até</span><b>{dataEntrada.split('-').reverse().join('/')}</b></div>
                   {p?.motor === 'catalogo' && <div className="flex justify-between"><span>TP + TR (motor do Catálogo)</span><b className="tabular-nums">{formatCurrency(p.taxaInicial)} + {((p.encargoMensal ?? 0) * 100).toFixed(2)}% a.m.</b></div>}
                 </div>

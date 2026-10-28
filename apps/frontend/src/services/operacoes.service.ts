@@ -240,6 +240,9 @@ export interface PreviaAcordo {
   valorMinimoParcela?: number;
   totalAPagar: number;
   excecoes: string[];
+  // Parcela do cliente DURANTE o acordo (28/10): parcelas futuras (o que a próxima
+  // fatura já carrega, proteção incluída) + cota = total, com o período das cotas.
+  parcelaDuranteAcordo?: { valorParcela: number; valorCota: number; valorTotal: number; numeroParcelas: number; primeiraEm: string; ultimaEm: string };
 }
 
 export interface ElegivelConta {
@@ -392,7 +395,7 @@ export const operacoesService = {
   // Acordo de Pagamento está ATIVO; senão divisão simples provisória).
   async simularRenegociacaoConta(
     contaId: string,
-    body: { valorEntrada: number; numeroParcelasNovas: number; faturasExcluidas?: { faturaId: string; justificativa: string }[]; faturasVincendasIncluidas?: string[] },
+    body: { valorEntrada: number; numeroParcelasNovas: number; faturasExcluidas?: { faturaId: string; justificativa: string }[]; faturasVincendasIncluidas?: string[]; dataLimiteEntrada?: string },
   ): Promise<PreviaAcordo> {
     const { data } = await api.post(`/api/v1/contas/${contaId}/renegociacao/simular`, body);
     return data;

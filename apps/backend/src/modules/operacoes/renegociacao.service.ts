@@ -52,6 +52,7 @@ type SnapshotAcordo = {
     valorMinimoParcela?: number;
     totalAPagar: number;
     excecoes: string[];
+    parcelaDuranteAcordo?: ParcelaDuranteAcordo;
   };
   dataLimiteEntrada?: string;
   dataPagamentoEntrada?: string; // retrocompat (acordos antigos)
@@ -59,6 +60,19 @@ type SnapshotAcordo = {
   termo?: string; // termo de confissão dos acordos anteriores a 09/09 (histórico)
   legado?: { casoId: string; parcelasCobertas: number[]; primeiraEm: string; ultimaEm: string; declarado?: boolean };
 };
+
+// Parcela do cliente DURANTE o acordo (decisão Luís 2026-10-28): a tela mostra
+// quanto fica a parcela com a cota do acordo em cima — "parcelas futuras" é o
+// valor que a próxima fatura aberta já carrega (proteção e serviços incluídos,
+// sem discriminar item), mais a cota, igual ao total. Centavos; datas 'YYYY-MM-DD'.
+export interface ParcelaDuranteAcordo {
+  valorParcela: number; // o que a próxima fatura aberta já carrega (0 = sem fatura futura)
+  valorCota: number; // cota do acordo
+  valorTotal: number; // parcela + cota
+  numeroParcelas: number;
+  primeiraEm: string; // 1ª fatura que recebe a cota (estimativa: entrada paga na data-limite)
+  ultimaEm: string;
+}
 
 // Evento da trilha do acordo (tela Renegociações, 21/10): texto humano, sem id.
 export interface EventoTrilha {
@@ -167,12 +181,14 @@ export class RenegociacaoService implements OnModuleInit {
   // mínima + frequência herdada. Em RASCUNHO: placeholder (divisão simples).
   async simularConta(
     contaId: string,
-    dto: { valorEntrada: number; numeroParcelas: number; faturasExcluidas?: { faturaId: string; justificativa: string }[]; faturasVincendasIncluidas?: string[] },
+    dto: { valorEntrada: number; numeroParcelas: number; faturasExcluidas?: { faturaId: string; justificativa: string }[]; faturasVincendasIncluidas?: string[]; dataLimiteEntrada?: string },
   ) {
     const eleg = await this.elegiveisConta(contaId);
-    const { valorTotal } = this.aplicarSelecao(eleg, dto.faturasExcluidas ?? [], dto.faturasVincendasIncluidas ?? []);
+    const { faturasSelecionadas, valorTotal } = this.aplicarSelecao(eleg, dto.faturasExcluidas ?? [], dto.faturasVincendasIncluidas ?? []);
     const periodicidade = await this.frequenciaHerdada(contaId);
     const params = await this.catalogoFonte.acordoPagamento();
+    const duranteAcordo = (valorCota: number) =>
+      this.parcelaDuranteAcordo(contaId, faturasSelecionadas.map((f) => f.faturaId), dto.dataLimiteEntrada, dto.numeroParcelas, valorCota, periodicidade);
     if (!params) {
       const saldo = Math.max(0, valorTotal - dto.valorEntrada);
       const parcela = dto.numeroParcelas > 0 ? Math.round(saldo / dto.numeroParcelas) : 0;
@@ -187,6 +203,7 @@ export class RenegociacaoService implements OnModuleInit {
         valorParcela: parcela,
         totalAPagar: dto.valorEntrada + parcela * dto.numeroParcelas,
         excecoes: [] as string[],
+        parcelaDuranteAcordo: await duranteAcordo(parcela),
       };
     }
     const r = precificarAcordoPagamento({
@@ -217,6 +234,42 @@ export class RenegociacaoService implements OnModuleInit {
       valorMinimoParcela: params.valorMinimoParcela,
       totalAPagar: r.totalAPagar,
       excecoes,
+      parcelaDuranteAcordo: await duranteAcordo(r.valorParcela),
+    };
+  }
+
+  // Parcela durante o acordo (decisão 2026-10-28): MESMA regra de encaixe da
+  // ativação (ver cobrarEntrada → ativar): a 1ª cota cai na próxima fatura
+  // ABERTA depois do pagamento da entrada, fora das faturas cobertas; as demais
+  // seguem no passo da periodicidade. Na prévia a entrada ainda não foi paga, então
+  // a estimativa usa a data-limite (sem ela, hoje). O valor "parcelas futuras" é o
+  // valorTotal da fatura — tudo que ela carrega, proteção incluída — e não só a
+  // parcela do contrato. Sem fatura futura (contrato no fim), a cota vai sozinha.
+  private async parcelaDuranteAcordo(
+    contaId: string,
+    faturasCobertas: string[],
+    dataLimiteEntrada: string | undefined,
+    numeroParcelas: number,
+    valorCota: number,
+    periodicidade: 'semanal' | 'quinzenal' | 'mensal',
+  ): Promise<ParcelaDuranteAcordo> {
+    const base = dataLimiteEntrada ? new Date(`${dataLimiteEntrada}T12:00:00-03:00`) : new Date();
+    const proxima = await this.prisma.db.fatura.findFirst({
+      where: { contaId, status: 'ABERTA', deletedAt: null, dataVencimento: { gt: base }, id: { notIn: faturasCobertas } },
+      orderBy: { dataVencimento: 'asc' },
+      select: { dataVencimento: true, valorTotal: true },
+    });
+    const n = Math.max(1, numeroParcelas);
+    const primeira = proxima?.dataVencimento ?? new Date(base.getTime() + DIAS_POR_PERIODO[periodicidade] * DIA_MS);
+    const cronograma = gerarCronograma({ numeroParcelas: n, valorParcela: valorCota, valorTotal: valorCota * n, dataPrimeiraParcela: primeira, periodicidade });
+    const valorParcela = proxima ? cent(proxima.valorTotal) : 0;
+    return {
+      valorParcela,
+      valorCota,
+      valorTotal: valorParcela + valorCota,
+      numeroParcelas: n,
+      primeiraEm: dataCalendarioUTC(cronograma[0].dataVencimento),
+      ultimaEm: dataCalendarioUTC(cronograma[n - 1].dataVencimento),
     };
   }
 
@@ -438,6 +491,7 @@ export class RenegociacaoService implements OnModuleInit {
       numeroParcelas: dto.numeroParcelasNovas,
       faturasExcluidas: exclusoes,
       faturasVincendasIncluidas: vincendasIncluidas,
+      dataLimiteEntrada: dto.dataLimiteEntrada,
     });
     const freqApi = previa.periodicidade;
     let valorParcela: number;
