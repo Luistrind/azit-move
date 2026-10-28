@@ -320,3 +320,36 @@ describe('detalhe do acordo — nativo, aprovado na Central', () => {
     await expect(service.detalhar('nada')).rejects.toMatchObject({ response: { erro: 'nao_encontrado' } });
   });
 });
+
+// Parcela do cliente DURANTE o acordo (decisão Luís 28/10/2026): a prévia mostra
+// parcelas futuras (o que a próxima fatura aberta já carrega, proteção incluída)
+// + cota = total, e o período das cotas pela MESMA regra de encaixe da ativação.
+// Caso real: Edvan 2026030006, semanal às quartas, fatura de 997 (942 + 50 + 5),
+// 5 cotas de 319,53 com entrada até 04/11.
+describe('parcela durante o acordo (prévia)', () => {
+  function montarComFatura(proxima: { venc: string; total: number } | null) {
+    const findFirst = jest.fn().mockResolvedValue(proxima ? { dataVencimento: dia(proxima.venc), valorTotal: dec(proxima.total) } : null);
+    const prisma = { db: { fatura: { findFirst } } };
+    const service = new RenegociacaoService(prisma as never, {} as never, {} as never, {} as never);
+    return { service, findFirst };
+  }
+
+  it('encaixa a 1ª cota na próxima fatura ABERTA depois da data-limite, fora das cobertas, e soma à parcela cheia', async () => {
+    const { service, findFirst } = montarComFatura({ venc: '2026-11-11', total: 997 });
+    const r = await service['parcelaDuranteAcordo']('conta-edvan', ['f32', 'f33'], '2026-11-04', 5, 31_953, 'semanal');
+    expect(r).toEqual({ valorParcela: 99_700, valorCota: 31_953, valorTotal: 131_653, numeroParcelas: 5, primeiraEm: '2026-11-11', ultimaEm: '2026-12-09' });
+    const where = findFirst.mock.calls[0][0].where;
+    expect(where.status).toBe('ABERTA');
+    expect(where.id).toEqual({ notIn: ['f32', 'f33'] });
+    expect(where.dataVencimento.gt.toISOString()).toBe('2026-11-04T15:00:00.000Z'); // meio-dia de Brasília
+  });
+
+  it('sem fatura futura (contrato no fim): a cota vai sozinha, a partir de um passo depois da data-limite', async () => {
+    const { service } = montarComFatura(null);
+    const r = await service['parcelaDuranteAcordo']('conta', [], '2026-11-04', 3, 20_000, 'mensal');
+    expect(r.valorParcela).toBe(0);
+    expect(r.valorTotal).toBe(20_000);
+    expect(r.primeiraEm).toBe('2026-12-04');
+    expect(r.ultimaEm).toBe('2027-02-04');
+  });
+});

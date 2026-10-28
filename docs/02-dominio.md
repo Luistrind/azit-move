@@ -1018,6 +1018,19 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > o terceiro é recusado (`limite_acordos`); a tela alerta o operador quando o cliente já
 > possui acordo em aberto cobrindo faturas.
 
+> **Decisão 2026-10-28 (Luís) — a proposta mostra a PARCELA DO CLIENTE DURANTE O ACORDO.**
+> O passo 2 do wizard (e o resumo do passo 3 e a mensagem do WhatsApp) mostram, além da
+> cota nova, quanto fica a parcela do cliente com a cota em cima: **Parcelas futuras**
+> (o valor que a próxima fatura aberta já carrega — parcela do contrato, proteção, serviços —
+> sem discriminar item) **+ Acordo = Total**, com o período das cotas ("de 11/11 a 09/12;
+> depois a parcela volta a R$ 997,00"). Sem calendário fatura a fatura (dispensado). O
+> número vem do servidor, na prévia (`parcelaDuranteAcordo`), pela MESMA regra de encaixe da
+> efetivação: 1ª cota = próxima fatura ABERTA depois do pagamento da entrada, fora das faturas
+> cobertas; na prévia a estimativa usa a data-limite da entrada (paga antes, a 1ª cota pode
+> entrar na fatura anterior — a tela avisa). Sem fatura futura (contrato no fim), a cota vai
+> sozinha e as faturas são criadas no mesmo passo (item 3 de 18/08). O snapshot do acordo
+> guarda o valor mostrado ao cliente (`calculo.parcelaDuranteAcordo`).
+
 ### 7.7b Novação (recuperação radical)
 - Mecanismo distinto do Acordo: **liquida o ContratoCredito inteiro** e gera um **ContratoCredito novo** completo
 - Usado quando os Acordos brandos não recuperam o cliente, antes da retomada do veículo

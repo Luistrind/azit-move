@@ -67,6 +67,7 @@ export class OperacoesController {
       numeroParcelas: dto.numeroParcelasNovas,
       faturasExcluidas: dto.faturasExcluidas,
       faturasVincendasIncluidas: dto.faturasVincendasIncluidas,
+      dataLimiteEntrada: dto.dataLimiteEntrada,
     });
   }
 
