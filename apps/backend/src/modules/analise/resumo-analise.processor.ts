@@ -27,6 +27,11 @@ export class ResumoAnaliseProcessor extends WorkerHost {
     }
     const r = await this.assistente.gerar(job.data.analiseId);
     this.logger.log(`resumo IA ${job.data.analiseId}: ${r.resultado}`);
+    // Relatório pronto → a renda apurada do comprador principal nasce dele
+    // (decisão 28/10), sem esperar alguém abrir a tela.
+    if (r.resultado === 'concluido') {
+      await this.analise.preencherPeloSistemaPorId(job.data.analiseId).catch((e: Error) => this.logger.warn(`preenchimento pelo sistema falhou (${job.data.analiseId}): ${e.message}`));
+    }
     return r;
   }
 

@@ -14,8 +14,14 @@ export function usePodeRole() {
 }
 
 // Mensagem amigável a partir de um erro de axios (403/alçada/etc).
+// Erros com lista de itens (pacote mínimo incompleto — RF-22, 28/10) mostram
+// o que falta, em vez de só o título.
 export function mensagemErro(e: unknown): string {
-  const err = e as { response?: { data?: { mensagem?: string; erro?: string }; status?: number } };
+  const err = e as { response?: { data?: { mensagem?: string; erro?: string; itens?: { item: string; ok: boolean }[] }; status?: number } };
+  const itens = err?.response?.data?.itens;
+  if (err?.response?.data?.mensagem && Array.isArray(itens) && itens.length) {
+    return `${err.response.data.mensagem}:\n${itens.map((i) => `• ${i.item}`).join('\n')}`;
+  }
   return (
     err?.response?.data?.mensagem ??
     (err?.response?.status === 403

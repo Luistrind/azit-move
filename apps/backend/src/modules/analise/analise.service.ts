@@ -13,13 +13,17 @@ import {
   AnaliseInput,
   ParticipanteAnaliseInput,
   ResultadoAnalise,
+  formatarInstanteBR,
+  extrairRendaMediaRelatorio,
+  identidadeConfereCamada1,
+  sugerirProcessosRelevantes,
 } from '@azit/utils';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../database/prisma.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
-import { Camada1Service } from '../bureau/camada1.service';
+import { Camada1Service, SITUACOES_CPF_ACEITAS } from '../bureau/camada1.service';
 import { BigDataCorpService } from '../bureau/bigdatacorp.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { AssistenteAnaliseService, ResumoIa } from './assistente-analise.service';
@@ -692,7 +696,11 @@ export class AnaliseService implements OnModuleInit {
   }
 
   async dossie(analiseId: string) {
-    const a = await this.carregar(analiseId);
+    const carregada = await this.carregar(analiseId);
+    // Preenchimento pelo sistema (decisão Luís 28/10): idempotente e roda ao
+    // abrir o dossiê — assim alcança análises anteriores à regra (caso Jeferson,
+    // aprovada pelo COCAD e travada só pela renda apurada que o relatório já dizia).
+    const a = (await this.preencherPeloSistema(carregada)) ? await this.carregar(analiseId) : carregada;
     const avaliacao = this.avaliar(a);
     const pareceres = await this.pareceresDe(analiseId);
     return {
@@ -702,6 +710,9 @@ export class AnaliseService implements OnModuleInit {
       // Parecer do analista (o mais recente) e o histórico — visíveis a quem decide.
       parecer: pareceres[0] ?? null,
       pareceres,
+      // Observação do vendedor no envio da proposta (passo 10 do atendimento) —
+      // antes ficava só na proposta e o analista não a via (Luís 28/10).
+      observacaoVendedor: a.proposta.parecerOperador?.trim() || null,
       // Resumo do assistente (IA — 14/09): apoio ao analista, nunca decisão.
       resumoIa: (a.resumoIa as ResumoIa | null) ?? null,
       politicaVersao: a.parametroVersao.politicaVersao,
@@ -724,6 +735,13 @@ export class AnaliseService implements OnModuleInit {
         processosRelevantes: p.processosRelevantes,
         observacoes: p.observacoes,
         autorizacaoRegistrada: a.autorizacoes.some((x) => x.titularId === p.titularId),
+        // De onde veio cada preenchimento (sistema ou analista) — a tela mostra.
+        rendaApuradaOrigem: p.rendaApuradaOrigem,
+        identidadeValidadaOrigem: p.identidadeValidadaOrigem,
+        cnhValidaOrigem: p.cnhValidaOrigem,
+        // Sugestão de "processos relevantes" (COC-06) a partir da consulta de
+        // processos — só sugere; marcar continua decisão do analista.
+        processosSugestao: this.sugestaoProcessos(a, p.titularId, p.titular.cpfCnpj),
       })),
       autorizacoes: a.autorizacoes,
       // Documentos anexados na proposta (decisão 08/08 Q4): CNH obrigatória +
@@ -784,15 +802,30 @@ export class AnaliseService implements OnModuleInit {
     }
 
     const antes = { ...p, titular: undefined };
+    // Origem passa a ser do analista quando ele mexe (28/10): a partir daí o
+    // sistema não volta a preencher sozinho esse campo.
+    const hoje = formatarInstanteBR(new Date());
+    const rendaApuradaMudou = dto.rendaApurada !== undefined && dto.rendaApurada !== (p.rendaApurada !== null ? cent(p.rendaApurada) : null);
     const atualizado = await this.prisma.db.participanteAnalise.update({
       where: { id: p.id },
       data: {
         rendaDeclarada: dto.rendaDeclarada !== undefined ? (dto.rendaDeclarada === null ? null : reais(dto.rendaDeclarada)) : undefined,
         rendaPresumida: dto.rendaPresumida !== undefined ? (dto.rendaPresumida === null ? null : reais(dto.rendaPresumida)) : undefined,
         rendaApurada: dto.rendaApurada !== undefined ? (dto.rendaApurada === null ? null : reais(dto.rendaApurada)) : undefined,
+        rendaApuradaOrigem: rendaApuradaMudou
+          ? `${p.rendaApurada !== null ? 'alterada' : 'informada'} pelo analista em ${hoje}${dto.justificativaRendaApurada ? ` — ${dto.justificativaRendaApurada}` : ''}`
+          : undefined,
         rendaParcialmenteComprovada: dto.rendaParcialmenteComprovada,
         identidadeValidada: dto.identidadeValidada,
+        identidadeValidadaOrigem:
+          dto.identidadeValidada !== undefined && dto.identidadeValidada !== p.identidadeValidada
+            ? `${dto.identidadeValidada ? 'marcada' : 'desmarcada'} pelo analista em ${hoje}`
+            : undefined,
         cnhValida: dto.cnhValida,
+        cnhValidaOrigem:
+          dto.cnhValida !== undefined && dto.cnhValida !== p.cnhValida
+            ? `${dto.cnhValida ? 'marcada' : 'desmarcada'} pelo analista em ${hoje}`
+            : undefined,
         documentoAlternativo: dto.documentoAlternativo,
         atividadeComprovada: dto.atividadeComprovada,
         evidenciaAtividade: dto.evidenciaAtividade,
@@ -1201,7 +1234,10 @@ export class AnaliseService implements OnModuleInit {
   }
 
   async liberar(analiseId: string, usuarioId: string) {
-    const a = await this.carregar(analiseId);
+    // O que o sistema sabe entra antes do gate (28/10) — não depende de alguém
+    // ter aberto o dossiê depois do relatório/consulta.
+    const carregada = await this.carregar(analiseId);
+    const a = (await this.preencherPeloSistema(carregada)) ? await this.carregar(analiseId) : carregada;
     const avaliacao = this.avaliar(a);
     const pacote = this.pacoteMinimo(a, avaliacao);
     const faltando = pacote.filter((x) => !x.ok);
@@ -1239,7 +1275,7 @@ export class AnaliseService implements OnModuleInit {
         // Documentos da proposta no dossiê (decisão 08/08 Q4): complementares
         // podem ou não ser comprovante de renda — o analista precisa vê-los.
         proposta: { include: { documentos: { orderBy: { dataAnexo: 'desc' } } } },
-        participantes: { include: { titular: { select: { nome: true } } } },
+        participantes: { include: { titular: { select: { nome: true, cpfCnpj: true } } } },
         autorizacoes: true,
         consultas: { orderBy: { dataConsulta: 'desc' } },
         pendencias: { orderBy: { situacao: 'asc' } },
@@ -1254,6 +1290,91 @@ export class AnaliseService implements OnModuleInit {
 
   private consultaValida(data: Date, validadeDias: number): boolean {
     return Date.now() - data.getTime() <= validadeDias * DIA_MS;
+  }
+
+  // --- preenchimento pelo sistema (decisão Luís 28/10/2026, doc 02 §14) -------
+  //
+  // O que as consultas e o relatório do assistente já dizem não volta a ser
+  // pedido ao analista em caixinha. Regra única: o sistema só preenche campo
+  // NUNCA tocado (origem nula); depois que o analista mexe, a origem é dele e o
+  // sistema não sobrescreve. Idempotente — sem mudança, nenhuma escrita.
+  //   • identidadeValidada ← Camada 1 concluída e REAL: CPF regular, sem óbito,
+  //     nome oficial igual ao cadastrado (sem acento/caixa);
+  //   • cnhValida ← documento CNH do próprio comprador anexado à proposta
+  //     (validação DOCUMENTAL — não há consulta de CNH);
+  //   • rendaApurada (comprador principal) ← "Média 3M" do relatório da IA.
+  // COC-06 (processos) e COC-08 (renda parcial) NÃO são preenchidos: são
+  // gatilhos de alçada, decisão do analista no passo Parecer/Decisão.
+  async preencherPeloSistemaPorId(analiseId: string): Promise<boolean> {
+    const a = await this.prisma.db.analiseCadastro.findFirst({ where: { id: analiseId }, select: { id: true } });
+    if (!a) return false;
+    return this.preencherPeloSistema(await this.carregar(analiseId));
+  }
+
+  private async preencherPeloSistema(a: Awaited<ReturnType<AnaliseService['carregar']>>): Promise<boolean> {
+    if (FINAIS.includes(a.status)) return false;
+    const resumo = (a.resumoIa as ResumoIa | null) ?? null;
+    let mudou = false;
+    let rendaMudou = false;
+
+    for (const p of a.participantes) {
+      const data: Prisma.ParticipanteAnaliseUpdateInput = {};
+      const origens: Record<string, string> = {};
+
+      if (!p.identidadeValidada && !p.identidadeValidadaOrigem) {
+        const c1 = a.consultas.find((c) => c.titularId === p.titularId && c.tipo === 'CAMADA1' && c.situacao === 'CONCLUIDA');
+        const r = (c1?.resultado ?? null) as null | { nomeOficial?: string | null; situacaoCpf?: string | null; indicacaoObito?: boolean; simulado?: boolean };
+        if (c1 && r && r.simulado !== true) {
+          const v = identidadeConfereCamada1({
+            nomeCadastrado: p.titular.nome,
+            nomeOficial: r.nomeOficial ?? null,
+            cpfRegular: !!r.situacaoCpf && SITUACOES_CPF_ACEITAS.includes(r.situacaoCpf),
+            indicacaoObito: r.indicacaoObito === true,
+          });
+          if (v.confere) {
+            data.identidadeValidada = true;
+            origens.identidadeValidadaOrigem = `validada pela consulta Camada 1 de ${formatarInstanteBR(c1.dataConsulta)} (${v.motivo})`;
+          }
+        }
+      }
+
+      if (!p.cnhValida && !p.cnhValidaOrigem && p.papel !== 'GARANTIDOR') {
+        const doc = a.proposta.documentos.find((d) => d.tipo === 'CNH' && d.titularId === p.titularId);
+        if (doc) {
+          data.cnhValida = true;
+          origens.cnhValidaOrigem = `CNH anexada na proposta em ${formatarInstanteBR(doc.dataAnexo)} (validação documental — não há consulta de CNH)`;
+        }
+      }
+
+      if (p.papel === 'COMPRADOR_PRINCIPAL' && p.rendaApurada === null && !p.rendaApuradaOrigem && resumo?.status === 'concluido') {
+        const r = extrairRendaMediaRelatorio(resumo.texto);
+        if (r) {
+          data.rendaApurada = reais(r.centavos);
+          const quando = resumo.geradoEm ? formatarInstanteBR(new Date(resumo.geradoEm)) : formatarInstanteBR(new Date());
+          origens.rendaApuradaOrigem = `apurada pela IA em ${quando} (relatório do assistente: "${r.trecho}"${r.aproximado ? ' — valor arredondado no relatório, confira' : ''})`;
+          rendaMudou = true;
+        }
+      }
+
+      if (Object.keys(data).length === 0) continue;
+      await this.prisma.db.participanteAnalise.update({ where: { id: p.id }, data: { ...data, ...origens } });
+      await this.auditar(undefined, 'analise_preenchido_pelo_sistema', a.id, { titularId: p.titularId, identidadeValidada: p.identidadeValidada, cnhValida: p.cnhValida, rendaApurada: p.rendaApurada }, { titularId: p.titularId, ...data, ...origens });
+      mudou = true;
+    }
+
+    if (rendaMudou) await this.atualizarAgregados(a.id);
+    return mudou;
+  }
+
+  // Sugestão de COC-06 a partir da última consulta de PROCESSOS concluída do
+  // participante (payload bruto da BigDataCorp). Nunca marca — só mostra.
+  private sugestaoProcessos(a: Awaited<ReturnType<AnaliseService['carregar']>>, titularId: string, cpf: string | null) {
+    const c = a.consultas.find((x) => x.titularId === titularId && x.tipo === 'PROCESSOS' && x.situacao === 'CONCLUIDA');
+    if (!c) return null;
+    const r = (c.resultado ?? {}) as { bruto?: unknown; simulado?: boolean };
+    if (r.simulado === true) return null;
+    const s = sugerirProcessosRelevantes(r.bruto ?? null, cpf);
+    return { sugerir: s.sugerir, motivo: s.motivo, processos: s.processos, consultaEm: c.dataConsulta.toISOString() };
   }
 
   private avaliar(a: Awaited<ReturnType<AnaliseService['carregar']>>): ResultadoAnalise {

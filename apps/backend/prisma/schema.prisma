@@ -1720,6 +1720,13 @@ model ParticipanteAnalise {
   rendaParcialmenteComprovada Boolean      @default(false)
   identidadeValidada          Boolean      @default(false)
   cnhValida                   Boolean      @default(false)
+  // Origem de cada preenchimento (decisão Luís 28/10/2026): o sistema preenche
+  // renda apurada (relatório da IA), identidade (Camada 1) e CNH (anexo) e diz
+  // de onde veio; quando o analista mexe, a origem passa a ser dele. Campo
+  // nulo = nunca tocado (único caso em que o sistema preenche sozinho).
+  rendaApuradaOrigem          String?
+  identidadeValidadaOrigem    String?
+  cnhValidaOrigem             String?
   documentoAlternativo        Boolean      @default(false)
   atividadeComprovada         Boolean      @default(false)
   evidenciaAtividade          String?

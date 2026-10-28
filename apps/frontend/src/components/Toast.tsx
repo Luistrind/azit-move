@@ -48,7 +48,7 @@ export function Toaster() {
             style={{ background: c.bg, color: c.fg, boxShadow: '0 10px 30px rgba(0,16,41,.18)' }}
           >
             <span className="mt-[1px] text-[14px] leading-none">{c.icone}</span>
-            <span className="flex-1">{t.mensagem}</span>
+            <span className="flex-1 whitespace-pre-line">{t.mensagem}</span>
           </div>
         );
       })}

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { diaBrasil } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
+import { AnaliseService } from '../analise/analise.service';
 import { AssistenteAnaliseService } from '../analise/assistente-analise.service';
 import { PROMPT_ASSISTENTE_ANALISE, REGRAS_DEMONSTRATIVOS } from '../analise/prompt-assistente';
 
@@ -25,6 +26,7 @@ export class McpAzitService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly assistente: AssistenteAnaliseService,
+    private readonly analise: AnaliseService,
   ) {}
 
   // Um servidor NOVO por request (modo stateless do Streamable HTTP).
@@ -244,7 +246,12 @@ export class McpAzitService {
           },
         });
         this.logger.log(`Relatório salvo via MCP na análise ${analiseId} (${texto.length} chars)`);
-        return { content: [{ type: 'text', text: `Relatório salvo na análise ${analiseId} — já visível na tela do analista.` }] };
+        // Mesmo efeito do pipeline da API (decisão 28/10): a "Média 3M" do
+        // relatório vira a renda apurada do comprador principal, se ainda vazia.
+        const preencheu = await this.analise
+          .preencherPeloSistemaPorId(analiseId)
+          .catch((e: Error) => { this.logger.warn(`preenchimento pelo sistema falhou (${analiseId}): ${e.message}`); return false; });
+        return { content: [{ type: 'text', text: `Relatório salvo na análise ${analiseId} — já visível na tela do analista.${preencheu ? ' A renda apurada do comprador principal foi preenchida a partir da Média 3M do relatório (o analista pode corrigir).' : ''}` }] };
       },
     );
 
