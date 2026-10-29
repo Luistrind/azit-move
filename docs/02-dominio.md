@@ -710,6 +710,55 @@ Evento de reajuste anual das parcelas por IPCA. Precisa de aprovação humana an
 > tudo da mesma fonte (inadimplência exibida é a OPERACIONAL; "Recebido na semana" =
 > faturas pagas + lançamentos da janela).
 
+> **Decisão 2026-10-29 (Luís) — KPIs da carteira por CONTA e por TIPO de contrato,
+> sem dupla contagem.** O cliente é cobrado numa fatura só, mas o sistema o contava
+> por contrato: quem tem veículo + Reembolso Parcelado era "dois inadimplentes" e os
+> RPs inflavam "contratos ativos" (produção 29/10: 66 ativos = 62 de veículo + 4 RPs).
+> Régua única para os cartões da Carteira e para a tabela por titular:
+>
+> 1. **Inadimplência por conta.** Numerador = contas com pelo menos uma **fatura
+>    vencida em aberto** (ABERTA/FECHADA com vencimento antes de hoje no fuso do
+>    Brasil; RENEGOCIADA e NOVADA ficam fora — a dívida passou a viver no acordo/
+>    novação). Denominador = contas com pelo menos um **contrato de veículo ATIVO**.
+>    Um cliente = uma inadimplência. O cartão mostra também o **valor em atraso**
+>    (o que falta pagar das faturas vencidas: total − pago parcial) e o número de
+>    faturas vencidas. Conta com fatura vencida mas sem veículo vigente (só RP, ou
+>    contrato encerrado com pendência) não entra no percentual — aparece como linha
+>    "sem veículo vigente" e na tabela.
+> 2. **Contratos ativos = só contratos de veículo.** Reembolsos Parcelados, créditos
+>    avulsos e Termos de novação em andamento viram número secundário no mesmo cartão
+>    ("+ 4 reembolsos parcelados").
+> 3. **Carteira sob gestão em três fatias** — parcelas de veículo · cotas de acordo
+>    (parcelas de item de origem ACORDO, em qualquer contrato, + parcelas de Termo de
+>    novação, que é dívida renegociada) · reembolsos e créditos — com o total ao lado.
+>    Só contratos ATIVO, só parcelas em aberto não cobertas por acordo (a regra de
+>    07/09 contra parcela órfã de contrato encerrado continua).
+> 4. **Recebido na semana = desta segunda-feira até hoje** no fuso America/Sao_Paulo
+>    (`inicioSemanaISO` em `packages/utils/src/datas.ts`; nunca "últimos 7×24h"),
+>    separado em parcelas (principal pago, sem encargos), encargos (juros e multa) e
+>    entradas (lançamentos de entrada de contrato/acordo). "Últimos 7 dias" segue como
+>    linha secundária. O dia de cada pagamento é lido pela coluna mista (dia-calendário
+>    do cronograma/legado ou instante do webhook).
+> 5. **Tabela por titular:** coluna Contratos mostra só os de veículo e um marcador
+>    "+RP" quando há reembolso/crédito em andamento; "Em atraso" e "Faturas vencidas"
+>    vêm das **faturas** da conta (mesma régua do cartão); situação "em acordo" quando
+>    não há fatura vencida em aberto e existe acordo ATIVO na conta (as faturas
+>    cobertas viram RENEGOCIADA e saem da régua).
+>
+> **Tipo do contrato é DERIVADO, numa função só** (`classificarContrato`, em
+> `packages/utils/src/tipo-contrato.ts` — Regra 16): *Termo de novação* quando
+> `Novacao.contratoTermoId` aponta para ele; *reembolso* quando há marca de Reembolso
+> Parcelado (`snapshotJson.legado.reembolsoDe` ou número com sufixo `-RPn`, do legado
+> §26.8; ou Aprovacao `tipoOperacao = reembolso_parcelado` referenciando o contrato, na
+> originação nativa §18.5); *veículo* quando tem Ativo do tipo VEICULO (a
+> `varianteCatalogo` não entra); *crédito* para o resto (crédito avulso sem ativo ou
+> com ativo sintético OUTRO, forma anterior a 12/09). Enquanto esses critérios separam
+> todos os casos, o ContratoCredito NÃO ganha coluna `tipo`; se um produto novo não
+> couber neles, a coluna + backfill sobem a este doc antes do código. A ficha do
+> titular ainda calcula "em atraso" por parcela de contrato — alinhar à régua das
+> faturas é follow-up (não muda o número do cliente comum, só o de quem tem RP ou
+> fatura parcialmente paga).
+
 **Fase (gravada):**
 | Fase | Descrição |
 |---|---|

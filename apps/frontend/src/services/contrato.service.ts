@@ -23,15 +23,41 @@ export interface ListaContratos {
   data: ContratoListaItem[];
 }
 
+// Tipo DERIVADO do contrato (função única em @azit/utils, doc 02 §5.2, 29/10).
+export type TipoContrato = 'veiculo' | 'reembolso' | 'credito' | 'termo_novacao';
+export type ContagemPorTipo = Record<TipoContrato, number>;
+
+export interface JanelaRecebido {
+  desde: string; // 'YYYY-MM-DD' (fuso do Brasil)
+  ate: string;
+  parcelas: number; // centavos — principal das parcelas pagas (sem encargos)
+  encargos: number; // juros e multa pagos
+  entradas: number; // lançamentos (entrada de contrato / de acordo)
+  total: number;
+}
+
+// KPIs da Carteira por CONTA e por TIPO (decisão Luís 29/10/2026).
 export interface ContratoKpis {
   totalContratos: number;
   porStatus: { status: string; total: number }[];
   saldoDevedorTotal: number;
-  carteiraSobGestao: number;
-  contratosAtivos: number;
-  inadimplentes: number;
-  inadimplenciaPct: number;
-  recebidoNaSemana: number;
+  carteiraSobGestao: number; // = carteira.total
+  carteira: { veiculo: number; acordos: number; reembolsos: number; total: number };
+  contratosAtivos: number; // só contratos de VEÍCULO vigentes
+  contratosAtivosPorTipo: ContagemPorTipo;
+  contratosAtivosTotal: number;
+  inadimplencia: {
+    contasBase: number; // contas com contrato de veículo vigente
+    contasInadimplentes: number; // contas da base com fatura vencida em aberto
+    contasEmAtrasoForaDaBase: number; // fatura vencida sem veículo vigente (não entra no %)
+    pct: number;
+    valorEmAtraso: number; // centavos — o que falta pagar das faturas vencidas
+    faturasVencidas: number;
+  };
+  inadimplentes: number; // = inadimplencia.contasInadimplentes
+  inadimplenciaPct: number; // = inadimplencia.pct
+  recebido: { semana: JanelaRecebido; ultimos7Dias: JanelaRecebido };
+  recebidoNaSemana: number; // = recebido.semana.total
 }
 
 export interface ContratoDetalhe {

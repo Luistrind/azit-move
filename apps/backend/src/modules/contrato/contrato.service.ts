@@ -12,7 +12,7 @@ import {
   StatusContratoCredito as StatusContratoCreditoPrisma,
 } from '@prisma/client';
 import { StatusContratoCredito, Credor, Periodicidade as PeriodicidadeTypes } from '@azit/types';
-import { diasAtrasoCalendario, gerarCronograma, centavosParaReaisString, inicioHojeBrasilUTC, dataCalendarioUTC, inicioDiaUTC, DIA_MS, DIAS_POR_PERIODO, fatorValorDesdeSemanal, FUSO_NEGOCIO } from '@azit/utils';
+import { diasAtrasoCalendario, gerarCronograma, centavosParaReaisString, inicioHojeBrasilUTC, dataCalendarioUTC, inicioDiaUTC, DIA_MS, DIAS_POR_PERIODO, fatorValorDesdeSemanal, FUSO_NEGOCIO, dataHojeBrasil, somarDiasISO, inicioSemanaISO, diaDeColunaMista, fatiaDaCarteira, contarPorTipo } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { CriarContratoDto } from './dto/criar-contrato.dto';
 import { ListarContratosDto } from './dto/listar-contratos.dto';
@@ -23,6 +23,7 @@ import {
   periodicidadeParaPrisma,
   chavePrisma,
 } from './contrato.mapper';
+import { SELECT_TIPO_CONTRATO, tiposDosContratos } from './tipo-contrato';
 
 // Cliente de transação do Prisma ESTENDIDO (soft-delete) — tipo do `tx` no $transaction.
 type TxEstendido = Omit<
@@ -739,50 +740,135 @@ export class ContratoService {
     return { total, page: filtros.page, limit: filtros.limit, data };
   }
 
-  // KPIs da Carteira — régua única (doc 02 §5.2, 07/09; bug de produção 05/09):
-  // vigente = fase ATIVO; inadimplência exibida é a OPERACIONAL (contratos ativos
-  // com parcela vencida fora de acordo — mesma régua da tabela de posições);
-  // carteira sob gestão só soma contratos vigentes (parcela órfã de contrato
-  // encerrado não infla); recebido na semana = parcelas pagas + LANÇAMENTOS
-  // (entradas de contrato/acordo) da janela.
+  // KPIs da Carteira — por CONTA e por TIPO de contrato (decisão Luís
+  // 29/10/2026, doc 02 §5.2 "KPIs da carteira"). Régua única com a tabela de
+  // posições (ContaService.carteira):
+  //   • inadimplência conta CONTAS com fatura vencida em aberto — cliente com
+  //     veículo + Reembolso Parcelado é cobrado numa fatura só e conta UMA vez;
+  //     base = contas com contrato de VEÍCULO vigente;
+  //   • "contratos ativos" = só contratos de veículo; RP, crédito avulso e
+  //     Termo de novação viram número secundário no mesmo cartão;
+  //   • carteira sob gestão em três fatias (veículo · acordos · reembolsos),
+  //     só contratos vigentes e só parcelas em aberto fora de acordo (parcela
+  //     órfã de contrato encerrado não infla — regra de 07/09 mantida);
+  //   • recebido na semana = desta SEGUNDA-FEIRA até hoje no fuso do Brasil,
+  //     separado em parcelas (principal), encargos e entradas (lançamentos);
+  //     "últimos 7 dias" segue como linha secundária.
+  // Nada disso é gravado (Regra 7). O tipo do contrato vem da função única
+  // `classificarContrato` (@azit/utils) via `tiposDosContratos`.
   async kpis() {
-    const seteDiasAtras = new Date(Date.now() - 7 * DIA_MS);
-    const hoje = inicioHojeBrasilUTC();
-    const [porStatus, ativosIds, saldo, recebido, lancado] = await Promise.all([
+    const hojeISO = dataHojeBrasil();
+    const hoje = inicioDiaUTC(hojeISO);
+    const segundaISO = inicioSemanaISO(hojeISO);
+    const inicio7ISO = somarDiasISO(hojeISO, -6);
+    // A segunda nunca está a mais de 6 dias de hoje: uma busca só, a partir do
+    // início mais antigo; o corte fino por dia é feito abaixo, coluna a coluna.
+    const inicioBusca = inicioDiaUTC(inicio7ISO);
+
+    const [porStatus, ativos, faturasVencidas, parcelasPagas, lancamentos] = await Promise.all([
       this.prisma.db.contratoCredito.groupBy({ by: ['status'], _count: { _all: true } }),
-      this.prisma.db.contratoCredito.findMany({ where: { status: 'ATIVO' }, select: { id: true } }),
-      this.prisma.db.parcela.aggregate({
-        where: { status: null, acordoId: null, contrato: { status: 'ATIVO' } },
-        _sum: { valorNominal: true },
+      this.prisma.db.contratoCredito.findMany({ where: { status: 'ATIVO' }, select: { ...SELECT_TIPO_CONTRATO, contaId: true } }),
+      // Fatura vencida em aberto: ABERTA/FECHADA com vencimento antes de hoje.
+      // RENEGOCIADA/NOVADA ficam fora — a dívida passou a viver no acordo/novação.
+      this.prisma.db.fatura.findMany({
+        where: { status: { in: ['ABERTA', 'FECHADA'] }, dataVencimento: { lt: hoje } },
+        select: { contaId: true, valorTotal: true, valorPago: true },
       }),
-      this.prisma.db.parcela.aggregate({
-        where: { status: { in: PARCELA_PAGA }, dataPagamento: { gte: seteDiasAtras } },
-        _sum: { valorPago: true },
+      this.prisma.db.parcela.findMany({
+        where: { status: { in: PARCELA_PAGA }, dataPagamento: { gte: inicioBusca } },
+        select: { dataPagamento: true, valorPago: true, valorEncargo: true },
       }),
-      this.prisma.db.lancamentoConta.aggregate({
-        where: { dataPagamento: { gte: seteDiasAtras } },
-        _sum: { valor: true },
+      this.prisma.db.lancamentoConta.findMany({
+        where: { dataPagamento: { gte: inicioBusca } },
+        select: { dataPagamento: true, valor: true },
       }),
     ]);
-    const emAtrasoPorContrato = ativosIds.length
-      ? await this.prisma.db.parcela.groupBy({
-          by: ['contratoId'],
-          where: { contratoId: { in: ativosIds.map((c) => c.id) }, status: null, acordoId: null, dataVencimento: { lt: hoje } },
-          _count: { _all: true },
-        })
-      : [];
-    const totalContratos = porStatus.reduce((s, g) => s + g._count._all, 0);
-    const ativos = ativosIds.length;
-    const emAtraso = emAtrasoPorContrato.length;
+
+    const tipos = await tiposDosContratos(this.prisma.db, ativos);
+    const porTipo = contarPorTipo(tipos.values());
+    const idsAtivos = ativos.map((c) => c.id);
+
+    // Carteira sob gestão por fatia: as cotas de acordo são as parcelas de
+    // item de origem ACORDO (doc 02 §4.14), em qualquer contrato.
+    const [abertoVenda, abertoAcordo] = idsAtivos.length
+      ? await Promise.all([
+          this.prisma.db.parcela.groupBy({
+            by: ['contratoId'],
+            where: { contratoId: { in: idsAtivos }, status: null, acordoId: null, itemContratado: { origem: 'VENDA' } },
+            _sum: { valorNominal: true },
+          }),
+          this.prisma.db.parcela.groupBy({
+            by: ['contratoId'],
+            where: { contratoId: { in: idsAtivos }, status: null, acordoId: null, itemContratado: { origem: 'ACORDO' } },
+            _sum: { valorNominal: true },
+          }),
+        ])
+      : [[], []];
+    const carteira = { veiculo: 0, acordos: 0, reembolsos: 0, total: 0 };
+    for (const g of abertoVenda) carteira[fatiaDaCarteira(tipos.get(g.contratoId) ?? 'veiculo', 'VENDA')] += this.cent(g._sum.valorNominal);
+    for (const g of abertoAcordo) carteira[fatiaDaCarteira(tipos.get(g.contratoId) ?? 'veiculo', 'ACORDO')] += this.cent(g._sum.valorNominal);
+    carteira.total = carteira.veiculo + carteira.acordos + carteira.reembolsos;
+
+    // Inadimplência por CONTA. Valor em atraso = o que falta pagar das faturas
+    // vencidas (total − pago parcial), de TODAS as contas; o percentual só
+    // olha a base (conta com fatura vencida mas sem veículo vigente aparece
+    // em `contasEmAtrasoForaDaBase` e na tabela, não no percentual).
+    const contasBase = new Set(ativos.filter((c) => tipos.get(c.id) === 'veiculo').map((c) => c.contaId));
+    const contasComVencida = new Set<string>();
+    let valorEmAtraso = 0;
+    for (const f of faturasVencidas) {
+      contasComVencida.add(f.contaId);
+      valorEmAtraso += Math.max(0, this.cent(f.valorTotal) - this.cent(f.valorPago));
+    }
+    const inadimplentes = [...contasComVencida].filter((id) => contasBase.has(id)).length;
+    const pct = contasBase.size > 0 ? Math.round((inadimplentes / contasBase.size) * 1000) / 10 : 0;
+
+    // Recebido: o dia de cada pagamento no fuso do negócio — a coluna mistura
+    // dia-calendário (cronograma, legado) e instante (webhook, entrada paga).
+    const somaJanela = (desdeISO: string) => {
+      let parcelas = 0;
+      let encargos = 0;
+      let entradas = 0;
+      for (const p of parcelasPagas) {
+        if (!p.dataPagamento) continue;
+        const d = diaDeColunaMista(p.dataPagamento);
+        if (d < desdeISO || d > hojeISO) continue;
+        const enc = this.cent(p.valorEncargo);
+        parcelas += this.cent(p.valorPago) - enc;
+        encargos += enc;
+      }
+      for (const l of lancamentos) {
+        const d = diaDeColunaMista(l.dataPagamento);
+        if (d < desdeISO || d > hojeISO) continue;
+        entradas += this.cent(l.valor);
+      }
+      return { parcelas, encargos, entradas, total: parcelas + encargos + entradas };
+    };
+    const semana = { desde: segundaISO, ate: hojeISO, ...somaJanela(segundaISO) };
+    const ultimos7Dias = { desde: inicio7ISO, ate: hojeISO, ...somaJanela(inicio7ISO) };
+
     return {
-      totalContratos,
+      totalContratos: porStatus.reduce((s, g) => s + g._count._all, 0),
       porStatus: porStatus.map((g) => ({ status: StatusContratoCredito[g.status], total: g._count._all })),
-      saldoDevedorTotal: this.cent(saldo._sum.valorNominal),
-      carteiraSobGestao: this.cent(saldo._sum.valorNominal),
-      contratosAtivos: ativos,
-      inadimplentes: emAtraso,
-      inadimplenciaPct: ativos > 0 ? Math.round((emAtraso / ativos) * 1000) / 10 : 0,
-      recebidoNaSemana: this.cent(recebido._sum.valorPago) + this.cent(lancado._sum.valor),
+      // Vigentes = só VEÍCULO; os outros tipos ficam ao lado, nunca somados.
+      contratosAtivos: porTipo.veiculo,
+      contratosAtivosPorTipo: porTipo,
+      contratosAtivosTotal: idsAtivos.length,
+      carteira,
+      carteiraSobGestao: carteira.total,
+      saldoDevedorTotal: carteira.total,
+      inadimplencia: {
+        contasBase: contasBase.size,
+        contasInadimplentes: inadimplentes,
+        contasEmAtrasoForaDaBase: contasComVencida.size - inadimplentes,
+        pct,
+        valorEmAtraso,
+        faturasVencidas: faturasVencidas.length,
+      },
+      inadimplentes,
+      inadimplenciaPct: pct,
+      recebido: { semana, ultimos7Dias },
+      recebidoNaSemana: semana.total,
     };
   }
 

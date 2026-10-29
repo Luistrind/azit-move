@@ -3,11 +3,12 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
-import { inicioHojeBrasilUTC } from '@azit/utils';
+import { inicioHojeBrasilUTC, contarPorTipo } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { CriarContaDto } from './dto/criar-conta.dto';
 import { AtualizarContaDto } from './dto/atualizar-conta.dto';
 import { ContaApi, contaParaApi, mapearStatusConta } from './conta.mapper';
+import { SELECT_TIPO_CONTRATO, tiposDosContratos } from '../contrato/tipo-contrato';
 
 // Modelo de 3 camadas (doc 02 §5.2, 07/09): vigente = fase ATIVO; bloqueio é
 // carimbo (veiculoBloqueadoEm); situação financeira é calculada — inclusive o
@@ -23,57 +24,58 @@ export class ContaService {
 
   // Carteira TITULAR-cêntrica (Doc 2: a arquitetura é centrada no titular): posição
   // consolidada por conta — saldo, atraso, contratos, bloqueio — para a tela Carteira.
+  // Decisão Luís 29/10/2026 (doc 02 §5.2 "KPIs da carteira"): mesma régua dos
+  // cartões — "Em atraso" e "Faturas vencidas" vêm das FATURAS da conta (vencidas
+  // em aberto), a coluna Contratos conta só os de VEÍCULO e marca "+RP" quando há
+  // reembolso/crédito em andamento; "em acordo" = nenhuma fatura vencida em aberto
+  // (as cobertas viram RENEGOCIADA) e acordo ATIVO na conta.
   async carteira() {
     const hoje = inicioHojeBrasilUTC(); // fuso do negócio (A4, 04/09)
     const contas = await this.prisma.db.conta.findMany({
       where: { titular: { deletedAt: null } },
       include: {
         titular: { select: { id: true, nome: true, cpfCnpj: true } },
-        contratosCredito: { select: { id: true, status: true, veiculoBloqueadoEm: true } },
+        contratosCredito: { select: { ...SELECT_TIPO_CONTRATO, status: true, veiculoBloqueadoEm: true } },
         acordos: { where: { status: 'ATIVO' }, select: { id: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
 
     // Agregados em lote (evita N+1 pesado): parcelas por contrato, faturas por conta.
-    const todosContratos = contas.flatMap((c) =>
-      c.contratosCredito.filter((ct) => ct.status === 'ATIVO').map((ct) => ct.id),
-    );
-    const [saldos, atrasos, vencidas] = await Promise.all([
+    const vigentesTodos = contas.flatMap((c) => c.contratosCredito.filter((ct) => ct.status === 'ATIVO'));
+    const [tipos, saldos, vencidas] = await Promise.all([
+      tiposDosContratos(this.prisma.db, vigentesTodos),
       this.prisma.db.parcela.groupBy({
         by: ['contratoId'],
-        where: { contratoId: { in: todosContratos }, status: null, acordoId: null },
+        where: { contratoId: { in: vigentesTodos.map((ct) => ct.id) }, status: null, acordoId: null },
         _sum: { valorNominal: true },
       }),
-      this.prisma.db.parcela.groupBy({
-        by: ['contratoId'],
-        where: {
-          contratoId: { in: todosContratos },
-          status: null,
-          acordoId: null,
-          dataVencimento: { lt: hoje },
-        },
-        _sum: { valorNominal: true },
-      }),
-      this.prisma.db.fatura.groupBy({
-        by: ['contaId'],
+      // Fatura vencida em aberto (ABERTA/FECHADA antes de hoje): o que falta
+      // pagar é total − pago parcial. RENEGOCIADA/NOVADA ficam fora.
+      this.prisma.db.fatura.findMany({
         where: {
           contaId: { in: contas.map((c) => c.id) },
           dataVencimento: { lt: hoje },
           status: { in: ['ABERTA', 'FECHADA'] },
         },
-        _count: { _all: true },
+        select: { contaId: true, valorTotal: true, valorPago: true },
       }),
     ]);
     const saldoPorContrato = new Map(saldos.map((s) => [s.contratoId, this.cent(s._sum.valorNominal)]));
-    const atrasoPorContrato = new Map(atrasos.map((s) => [s.contratoId, this.cent(s._sum.valorNominal)]));
-    const vencidasPorConta = new Map(vencidas.map((v) => [v.contaId, v._count._all]));
+    const vencidasPorConta = new Map<string, { quantidade: number; valor: number }>();
+    for (const f of vencidas) {
+      const atual = vencidasPorConta.get(f.contaId) ?? { quantidade: 0, valor: 0 };
+      atual.quantidade += 1;
+      atual.valor += Math.max(0, this.cent(f.valorTotal) - this.cent(f.valorPago));
+      vencidasPorConta.set(f.contaId, atual);
+    }
 
     return contas
       .map((conta) => {
         const vigentes = conta.contratosCredito.filter((ct) => ct.status === 'ATIVO');
+        const porTipo = contarPorTipo(vigentes.map((ct) => tipos.get(ct.id) ?? 'veiculo'));
         const saldoDevedor = vigentes.reduce((s, ct) => s + (saldoPorContrato.get(ct.id) ?? 0), 0);
-        const valorEmAtraso = vigentes.reduce((s, ct) => s + (atrasoPorContrato.get(ct.id) ?? 0), 0);
+        const atraso = vencidasPorConta.get(conta.id) ?? { quantidade: 0, valor: 0 };
         const bloqueada = conta.contratosCredito.some((ct) => ct.veiculoBloqueadoEm !== null);
         const emAcordo = conta.acordos.length > 0;
         return {
@@ -81,13 +83,16 @@ export class ContaService {
           titularId: conta.titular.id,
           titular: conta.titular.nome,
           cpfCnpj: conta.titular.cpfCnpj,
-          contratosAtivos: vigentes.length,
+          // Só contratos de VEÍCULO; os demais vigentes ficam em contratosPorTipo.
+          contratosAtivos: porTipo.veiculo,
+          contratosPorTipo: porTipo,
+          reembolsosAtivos: porTipo.reembolso + porTipo.credito,
           contratosTotal: conta.contratosCredito.length,
           saldoDevedor,
-          valorEmAtraso,
-          faturasVencidas: vencidasPorConta.get(conta.id) ?? 0,
+          valorEmAtraso: atraso.valor,
+          faturasVencidas: atraso.quantidade,
           bloqueada,
-          situacao: bloqueada ? 'bloqueada' : valorEmAtraso > 0 ? 'em_atraso' : emAcordo ? 'em_acordo' : 'em_dia',
+          situacao: bloqueada ? 'bloqueada' : atraso.quantidade > 0 ? 'em_atraso' : emAcordo ? 'em_acordo' : 'em_dia',
         };
       })
       .filter((c) => c.contratosTotal > 0);

@@ -320,6 +320,69 @@ Endpoints consumidos pelo front-end operacional e futuras interfaces de cliente 
 
 ### 4.1 Contratos
 
+#### GET `/api/v1/contratos/kpis` — cartões da Carteira Operacional
+KPIs por CONTA e por TIPO de contrato (doc 02 §5.2, decisão 2026-10-29). Nada gravado (Regra 7);
+tipo do contrato derivado por `classificarContrato` (@azit/utils). Valores em centavos.
+
+```json
+{
+  "totalContratos": 80,
+  "porStatus": [{ "status": "ativo", "total": 66 }],
+  "contratosAtivos": 62,
+  "contratosAtivosPorTipo": { "veiculo": 62, "reembolso": 4, "credito": 0, "termo_novacao": 0 },
+  "contratosAtivosTotal": 66,
+  "carteira": { "veiculo": 0, "acordos": 0, "reembolsos": 0, "total": 0 },
+  "carteiraSobGestao": 0,
+  "inadimplencia": {
+    "contasBase": 62,
+    "contasInadimplentes": 5,
+    "contasEmAtrasoForaDaBase": 0,
+    "pct": 8.1,
+    "valorEmAtraso": 0,
+    "faturasVencidas": 9
+  },
+  "recebido": {
+    "semana": { "desde": "2026-10-26", "ate": "2026-10-29", "parcelas": 0, "encargos": 0, "entradas": 0, "total": 0 },
+    "ultimos7Dias": { "desde": "2026-10-23", "ate": "2026-10-29", "parcelas": 0, "encargos": 0, "entradas": 0, "total": 0 }
+  },
+  "inadimplentes": 5,
+  "inadimplenciaPct": 8.1,
+  "recebidoNaSemana": 0
+}
+```
+
+- `contratosAtivos` = só contratos de **veículo** vigentes; os demais tipos em `contratosAtivosPorTipo`.
+- `inadimplencia`: base = contas com veículo ATIVO; inadimplente = conta da base com fatura vencida em
+  aberto (ABERTA/FECHADA antes de hoje no fuso do Brasil). `valorEmAtraso` = total − pago parcial das
+  faturas vencidas, de todas as contas.
+- `carteira`: parcelas em aberto fora de acordo de contratos ATIVO — `acordos` = itens de origem ACORDO
+  + Termo de novação; `reembolsos` = reembolso parcelado + crédito avulso.
+- `recebido.semana`: desta segunda-feira até hoje (fuso America/Sao_Paulo); `parcelas` = principal
+  pago (sem encargos), `encargos` = juros e multa, `entradas` = lançamentos de entrada.
+- `inadimplentes`, `inadimplenciaPct`, `carteiraSobGestao`, `recebidoNaSemana`: atalhos mantidos.
+
+#### GET `/api/v1/contas/carteira` — posição por titular (tabela da Carteira)
+Lista de contas com contrato (mesma régua dos cartões):
+
+```json
+[{
+  "contaId": "…", "titularId": "…", "titular": "Nome", "cpfCnpj": "…",
+  "contratosAtivos": 1,
+  "contratosPorTipo": { "veiculo": 1, "reembolso": 1, "credito": 0, "termo_novacao": 0 },
+  "reembolsosAtivos": 1,
+  "contratosTotal": 2,
+  "saldoDevedor": 0,
+  "valorEmAtraso": 0,
+  "faturasVencidas": 0,
+  "bloqueada": false,
+  "situacao": "em_dia | em_atraso | em_acordo | bloqueada"
+}]
+```
+
+`contratosAtivos` só conta veículo (`reembolsosAtivos` = RP + crédito avulso em andamento, marcador
+"+RP"); `valorEmAtraso`/`faturasVencidas` vêm das faturas vencidas em aberto da conta; `em_acordo` =
+sem fatura vencida em aberto e acordo ATIVO.
+
 #### GET `/api/v1/contratos`
 Lista contratos com filtros.
 
