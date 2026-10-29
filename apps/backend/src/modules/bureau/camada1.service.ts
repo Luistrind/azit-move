@@ -8,8 +8,12 @@ import { BigDataCorpService } from './bigdatacorp.service';
 // ⚠️ PLACEHOLDER (Regra 12): os limites abaixo são o padrão provisório validado
 // em reunião (04/08) até existir a central de parâmetros da Camada 1 em tela —
 // substituíveis sem tocar no fluxo. Situação aceita: REGULAR; idade 21–75.
+// Situações do CPF na Receita aceitas como "regular" — a análise reusa a MESMA
+// lista para validar identidade pela Camada 1 (decisão 28/10/2026).
+export const SITUACOES_CPF_ACEITAS: readonly string[] = ['REGULAR'];
+
 const PARAMETROS_CAMADA1 = {
-  situacoesAceitas: ['REGULAR'],
+  situacoesAceitas: SITUACOES_CPF_ACEITAS,
   idadeMinima: 21,
   idadeMaxima: 75,
   reprovarSemCadastroNoBureau: false, // não encontrado NÃO reprova — vira alerta

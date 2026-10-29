@@ -1463,6 +1463,41 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 >    proposta (Bloco 7) fica bloqueado — parecer, decisão e liberação acontecem exclusivamente no
 >    workspace da análise, que ao liberar marca a proposta como aprovada.
 
+> **Decisão 2026-10-28 (Luís) — a Liberação vem preenchida pelo sistema.** Reclamação de produto:
+> a tela exigia em caixinha o que o sistema já sabia pelas consultas e pelo relatório do assistente,
+> e a observação do vendedor não aparecia. Regras:
+> 1. **O sistema preenche só campo nunca tocado.** Cada preenchimento automático grava a sua
+>    **origem** (`rendaApuradaOrigem`, `identidadeValidadaOrigem`, `cnhValidaOrigem` em
+>    `ParticipanteAnalise`); quando o analista mexe, a origem passa a ser dele ("informada/alterada/
+>    marcada/desmarcada pelo analista em dd/mm/aaaa") e o sistema **não sobrescreve mais**. O
+>    preenchimento é idempotente e roda ao abrir o dossiê, no "Liberar" e quando um relatório/
+>    consulta chega — alcança análises anteriores à regra (caso Jeferson, 27/10).
+> 2. **Renda apurada ← relatório da IA.** A "Média 3M" do RELATÓRIO CADASTRAL RESUMIDO (pipeline
+>    da API ou connector MCP) vira a `rendaApurada` do **comprador principal** se ainda vazia
+>    (`extrairRendaMediaRelatorio` em `@azit/utils`; forma compacta "R$ 10,5 mil" entra marcada
+>    como arredondada). Continua editável; alterar exige justificativa (feedback 22/07 §5). Sem
+>    relatório ou sem média legível, o campo fica vazio como antes. Consumidores de `rendaApurada`
+>    (comprometimento, agregados `rendaApuradaTotal`, Central de Aprovações) não mudam — leem o
+>    mesmo campo.
+> 3. **Identidade validada ← Camada 1.** Consulta CONCLUÍDA e real (não simulada) com CPF em
+>    situação aceita (`SITUACOES_CPF_ACEITAS`, a mesma lista da Camada 1), sem indicação de óbito e
+>    nome oficial igual ao cadastrado (sem acento/caixa — `identidadeConfereCamada1`). Qualquer
+>    divergência deixa a validação com o analista; ele pode desmarcar.
+> 4. **CNH ← anexo.** `cnhValida` marcada quando há documento CNH **do próprio comprador** na
+>    proposta. É **validação documental** — não existe consulta de CNH; a tela diz isso.
+> 5. **Renda parcial (COC-08) e processos relevantes (COC-06) saem do bloco do participante** e
+>    moram no passo **Decisão** como "Gatilhos de alçada — eleva ao COCAD", editáveis até a
+>    decisão ser encaminhada. Nunca são preenchidos pelo sistema: a consulta de PROCESSOS gera uma
+>    **sugestão** (`sugerirProcessosRelevantes`: assunto financeiro/patrimonial do item 11 do
+>    prompt, processo ativo, cliente no polo passivo ou polo não informado) com botão "Marcar como
+>    relevante" — a decisão é humana.
+> 6. **Observação do vendedor** (`Proposta.parecerOperador`, passo 10 do atendimento) entra no
+>    dossiê da análise (`observacaoVendedor`) e aparece no topo da tela em todos os passos.
+> 7. **Liberação com pacote incompleto lista os itens** faltantes (a API já devolvia `itens`; a
+>    tela passa a mostrá-los).
+> Não muda: condutor principal continua definido pelo analista (botão), e nenhum gatilho de alçada
+> é marcado sozinho.
+
 ---
 
 ## 15. Pessoas, Classificações e Camada de Capital (reunião 18/07)

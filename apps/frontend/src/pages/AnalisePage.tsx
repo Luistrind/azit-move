@@ -97,9 +97,9 @@ function moeda(c: number | null | undefined) {
 // Onde resolver cada item pendente do pacote mínimo (feedback 28/08).
 const DICA_PACOTE: Record<string, string> = {
   'Decisão válida (aprovação não vencida)': 'a análise precisa estar aprovada (alçada ou COCAD) há menos de 10 dias úteis',
-  'Condutor principal definido com CNH válida': 'no bloco do comprador: marque "CNH válida" e clique "Definir condutor"',
+  'Condutor principal definido com CNH válida': 'no bloco do comprador: a CNH vem marcada quando o arquivo está anexado na proposta — clique "Definir condutor"',
   'Consultas válidas ou ausência decidida pelo COCAD': 'refaça as consultas vencidas no quadro "Consultas registradas"',
-  'Renda apurada de todos os compradores': 'preencha a Renda APURADA no bloco de cada comprador',
+  'Renda apurada de todos os compradores': 'a do comprador principal vem da "Média 3M" do resumo do assistente; sem resumo (ou para o 2º comprador), preencha a Renda APURADA no bloco do comprador',
   'Sem pendências abertas': 'cumpra as pendências no bloco "Pendências e ressalvas"',
   'Ressalvas cumpridas e validadas': 'valide cada ressalva no bloco "Pendências e ressalvas" acima (botão Validar — alçada de Aprovador/Diretor)',
   'Sem bloqueio de formalização (fraude/CNH)': 'resolva o alerta de fraude ou a CNH do condutor',
@@ -116,7 +116,7 @@ function proximoPasso(d: DossieAnalise): string {
     case 'CONSULTA_INICIAL_REALIZADA':
     case 'EM_TRIAGEM_INICIAL':
     case 'EM_ANALISE_COMPLEMENTAR':
-      return 'Informe as rendas (a apurada entra no comprometimento), valide identidade e CNH, e registre o Score.';
+      return 'Confira as rendas (a apurada entra no comprometimento — vem do resumo do assistente quando ele traz a média), identidade e CNH já preenchidas pelo sistema, e registre o Score.';
     case 'SCORE_CONSULTADO':
       return 'Registre a consulta de restritivos para fechar as verificações.';
     case 'RESTRICOES_CONSULTADAS':
@@ -193,6 +193,17 @@ export function AnalisePage() {
         <span className="rounded-[8px] border border-[var(--border)] px-[10px] py-[6px] text-[12px] font-bold">
           {rotuloStatus(d.status)}
         </span>
+      </div>
+
+      {/* Observação do vendedor (passo 10 do atendimento) — visível em todos os
+          passos; antes ficava só na proposta e o analista não a via (28/10). */}
+      <div className="rounded-[12px] p-[14px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="font-display text-[13px] font-bold">🗣️ Observação do vendedor</div>
+        {d.observacaoVendedor ? (
+          <div className="mt-[6px] whitespace-pre-wrap text-[13px] leading-[1.5]" style={{ color: 'var(--text-body)' }}>{d.observacaoVendedor}</div>
+        ) : (
+          <div className="mt-[4px] text-[12px]" style={{ color: 'var(--text-muted)' }}>O vendedor não deixou observação no envio da proposta.</div>
+        )}
       </div>
 
       {/* Resumo do assistente (IA — 14/09): relatório cadastral automático a
@@ -572,7 +583,9 @@ function Participante({ d, p, ocupado, acao, final }: { d: DossieAnalise; p: Par
         )}
       </div>
       {/* Decisão 28/08: renda PRESUMIDA saiu como campo — só declarada e apurada.
-          O valor do birô continua visível no retorno da consulta (Camada 1). */}
+          O valor do birô continua visível no retorno da consulta (Camada 1).
+          Decisão 28/10: a APURADA do comprador principal vem preenchida pelo
+          sistema (Média 3M do resumo do assistente) — editável, com justificativa. */}
       <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-2">
         {[
           ['Renda declarada (R$)', rd, setRd, 'rendaDeclarada', undefined],
@@ -581,37 +594,100 @@ function Participante({ d, p, ocupado, acao, final }: { d: DossieAnalise; p: Par
           <label key={campo as string} className="flex flex-col gap-[4px] text-[11px] font-bold">
             {rotulo as string}
             <input className={inputCls} value={valor as string} disabled={final} onChange={(e) => (setValor as (v: string) => void)(e.target.value)} />
-            {campo === 'rendaApurada' && (atual as number | null) !== null && (
-              <input className={inputCls} placeholder="Justificativa da alteração (obrigatória)" value={just} onChange={(e) => setJust(e.target.value)} />
+            {campo === 'rendaApurada' && (
+              <Origem
+                texto={p.rendaApuradaOrigem}
+                vazio={p.rendaApurada === null ? (d.resumoIa?.status === 'concluido' ? 'o resumo do assistente não trouxe a "Média 3M" — informe a renda apurada' : 'vem preenchida quando o resumo do assistente traz a "Média 3M"; sem resumo, informe') : null}
+              />
+            )}
+            {campo === 'rendaApurada' && (atual as number | null) !== null && !final && (
+              <input className={inputCls} placeholder="Justificativa da alteração (obrigatória se discordar do valor)" value={just} onChange={(e) => setJust(e.target.value)} />
             )}
           </label>
         ))}
       </div>
       {!final && (
-        <div className="mt-[8px] flex flex-wrap items-center gap-[10px] text-[12px]">
+        <div className="mt-[8px] flex flex-wrap items-start gap-[14px] text-[12px]">
           <button className={btnP} disabled={ocupado} onClick={() => acao(() =>
             analiseService.atualizarParticipante(d.id, p.titularId, {
               rendaDeclarada: rd ? reaisParaCentavos(rd) : null,
               rendaApurada: ra ? reaisParaCentavos(ra) : null,
               ...(just ? { justificativaRendaApurada: just } : {}),
             }), 'Rendas salvas.')}>Salvar rendas</button>
-          {/* Decisão 08/08: só checks do que COLETAMOS — CNH (arquivo na proposta),
-              identidade (conferida contra o nome oficial da Camada 1), renda
-              parcial e processos (julgamento do alerta do birô). "Atividade
-              comprovada" e "RG alternativo" saíram: não coletamos esses docs. */}
+          {/* Decisão 08/08: só checks do que COLETAMOS — CNH (arquivo na proposta)
+              e identidade (nome oficial da Camada 1). Decisão 28/10: os dois vêm
+              marcados pelo sistema quando a evidência existe, com a origem ao
+              lado; o analista pode desmarcar. Renda parcial e processos
+              relevantes (gatilhos de alçada COC-08/COC-06) moraram no passo
+              Decisão — ver "Gatilhos de alçada". */}
           {[
-            ['identidadeValidada', 'Identidade validada (confira o nome oficial na consulta Camada 1)', p.identidadeValidada],
-            ['cnhValida', 'CNH válida (arquivo em Documentos da proposta)', p.cnhValida],
-            ['rendaParcialmenteComprovada', 'Renda parcial', p.rendaParcialmenteComprovada],
-            ['processosRelevantes', 'Processos relevantes', p.processosRelevantes],
-          ].map(([campo, rotulo, marcado]) => (
-            <label key={campo as string} className="flex items-center gap-[4px]">
-              <input type="checkbox" checked={marcado as boolean} disabled={ocupado} onChange={(e) => flag(campo as string, e.target.checked)} />
-              {rotulo as string}
-            </label>
+            ['identidadeValidada', 'Identidade validada', p.identidadeValidada, p.identidadeValidadaOrigem, 'confira o nome oficial na consulta Camada 1 — o sistema marca quando CPF regular, sem óbito e nome igual ao cadastrado'],
+            ['cnhValida', 'CNH anexada (validação documental)', p.cnhValida, p.cnhValidaOrigem, 'não há consulta de CNH — o sistema marca quando há arquivo CNH do próprio comprador em Documentos da proposta'],
+          ].map(([campo, rotulo, marcado, origem, ajuda]) => (
+            <div key={campo as string} className="flex flex-col gap-[2px]">
+              <label className="flex items-center gap-[4px]">
+                <input type="checkbox" checked={marcado as boolean} disabled={ocupado} onChange={(e) => flag(campo as string, e.target.checked)} />
+                {rotulo as string}
+              </label>
+              <Origem texto={origem as string | null} vazio={ajuda as string} />
+            </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// De onde veio um preenchimento (sistema ou analista) — ou o que falta para o
+// sistema preencher. Linha discreta sob o campo.
+function Origem({ texto, vazio }: { texto: string | null | undefined; vazio: string | null }) {
+  if (texto) {
+    const pelaMaquina = /pela consulta|pela IA|anexada/i.test(texto);
+    return <span className="text-[11px] font-normal" style={{ color: pelaMaquina ? '#1c7a3d' : 'var(--text-muted)' }}>{pelaMaquina ? '⚙ ' : '✎ '}{texto}</span>;
+  }
+  if (vazio) return <span className="text-[11px] font-normal" style={{ color: 'var(--text-muted)' }}>{vazio}</span>;
+  return null;
+}
+
+// Gatilhos de alçada (COC-08 renda parcial, COC-06 processos relevantes) —
+// decisão do analista no passo Parecer/Decisão (28/10): sinalizar um deles
+// eleva a decisão ao COCAD. A consulta de processos SUGERE; marcar é humano.
+function GatilhosAlcada({ d, ocupado, acao, bloqueado }: { d: DossieAnalise; ocupado: boolean; acao: AcaoFn; bloqueado: boolean }) {
+  const compradores = d.participantes.filter((p) => p.papel !== 'GARANTIDOR');
+  function flag(titularId: string, campo: string, valor: boolean) {
+    void acao(() => analiseService.atualizarParticipante(d.id, titularId, { [campo]: valor }), valor ? 'Gatilho marcado — a decisão passa a recomendar o COCAD.' : 'Gatilho desmarcado.');
+  }
+  return (
+    <div className="mb-[10px] rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+      <div className="text-[11px] font-bold uppercase tracking-[.04em]" style={{ color: 'var(--text-muted)' }}>Gatilhos de alçada</div>
+      <div className="mb-[6px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+        Marcar qualquer um eleva a decisão ao COCAD (critérios COC-08 e COC-06). É julgamento do analista — o sistema só sugere.
+        {bloqueado && ' Decisão já encaminhada: não é mais possível alterar.'}
+      </div>
+      {compradores.map((p) => (
+        <div key={p.titularId} className="flex flex-col gap-[4px] border-t border-[var(--border)] py-[6px] text-[12px]">
+          <div className="font-semibold">{p.nome}</div>
+          <label className="flex items-center gap-[4px]">
+            <input type="checkbox" checked={p.rendaParcialmenteComprovada} disabled={ocupado || bloqueado} onChange={(e) => flag(p.titularId, 'rendaParcialmenteComprovada', e.target.checked)} />
+            Renda só parcialmente comprovada <span style={{ color: 'var(--text-muted)' }}>· eleva ao COCAD (COC-08)</span>
+          </label>
+          <label className="flex items-center gap-[4px]">
+            <input type="checkbox" checked={p.processosRelevantes} disabled={ocupado || bloqueado} onChange={(e) => flag(p.titularId, 'processosRelevantes', e.target.checked)} />
+            Processo judicial relevante ativo <span style={{ color: 'var(--text-muted)' }}>· eleva ao COCAD (COC-06)</span>
+          </label>
+          {p.processosSugestao && (
+            <div className="rounded-[8px] px-[8px] py-[5px] text-[11.5px]" style={p.processosSugestao.sugerir ? { background: '#fff3d6', color: '#8a5a00' } : { background: 'var(--surface)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+              <b>Consulta de processos ({instanteBR(p.processosSugestao.consultaEm)}):</b> {p.processosSugestao.motivo}.
+              {p.processosSugestao.sugerir && p.processosSugestao.processos.slice(0, 3).map((pr, i) => (
+                <div key={i}>• {pr.numero ?? 'sem número'} · {pr.assunto}{pr.status ? ` · ${pr.status}` : ''}{pr.poloPassivo === true ? ' · cliente no polo passivo' : ''}</div>
+              ))}
+              {p.processosSugestao.sugerir && !p.processosRelevantes && !bloqueado && (
+                <button className="mt-[4px] font-bold underline" disabled={ocupado} onClick={() => flag(p.titularId, 'processosRelevantes', true)}>Marcar como relevante</button>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -649,6 +725,10 @@ function Decisao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean; aca
   return (
     <div className={card}>
       <div className="mb-[8px] font-display text-[13px] font-bold">Decisão</div>
+
+      {/* Gatilhos de alçada (COC-08/COC-06) moram aqui — onde a decisão é
+          tomada — e não mais no bloco do participante (28/10). */}
+      <GatilhosAlcada d={d} ocupado={ocupado} acao={acao} bloqueado={decidida} />
 
       {/* Parecer do analista — visível a quem decide (caso real 22/09: o texto
           só ia para a auditoria e o aprovador não tinha onde lê-lo). */}

@@ -7,6 +7,10 @@ export interface ParticipanteAnalise {
   rendaParcialmenteComprovada: boolean; identidadeValidada: boolean; cnhValida: boolean;
   documentoAlternativo: boolean; atividadeComprovada: boolean; evidenciaAtividade: string | null;
   processosRelevantes: boolean; observacoes: string | null; autorizacaoRegistrada: boolean;
+  // Origem de cada preenchimento (sistema ou analista — decisão 28/10/2026).
+  rendaApuradaOrigem: string | null; identidadeValidadaOrigem: string | null; cnhValidaOrigem: string | null;
+  // Sugestão de COC-06 a partir da consulta de processos (nunca marca sozinha).
+  processosSugestao: { sugerir: boolean; motivo: string; processos: { numero: string | null; assunto: string; poloPassivo: boolean | null; status: string | null }[]; consultaEm: string } | null;
 }
 export interface CriterioAnalise {
   chave: string; titularId?: string; situacao: 'alcada' | 'complemento' | 'cocad';
@@ -34,6 +38,8 @@ export interface DossieAnalise {
   // Parecer do analista (o mais recente) e o histórico — quem decide precisa lê-lo.
   parecer: ParecerAnalise | null;
   pareceres: ParecerAnalise[];
+  // Observação do vendedor no envio da proposta (passo 10 do atendimento).
+  observacaoVendedor: string | null;
   resumoIa: ResumoIaAnalise | null;
   condutorPrincipalTitularId: string | null;
   parcelaMensalEquivalente: number; comprometimento: number | null;
