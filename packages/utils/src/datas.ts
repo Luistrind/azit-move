@@ -65,15 +65,6 @@ export function nomeDiaSemanaISO(iso: string): string {
   return new Intl.DateTimeFormat('pt-BR', { weekday: 'long', timeZone: 'UTC' }).format(inicioDiaUTC(iso));
 }
 
-// Segunda-feira da semana de um 'YYYY-MM-DD' — a semana do negócio começa na
-// segunda (vencimento dos motoristas, reunião 04/07) e o domingo pertence à
-// semana que termina. "Recebido na semana" = desta segunda até hoje (decisão
-// Luís 29/10/2026) — nunca "últimos 7×24h".
-export function inicioSemanaISO(iso: string): string {
-  const recuo = (diaSemanaISO(iso) + 6) % 7; // seg=0 … dom=6
-  return somarDiasISO(iso, -recuo);
-}
-
 // Meia-noite UTC do dia de hoje no Brasil — comparável diretamente com as
 // datas de vencimento armazenadas (UTC-midnight da data-calendário).
 export function inicioHojeBrasilUTC(): Date {

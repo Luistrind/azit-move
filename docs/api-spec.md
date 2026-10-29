@@ -341,10 +341,7 @@ tipo do contrato derivado por `classificarContrato` (@azit/utils). Valores em ce
     "valorEmAtraso": 0,
     "faturasVencidas": 9
   },
-  "recebido": {
-    "semana": { "desde": "2026-10-26", "ate": "2026-10-29", "parcelas": 0, "encargos": 0, "entradas": 0, "total": 0 },
-    "ultimos7Dias": { "desde": "2026-10-23", "ate": "2026-10-29", "parcelas": 0, "encargos": 0, "entradas": 0, "total": 0 }
-  },
+  "recebido": { "veiculo": 0, "acordos": 0, "reembolsos": 0, "encargos": 0, "entradas": 0, "total": 0 },
   "inadimplentes": 5,
   "inadimplenciaPct": 8.1,
   "recebidoNaSemana": 0
@@ -357,8 +354,9 @@ tipo do contrato derivado por `classificarContrato` (@azit/utils). Valores em ce
   faturas vencidas, de todas as contas.
 - `carteira`: parcelas em aberto fora de acordo de contratos ATIVO — `acordos` = itens de origem ACORDO
   + Termo de novação; `reembolsos` = reembolso parcelado + crédito avulso.
-- `recebido.semana`: desta segunda-feira até hoje (fuso America/Sao_Paulo); `parcelas` = principal
-  pago (sem encargos), `encargos` = juros e multa, `entradas` = lançamentos de entrada.
+- `recebido`: janela de sempre (últimos 7 dias corridos a partir de agora), `total` = valor pago das
+  parcelas + lançamentos; `veiculo`/`acordos`/`reembolsos` = principal por fatia (valor pago −
+  encargo), `encargos` = juros e multa, `entradas` = lançamentos de entrada.
 - `inadimplentes`, `inadimplenciaPct`, `carteiraSobGestao`, `recebidoNaSemana`: atalhos mantidos.
 
 #### GET `/api/v1/contas/carteira` — posição por titular (tabela da Carteira)

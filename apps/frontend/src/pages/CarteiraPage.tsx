@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { formatCurrency, isoParaBR } from '@azit/utils';
+import { formatCurrency } from '@azit/utils';
 import { contratoService, ContagemPorTipo } from '../services/contrato.service';
 import { contaService } from '../services/conta.service';
 import { Metrica } from '../components/Metrica';
@@ -27,7 +27,8 @@ function outrosTipos(t: ContagemPorTipo): string[] {
 // pessoas com posição consolidada; o contrato é o drill-down (ficha do titular).
 // KPIs por CONTA e por TIPO (decisão Luís 29/10/2026, doc 02 §5.2): inadimplência
 // conta contas (cliente com veículo + reembolso = uma inadimplência), "contratos
-// ativos" são só os de veículo, carteira em três fatias e recebido desta segunda.
+// ativos" são só os de veículo, carteira em três fatias e recebido (últimos 7 dias,
+// janela mantida) aberto em veículo/acordos/reembolsos/encargos/entradas.
 export function CarteiraPage() {
   const navigate = useNavigate();
   const kpis = useQuery({ queryKey: ['contratos', 'kpis'], queryFn: () => contratoService.kpis() });
@@ -82,14 +83,14 @@ export function CarteiraPage() {
         <Metrica
           tom="kpi"
           label="Recebido na semana"
-          valor={k ? formatCurrency(k.recebido.semana.total) : '—'}
+          valor={k ? formatCurrency(k.recebido.total) : '—'}
           detalhe={
             k ? (
               <>
-                Desde segunda {isoParaBR(k.recebido.semana.desde).slice(0, 5)} · parcelas {formatCurrency(k.recebido.semana.parcelas)} · encargos{' '}
-                {formatCurrency(k.recebido.semana.encargos)} · entradas {formatCurrency(k.recebido.semana.entradas)}
+                Últimos 7 dias · veículo {formatCurrency(k.recebido.veiculo)} · acordos {formatCurrency(k.recebido.acordos)} · reembolsos{' '}
+                {formatCurrency(k.recebido.reembolsos)}
                 <br />
-                Últimos 7 dias: {formatCurrency(k.recebido.ultimos7Dias.total)}
+                encargos {formatCurrency(k.recebido.encargos)} · entradas {formatCurrency(k.recebido.entradas)}
               </>
             ) : null
           }

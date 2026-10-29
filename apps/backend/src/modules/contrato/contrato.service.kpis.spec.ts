@@ -3,16 +3,20 @@ import { ContratoService } from './contrato.service';
 // KPIs da Carteira por CONTA e por TIPO (decisão Luís 29/10/2026, doc 02 §5.2).
 // Cenário espelha produção: cliente com veículo + Reembolso Parcelado conta UMA
 // vez na inadimplência; "contratos ativos" são só os de veículo; carteira em
-// três fatias; recebido na semana = segunda → hoje no fuso do Brasil. Sem banco.
+// três fatias; recebido na semana mantém a janela (últimos 7 dias corridos) e
+// só abre a composição. Sem banco.
 
-// Quinta-feira 29/10/2026, 12:00 em Brasília (15:00Z) → semana começa seg 26/10.
+// Quinta-feira 29/10/2026, 12:00 em Brasília (15:00Z).
 const AGORA = new Date('2026-10-29T15:00:00.000Z');
+const DIA_MS = 86_400_000;
+
+const veiculo = (id: string, numero: string) => ({ id, numero, snapshotJson: null, ativo: { tipo: 'VEICULO' }, novacaoComoTermo: null });
 
 const ativos = [
-  { id: 'c1', numero: '202510001', contaId: 'A', snapshotJson: null, ativo: { tipo: 'VEICULO' }, novacaoComoTermo: null },
+  { ...veiculo('c1', '202510001'), contaId: 'A' },
   { id: 'c2', numero: '202510001-RP1', contaId: 'A', snapshotJson: { legado: { reembolsoDe: '202510001', rotulo: 'IPVA' } }, ativo: null, novacaoComoTermo: null },
-  { id: 'c3', numero: '202510002', contaId: 'B', snapshotJson: null, ativo: { tipo: 'VEICULO' }, novacaoComoTermo: null },
-  { id: 'c4', numero: '202510003', contaId: 'C', snapshotJson: null, ativo: { tipo: 'VEICULO' }, novacaoComoTermo: null },
+  { ...veiculo('c3', '202510002'), contaId: 'B' },
+  { ...veiculo('c4', '202510003'), contaId: 'C' },
   { id: 'c5', numero: '202510004', contaId: 'B', snapshotJson: { documento: 'termo' }, ativo: null, novacaoComoTermo: null }, // RP nativo (aprovação)
   { id: 'c6', numero: '202510005', contaId: 'D', snapshotJson: null, ativo: null, novacaoComoTermo: { id: 'nv1' } }, // Termo de novação
 ];
@@ -30,16 +34,12 @@ function montar() {
         ],
   );
   const parcelaFindMany = jest.fn().mockResolvedValue([
-    { dataPagamento: new Date('2026-10-26T00:00:00.000Z'), valorPago: '997.00', valorEncargo: null }, // seg, dia-calendário (cronograma)
-    { dataPagamento: new Date('2026-10-26T02:30:00.000Z'), valorPago: '997.00', valorEncargo: '0.00' }, // dom 25/10 23:30 BRT — fora da semana, dentro dos 7 dias
-    { dataPagamento: new Date('2026-10-28T03:00:00.000Z'), valorPago: '1019.62', valorEncargo: '22.62' }, // qua, 03:00Z (legado)
-    { dataPagamento: new Date('2026-10-22T00:00:00.000Z'), valorPago: '997.00', valorEncargo: null }, // fora das duas janelas
-    { dataPagamento: null, valorPago: '100.00', valorEncargo: null }, // parcial sem data — ignorada
+    { valorPago: '997.00', valorEncargo: null, itemContratado: { origem: 'VENDA' }, contrato: ativos[0] }, // parcela do veículo
+    { valorPago: '250.00', valorEncargo: null, itemContratado: { origem: 'ACORDO' }, contrato: ativos[0] }, // cota de acordo no contrato do veículo
+    { valorPago: '115.63', valorEncargo: '0.00', itemContratado: { origem: 'VENDA' }, contrato: ativos[1] }, // cota do RP
+    { valorPago: '1019.62', valorEncargo: '22.62', itemContratado: { origem: 'VENDA' }, contrato: veiculo('c9', '202409009') }, // última parcela de contrato já ENCERRADO por quitação
   ]);
-  const lancamentoFindMany = jest.fn().mockResolvedValue([
-    { dataPagamento: new Date('2026-10-27T18:00:00.000Z'), valor: '3000.00' }, // ter 15:00 BRT (entrada paga via webhook)
-    { dataPagamento: new Date('2026-10-24T00:00:00.000Z'), valor: '500.00' }, // sáb — só nos 7 dias
-  ]);
+  const lancamentoAggregate = jest.fn().mockResolvedValue({ _sum: { valor: '3000.00' } });
   const prisma = {
     db: {
       contratoCredito: {
@@ -57,12 +57,12 @@ function montar() {
         ]),
       },
       parcela: { groupBy: parcelaGroupBy, findMany: parcelaFindMany },
-      lancamentoConta: { findMany: lancamentoFindMany },
+      lancamentoConta: { aggregate: lancamentoAggregate },
       aprovacao: { findMany: jest.fn().mockResolvedValue([{ referenciaId: 'c5' }]) },
     },
   };
   const service = new ContratoService(prisma as never);
-  return { service, prisma, parcelaGroupBy, parcelaFindMany, lancamentoFindMany };
+  return { service, prisma, parcelaGroupBy, parcelaFindMany, lancamentoAggregate };
 }
 
 describe('ContratoService.kpis — por conta e por tipo (29/10/2026)', () => {
@@ -88,7 +88,7 @@ describe('ContratoService.kpis — por conta e por tipo (29/10/2026)', () => {
   });
 
   it('inadimplência por CONTA: cliente com veículo + RP conta uma vez; base = contas com veículo vigente', async () => {
-    const { service } = montar();
+    const { service, prisma } = montar();
     const k = await service.kpis();
     expect(k.inadimplencia).toEqual({
       contasBase: 3, // A, B, C (D só tem o Termo)
@@ -100,6 +100,11 @@ describe('ContratoService.kpis — por conta e por tipo (29/10/2026)', () => {
     });
     expect(k.inadimplentes).toBe(1);
     expect(k.inadimplenciaPct).toBe(33.3);
+    // Vencida = ABERTA/FECHADA antes de hoje no fuso do Brasil (29/10).
+    expect(prisma.db.fatura.findMany).toHaveBeenCalledWith({
+      where: { status: { in: ['ABERTA', 'FECHADA'] }, dataVencimento: { lt: new Date('2026-10-29T00:00:00.000Z') } },
+      select: { contaId: true, valorTotal: true, valorPago: true },
+    });
   });
 
   it('carteira sob gestão em três fatias: veículo, acordos (cotas + Termo) e reembolsos', async () => {
@@ -113,41 +118,34 @@ describe('ContratoService.kpis — por conta e por tipo (29/10/2026)', () => {
     }
   });
 
-  it('recebido na semana = segunda 26/10 → hoje, no fuso do Brasil, separado em parcelas/encargos/entradas', async () => {
-    const { service, parcelaFindMany, lancamentoFindMany } = montar();
+  it('recebido na semana: mesma janela e mesmo total de antes (últimos 7 dias corridos), aberto em veículo/acordos/reembolsos/encargos/entradas', async () => {
+    const { service, parcelaFindMany, lancamentoAggregate } = montar();
     const k = await service.kpis();
-    expect(k.recebido.semana).toEqual({
-      desde: '2026-10-26',
-      ate: '2026-10-29',
-      parcelas: 199_400, // 997,00 + (1019,62 − 22,62)
+    expect(k.recebido).toEqual({
+      veiculo: 199_400, // 997,00 + (1019,62 − 22,62) — inclui a parcela do contrato já encerrado
+      acordos: 25_000,
+      reembolsos: 11_563,
       encargos: 2_262,
       entradas: 300_000,
-      total: 501_662,
+      total: 538_225, // = soma do valor pago (2.382,25) + lançamentos (3.000,00): o número de sempre
     });
-    expect(k.recebidoNaSemana).toBe(501_662);
-    // Linha secundária: últimos 7 dias (23/10 → 29/10) inclui o domingo e o sábado.
-    expect(k.recebido.ultimos7Dias).toEqual({
-      desde: '2026-10-23',
-      ate: '2026-10-29',
-      parcelas: 299_100,
-      encargos: 2_262,
-      entradas: 350_000,
-      total: 651_362,
-    });
-    // A busca parte do início mais antigo (7 dias), nunca de Date.now() − 7×24h.
-    const inicio = new Date('2026-10-23T00:00:00.000Z');
+    expect(k.recebidoNaSemana).toBe(538_225);
+    // Janela mantida (correção Luís 29/10): agora − 7 dias corridos.
+    const inicio = new Date(AGORA.getTime() - 7 * DIA_MS);
     expect(parcelaFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ dataPagamento: { gte: inicio } }) }));
-    expect(lancamentoFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { dataPagamento: { gte: inicio } } }));
+    expect(lancamentoAggregate).toHaveBeenCalledWith({ where: { dataPagamento: { gte: inicio } }, _sum: { valor: true } });
   });
 
   it('sem contrato vigente: zeros, sem consulta de parcelas em aberto', async () => {
-    const { service, prisma, parcelaGroupBy } = montar();
+    const { service, prisma, parcelaGroupBy, parcelaFindMany } = montar();
     prisma.db.contratoCredito.findMany.mockResolvedValue([]);
     prisma.db.fatura.findMany.mockResolvedValue([]);
+    parcelaFindMany.mockResolvedValue([]);
     const k = await service.kpis();
     expect(k.contratosAtivos).toBe(0);
     expect(k.inadimplencia.pct).toBe(0);
     expect(k.carteira.total).toBe(0);
+    expect(k.recebido.total).toBe(300_000); // só a entrada lançada
     expect(parcelaGroupBy).not.toHaveBeenCalled();
   });
 });

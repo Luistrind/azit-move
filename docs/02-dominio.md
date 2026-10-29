@@ -733,12 +733,14 @@ Evento de reajuste anual das parcelas por IPCA. Precisa de aprovação humana an
 >    novação, que é dívida renegociada) · reembolsos e créditos — com o total ao lado.
 >    Só contratos ATIVO, só parcelas em aberto não cobertas por acordo (a regra de
 >    07/09 contra parcela órfã de contrato encerrado continua).
-> 4. **Recebido na semana = desta segunda-feira até hoje** no fuso America/Sao_Paulo
->    (`inicioSemanaISO` em `packages/utils/src/datas.ts`; nunca "últimos 7×24h"),
->    separado em parcelas (principal pago, sem encargos), encargos (juros e multa) e
->    entradas (lançamentos de entrada de contrato/acordo). "Últimos 7 dias" segue como
->    linha secundária. O dia de cada pagamento é lido pela coluna mista (dia-calendário
->    do cronograma/legado ou instante do webhook).
+> 4. **Recebido na semana: a janela NÃO muda** (correção Luís 29/10 — últimos 7 dias
+>    corridos a partir de agora; parcelas pagas pelo valor pago + lançamentos de entrada;
+>    total igual ao de antes). O cartão passa só a abrir a **composição** da soma:
+>    parcelas de veículo, cotas de acordo (itens de origem ACORDO + Termo de novação),
+>    cotas de reembolso parcelado/crédito, encargos (juros e multa) e entradas
+>    (lançamentos). Principal de cada parcela = valor pago − encargo; a parcela cai na
+>    fatia do item (acordo) ou do tipo do contrato — inclusive de contrato já encerrado
+>    por quitação na janela.
 > 5. **Tabela por titular:** coluna Contratos mostra só os de veículo e um marcador
 >    "+RP" quando há reembolso/crédito em andamento; "Em atraso" e "Faturas vencidas"
 >    vêm das **faturas** da conta (mesma régua do cartão); situação "em acordo" quando

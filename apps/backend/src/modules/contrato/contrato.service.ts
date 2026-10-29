@@ -12,7 +12,7 @@ import {
   StatusContratoCredito as StatusContratoCreditoPrisma,
 } from '@prisma/client';
 import { StatusContratoCredito, Credor, Periodicidade as PeriodicidadeTypes } from '@azit/types';
-import { diasAtrasoCalendario, gerarCronograma, centavosParaReaisString, inicioHojeBrasilUTC, dataCalendarioUTC, inicioDiaUTC, DIA_MS, DIAS_POR_PERIODO, fatorValorDesdeSemanal, FUSO_NEGOCIO, dataHojeBrasil, somarDiasISO, inicioSemanaISO, diaDeColunaMista, fatiaDaCarteira, contarPorTipo } from '@azit/utils';
+import { diasAtrasoCalendario, gerarCronograma, centavosParaReaisString, inicioHojeBrasilUTC, dataCalendarioUTC, inicioDiaUTC, DIA_MS, DIAS_POR_PERIODO, fatorValorDesdeSemanal, FUSO_NEGOCIO, fatiaDaCarteira, contarPorTipo } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { CriarContratoDto } from './dto/criar-contrato.dto';
 import { ListarContratosDto } from './dto/listar-contratos.dto';
@@ -23,7 +23,7 @@ import {
   periodicidadeParaPrisma,
   chavePrisma,
 } from './contrato.mapper';
-import { SELECT_TIPO_CONTRATO, tiposDosContratos } from './tipo-contrato';
+import { ContratoComMarcas, SELECT_TIPO_CONTRATO, tiposDosContratos } from './tipo-contrato';
 
 // Cliente de transação do Prisma ESTENDIDO (soft-delete) — tipo do `tx` no $transaction.
 type TxEstendido = Omit<
@@ -751,21 +751,18 @@ export class ContratoService {
   //   • carteira sob gestão em três fatias (veículo · acordos · reembolsos),
   //     só contratos vigentes e só parcelas em aberto fora de acordo (parcela
   //     órfã de contrato encerrado não infla — regra de 07/09 mantida);
-  //   • recebido na semana = desta SEGUNDA-FEIRA até hoje no fuso do Brasil,
-  //     separado em parcelas (principal), encargos e entradas (lançamentos);
-  //     "últimos 7 dias" segue como linha secundária.
+  //   • recebido na semana: a JANELA não muda (correção Luís 29/10 — últimos 7
+  //     dias corridos a partir de agora, parcelas pagas pelo valor pago +
+  //     lançamentos de entrada, total igual ao de antes); o cartão só abre a
+  //     composição: parcelas de veículo, cotas de acordo, cotas de reembolso,
+  //     encargos e entradas.
   // Nada disso é gravado (Regra 7). O tipo do contrato vem da função única
   // `classificarContrato` (@azit/utils) via `tiposDosContratos`.
   async kpis() {
-    const hojeISO = dataHojeBrasil();
-    const hoje = inicioDiaUTC(hojeISO);
-    const segundaISO = inicioSemanaISO(hojeISO);
-    const inicio7ISO = somarDiasISO(hojeISO, -6);
-    // A segunda nunca está a mais de 6 dias de hoje: uma busca só, a partir do
-    // início mais antigo; o corte fino por dia é feito abaixo, coluna a coluna.
-    const inicioBusca = inicioDiaUTC(inicio7ISO);
+    const hoje = inicioHojeBrasilUTC();
+    const seteDiasAtras = new Date(Date.now() - 7 * DIA_MS);
 
-    const [porStatus, ativos, faturasVencidas, parcelasPagas, lancamentos] = await Promise.all([
+    const [porStatus, ativos, faturasVencidas, parcelasPagas, lancado] = await Promise.all([
       this.prisma.db.contratoCredito.groupBy({ by: ['status'], _count: { _all: true } }),
       this.prisma.db.contratoCredito.findMany({ where: { status: 'ATIVO' }, select: { ...SELECT_TIPO_CONTRATO, contaId: true } }),
       // Fatura vencida em aberto: ABERTA/FECHADA com vencimento antes de hoje.
@@ -774,18 +771,23 @@ export class ContratoService {
         where: { status: { in: ['ABERTA', 'FECHADA'] }, dataVencimento: { lt: hoje } },
         select: { contaId: true, valorTotal: true, valorPago: true },
       }),
+      // Parcelas pagas na janela, com o contrato (para o tipo) e a origem do
+      // item (cota de acordo). O contrato pode já ter encerrado por quitação —
+      // por isso o tipo é classificado também para os que não estão vigentes.
       this.prisma.db.parcela.findMany({
-        where: { status: { in: PARCELA_PAGA }, dataPagamento: { gte: inicioBusca } },
-        select: { dataPagamento: true, valorPago: true, valorEncargo: true },
+        where: { status: { in: PARCELA_PAGA }, dataPagamento: { gte: seteDiasAtras } },
+        select: { valorPago: true, valorEncargo: true, itemContratado: { select: { origem: true } }, contrato: { select: SELECT_TIPO_CONTRATO } },
       }),
-      this.prisma.db.lancamentoConta.findMany({
-        where: { dataPagamento: { gte: inicioBusca } },
-        select: { dataPagamento: true, valor: true },
+      this.prisma.db.lancamentoConta.aggregate({
+        where: { dataPagamento: { gte: seteDiasAtras } },
+        _sum: { valor: true },
       }),
     ]);
 
-    const tipos = await tiposDosContratos(this.prisma.db, ativos);
-    const porTipo = contarPorTipo(tipos.values());
+    const contratosParaTipo = new Map<string, ContratoComMarcas>(ativos.map((c) => [c.id, c]));
+    for (const p of parcelasPagas) if (!contratosParaTipo.has(p.contrato.id)) contratosParaTipo.set(p.contrato.id, p.contrato);
+    const tipos = await tiposDosContratos(this.prisma.db, [...contratosParaTipo.values()]);
+    const porTipo = contarPorTipo(ativos.map((c) => tipos.get(c.id) ?? 'veiculo'));
     const idsAtivos = ativos.map((c) => c.id);
 
     // Carteira sob gestão por fatia: as cotas de acordo são as parcelas de
@@ -823,29 +825,17 @@ export class ContratoService {
     const inadimplentes = [...contasComVencida].filter((id) => contasBase.has(id)).length;
     const pct = contasBase.size > 0 ? Math.round((inadimplentes / contasBase.size) * 1000) / 10 : 0;
 
-    // Recebido: o dia de cada pagamento no fuso do negócio — a coluna mistura
-    // dia-calendário (cronograma, legado) e instante (webhook, entrada paga).
-    const somaJanela = (desdeISO: string) => {
-      let parcelas = 0;
-      let encargos = 0;
-      let entradas = 0;
-      for (const p of parcelasPagas) {
-        if (!p.dataPagamento) continue;
-        const d = diaDeColunaMista(p.dataPagamento);
-        if (d < desdeISO || d > hojeISO) continue;
-        const enc = this.cent(p.valorEncargo);
-        parcelas += this.cent(p.valorPago) - enc;
-        encargos += enc;
-      }
-      for (const l of lancamentos) {
-        const d = diaDeColunaMista(l.dataPagamento);
-        if (d < desdeISO || d > hojeISO) continue;
-        entradas += this.cent(l.valor);
-      }
-      return { parcelas, encargos, entradas, total: parcelas + encargos + entradas };
-    };
-    const semana = { desde: segundaISO, ate: hojeISO, ...somaJanela(segundaISO) };
-    const ultimos7Dias = { desde: inicio7ISO, ate: hojeISO, ...somaJanela(inicio7ISO) };
+    // Composição do recebido: o valor pago de cada parcela = principal + encargo;
+    // o principal cai na fatia do item (acordo) ou do contrato (veículo /
+    // reembolso); encargos e entradas (lançamentos) em linhas próprias. A soma
+    // das fatias é exatamente valorPago + lançamentos — o número de sempre.
+    const recebido = { veiculo: 0, acordos: 0, reembolsos: 0, encargos: 0, entradas: this.cent(lancado._sum.valor), total: 0 };
+    for (const p of parcelasPagas) {
+      const enc = this.cent(p.valorEncargo);
+      recebido[fatiaDaCarteira(tipos.get(p.contrato.id) ?? 'veiculo', p.itemContratado.origem)] += this.cent(p.valorPago) - enc;
+      recebido.encargos += enc;
+    }
+    recebido.total = recebido.veiculo + recebido.acordos + recebido.reembolsos + recebido.encargos + recebido.entradas;
 
     return {
       totalContratos: porStatus.reduce((s, g) => s + g._count._all, 0),
@@ -867,8 +857,8 @@ export class ContratoService {
       },
       inadimplentes,
       inadimplenciaPct: pct,
-      recebido: { semana, ultimos7Dias },
-      recebidoNaSemana: semana.total,
+      recebido,
+      recebidoNaSemana: recebido.total,
     };
   }
 

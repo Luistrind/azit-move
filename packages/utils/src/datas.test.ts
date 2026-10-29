@@ -1,23 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   diaBrasil, dataCalendarioUTC, somarDiasISO, partesBrasil, diaSemanaISO, isoParaBR,
-  formatarDiaBR, formatarInstanteBR, inicioDiaUTC, diasAtrasoCalendario, dataHojeBrasil, diaDeColunaMista, inicioSemanaISO,
+  formatarDiaBR, formatarInstanteBR, inicioDiaUTC, diasAtrasoCalendario, dataHojeBrasil, diaDeColunaMista,
 } from './datas';
-
-describe('inicioSemanaISO — semana começa na segunda (recebido na semana, 29/10/2026)', () => {
-  it('quinta 29/10/2026 → segunda 26/10/2026', () => {
-    expect(inicioSemanaISO('2026-10-29')).toBe('2026-10-26');
-  });
-  it('segunda é o próprio dia; sábado e domingo fecham a mesma semana', () => {
-    expect(inicioSemanaISO('2026-10-26')).toBe('2026-10-26');
-    expect(inicioSemanaISO('2026-10-31')).toBe('2026-10-26'); // sábado
-    expect(inicioSemanaISO('2026-11-01')).toBe('2026-10-26'); // domingo
-  });
-  it('atravessa o mês e o ano', () => {
-    expect(inicioSemanaISO('2026-11-03')).toBe('2026-11-02');
-    expect(inicioSemanaISO('2027-01-01')).toBe('2026-12-28'); // sexta → segunda do ano anterior
-  });
-});
 
 describe('datas — fuso do negócio (Regra 15)', () => {
   it('diaBrasil: instante entre 21h e 24h de Brasília ainda é o dia de Brasília, não o de UTC', () => {

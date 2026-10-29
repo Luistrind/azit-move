@@ -27,10 +27,13 @@ export interface ListaContratos {
 export type TipoContrato = 'veiculo' | 'reembolso' | 'credito' | 'termo_novacao';
 export type ContagemPorTipo = Record<TipoContrato, number>;
 
-export interface JanelaRecebido {
-  desde: string; // 'YYYY-MM-DD' (fuso do Brasil)
-  ate: string;
-  parcelas: number; // centavos — principal das parcelas pagas (sem encargos)
+// Composição do recebido (centavos). A janela é a de sempre — últimos 7 dias
+// corridos (correção Luís 29/10) — e o total é o mesmo número de antes:
+// valor pago das parcelas + lançamentos de entrada.
+export interface RecebidoComposicao {
+  veiculo: number; // principal das parcelas de veículo
+  acordos: number; // cotas de acordo (itens de origem ACORDO) + Termo de novação
+  reembolsos: number; // cotas de reembolso parcelado / crédito avulso
   encargos: number; // juros e multa pagos
   entradas: number; // lançamentos (entrada de contrato / de acordo)
   total: number;
@@ -56,8 +59,8 @@ export interface ContratoKpis {
   };
   inadimplentes: number; // = inadimplencia.contasInadimplentes
   inadimplenciaPct: number; // = inadimplencia.pct
-  recebido: { semana: JanelaRecebido; ultimos7Dias: JanelaRecebido };
-  recebidoNaSemana: number; // = recebido.semana.total
+  recebido: RecebidoComposicao;
+  recebidoNaSemana: number; // = recebido.total
 }
 
 export interface ContratoDetalhe {
