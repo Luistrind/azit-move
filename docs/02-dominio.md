@@ -2592,9 +2592,13 @@ em **faturas do período**, **faturas de outros vencimentos** (atrasadas de ante
 Conferência com o Asaas em 30/10 (outubro, por data de crédito): Asaas R$ 217.188,95 em 215
 cobranças × sistema R$ 212.662,67 em 198 recebimentos. Diferença explicada: cliente de aluguel
 (fora do sistema), Vinicius André (a migrar), entradas parceladas pagas por terceiros (não
-modeladas), Pix direto na chave transformado em cobrança avulsa pelo Asaas, dois ex-clientes; e,
-no outro sentido, valores *declarados* na migração do legado maiores que o recebido real (Leonardo
-Rosa, Genival Silva, Peterson, Genival Oliveira, Edvan).
+modeladas), Pix direto na chave transformado em cobrança avulsa pelo Asaas, dois ex-clientes (um desistiu do
+contrato; outro paga, fora do sistema, um acordo mensal do saldo que ficou devendo ao sair); e,
+no outro sentido, faturas do legado pagas EM PARTES (uma em setembro, outra em outubro) que a
+migração trouxe como UMA fatura paga pelo valor cheio na data da última parte (Leonardo Rosa,
+Genival Silva, Peterson, Genival Oliveira, Edvan) — o total bate, muda só o mês. Limitação
+conhecida: fatura paga em partes conta inteira no mês da última parte (uma data de pagamento por
+fatura).
 
 ### 27.2 Por produto — nada chumbado
 
