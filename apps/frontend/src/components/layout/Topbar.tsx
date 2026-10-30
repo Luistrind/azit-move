@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { tempoRelativo } from '../../lib/datas';
+import { alternarTema, temaAtual } from '../../lib/tema';
 
 // Topbar 60px — Doc 3 §7.3. Título da página + sub à esquerda; notificações à direita.
 // Sino REAL (doc 02 §20 passo 13): marcos do pós-contrato (assinado / cobrança
@@ -36,6 +37,7 @@ const TIPO_NOTIF: Record<string, { icone: string; bg: string; fg: string }> = {
 
 export function Topbar({ title, subtitle, onMenu }: TopbarProps) {
   const [aberto, setAberto] = useState(false);
+  const [tema, setTema] = useState(temaAtual());
   const navigate = useNavigate();
   const qc = useQueryClient();
   const notif = useQuery({
@@ -91,6 +93,17 @@ export function Topbar({ title, subtitle, onMenu }: TopbarProps) {
         )}
       </div>
       <div className="flex-1" />
+      {/* Tema claro/escuro — preferência GLOBAL do usuário (doc 02 §27.6). */}
+      <button
+        type="button"
+        onClick={() => setTema(alternarTema())}
+        className="flex h-[38px] flex-none items-center justify-center rounded-[10px] px-[10px] text-[12px] font-semibold"
+        style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
+        aria-label={tema === 'escuro' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+        title={tema === 'escuro' ? 'Tema claro' : 'Tema escuro'}
+      >
+        {tema === 'escuro' ? '☀' : '☾'}
+      </button>
       <button
         onClick={() => setAberto((a) => !a)}
         className="relative flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[10px]"

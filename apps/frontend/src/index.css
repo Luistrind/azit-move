@@ -68,3 +68,39 @@ body {
     transform: none;
   }
 }
+
+/* Tema ESCURO — preferência global do usuário (doc 02 §27.6, 30/10). Os mesmos
+   tokens, outros valores: nenhuma tela escolhe cor, só token. Aplicado em
+   <html data-theme="dark"> por lib/tema.ts. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #09090b;
+  --surface: #121214;
+  --surface-muted: #18181b;
+  --surface-input: #1c1c20;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-light: rgba(255, 255, 255, 0.07);
+  --border-lighter: rgba(255, 255, 255, 0.05);
+
+  --text-primary: #fafafa;
+  --text-body: #b4b4bc;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --text-label: #8b8b93;
+}
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+}
+
+/* Cores de visualização (dataviz) — status e categóricas, por tema. Só são
+   lidas via statusColors.ts (Regra 9). */
+:root {
+  --viz-good: #15803d; --viz-warn: #ca8a04; --viz-bad: #b91c1c; --viz-neutral: #71717a;
+  --viz-good-soft: rgba(21, 128, 61, 0.12); --viz-warn-soft: rgba(202, 138, 4, 0.14); --viz-bad-soft: rgba(185, 28, 28, 0.1);
+  --viz-p1: #2a78d6; --viz-p2: #eb6834; --viz-p3: #1baf7a; --viz-p4: #eda100; --viz-p5: #e87ba4; --viz-p6: #6250d6;
+}
+:root[data-theme='dark'] {
+  --viz-good: #2e9e5b; --viz-warn: #c9960f; --viz-bad: #e5484d; --viz-neutral: #8b8b93;
+  --viz-good-soft: rgba(46, 158, 91, 0.16); --viz-warn-soft: rgba(201, 150, 15, 0.16); --viz-bad-soft: rgba(229, 72, 77, 0.16);
+  --viz-p1: #3987e5; --viz-p2: #d95926; --viz-p3: #199e70; --viz-p4: #c98500; --viz-p5: #d55181; --viz-p6: #9085e9;
+}

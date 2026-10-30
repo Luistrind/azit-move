@@ -315,3 +315,16 @@ export const RECEBIMENTO_NOVACAO_FG: Record<string, string> = {
   expirado: '#e0413c',
   pendente: 'var(--text-muted)',
 };
+
+// Visão da carteira por período (doc 02 §27): estado da fatura no período e
+// paleta ORDENADA de produtos. A linha de produto nasce do item da fatura, por
+// isso a cor é por POSIÇÃO (1º produto por teto, 2º…), nunca por nome — produto
+// novo recebe a próxima cor sem mexer aqui. Paleta validada (dataviz: CVD ≥ 8,
+// contraste ≥ 3:1 nos dois temas); valores por tema via tokens --viz-*.
+export const VISAO_ESTADO_COLORS: Record<'recebidas' | 'vencidas' | 'a_vencer', { fg: string; soft: string; rotulo: string }> = {
+  recebidas: { fg: 'var(--viz-good)', soft: 'var(--viz-good-soft)', rotulo: 'Recebidas' },
+  vencidas: { fg: 'var(--viz-bad)', soft: 'var(--viz-bad-soft)', rotulo: 'Vencidas' },
+  a_vencer: { fg: 'var(--viz-warn)', soft: 'var(--viz-warn-soft)', rotulo: 'A vencer' },
+};
+export const PRODUTO_SLOT_COLORS: string[] = ['var(--viz-p1)', 'var(--viz-p2)', 'var(--viz-p3)', 'var(--viz-p4)', 'var(--viz-p5)', 'var(--viz-p6)'];
+export const VIZ_NEUTRAL = 'var(--viz-neutral)';

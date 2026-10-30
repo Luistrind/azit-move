@@ -2556,3 +2556,87 @@ valer no lugar das regras.
    Uma regra só: `cobrancaIntocavelNaMigracao(vencimento, hoje)` (@azit/utils — Regra 16), lida
    pelo planner, pelo corte (segunda trava) e pela limpeza de órfãs.
 
+
+---
+
+## 27. Visão da carteira por período (decisão Luís, 2026-10-30)
+
+Protótipo validado em 30/10 (três rodadas: Asaas-like → layout novo → cartões clicáveis). Substitui
+os 4 cartões de KPI da tela Carteira (carteira sob gestão / contratos ativos / inadimplência /
+recebido na semana) e absorve a intenção da branch `feat/carteira-kpis-por-conta` (não mergeada).
+
+### 27.1 O que é
+
+Uma leitura da carteira **por período de vencimento**, com um teto: *o que entra se todo mundo
+pagar*. O operador escolhe o período (mês, semana, últimos 7 dias, de–até; navega mês a mês) e vê:
+
+| Cartão | Definição | Valor |
+|---|---|---|
+| **Teto** | faturas cujo vencimento cai no período, exceto RENEGOCIADA/NOVADA (substituídas) | soma de `valorTotal` |
+| **Recebidas** | PAGA ou PAGA_EM_ATRASO | `valorTotal` (fecha com o teto); `valorPago` vai à parte |
+| **Vencidas** | ABERTA/FECHADA com vencimento < hoje (fuso Brasil) | `valorTotal` |
+| **A vencer** | ABERTA/FECHADA com vencimento ≥ hoje (inclui "vence hoje") | `valorTotal` |
+
+Cada cartão traz **valor, faturas e clientes** (contas distintas). Recebidas + Vencidas + A vencer
+= Teto, sempre. "Vencida"/"a vencer" são runtime (Regra 7) — nada disso é gravado.
+
+**Por que por vencimento e não por data de pagamento** (dúvida do Luís sobre os dois modos do
+Asaas): o teto só existe por vencimento — é o denominador. O dinheiro que entra no caixa fora do
+mês (atrasadas de meses anteriores) é informação financeira, não operacional; ficou fora da tela
+(decisão 30/10: "Caixa é redundante com Recebido").
+
+### 27.2 Por produto — nada chumbado
+
+A linha de produto **nasce do item da fatura**, nunca de uma lista fixa na tela ou no código
+(`chaveProdutoItemFatura`, @azit/utils — Regra 16):
+
+- `SERVICO` → a própria descrição (sem a marca "(legado)"): Proteção veicular, Taxa de boleto e
+  PIX, Clube de benefícios quando existir…;
+- `PRINCIPAL`/`INTERMEDIARIA` → o contrato da parcela: item de origem ACORDO → **Acordo**;
+  senão o tipo do contrato (`classificarContrato`, §5.2): veículo → **Compra Parcelada**,
+  reembolso → **Reembolso Parcelado**, crédito → **Crédito avulso**, Termo de novação;
+  intermediária tem linha própria; item sem parcela (legado) → a descrição decide;
+- `ENCARGO` → **fora do teto** (receita de atraso). Encargo recebido por fatura = maior entre o
+  item ENCARGO e o excedente pago (`valorPago − valorTotal`), nunca a soma — no legado o item
+  É o excedente.
+
+Cada linha mostra recebido, teto e % do teto; no mês, também o recebido do mês anterior.
+
+### 27.3 Mês a mês, comparação e projeção
+
+- **Mês a mês**: a mesma agregação por mês de vencimento (18 meses); no hover, recebido por
+  produto; clique seleciona o mês. Meses futuros = o que já está contratado.
+- **Comparado com o mês anterior, mesmo trecho** (§27.4): teto, recebido e vencido de 1–29/out
+  × 1–29/set. **Vencido só compara entre períodos fechados**: um mês já fechado teve mais tempo
+  de cobrança, a comparação enganaria — a tela marca "n/c".
+- **O que vem aí**: próximos 7 dias a vencer; mês seguinte já contratado; fim do período se tudo
+  que falta vencer entrar × se nada mais entrar.
+
+### 27.4 Períodos
+
+Tudo em data-calendário no fuso do negócio (Regra 15). O período em curso é cortado em hoje;
+o anterior tem o **mesmo tamanho**, começando no mesmo ponto do mês anterior (mês) ou
+imediatamente antes (semana/de–até). Período inteiramente futuro não tem comparação.
+Função única: `periodoAnteriorMesmoTrecho` (@azit/utils).
+
+### 27.5 Todo dado é link
+
+Clicar em Recebidas/Vencidas/A vencer abre a lista de clientes daquele estado no período
+(valor, faturas, vencimento mais antigo, bloqueio), cada um ligando à ficha do titular, e um
+"Abrir na Carteira" que filtra a lista de contas pela URL (`/carteira?situacao=…`). Regra
+geral do sistema (feedback 30/10): número que representa um conjunto abre o conjunto.
+
+### 27.6 Layout e componentes (padrão a estender ao sistema)
+
+Bloco (rótulo em caixa-alta + conteúdo + **Leitura do Hub** em linguagem natural + link
+"Explorar"), cartão de indicador clicável, seletor de período, lista de clientes, linha de
+comparação e gráfico de barras empilhadas são componentes genéricos (props), usados aqui
+primeiro e depois nas demais telas. **Tema claro/escuro é preferência global do usuário**, não da
+tela. **Mobile first**: tudo cabe em 390 px (reclamação real de operadores sobre telas que não
+funcionam no telefone).
+
+### 27.7 API
+
+`GET /contas/carteira/visao?de&ate`, `GET /contas/carteira/visao/mensal?de=YYYY-MM&ate=YYYY-MM`,
+`GET /contas/carteira/visao/clientes?de&ate&estado=recebidas|vencidas|a_vencer` — todos sobre a
+mesma agregação (`agregarVisaoCarteira`). Detalhe em `api-spec.md` §4.8.

@@ -15,7 +15,7 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
   '/contas-a-pagar': { title: 'Contas a pagar', subtitle: 'Financeiro administrativo — do pedido ao extrato' },
   '/fornecedores-financeiro': { title: 'Fornecedores', subtitle: 'Cadastro mestre com dados bancários versionados' },
   '/financeiro-configuracao': { title: 'Configuração do financeiro', subtitle: 'Entidades, contas, naturezas e centros de custo' },
-  '/carteira': { title: 'Carteira Operacional', subtitle: 'Posição consolidada por titular' },
+  '/carteira': { title: 'Carteira', subtitle: 'Cobranças por período, produtos e posição por titular' },
   '/analises': { title: 'Análises de cadastro', subtitle: 'Fila de análises em andamento' },
   '/pessoas': { title: 'Pessoas', subtitle: 'Investidores, fornecedores e parceiros' },
   '/estruturas': { title: 'Estruturas jurídicas', subtitle: 'Capital por rodada de captação' },
