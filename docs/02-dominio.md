@@ -2659,3 +2659,70 @@ visão geral ("Abrir na Carteira" → `?situacao=em_atraso`). Mudanças na grade
 
 API: `GET /contas/carteira/resumo` → `{ contas, contasEmAtraso, contasBloqueadas, contratosAtivos,
 valorSobGestaoPresente, valorSobGestaoNominal, valorEmAtraso }` (centavos).
+
+
+---
+
+## 28. Lembretes de pagamento pelo WhatsApp (decisão Luís, 2026-10-30)
+
+Contexto: o aviso por SMS do Asaas vem falhando e custa à parte. Decisão: o próprio sistema
+avisa o cliente pelo **mesmo número de WhatsApp dedicado da POP** (§23, branch
+`feat/notificacoes-cobranca`), com o link de pagamento da cobrança. Lembrete é coisa distinta da
+notificação formal: não abre caso de cobrança, não conta entre as seis etapas da POP, não gera
+PDF nem prova e nasce ANTES do atraso. A partir do D+1 quem fala é a POP.
+
+### 28.1 Os três momentos de uma fatura
+
+| Momento | Mensagem | Regra |
+|---|---|---|
+| **D-2** | fatura disponível: valor, vencimento e **link de pagamento** | sai qualquer dia da semana, das 9h às 20h |
+| **D0** (vence hoje) | lembrete curto com o mesmo link | só se a fatura ainda estiver em aberto na manhã do dia |
+| **D+1 em diante** | 1ª a 6ª notificações da POP (§23) | como já desenhado; a 1ª passa a levar o link também |
+
+- **Unidade é a fatura, não o contrato.** A fatura já consolida os itens da conta (veículo +
+  proteção + reembolso parcelado…): o cliente recebe UMA mensagem com UM link por vencimento.
+- **Sábado existe.** A maior parte da base vence na segunda (decisão 04/07), logo D-2 cai no
+  sábado. A janela de dias úteis 9h–17h vale só para as notificações formais (§23 item 4); os
+  lembretes saem todo dia, 9h–20h (America/Sao_Paulo, Regra 15), porque é no fim de semana que o
+  motorista tem o dinheiro da semana na mão.
+- **Só manda se ainda devo.** Fatura PAGA, PAGA_EM_ATRASO, RENEGOCIADA, NOVADA ou coberta por acordo
+  não recebe lembrete. Pagou pelo link no sábado, não recebe nada na segunda.
+- **Sem dobro.** Com o lembrete ligado para um titular, o aviso por SMS do Asaas é desligado para
+  aquele cliente (Regra 1: a régua é do Azit; o Asaas só cobra). Enquanto o lembrete estiver
+  desligado, o Asaas continua avisando como hoje.
+- **Um lembrete por fatura por momento**, idempotente pela chave `(faturaId, momento)`; o job
+  diário que já roda o D-5 e o D+3 ganha os dois momentos, na mesma chave de dia no fuso do Brasil.
+
+### 28.2 Link de pagamento
+
+O link é o `invoiceUrl` da cobrança no Asaas (a página da cobrança, com PIX copia-e-cola).
+Hoje a fatura guarda só `asaasChargeId`; passa a guardar **`asaasInvoiceUrl`**, preenchido no
+mesmo ato em que a cobrança é criada (`AsaasService.criarCobranca`, ponto único) e retroalimentado
+pela leitura da cobrança quando estiver vazio (faturas emitidas antes desta decisão e cobranças
+migradas do legado, §26). O link nunca é montado à mão pelo sistema.
+
+### 28.3 Canal, consentimento e ambientes
+
+- Mesmo cliente da Meta, mesma trava de números autorizados fora de produção e mesma chave geral
+  da POP (§23 itens 8 e 10): sem credencial, produção não simula e o lembrete fica retido; fora de
+  produção vira SIMULADO. As respostas do cliente caem na tela Conversas do WhatsApp (§24).
+- Modelo da Meta: categoria utilidade, corpo curto, **botão de link dinâmico** com o
+  `asaasInvoiceUrl`. É um modelo por momento (D-2 e D0), editável em Configurações > Notificações
+  de cobrança, com o padrão restaurável.
+- **Consentimento**: o titular precisa ter aceitado receber avisos por WhatsApp. Conferir com o
+  jurídico se o contrato atual cobre isso, junto com os quatro ajustes de redação dos anexos da POP
+  já pendentes. Até lá o lembrete nasce desligado por titular; ligar é ato do operador na ficha.
+
+### 28.4 Registro e tela
+
+Cada lembrete é um registro (`LembretePagamento`: fatura, momento, destino, texto enviado,
+id da mensagem na Meta, carimbos de envio/entrega/leitura/falha), visível na ficha do titular ao
+lado da fatura e no dossiê do caso de cobrança quando a fatura entrar em atraso, para o operador
+saber que o cliente foi avisado antes. Não entra na prova formal da POP.
+
+### 28.5 Ordem de construção
+
+Depois que a carteira (§27) e o layout v2 passarem pelo homolog: (1) rebase da branch da POP
+sobre a main; (2) `asaasInvoiceUrl` na fatura + retroalimentação; (3) os dois momentos no job
+diário, reaproveitando o cliente da Meta; (4) tela. Nada disso sai de verdade antes de a conta da
+Meta sair do "Continuar" da plataforma WhatsApp (pendência desde 06/10).
