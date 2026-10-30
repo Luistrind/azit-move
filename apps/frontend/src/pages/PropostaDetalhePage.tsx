@@ -8,6 +8,10 @@ import { originacaoService } from '../services/originacao.service';
 import { produtoService } from '../services/produto.service';
 import { StatusBadge } from '../components/StatusBadge';
 import { Stepper } from '../components/Stepper';
+import { Secao } from '../components/Secao';
+import { Botao } from '../components/Botao';
+import { Modal } from '../components/Modal';
+import { Metrica, Campo } from '../components/Metrica';
 import { PROPOSTA_STATUS_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, ROLE_PARECER, mensagemErro } from '../lib/permissoes';
 import { proximaSegundaISO, somarDiasISO } from '../lib/datas';
@@ -39,13 +43,19 @@ const STEPS = [
   { key: 'conclusao', label: 'Conclusão' },
 ];
 
+// Layout v2 (doc 03 §11): cartões com tokens, títulos pela <Secao>, botões pelo
+// <Botao>. Os <label> que embrulham <input type="file"> não podem ser <Botao>
+// (precisam ser label) — seguem o desenho da variante secundária, só tokens.
 const card = { background: 'var(--surface)', border: '1px solid var(--border)' };
-const inputCls = 'h-[34px] rounded-[8px] px-[10px] text-[12.5px]';
-const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' };
-const btn = (bg: string) => ({ background: bg, color: '#fff' });
+const inputCls = 'h-[34px] rounded-[10px] px-[10px] text-[12.5px]';
+const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' };
+const labelBotaoCls = 'inline-flex h-[30px] cursor-pointer items-center rounded-[10px] px-[11px] text-[12px] font-semibold';
+const labelBotaoStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' };
 const Lbl = ({ children }: { children: React.ReactNode }) => (
   <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>{children}</span>
 );
+// Pílula neutra (natureza do item, papel do vínculo).
+const pilula = { background: 'var(--surface-input)', color: 'var(--text-body)' };
 
 export function PropostaDetalhePage() {
   const { id = '' } = useParams();
@@ -159,13 +169,13 @@ export function PropostaDetalhePage() {
 
   return (
     <div className="flex flex-col gap-[16px]">
-      <button onClick={() => navigate('/propostas')} className="self-start text-[12.5px]" style={{ color: 'var(--text-muted)' }}>← Voltar para Propostas</button>
+      <Botao variante="fantasma" tamanho="sm" className="self-start !px-0" onClick={() => navigate('/propostas')}>← Voltar para Propostas</Botao>
 
       {/* Cabeçalho + Stepper */}
       <div className="rounded-card p-[18px]" style={card}>
-        <div className="mb-[14px] flex items-center justify-between">
-          <div>
-            <div className="font-display text-[18px] font-bold">{p.titular.nome}</div>
+        <div className="mb-[14px] flex flex-wrap items-center justify-between gap-[8px]">
+          <div className="min-w-0">
+            <div className="truncate font-display text-[18px] font-bold" style={{ color: 'var(--text-primary)' }}>{p.titular.nome}</div>
             <div className="text-[12px]" style={{ color: 'var(--text-body)' }}>{p.ativo.rotulo} · CPF {p.titular.cpfCnpj}</div>
           </div>
           <StatusBadge label={LABEL_STATUS[p.status] ?? p.status} colors={PROPOSTA_STATUS_COLORS} />
@@ -176,18 +186,18 @@ export function PropostaDetalhePage() {
       {/* Passo 1 — Proposta (oferta read-only) */}
       {step === 0 && (
         <div className="rounded-card p-[18px]" style={card}>
-          <div className="mb-[10px] font-display text-[13px] font-bold">Condições da proposta</div>
-          <div className="grid grid-cols-4 gap-[14px] text-[12.5px]">
-            <div><Lbl>Modalidade</Lbl><div>{p.modalidade}</div></div>
-            <div><Lbl>Entrada</Lbl><div>{formatCurrency(p.valorEntrada)}</div></div>
-            <div><Lbl>Parcelas</Lbl><div>{p.numeroParcelas}× {formatCurrency(p.valorParcela)}</div></div>
-            <div><Lbl>Prazo</Lbl><div>{p.prazoSemanas} semanas</div></div>
-          </div>
+          <Secao titulo="Condições da proposta">
+            <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-4">
+              <Metrica tom="claro" label="Modalidade" valor={p.modalidade} />
+              <Metrica tom="claro" label="Entrada" valor={formatCurrency(p.valorEntrada)} />
+              <Metrica tom="claro" label="Parcelas" valor={`${p.numeroParcelas}× ${formatCurrency(p.valorParcela)}`} />
+              <Metrica tom="claro" label="Prazo" valor={`${p.prazoSemanas} semanas`} />
+            </div>
+          </Secao>
         </div>
       )}
 
       {/* Fora das etapas: visível em qualquer passo do stepper. */}
-      <div className="mb-[16px]">
       {/* Documentos complementares (pedido Luís 22/09): em QUALQUER etapa,
           mesmo depois de avançar, dá para anexar documento extra que
           enriqueça a análise. Só a proposta convertida congela a trilha. */}
@@ -196,36 +206,36 @@ export function PropostaDetalhePage() {
         const podeAnexarExtra = (podeOperar || podeParecer) && p.status !== 'convertida';
         return (
           <div className="rounded-card p-[18px]" style={card}>
-            <div className="mb-[6px] flex flex-wrap items-center gap-[10px]">
-              <span className="font-display text-[13px] font-bold">Documentos complementares</span>
-              {podeAnexarExtra && (
-                <label className="h-[28px] cursor-pointer rounded-[8px] px-[10px] text-[11.5px] font-semibold leading-[28px]" style={{ ...btn('var(--navy)'), opacity: ocupado ? 0.6 : 1 }}>
+            <Secao
+              titulo="Documentos complementares"
+              tag="contracheque, extrato, contrato com locadora… — em qualquer etapa"
+              acao={podeAnexarExtra ? (
+                <label className={labelBotaoCls} style={{ ...labelBotaoStyle, opacity: ocupado ? 0.6 : 1 }}>
                   + Anexar extras (vários de uma vez)
                   <input type="file" multiple accept="image/*,.pdf" className="hidden" disabled={ocupado}
                     onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ''; if (fs.length) void anexarVarios(p.titular.id, 'outro', fs); }} />
                 </label>
+              ) : undefined}
+            >
+              {extras.length === 0 ? (
+                <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum documento complementar.</div>
+              ) : (
+                <div className="flex flex-wrap gap-[8px]">
+                  {extras.map((d) => (
+                    <div key={d.id} className="flex items-center gap-[6px] rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                      <span title={DOC_LABEL[d.tipo] ?? d.tipo}>{d.arquivoRef}</span>
+                      <button type="button" onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="text-[11px] font-semibold" style={{ color: 'var(--accent)' }}>baixar</button>
+                      {podeAnexarExtra && (
+                        <button type="button" onClick={() => { if (window.confirm('Remover este documento?')) void run(() => originacaoService.removerDocumento(p.id, d.id)); }} className="text-[11px] font-semibold" style={{ color: 'var(--danger-fg)' }}>remover</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
-              <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>contracheque, extrato, contrato com locadora… — pode anexar em qualquer etapa</span>
-            </div>
-            {extras.length === 0 ? (
-              <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum documento complementar.</div>
-            ) : (
-              <div className="flex flex-wrap gap-[8px]">
-                {extras.map((d) => (
-                  <div key={d.id} className="flex items-center gap-[6px] rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
-                    <span title={DOC_LABEL[d.tipo] ?? d.tipo}>{d.arquivoRef}</span>
-                    <button onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="text-[11px] font-semibold" style={{ color: 'var(--accent)' }}>baixar</button>
-                    {podeAnexarExtra && (
-                      <button onClick={() => { if (window.confirm('Remover este documento?')) void run(() => originacaoService.removerDocumento(p.id, d.id)); }} className="text-[11px] font-semibold" style={{ color: 'var(--danger-fg)' }}>remover</button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+            </Secao>
           </div>
         );
       })()}
-      </div>
 
       {/* Passo 2 — Principal (produtos + cadastro + documentos + papéis) */}
       {step === 1 && (
@@ -234,145 +244,149 @@ export function PropostaDetalhePage() {
           <div className="rounded-card p-[18px]" style={card}>
             {/* Doc 02 §17 (2026-08-16): aqui entram ITENS de contrato (proteção,
                 rastreador, taxas) — produto comercial é papel do Catálogo. */}
-            <div className="mb-[10px] font-display text-[13px] font-bold">Itens do contrato</div>
-            <div className="flex flex-col gap-[6px]">
-              {/* âncora — sempre o financiamento do veículo */}
-              <div className="flex items-center gap-[10px] text-[12.5px]">
-                <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>Âncora</span>
-                <span>Venda parcelada do veículo — {p.numeroParcelas}× {formatCurrency(p.valorParcela)}</span>
-              </div>
-              {p.itens.map((it) => (
-                <div key={it.id} className="flex items-center gap-[10px] text-[12.5px]">
-                  <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: it.apartado ? 'var(--purple-bg)' : 'var(--surface-input)', color: it.apartado ? 'var(--purple-fg)' : 'var(--text-body)' }}>{it.apartado ? 'Apartado' : it.natureza}</span>
-                  <span>{it.nome} — {formatCurrency(it.valor)}{it.periodicidade ? `/${it.periodicidade}` : ''}</span>
-                  {podeOperar && p.status !== 'convertida' && (
-                    <button disabled={ocupado} onClick={() => run(() => originacaoService.removerProduto(id, it.id))} className="text-[11px]" style={{ color: 'var(--danger-fg)' }}>remover</button>
-                  )}
+            <Secao titulo="Itens do contrato">
+              <div className="flex flex-col gap-[6px] text-[12.5px]" style={{ color: 'var(--text-primary)' }}>
+                {/* âncora — sempre o financiamento do veículo */}
+                <div className="flex flex-wrap items-center gap-[10px]">
+                  <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={pilula}>Âncora</span>
+                  <span>Venda parcelada do veículo — {p.numeroParcelas}× {formatCurrency(p.valorParcela)}</span>
                 </div>
-              ))}
-            </div>
-            {podeOperar && p.status !== 'convertida' && (
-              <div className="mt-[12px] flex flex-wrap items-end gap-[10px]">
-                <select value={produtoSel} onChange={(e) => setProdutoSel(e.target.value)} className={`${inputCls} w-[260px]`} style={inputStyle}>
-                  <option value="">Adicionar item ao contrato…</option>
-                  {catalogo.data?.filter((pr) => !pr.ancora && pr.ativo).map((pr) => (
-                    <option key={pr.id} value={pr.id}>{pr.nome}{pr.valorPadrao ? ` · ${formatCurrency(pr.valorPadrao)}` : ''}{pr.apartado ? ' (apartado)' : ''}</option>
-                  ))}
-                </select>
-                <button disabled={ocupado || !produtoSel}
-                  onClick={() => run(async () => { await originacaoService.adicionarProduto(id, produtoSel); setProdutoSel(''); })}
-                  className="h-[34px] rounded-[8px] px-[12px] text-[12px] font-semibold" style={btn('var(--navy)')}>Adicionar ao contrato</button>
+                {p.itens.map((it) => (
+                  <div key={it.id} className="flex flex-wrap items-center gap-[10px]">
+                    <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={it.apartado ? { background: 'var(--purple-bg)', color: 'var(--purple-fg)' } : pilula}>{it.apartado ? 'Apartado' : it.natureza}</span>
+                    <span>{it.nome} — {formatCurrency(it.valor)}{it.periodicidade ? `/${it.periodicidade}` : ''}</span>
+                    {podeOperar && p.status !== 'convertida' && (
+                      <button type="button" disabled={ocupado} onClick={() => run(() => originacaoService.removerProduto(id, it.id))} className="text-[11px]" style={{ color: 'var(--danger-fg)' }}>remover</button>
+                    )}
+                  </div>
+                ))}
               </div>
-            )}
-            <div className="mt-[8px] text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              Itens <b>apartados</b> (ex: seguro) viram contrato próprio na formalização; os demais entram no contrato do veículo. Produtos comerciais (venda, Reembolso Parcelado, proteção) são geridos no <b>Catálogo</b>.
-            </div>
+              {podeOperar && p.status !== 'convertida' && (
+                <div className="mt-[12px] flex flex-wrap items-end gap-[10px]">
+                  <select value={produtoSel} onChange={(e) => setProdutoSel(e.target.value)} className={`${inputCls} w-full sm:w-[260px]`} style={inputStyle}>
+                    <option value="">Adicionar item ao contrato…</option>
+                    {catalogo.data?.filter((pr) => !pr.ancora && pr.ativo).map((pr) => (
+                      <option key={pr.id} value={pr.id}>{pr.nome}{pr.valorPadrao ? ` · ${formatCurrency(pr.valorPadrao)}` : ''}{pr.apartado ? ' (apartado)' : ''}</option>
+                    ))}
+                  </select>
+                  <Botao variante="secundaria" disabled={ocupado || !produtoSel}
+                    onClick={() => run(async () => { await originacaoService.adicionarProduto(id, produtoSel); setProdutoSel(''); })}>
+                    Adicionar ao contrato
+                  </Botao>
+                </div>
+              )}
+              <div className="mt-[8px] text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                Itens <b>apartados</b> (ex: seguro) viram contrato próprio na formalização; os demais entram no contrato do veículo. Produtos comerciais (venda, Reembolso Parcelado, proteção) são geridos no <b>Catálogo</b>.
+              </div>
+            </Secao>
           </div>
 
           {/* Documentos por papel */}
           <div className="rounded-card p-[18px]" style={card}>
-            <div className="mb-[10px] font-display text-[13px] font-bold">Documentos obrigatórios</div>
-            {papeisComDocs.map((v) => (
-              <div key={v.id} className="mb-[12px]">
-                <div className="mb-[6px] text-[12px] font-semibold">{PAPEL_LABEL[v.papel]} · {v.titular.nome}</div>
-                <div className="flex flex-wrap gap-[8px]">
-                  {p.documentosObrigatorios.map((tipo) => {
-                    const doc = p.documentos.find((d) => d.titularId === v.titular.id && d.tipo === tipo);
-                    const ok = !!doc;
-                    return (
-                      <div key={tipo} className="flex items-center gap-[6px] rounded-[8px] px-[10px] py-[6px] text-[12px]"
-                        style={{ background: ok ? 'var(--ok-bg)' : 'var(--surface-input)', border: `1px solid ${ok ? '#1f9d5b33' : 'var(--border)'}` }}>
-                        <span style={{ color: ok ? 'var(--ok-fg)' : 'var(--text-muted)' }}>{ok ? '✓' : '○'}</span>
-                        <span>{DOC_LABEL[tipo] ?? tipo}</span>
-                        {ok ? (
-                          <button onClick={() => originacaoService.baixarDocumento(doc!.id, doc!.arquivoRef)}
-                            className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ color: 'var(--accent)' }}
-                            title={doc!.arquivoRef}>baixar</button>
-                        ) : podeOperar && p.status !== 'convertida' ? (
-                          <label className="cursor-pointer rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={btn('var(--navy)')}>
-                            Anexar
-                            <input type="file" className="hidden" disabled={ocupado}
-                              onChange={(e) => { const f = e.target.files?.[0]; if (f) anexarArquivo(v.titular.id, tipo, f); }} />
-                          </label>
-                        ) : null}
-                      </div>
-                    );
-                  })}
+            <Secao titulo="Documentos obrigatórios">
+              {papeisComDocs.map((v) => (
+                <div key={v.id} className="mb-[12px]">
+                  <div className="mb-[6px] text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{PAPEL_LABEL[v.papel]} · {v.titular.nome}</div>
+                  <div className="flex flex-wrap gap-[8px]">
+                    {p.documentosObrigatorios.map((tipo) => {
+                      const doc = p.documentos.find((d) => d.titularId === v.titular.id && d.tipo === tipo);
+                      const ok = !!doc;
+                      return (
+                        <div key={tipo} className="flex items-center gap-[6px] rounded-[8px] px-[10px] py-[6px] text-[12px]"
+                          style={{ background: ok ? 'var(--ok-bg)' : 'var(--surface-input)', border: `1px solid ${ok ? 'transparent' : 'var(--border)'}`, color: 'var(--text-primary)' }}>
+                          <span style={{ color: ok ? 'var(--ok-fg)' : 'var(--text-muted)' }}>{ok ? '✓' : '○'}</span>
+                          <span>{DOC_LABEL[tipo] ?? tipo}</span>
+                          {ok ? (
+                            <button type="button" onClick={() => originacaoService.baixarDocumento(doc!.id, doc!.arquivoRef)}
+                              className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ color: 'var(--accent)' }}
+                              title={doc!.arquivoRef}>baixar</button>
+                          ) : podeOperar && p.status !== 'convertida' ? (
+                            <label className="cursor-pointer rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: 'var(--navy)', color: '#fff' }}>
+                              Anexar
+                              <input type="file" className="hidden" disabled={ocupado}
+                                onChange={(e) => { const f = e.target.files?.[0]; if (f) anexarArquivo(v.titular.id, tipo, f); }} />
+                            </label>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
-            {p.documentosCompletos
-              ? <div className="text-[12px]" style={{ color: 'var(--ok-fg)' }}>✓ Documentos obrigatórios completos — pode avançar para a análise.</div>
-              : <div className="text-[12px]" style={{ color: 'var(--warn-fg)' }}>Anexe todos os documentos obrigatórios para liberar a análise.</div>}
-
+              ))}
+              {p.documentosCompletos
+                ? <div className="text-[12px]" style={{ color: 'var(--ok-fg)' }}>✓ Documentos obrigatórios completos — pode avançar para a análise.</div>
+                : <div className="text-[12px]" style={{ color: 'var(--warn-fg)' }}>Anexe todos os documentos obrigatórios para liberar a análise.</div>}
+            </Secao>
           </div>
 
           {/* Papéis: 2º comprador e garantidor (este só quando a análise exige) */}
           <div className="rounded-card p-[18px]" style={card}>
-            <div className="mb-[10px] font-display text-[13px] font-bold">Papéis</div>
-            <div className="flex flex-col gap-[6px]">
-              {p.papeis.map((v) => (
-                <div key={v.id} className="flex items-center gap-[10px] text-[12.5px]">
-                  <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>{PAPEL_LABEL[v.papel] ?? v.papel}</span>
-                  <span>{v.titular.nome} · CPF {v.titular.cpfCnpj}</span>
+            <Secao titulo="Papéis">
+              <div className="flex flex-col gap-[6px] text-[12.5px]" style={{ color: 'var(--text-primary)' }}>
+                {p.papeis.map((v) => (
+                  <div key={v.id} className="flex flex-wrap items-center gap-[10px]">
+                    <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={pilula}>{PAPEL_LABEL[v.papel] ?? v.papel}</span>
+                    <span>{v.titular.nome} · CPF {v.titular.cpfCnpj}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* 2º comprador opcional */}
+              {podeOperar && !hasSecundario && p.status !== 'convertida' && (
+                <div className="mt-[12px]">
+                  {!showSeg ? (
+                    <Botao variante="fantasma" tamanho="sm" className="!px-0" onClick={() => setShowSeg(true)}>+ Incluir 2º comprador</Botao>
+                  ) : (
+                    <div className="grid grid-cols-1 items-end gap-[10px] sm:grid-cols-[1fr_140px_140px_auto]">
+                      <input value={segNome} onChange={(e) => setSegNome(e.target.value)} placeholder="Nome 2º comprador" className={inputCls} style={inputStyle} />
+                      <input value={segCpf} onChange={(e) => setSegCpf(e.target.value)} placeholder="CPF" className={inputCls} style={inputStyle} />
+                      <input value={segZap} onChange={(e) => setSegZap(e.target.value)} placeholder="WhatsApp" className={inputCls} style={inputStyle} />
+                      <Botao variante="secundaria" disabled={ocupado || !segNome || !segCpf}
+                        onClick={() => run(async () => { await originacaoService.adicionarVinculo(id, 'comprador_secundario', { nome: segNome, cpfCnpj: segCpf, whatsapp: segZap || '11999999999', tipoPessoa: 'pf' }); setShowSeg(false); setSegNome(''); setSegCpf(''); setSegZap(''); })}>
+                        Adicionar
+                      </Botao>
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
+              )}
 
-            {/* 2º comprador opcional */}
-            {podeOperar && !hasSecundario && p.status !== 'convertida' && (
-              <div className="mt-[12px]">
-                {!showSeg ? (
-                  <button onClick={() => setShowSeg(true)} className="text-[12px] font-semibold" style={{ color: 'var(--accent)' }}>+ Incluir 2º comprador</button>
-                ) : (
-                  <div className="flex flex-wrap items-end gap-[10px]">
-                    <input value={segNome} onChange={(e) => setSegNome(e.target.value)} placeholder="Nome 2º comprador" className={`${inputCls} w-[180px]`} style={inputStyle} />
-                    <input value={segCpf} onChange={(e) => setSegCpf(e.target.value)} placeholder="CPF" className={`${inputCls} w-[140px]`} style={inputStyle} />
-                    <input value={segZap} onChange={(e) => setSegZap(e.target.value)} placeholder="WhatsApp" className={`${inputCls} w-[140px]`} style={inputStyle} />
-                    <button disabled={ocupado || !segNome || !segCpf}
-                      onClick={() => run(async () => { await originacaoService.adicionarVinculo(id, 'comprador_secundario', { nome: segNome, cpfCnpj: segCpf, whatsapp: segZap || '11999999999', tipoPessoa: 'pf' }); setShowSeg(false); setSegNome(''); setSegCpf(''); setSegZap(''); })}
-                      className="h-[34px] rounded-[8px] px-[12px] text-[12px] font-semibold" style={btn('var(--navy)')}>Adicionar</button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Garantidor — só quando a análise exige */}
-            {precisaGarantidor && (
-              <div className="mt-[12px] rounded-[8px] p-[12px]" style={{ background: 'var(--warn-bg)' }}>
-                <div className="mb-[8px] text-[12px] font-semibold" style={{ color: 'var(--warn-ink)' }}>A análise exige garantidor. Adicione para poder formalizar.</div>
-                {podeOperar && (
-                  <div className="flex flex-wrap items-end gap-[10px]">
-                    <input value={garNome} onChange={(e) => setGarNome(e.target.value)} placeholder="Nome garantidor" className={`${inputCls} w-[180px]`} style={inputStyle} />
-                    <input value={garCpf} onChange={(e) => setGarCpf(e.target.value)} placeholder="CPF" className={`${inputCls} w-[140px]`} style={inputStyle} />
-                    <input value={garZap} onChange={(e) => setGarZap(e.target.value)} placeholder="WhatsApp" className={`${inputCls} w-[140px]`} style={inputStyle} />
-                    <button disabled={ocupado || !garNome || !garCpf}
-                      onClick={() => run(async () => { await originacaoService.adicionarVinculo(id, 'garantidor', { nome: garNome, cpfCnpj: garCpf, whatsapp: garZap || '11999999999', tipoPessoa: 'pf' }); setGarNome(''); setGarCpf(''); setGarZap(''); })}
-                      className="h-[34px] rounded-[8px] px-[12px] text-[12px] font-semibold" style={btn('var(--navy)')}>+ Garantidor</button>
-                  </div>
-                )}
-              </div>
-            )}
+              {/* Garantidor — só quando a análise exige */}
+              {precisaGarantidor && (
+                <div className="mt-[12px] rounded-[10px] p-[12px]" style={{ background: 'var(--warn-bg)' }}>
+                  <div className="mb-[8px] text-[12px] font-semibold" style={{ color: 'var(--warn-ink)' }}>A análise exige garantidor. Adicione para poder formalizar.</div>
+                  {podeOperar && (
+                    <div className="grid grid-cols-1 items-end gap-[10px] sm:grid-cols-[1fr_140px_140px_auto]">
+                      <input value={garNome} onChange={(e) => setGarNome(e.target.value)} placeholder="Nome garantidor" className={inputCls} style={inputStyle} />
+                      <input value={garCpf} onChange={(e) => setGarCpf(e.target.value)} placeholder="CPF" className={inputCls} style={inputStyle} />
+                      <input value={garZap} onChange={(e) => setGarZap(e.target.value)} placeholder="WhatsApp" className={inputCls} style={inputStyle} />
+                      <Botao variante="secundaria" disabled={ocupado || !garNome || !garCpf}
+                        onClick={() => run(async () => { await originacaoService.adicionarVinculo(id, 'garantidor', { nome: garNome, cpfCnpj: garCpf, whatsapp: garZap || '11999999999', tipoPessoa: 'pf' }); setGarNome(''); setGarCpf(''); setGarZap(''); })}>
+                        + Garantidor
+                      </Botao>
+                    </div>
+                  )}
+                </div>
+              )}
+            </Secao>
           </div>
 
           {/* Avanço explícito para a próxima etapa (não só pelo stepper) */}
           <div className="flex justify-end">
-            <button
+            <Botao
+              variante="primaria"
               disabled={!p.documentosCompletos}
               onClick={() => setStep(2)}
               title={p.documentosCompletos ? undefined : 'Anexe todos os documentos obrigatórios para liberar a análise'}
-              className="h-[38px] rounded-[9px] px-[18px] text-[13px] font-semibold disabled:opacity-50"
-              style={btn('var(--accent)')}
             >
               Próximo: Análise →
-            </button>
+            </Botao>
           </div>
         </div>
       )}
 
       {/* Condição fora do parâmetro (decisão 03/08): banner + solicitação de alçada */}
       {p.foraParametro && (
-        <div className="mb-[10px] flex flex-wrap items-center justify-between gap-[8px] rounded-[12px] p-[14px]" style={{ background: 'var(--warn-bg)', border: '2px solid #d9a62e' }}>
+        <div className="flex flex-wrap items-center justify-between gap-[8px] rounded-[12px] p-[14px]" style={{ background: 'var(--warn-bg)', border: '2px solid var(--warn-fg)' }}>
           <div>
             <div className="font-display text-[13px] font-bold" style={{ color: 'var(--warn-ink)' }}>Condição comercial fora do parâmetro</div>
             <div className="text-[12px]" style={{ color: 'var(--warn-ink)' }}>
@@ -386,14 +400,9 @@ export function PropostaDetalhePage() {
             </div>
           </div>
           {(!p.aprovacaoForaParametro || p.aprovacaoForaParametro === 'reprovada') && (
-            <button
-              className="h-[36px] rounded-[8px] px-[16px] text-[12px] font-bold"
-              style={{ background: 'var(--warn-ink)', color: '#fff' }}
-              disabled={ocupado}
-              onClick={() => run(() => originacaoService.solicitarAprovacaoForaParametro(id))}
-            >
+            <Botao variante="primaria" disabled={ocupado} onClick={() => run(() => originacaoService.solicitarAprovacaoForaParametro(id))}>
               Solicitar aprovação de alçada
-            </button>
+            </Botao>
           )}
         </div>
       )}
@@ -403,18 +412,17 @@ export function PropostaDetalhePage() {
           inclusive em proposta convertida/cancelada — agora só enquanto a análise
           faz sentido. */}
       {!['convertida', 'cancelada', 'reprovada'].includes(p.status) && (
-      <div className="mb-[10px] flex flex-wrap items-center justify-between gap-[8px] rounded-[12px] border-2 border-[var(--navy)] bg-[var(--surface)] p-[14px]">
+      <div className="flex flex-wrap items-center justify-between gap-[8px] rounded-[12px] p-[14px]" style={{ background: 'var(--surface)', border: '2px solid var(--accent)' }}>
         <div>
-          <div className="font-display text-[13px] font-bold">Análise de Cadastro — Política v1.0</div>
-          <div className="text-[12px] text-[var(--text-muted)]">Workspace oficial: participantes, rendas, autorização, consultas, COCAD e liberação.</div>
+          <div className="font-display text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>Análise de Cadastro — Política v1.0</div>
+          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Workspace oficial: participantes, rendas, autorização, consultas, COCAD e liberação.</div>
         </div>
-        <button
-          className="h-[36px] rounded-[8px] px-[16px] text-[12px] font-bold"
-          style={{ background: 'var(--navy)', color: '#fff' }}
+        <Botao
+          variante="primaria"
           onClick={() => { void (async () => { try { const a = await analiseService.iniciar(id); navigate(`/analises/${a.id}`); } catch (e) { toast.erro(mensagemErro(e)); } })(); }}
         >
           Abrir análise →
-        </button>
+        </Botao>
       </div>
       )}
 
@@ -423,7 +431,6 @@ export function PropostaDetalhePage() {
         // Trilha única (doc 02 §14, 2026-08-15): com Análise de Cadastro aberta, o
         // parecer legado da proposta fica só leitura — a decisão acontece na análise.
         const podeEditar = !p.analiseCadastro && !p.parecer && podeParecer && ['pendente', 'em_analise'].includes(p.status);
-        const cardSel = PARECER_CARDS.find((c) => c.v === resultado);
         const prontoParaRegistrar =
           !!resultado &&
           (resultado !== 'reprovado' || !!motivo) &&
@@ -432,10 +439,10 @@ export function PropostaDetalhePage() {
         <div className="flex flex-col gap-[14px]">
           {/* Anexos de embasamento da análise */}
           <div className="rounded-card p-[18px]" style={card}>
-            <div className="mb-[8px] flex items-center gap-[10px]">
-              <span className="font-display text-[13px] font-bold">Documentos de embasamento</span>
-              {podeParecer && ['pendente', 'em_analise'].includes(p.status) && (
-                <label className="h-[30px] cursor-pointer rounded-[8px] px-[12px] text-[12px] font-semibold leading-[30px]" style={btn('var(--navy)')}>
+            <Secao
+              titulo="Documentos de embasamento"
+              acao={podeParecer && ['pendente', 'em_analise'].includes(p.status) ? (
+                <label className={labelBotaoCls} style={labelBotaoStyle}>
                   + Anexar (vários de uma vez)
                   <input type="file" multiple className="hidden"
                     onChange={(e) => {
@@ -445,49 +452,51 @@ export function PropostaDetalhePage() {
                       if (fs.length) void anexarVarios(p.titular.id, 'anexo_analise', fs);
                     }} />
                 </label>
+              ) : undefined}
+            >
+              {anexos.length === 0 ? (
+                <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum anexo — consultas, extratos e prints que embasam a decisão entram aqui.</div>
+              ) : (
+                <div className="flex flex-col gap-[4px]">
+                  {anexos.map((d) => (
+                    <div key={d.id} className="flex flex-wrap items-center justify-between gap-[6px] rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
+                      <span className="min-w-0 truncate">{d.arquivoRef}</span>
+                      <span className="flex items-center gap-[10px]">
+                      <button type="button" onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--accent)' }}>baixar</button>
+                      {podeParecer && ['pendente', 'em_analise'].includes(p.status) && (
+                        <button
+                          type="button"
+                          onClick={() => { if (window.confirm('Remover este anexo?')) void run(() => originacaoService.removerDocumento(p.id, d.id)); }}
+                          className="font-semibold" style={{ color: 'var(--danger-fg)' }}
+                        >remover</button>
+                      )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               )}
-            </div>
-            {anexos.length === 0 ? (
-              <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum anexo — consultas, extratos e prints que embasam a decisão entram aqui.</div>
-            ) : (
-              <div className="flex flex-col gap-[4px]">
-                {anexos.map((d) => (
-                  <div key={d.id} className="flex items-center justify-between rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
-                    <span>{d.arquivoRef}</span>
-                    <span className="flex items-center gap-[10px]">
-                    <button onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--text-primary)' }}>baixar</button>
-                    {podeParecer && ['pendente', 'em_analise'].includes(p.status) && (
-                      <button
-                        onClick={() => { if (window.confirm('Remover este anexo?')) void run(() => originacaoService.removerDocumento(p.id, d.id)); }}
-                        className="font-semibold" style={{ color: 'var(--danger-fg)' }}
-                      >remover</button>
-                    )}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+            </Secao>
           </div>
 
           {/* Parecer */}
           <div className="rounded-card p-[18px]" style={card}>
-            <div className="mb-[10px] font-display text-[13px] font-bold">Parecer da Análise {podeEditar && '*'}</div>
+            <Secao titulo={`Parecer da Análise${podeEditar ? ' *' : ''}`}>
 
             {p.parecer ? (
-              <div className="flex flex-col gap-[8px] text-[12.5px]">
+              <div className="flex flex-col gap-[8px] text-[12.5px]" style={{ color: 'var(--text-primary)' }}>
                 {(() => {
                   const c = PARECER_CARDS.find((x) => x.v === p.parecer!.resultado);
                   return (
-                    <div className="flex items-center gap-[10px] rounded-[10px] p-[12px]" style={{ background: c?.bg, border: `2px solid ${c?.cor}` }}>
+                    <div className="flex flex-wrap items-center gap-[10px] rounded-[10px] p-[12px]" style={{ background: c?.bg, border: `2px solid ${c?.cor}` }}>
                       <span className="text-[16px]" style={{ color: c?.cor }}>{c?.icone}</span>
                       <b>{c?.titulo ?? p.parecer!.resultado}</b>
                       {p.parecer!.exigeGarantidor && <span className="text-[11.5px]" style={{ color: 'var(--warn-ink)' }}>· exige garantidor</span>}
                     </div>
                   );
                 })()}
-                {p.parecer.motivoReprovacao && <div><Lbl>Motivo da reprovação</Lbl><div>{p.parecer.motivoReprovacao}</div></div>}
-                {p.parecer.motivosRessalva.length > 0 && <div><Lbl>Motivos da ressalva</Lbl><div>{p.parecer.motivosRessalva.join(' · ')}</div></div>}
-                {p.parecer.observacao && <div><Lbl>Observação analítica</Lbl><div style={{ whiteSpace: 'pre-wrap' }}>{p.parecer.observacao}</div></div>}
+                {p.parecer.motivoReprovacao && <Campo label="Motivo da reprovação" valor={p.parecer.motivoReprovacao} />}
+                {p.parecer.motivosRessalva.length > 0 && <Campo label="Motivos da ressalva" valor={p.parecer.motivosRessalva.join(' · ')} />}
+                {p.parecer.observacao && <Campo label="Observação analítica"><span style={{ whiteSpace: 'pre-wrap' }}>{p.parecer.observacao}</span></Campo>}
               </div>
             ) : p.analiseCadastro ? (
               <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
@@ -501,14 +510,14 @@ export function PropostaDetalhePage() {
                 {/* Cards de decisão */}
                 <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-3">
                   {PARECER_CARDS.map((c) => (
-                    <button key={c.v} onClick={() => setResultado(c.v)}
-                      className="flex flex-col items-start gap-[4px] rounded-[12px] p-[14px] text-left transition-colors"
+                    <button key={c.v} type="button" onClick={() => setResultado(c.v)}
+                      className="flex min-h-[44px] flex-col items-start gap-[4px] rounded-[12px] p-[14px] text-left transition-colors"
                       style={{
                         border: `2px solid ${resultado === c.v ? c.cor : 'var(--border)'}`,
                         background: resultado === c.v ? c.bg : 'var(--surface)',
                       }}>
                       <span className="flex h-[26px] w-[26px] items-center justify-center rounded-full text-[14px] font-bold" style={{ background: c.bg, color: c.cor }}>{c.icone}</span>
-                      <span className="text-[13px] font-bold">{c.titulo}</span>
+                      <span className="text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>{c.titulo}</span>
                       <span className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>{c.sub}</span>
                     </button>
                   ))}
@@ -516,7 +525,7 @@ export function PropostaDetalhePage() {
 
                 {/* Painel condicional: reprovação */}
                 {resultado === 'reprovado' && (
-                  <div className="flex flex-col gap-[8px] rounded-[10px] p-[14px]" style={{ background: 'var(--danger-bg)', border: '1px solid #f5c6c3' }}>
+                  <div className="flex flex-col gap-[8px] rounded-[10px] p-[14px]" style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger-fg)' }}>
                     <Lbl>Motivo da Reprovação *</Lbl>
                     <select value={motivo} onChange={(e) => setMotivo(e.target.value)} className={`${inputCls} w-full max-w-[380px]`} style={inputStyle}>
                       <option value="">Selecione o motivo</option>
@@ -527,12 +536,12 @@ export function PropostaDetalhePage() {
 
                 {/* Painel condicional: ressalvas (todas exigem garantidor) */}
                 {resultado === 'aprovado_com_ressalvas' && (
-                  <div className="flex flex-col gap-[8px] rounded-[10px] p-[14px]" style={{ background: 'var(--warn-bg)', border: '1px solid #f2dcb3' }}>
+                  <div className="flex flex-col gap-[8px] rounded-[10px] p-[14px]" style={{ background: 'var(--warn-bg)', border: '1px solid var(--warn-fg)' }}>
                     <Lbl>Motivos da Ressalva *</Lbl>
                     <div className="text-[11.5px]" style={{ color: 'var(--warn-ink)' }}>Todos os motivos requerem garantidor.</div>
                     <div className="grid grid-cols-1 gap-[6px] sm:grid-cols-2">
                       {MOTIVOS_RESSALVA.map((m) => (
-                        <label key={m} className="flex items-center gap-[8px] text-[12.5px]">
+                        <label key={m} className="flex min-h-[30px] items-center gap-[8px] text-[12.5px]" style={{ color: 'var(--text-primary)' }}>
                           <input type="checkbox" checked={ressalvas.includes(m)}
                             onChange={(e) => setRessalvas(e.target.checked ? [...ressalvas, m] : ressalvas.filter((x) => x !== m))} />
                           {m}
@@ -547,12 +556,13 @@ export function PropostaDetalhePage() {
                   <Lbl>Observação analítica</Lbl>
                   <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={3}
                     placeholder="Contexto, critérios avaliados, fontes consultadas…"
-                    className="rounded-[8px] p-[10px] text-[12.5px]" style={inputStyle} />
+                    className="rounded-[10px] p-[10px] text-[12.5px]" style={inputStyle} />
                 </label>
 
-                {/* Ação — muda conforme a decisão */}
+                {/* Ação — muda conforme a decisão (variante acompanha o parecer) */}
                 <div className="flex justify-end">
-                  <button
+                  <Botao
+                    variante={resultado === 'reprovado' ? 'perigo' : 'primaria'}
                     disabled={ocupado || !prontoParaRegistrar}
                     onClick={() => run(() => originacaoService.registrarParecer(id, {
                       resultado,
@@ -560,16 +570,16 @@ export function PropostaDetalhePage() {
                       motivosRessalva: resultado === 'aprovado_com_ressalvas' ? ressalvas : undefined,
                       observacao: observacao.trim() || undefined,
                     }))}
-                    className="h-[38px] rounded-[9px] px-[18px] text-[13px] font-semibold disabled:opacity-50"
-                    style={btn(cardSel?.cor ?? 'var(--accent)')}>
+                    className="!whitespace-normal !h-auto min-h-[36px] py-[8px] text-left">
                     {resultado === 'reprovado' ? '✕ Reprovar Proposta'
                       : resultado === 'aprovado_com_ressalvas' ? '⚠ Aprovar com Ressalvas — Próximo: Revisão'
                       : resultado === 'aprovado' ? '✓ Aprovar Proposta — Próximo: Revisão'
                       : 'Selecione o parecer'}
-                  </button>
+                  </Botao>
                 </div>
               </div>
             )}
+            </Secao>
           </div>
         </div>
         );
@@ -578,21 +588,22 @@ export function PropostaDetalhePage() {
       {/* Passo 4 — Revisão */}
       {step === 3 && (
         <div className="rounded-card p-[18px]" style={card}>
-          <div className="mb-[10px] font-display text-[13px] font-bold">Revisão</div>
-          <div className="grid grid-cols-2 gap-[14px] text-[12.5px]">
-            <div><Lbl>Ativo</Lbl><div>{p.ativo.rotulo}</div></div>
-            <div><Lbl>Condições</Lbl><div>{formatCurrency(p.valorEntrada)} + {p.numeroParcelas}× {formatCurrency(p.valorParcela)}</div></div>
-            <div className="col-span-2"><Lbl>Papéis</Lbl><div>{p.papeis.map((v) => `${PAPEL_LABEL[v.papel]}: ${v.titular.nome}`).join(' · ')}</div></div>
-            <div className="col-span-2"><Lbl>Parecer</Lbl><div>{p.parecer ? `${p.parecer.resultado}${p.parecer.exigeGarantidor ? ' (exige garantidor)' : ''}` : '—'}</div></div>
-          </div>
-          {precisaGarantidor && <div className="mt-[10px] text-[12px]" style={{ color: 'var(--warn-fg)' }}>Pendente: adicione o garantidor exigido (passo Principal) para concluir.</div>}
+          <Secao titulo="Revisão">
+            <div className="grid grid-cols-1 gap-[14px] sm:grid-cols-2">
+              <Campo label="Ativo" valor={p.ativo.rotulo} />
+              <Campo label="Condições" valor={`${formatCurrency(p.valorEntrada)} + ${p.numeroParcelas}× ${formatCurrency(p.valorParcela)}`} />
+              <div className="sm:col-span-2"><Campo label="Papéis" valor={p.papeis.map((v) => `${PAPEL_LABEL[v.papel]}: ${v.titular.nome}`).join(' · ')} /></div>
+              <div className="sm:col-span-2"><Campo label="Parecer" valor={p.parecer ? `${p.parecer.resultado}${p.parecer.exigeGarantidor ? ' (exige garantidor)' : ''}` : '—'} /></div>
+            </div>
+            {precisaGarantidor && <div className="mt-[10px] text-[12px]" style={{ color: 'var(--warn-fg)' }}>Pendente: adicione o garantidor exigido (passo Principal) para concluir.</div>}
+          </Secao>
         </div>
       )}
 
       {/* Passo 5 — Conclusão: formalizar → assinaturas → cobrança da entrada → ativo */}
       {step === 4 && (
         <div className="rounded-card p-[18px]" style={card}>
-          <div className="mb-[10px] font-display text-[13px] font-bold">Conclusão</div>
+          <Secao titulo="Conclusão">
 
           {/* a) Parametrização do contrato (reunião 11/07): o operador define a
               data da 1ª parcela (ex.: segunda-feira p/ motorista de app) e então
@@ -603,11 +614,12 @@ export function PropostaDetalhePage() {
                 <input type="date" value={dataAtivacao} onChange={(e) => setDataAtivacao(e.target.value)} className={`${inputCls} w-[160px]`} style={inputStyle} /></label>
               <label className="flex flex-col gap-[4px]"><Lbl>1ª parcela (vencimento)</Lbl>
                 <input type="date" value={dataPrimeira} onChange={(e) => setDataPrimeira(e.target.value)} className={`${inputCls} w-[160px]`} style={inputStyle} /></label>
-              <span className="pb-[8px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+              <span className="basis-full text-[11.5px] sm:basis-auto sm:pb-[8px]" style={{ color: 'var(--text-muted)' }}>
                 {p.numeroParcelas} parcelas de {formatCurrency(p.valorParcela)} · a assinatura é imediata; a cobrança da entrada vence na previsão de ativação
               </span>
-              <button disabled={ocupado} onClick={() => run(async () => { const r = await originacaoService.formalizar(id, dataPrimeira || undefined, dataAtivacao || undefined); setDocumento(r.documento); })}
-                className="h-[34px] rounded-[8px] px-[14px] text-[12px] font-semibold" style={btn('var(--accent)')}>Formalizar (gerar contrato)</button>
+              <Botao variante="primaria" disabled={ocupado} onClick={() => run(async () => { const r = await originacaoService.formalizar(id, dataPrimeira || undefined, dataAtivacao || undefined); setDocumento(r.documento); })}>
+                Formalizar (gerar contrato)
+              </Botao>
             </div>
           )}
 
@@ -620,21 +632,19 @@ export function PropostaDetalhePage() {
                 <BlocoAssinaturaDigital contratoId={p.contratoGeradoId} ocupado={ocupado} run={run} />
               )}
               {!pacote.data.cronogramaGerado && (
-                <div className="rounded-[8px] p-[12px]" style={{ background: 'var(--surface-input)' }}>
-                  <div className="mb-[8px] text-[12px] font-semibold">Contratos do pacote</div>
+                <div className="rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)' }}>
+                  <div className="mb-[8px] text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Contratos do pacote</div>
                   <div className="flex flex-col gap-[10px]">
                     {pacote.data.contratos.map((c) => (
-                      <div key={c.id} className="flex flex-wrap items-center gap-[10px] border-b pb-[8px]" style={{ borderColor: 'var(--border-light)' }}>
-                        <span className="min-w-[220px] text-[12px] font-semibold">{c.descricao}{c.ancora ? '' : ' · contrato apartado'} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({c.numero})</span></span>
+                      <div key={c.id} className="flex flex-wrap items-center gap-[10px] pb-[8px]" style={{ borderBottom: '1px solid var(--border-light)' }}>
+                        <span className="min-w-0 basis-full text-[12px] font-semibold sm:basis-auto sm:min-w-[220px]" style={{ color: 'var(--text-primary)' }}>{c.descricao}{c.ancora ? '' : ' · contrato apartado'} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({c.numero})</span></span>
                         <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={c.assinadoTitular ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' } : { background: 'var(--surface-muted)', color: 'var(--text-body)' }}>
                           {c.assinadoTitular ? '✓ Cliente assinou' : 'Cliente pendente'}
                         </span>
                         <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={c.assinadoAzit ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' } : { background: 'var(--surface-muted)', color: 'var(--text-body)' }}>
                           {c.assinadoAzit ? '✓ Azit assinou' : 'Azit pendente'}
                         </span>
-                        <button onClick={() => void verContrato(c.id)} className="h-[28px] rounded-[8px] px-[10px] text-[11.5px] font-semibold" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                          Ver contrato
-                        </button>
+                        <Botao variante="secundaria" tamanho="sm" onClick={() => void verContrato(c.id)}>Ver contrato</Botao>
                       </div>
                     ))}
                   </div>
@@ -650,19 +660,17 @@ export function PropostaDetalhePage() {
                   {/* Todos assinados → cobrar a entrada (no contrato âncora) */}
                   {pacote.data.todasAssinaturas && pacote.data.ancoraId && (
                     pacote.data.contratos.find((c) => c.ancora)?.status === 'aguardando_assinatura' ? (
-                      <button disabled={ocupado} onClick={() => run(() => originacaoService.ativar(pacote.data!.ancoraId!))}
-                        className="mt-[12px] h-[34px] rounded-[8px] px-[14px] text-[12px] font-semibold" style={btn('var(--accent)')}>
+                      <Botao variante="primaria" className="mt-[12px] !h-auto min-h-[36px] !whitespace-normal py-[8px] text-left" disabled={ocupado} onClick={() => run(() => originacaoService.ativar(pacote.data!.ancoraId!))}>
                         {pacote.data.entradaAVista > 0
                           ? `Gerar cobrança da entrada (${formatCurrency(pacote.data.entradaAVista)}${pacote.data.entradaParcelada ? ' — 60% à vista' : ''})`
                           // Doc 02 §4-A.3 (2026-08-16): sem entrada (upgrade/RP), o clique ativa direto.
                           : 'Ativar contrato (sem entrada — dia zero imediato)'}
-                      </button>
+                      </Botao>
                     ) : (
-                      <div className="mt-[12px] rounded-[8px] p-[10px] text-[12px] font-semibold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
-                        Cobrança da entrada emitida ({formatCurrency(pacote.data.entradaAVista)}). O cronograma do pacote nasce quando a entrada for paga.
+                      <div className="mt-[12px] flex flex-wrap items-center gap-[10px] rounded-[10px] p-[10px] text-[12px] font-semibold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
+                        <span>Cobrança da entrada emitida ({formatCurrency(pacote.data.entradaAVista)}). O cronograma do pacote nasce quando a entrada for paga.</span>
                         {FERRAMENTAS_TESTE && (
-                          <button disabled={ocupado} onClick={() => run(() => originacaoService.simularPagamentoAtivacao(pacote.data!.ancoraId!))}
-                            className="ml-[10px] h-[30px] rounded-[8px] px-[12px] text-[11.5px] font-semibold" style={btn('var(--accent)')}>Simular pagamento (dev)</button>
+                          <Botao variante="secundaria" tamanho="sm" disabled={ocupado} onClick={() => run(() => originacaoService.simularPagamentoAtivacao(pacote.data!.ancoraId!))}>Simular pagamento (dev)</Botao>
                         )}
                       </div>
                     )
@@ -672,10 +680,9 @@ export function PropostaDetalhePage() {
 
               {/* Pacote ativo → cronograma gerado */}
               {pacote.data.cronogramaGerado && (
-                <div className="flex items-center gap-[10px]">
+                <div className="flex flex-wrap items-center gap-[10px]">
                   <span className="text-[12px] font-semibold" style={{ color: 'var(--ok-fg)' }}>✓ Pacote ativo — {pacote.data.contratos.length} contrato(s), entrada paga e cronogramas gerados.</span>
-                  <button onClick={() => navigate(`/contratos/${p.contratoGeradoId}`)}
-                    className="h-[32px] rounded-[8px] px-[14px] text-[12px] font-semibold" style={btn('var(--navy)')}>Abrir contrato</button>
+                  <Botao variante="primaria" tamanho="sm" onClick={() => navigate(`/contratos/${p.contratoGeradoId}`)}>Abrir contrato</Botao>
                 </div>
               )}
             </div>
@@ -684,24 +691,16 @@ export function PropostaDetalhePage() {
           {documento && (
             <pre className="mt-[14px] whitespace-pre-wrap text-[11.5px]" style={{ color: 'var(--text-body)' }}>{documento}</pre>
           )}
+          </Secao>
         </div>
       )}
 
       {/* Documento do contrato (snapshot congelado) — feedback 30/08: sempre acessível. */}
-      {docContrato && (
-        <div onClick={() => setDocContrato(null)} className="fixed inset-0 z-50 flex items-center justify-center p-[20px]" style={{ background: 'rgba(0,16,41,.45)' }}>
-          <div onClick={(e) => e.stopPropagation()} className="flex max-h-[88vh] w-[820px] max-w-full flex-col overflow-hidden rounded-[16px]" style={{ background: 'var(--surface)', boxShadow: '0 30px 80px rgba(0,16,41,.4)' }}>
-            <div className="flex items-center justify-between px-[18px] py-[13px]" style={{ borderBottom: '1px solid var(--border)' }}>
-              <span className="font-display text-[13.5px] font-bold">Contrato {docContrato.numero}</span>
-              <button onClick={() => setDocContrato(null)} className="text-[18px] leading-none" style={{ color: 'var(--text-muted)' }}>×</button>
-            </div>
-            <div className="flex-1 overflow-auto p-[18px]">
-              <pre className="whitespace-pre-wrap font-sans text-[12px] leading-[1.55]" style={{ color: 'var(--text-body)' }}>{docContrato.texto}</pre>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal open={!!docContrato} onClose={() => setDocContrato(null)} title={docContrato ? `Contrato ${docContrato.numero}` : ''} largura={820}>
+        {docContrato && (
+          <pre className="whitespace-pre-wrap font-sans text-[12px] leading-[1.55]" style={{ color: 'var(--text-body)' }}>{docContrato.texto}</pre>
+        )}
+      </Modal>
     </div>
   );
 }
-

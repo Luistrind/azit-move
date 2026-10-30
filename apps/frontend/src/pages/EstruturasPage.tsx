@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   capitalService,
   EstruturaJuridica,
+  InvestidorEstrutura,
   NOME_TIPO_ESTRUTURA,
 } from '../services/capital.service';
 import { titularService } from '../services/titular.service';
@@ -10,13 +11,19 @@ import { ativoService } from '../services/ativo.service';
 import { reaisParaCentavos } from '../lib/valor';
 import { mensagemErro } from '../lib/permissoes';
 import { hojeBrasilISO } from '../lib/datas';
+import { Tabela, type Coluna } from '../components/Tabela';
+import { Botao } from '../components/Botao';
+import { Bloco } from '../components/Bloco';
+import { Secao } from '../components/Secao';
 
 // Capital e investimento (doc 02 §15, reunião 18/07): estrutura jurídica (SPE/fundo,
 // por rodada) é a dona do capital; investidor pessoa física nunca é dono direto do ativo.
+// Layout v2 (doc 03 §11): estruturas em <Tabela> (clicar abre), painel da estrutura
+// aberta em <Bloco> abaixo da grade com <Secao>s; formulários empilham no celular.
 
-const cardStyle = { background: 'var(--surface)', border: '1px solid var(--border)' } as const;
-const inputCls = 'h-[32px] rounded-[8px] px-[10px] text-[12.5px]';
-const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' } as const;
+const inputCls = 'h-[34px] w-full rounded-[10px] px-[10px] text-[12.5px]';
+const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' } as const;
+const inputStyleClaro = { background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' } as const;
 
 function reais(centavos: number | null): string {
   if (centavos == null) return '—';
@@ -33,24 +40,32 @@ export function EstruturasPage() {
     await queryClient.invalidateQueries({ queryKey: ['estruturas'] });
   }
 
+  const lista = estruturas.data ?? [];
+  const aberta = lista.find((e) => e.id === abertaId) ?? null;
+
+  const colunas: Coluna<EstruturaJuridica>[] = [
+    { chave: 'nome', titulo: 'Estrutura', celular: 'titulo', render: (e) => e.nome },
+    {
+      chave: 'tipo',
+      titulo: 'Tipo · rodada · CNPJ',
+      celular: 'subtitulo',
+      render: (e) => `${NOME_TIPO_ESTRUTURA[e.tipo] ?? e.tipo}${e.rodada ? ` · ${e.rodada}` : ''}${e.cnpj ? ` · CNPJ ${e.cnpj}` : ' · CNPJ a constituir'}`,
+    },
+    { chave: 'investidores', titulo: 'Investidores', alinhar: 'center', classe: 'tabular-nums', celular: 'campo', render: (e) => e.investidores.length },
+    { chave: 'ativos', titulo: 'Ativos', alinhar: 'center', classe: 'tabular-nums', celular: 'campo', render: (e) => e.ativos.length },
+    { chave: 'aportado', titulo: 'Total aportado', alinhar: 'right', classe: 'tabular-nums', celular: 'destaque', render: (e) => reais(e.totalAportado) },
+  ];
+
   return (
-    <div className="flex flex-col gap-[16px] p-[24px]">
-      <div>
-        <h1 className="font-display text-[20px] font-bold">Estruturas jurídicas</h1>
-        <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
+    <div className="flex flex-col gap-[14px]">
+      <div className="flex flex-wrap items-center justify-between gap-[10px]">
+        <p className="m-0 max-w-[720px] text-[13px]" style={{ color: 'var(--text-muted)' }}>
           A estrutura (sociedade de propósito específico ou fundo, por rodada de captação) é a dona do
           capital. Investidores aportam na estrutura; a estrutura financia os ativos.
         </p>
-      </div>
-
-      <div>
-        <button
-          onClick={() => setCriando((v) => !v)}
-          className="h-[34px] rounded-[8px] px-[16px] text-[12.5px] font-semibold"
-          style={{ background: 'var(--navy)', color: '#fff' }}
-        >
+        <Botao variante={criando ? 'secundaria' : 'primaria'} onClick={() => setCriando((v) => !v)}>
           {criando ? 'Cancelar' : '+ Nova estrutura'}
-        </button>
+        </Botao>
       </div>
 
       {criando && (
@@ -62,22 +77,25 @@ export function EstruturasPage() {
         />
       )}
 
-      {estruturas.isLoading ? (
-        <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
-      ) : (estruturas.data ?? []).length === 0 ? (
-        <div className="rounded-[14px] p-[20px] text-[13px]" style={cardStyle}>
-          Nenhuma estrutura cadastrada. Crie a primeira para começar a registrar aportes.
-        </div>
-      ) : (
-        (estruturas.data ?? []).map((e) => (
-          <CartaoEstrutura
-            key={e.id}
-            estrutura={e}
-            aberta={abertaId === e.id}
-            onAbrir={() => setAbertaId(abertaId === e.id ? null : e.id)}
-            onMudou={recarregar}
-          />
-        ))
+      <Tabela
+        colunas={colunas}
+        linhas={lista}
+        chave={(e) => e.id}
+        carregando={estruturas.isLoading}
+        vazio="Nenhuma estrutura cadastrada. Crie a primeira para começar a registrar aportes."
+        larguraMinima={720}
+        onClick={(e) => setAbertaId(abertaId === e.id ? null : e.id)}
+        acoes={(e) => (
+          <Botao tamanho="sm" variante={abertaId === e.id ? 'secundaria' : 'primaria'} onClick={() => setAbertaId(abertaId === e.id ? null : e.id)}>
+            {abertaId === e.id ? 'Fechar' : 'Gerenciar'}
+          </Botao>
+        )}
+      />
+
+      {aberta && (
+        <Bloco titulo={aberta.nome} tag={`${NOME_TIPO_ESTRUTURA[aberta.tipo] ?? aberta.tipo} · ${reais(aberta.totalAportado)} aportados`}>
+          <PainelEstrutura estrutura={aberta} onMudou={recarregar} />
+        </Bloco>
       )}
     </div>
   );
@@ -107,79 +125,28 @@ function FormNovaEstrutura({ onCriada }: { onCriada: () => void }) {
   }
 
   return (
-    <div className="flex flex-col gap-[10px] rounded-[14px] p-[16px]" style={cardStyle}>
-      <div className="text-[13px] font-bold">Nova estrutura jurídica</div>
-      <div className="flex flex-wrap items-end gap-[10px]">
+    <Bloco titulo="Nova estrutura jurídica">
+      <div className="grid grid-cols-1 items-end gap-[10px] sm:grid-cols-2 lg:grid-cols-5">
         <Campo rotulo="Nome">
-          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="ex.: SPE Azit Rodada 2" className={`${inputCls} w-[240px]`} style={inputStyle} />
+          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="ex.: SPE Azit Rodada 2" className={inputCls} style={inputStyle} />
         </Campo>
         <Campo rotulo="Tipo">
-          <select value={tipo} onChange={(e) => setTipo(e.target.value)} className={`${inputCls} w-[240px]`} style={inputStyle}>
+          <select value={tipo} onChange={(e) => setTipo(e.target.value)} className={inputCls} style={inputStyle}>
             {Object.entries(NOME_TIPO_ESTRUTURA).map(([k, v]) => (
               <option key={k} value={k}>{v}</option>
             ))}
           </select>
         </Campo>
         <Campo rotulo="CNPJ (se já constituída)">
-          <input value={cnpj} onChange={(e) => setCnpj(e.target.value)} className={`${inputCls} w-[170px]`} style={inputStyle} />
+          <input value={cnpj} onChange={(e) => setCnpj(e.target.value)} className={inputCls} style={inputStyle} />
         </Campo>
         <Campo rotulo="Rodada de captação">
-          <input value={rodada} onChange={(e) => setRodada(e.target.value)} placeholder="ex.: Rodada 2 — 2026" className={`${inputCls} w-[170px]`} style={inputStyle} />
+          <input value={rodada} onChange={(e) => setRodada(e.target.value)} placeholder="ex.: Rodada 2 — 2026" className={inputCls} style={inputStyle} />
         </Campo>
-        <button onClick={criar} className="h-[32px] rounded-[8px] px-[14px] text-[12.5px] font-semibold" style={{ background: 'var(--navy)', color: '#fff' }}>
-          Criar estrutura
-        </button>
+        <Botao variante="primaria" onClick={criar}>Criar estrutura</Botao>
       </div>
-      {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>}
-    </div>
-  );
-}
-
-function CartaoEstrutura({
-  estrutura,
-  aberta,
-  onAbrir,
-  onMudou,
-}: {
-  estrutura: EstruturaJuridica;
-  aberta: boolean;
-  onAbrir: () => void;
-  onMudou: () => Promise<void>;
-}) {
-  return (
-    <div className="flex flex-col gap-[12px] rounded-[14px] p-[16px]" style={cardStyle}>
-      <div className="flex flex-wrap items-center justify-between gap-[8px]">
-        <div>
-          <div className="text-[14px] font-bold">{estrutura.nome}</div>
-          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-            {NOME_TIPO_ESTRUTURA[estrutura.tipo] ?? estrutura.tipo}
-            {estrutura.rodada ? ` · ${estrutura.rodada}` : ''}
-            {estrutura.cnpj ? ` · CNPJ ${estrutura.cnpj}` : ' · CNPJ a constituir'}
-          </div>
-        </div>
-        <div className="flex items-center gap-[12px]">
-          <div className="text-right">
-            <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Total aportado</div>
-            <div className="text-[14px] font-bold">{reais(estrutura.totalAportado)}</div>
-          </div>
-          <div className="text-right">
-            <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Investidores · Ativos</div>
-            <div className="text-[14px] font-bold">
-              {estrutura.investidores.length} · {estrutura.ativos.length}
-            </div>
-          </div>
-          <button
-            onClick={onAbrir}
-            className="h-[30px] rounded-[8px] px-[12px] text-[12px] font-semibold"
-            style={{ background: 'var(--navy)', color: '#fff' }}
-          >
-            {aberta ? 'Fechar' : 'Gerenciar'}
-          </button>
-        </div>
-      </div>
-
-      {aberta && <PainelEstrutura estrutura={estrutura} onMudou={onMudou} />}
-    </div>
+      {erro && <div className="rounded-[10px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>}
+    </Bloco>
   );
 }
 
@@ -271,143 +238,125 @@ function PainelEstrutura({ estrutura, onMudou }: { estrutura: EstruturaJuridica;
     }
   }
 
+  const colunasInvestidor: Coluna<InvestidorEstrutura>[] = [
+    { chave: 'nome', titulo: 'Investidor', celular: 'titulo', render: (i) => i.nome },
+    { chave: 'instrumento', titulo: 'Instrumento', celular: 'campo', render: (i) => (i.tipoInstrumento === 'MUTUO' ? 'Mútuo' : i.tipoInstrumento ?? '—') },
+    { chave: 'valor', titulo: 'Valor aportado', alinhar: 'right', classe: 'tabular-nums', celular: 'destaque', render: (i) => reais(i.valorAportado) },
+  ];
+
   return (
-    <div className="flex flex-col gap-[14px] rounded-[12px] p-[14px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+    <div className="grid grid-cols-1 gap-[14px] lg:grid-cols-2">
       {/* Investidores */}
-      <div>
-        <div className="mb-[6px] text-[12.5px] font-bold">Investidores e aportes</div>
-        {estrutura.investidores.length === 0 ? (
-          <div className="mb-[8px] text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum investidor vinculado ainda.</div>
-        ) : (
-          <table className="mb-[8px] w-full border-collapse text-[12px]">
-            <thead>
-              <tr className="text-left" style={{ color: 'var(--text-muted)' }}>
-                <th className="pb-[6px] font-semibold">Investidor</th>
-                <th className="pb-[6px] font-semibold">Valor aportado</th>
-                <th className="pb-[6px] font-semibold">Instrumento</th>
-                <th className="pb-[6px]" />
-              </tr>
-            </thead>
-            <tbody>
-              {estrutura.investidores.map((i) => (
-                <tr key={i.titularId} style={{ borderTop: '1px solid var(--border-light)' }}>
-                  <td className="py-[7px] font-semibold">{i.nome}</td>
-                  <td className="py-[7px]">{reais(i.valorAportado)}</td>
-                  <td className="py-[7px]">{i.tipoInstrumento === 'MUTUO' ? 'Mútuo' : i.tipoInstrumento ?? '—'}</td>
-                  <td className="py-[7px] text-right">
-                    <button
-                      onClick={() => desvincular(i.titularId, i.nome)}
-                      className="rounded-[7px] px-[8px] py-[4px] text-[11px] font-semibold"
-                      style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--danger-fg)' }}
-                    >
-                      Remover
-                    </button>
-                  </td>
-                </tr>
+      <Secao titulo="Investidores e aportes" tag={`${estrutura.investidores.length}`}>
+        <div className="flex flex-col gap-[8px]">
+          <Tabela
+            colunas={colunasInvestidor}
+            linhas={estrutura.investidores}
+            chave={(i) => i.titularId}
+            vazio="Nenhum investidor vinculado ainda."
+            larguraMinima={420}
+            acoes={(i) => <Botao tamanho="sm" variante="perigo" onClick={() => desvincular(i.titularId, i.nome)}>Remover</Botao>}
+          />
+          <div className="grid grid-cols-1 items-end gap-[8px] sm:grid-cols-[1fr_140px]">
+            <Campo rotulo="Buscar titular para vincular (mínimo 3 letras)">
+              <input value={buscaInvestidor} onChange={(e) => setBuscaInvestidor(e.target.value)} className={inputCls} style={inputStyle} />
+            </Campo>
+            <Campo rotulo="Valor do aporte (R$)">
+              <input value={valorAporte} onChange={(e) => setValorAporte(e.target.value)} placeholder="0,00" className={`${inputCls} text-right`} style={inputStyle} />
+            </Campo>
+          </div>
+          {buscaInvestidor.trim().length >= 3 && (
+            <div className="flex flex-col gap-[4px]">
+              {(candidatos.data?.data ?? []).slice(0, 6).map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => vincular(t.id)}
+                  className="flex min-h-[34px] items-center justify-between gap-[8px] rounded-[10px] px-[10px] py-[6px] text-left text-[12px]"
+                  style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                >
+                  <span className="font-semibold">{t.nome}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>{t.cpfCnpj}</span>
+                </button>
               ))}
-            </tbody>
-          </table>
-        )}
-        <div className="flex flex-wrap items-end gap-[8px]">
-          <Campo rotulo="Buscar titular para vincular (mínimo 3 letras)">
-            <input value={buscaInvestidor} onChange={(e) => setBuscaInvestidor(e.target.value)} className={`${inputCls} w-[240px]`} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
-          </Campo>
-          <Campo rotulo="Valor do aporte (R$)">
-            <input value={valorAporte} onChange={(e) => setValorAporte(e.target.value)} placeholder="0,00" className={`${inputCls} w-[130px] text-right`} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
-          </Campo>
+            </div>
+          )}
+          {novoAberto ? (
+            <div className="grid grid-cols-1 items-end gap-[8px] rounded-[12px] p-[10px] sm:grid-cols-2" style={{ background: 'var(--surface-muted)', border: '1px dashed var(--border)' }}>
+              <Campo rotulo="Nome completo da pessoa investidora">
+                <input value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className={inputCls} style={inputStyleClaro} />
+              </Campo>
+              <Campo rotulo="CPF ou CNPJ">
+                <input value={novoDoc} onChange={(e) => setNovoDoc(e.target.value)} className={inputCls} style={inputStyleClaro} />
+              </Campo>
+              <Campo rotulo="WhatsApp">
+                <input value={novoZap} onChange={(e) => setNovoZap(e.target.value)} className={inputCls} style={inputStyleClaro} />
+              </Campo>
+              <div className="flex flex-wrap gap-[6px]">
+                <Botao
+                  variante="primaria"
+                 
+                  onClick={criarEVincular}
+                  disabled={criando || novoNome.trim().length < 3 || novoDoc.replace(/\D/g, '').length < 11 || novoZap.replace(/\D/g, '').length < 10}
+                >
+                  {criando ? 'Cadastrando…' : 'Cadastrar e vincular'}
+                </Botao>
+                <Botao onClick={() => setNovoAberto(false)}>Cancelar</Botao>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <Botao variante="fantasma" tamanho="sm" onClick={() => setNovoAberto(true)}>+ Cadastrar pessoa investidora nova</Botao>
+            </div>
+          )}
         </div>
-        {buscaInvestidor.trim().length >= 3 && (
-          <div className="mt-[6px] flex flex-col gap-[4px]">
-            {(candidatos.data?.data ?? []).slice(0, 6).map((t) => (
-              <button
-                key={t.id}
-                onClick={() => vincular(t.id)}
-                className="flex items-center justify-between rounded-[8px] px-[10px] py-[6px] text-left text-[12px]"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-              >
-                <span className="font-semibold">{t.nome}</span>
-                <span style={{ color: 'var(--text-muted)' }}>{t.cpfCnpj}</span>
-              </button>
-            ))}
-          </div>
-        )}
-        {novoAberto ? (
-          <div className="mt-[8px] flex flex-wrap items-end gap-[8px] rounded-[10px] p-[10px]" style={{ background: 'var(--surface)', border: '1px dashed var(--border)' }}>
-            <Campo rotulo="Nome completo da pessoa investidora">
-              <input value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className={`${inputCls} w-[220px]`} style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
-            </Campo>
-            <Campo rotulo="CPF ou CNPJ">
-              <input value={novoDoc} onChange={(e) => setNovoDoc(e.target.value)} className={`${inputCls} w-[160px]`} style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
-            </Campo>
-            <Campo rotulo="WhatsApp">
-              <input value={novoZap} onChange={(e) => setNovoZap(e.target.value)} className={`${inputCls} w-[140px]`} style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
-            </Campo>
-            <button
-              onClick={criarEVincular}
-              disabled={criando || novoNome.trim().length < 3 || novoDoc.replace(/\D/g, '').length < 11 || novoZap.replace(/\D/g, '').length < 10}
-              className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-bold disabled:opacity-40"
-              style={{ background: 'var(--navy)', color: '#fff' }}
-            >
-              {criando ? 'Cadastrando…' : 'Cadastrar e vincular'}
-            </button>
-            <button onClick={() => setNovoAberto(false)} className="rounded-[8px] px-[10px] py-[7px] text-[12px] font-semibold" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-              Cancelar
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setNovoAberto(true)}
-            className="mt-[8px] rounded-[8px] px-[10px] py-[6px] text-[12px] font-semibold"
-            style={{ background: 'var(--surface)', border: '1px dashed var(--border)', color: 'var(--text-muted)' }}
-          >
-            + Cadastrar pessoa investidora nova
-          </button>
-        )}
-      </div>
+      </Secao>
 
       {/* Ativos financiados */}
-      <div>
-        <div className="mb-[6px] text-[12.5px] font-bold">Ativos financiados pela estrutura</div>
-        {estrutura.ativos.length === 0 ? (
-          <div className="mb-[8px] text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum ativo vinculado ainda.</div>
-        ) : (
-          <div className="mb-[8px] flex flex-wrap gap-[6px]">
-            {estrutura.ativos.map((a) => (
-              <span key={a.ativoId} className="rounded-full px-[10px] py-[3px] text-[11.5px] font-semibold" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                {a.descricao}{a.placa ? ` · ${a.placa}` : ''}
-              </span>
-            ))}
-          </div>
-        )}
-        <Campo rotulo="Buscar ativo pela placa (mínimo 3 caracteres) — o vínculo marca esta estrutura como DONA do ativo">
-          <input value={buscaAtivo} onChange={(e) => setBuscaAtivo(e.target.value.toUpperCase())} className={`${inputCls} w-[200px]`} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
-        </Campo>
-        {buscaAtivo.trim().length >= 3 && (
-          <div className="mt-[6px] flex flex-col gap-[4px]">
-            {(ativos.data?.data ?? []).slice(0, 6).map((a) => (
-              <button
-                key={a.id}
-                onClick={() => vincularAtivo(a.id)}
-                className="flex items-center justify-between rounded-[8px] px-[10px] py-[6px] text-left text-[12px]"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-              >
-                <span className="font-semibold">{(a as { descricao?: string }).descricao ?? a.id}</span>
-                <span style={{ color: 'var(--text-muted)' }}>{(a as { placa?: string }).placa ?? ''}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <Secao titulo="Ativos financiados pela estrutura" tag={`${estrutura.ativos.length}`}>
+        <div className="flex flex-col gap-[8px]">
+          {estrutura.ativos.length === 0 ? (
+            <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum ativo vinculado ainda.</div>
+          ) : (
+            <div className="flex flex-wrap gap-[6px]">
+              {estrutura.ativos.map((a) => (
+                <span key={a.ativoId} className="rounded-full px-[10px] py-[3px] text-[11.5px] font-semibold" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                  {a.descricao}{a.placa ? ` · ${a.placa}` : ''}
+                </span>
+              ))}
+            </div>
+          )}
+          <Campo rotulo="Buscar ativo pela placa (mínimo 3 caracteres) — o vínculo marca esta estrutura como DONA do ativo">
+            <input value={buscaAtivo} onChange={(e) => setBuscaAtivo(e.target.value.toUpperCase())} className={`${inputCls} sm:max-w-[240px]`} style={inputStyle} />
+          </Campo>
+          {buscaAtivo.trim().length >= 3 && (
+            <div className="flex flex-col gap-[4px]">
+              {(ativos.data?.data ?? []).slice(0, 6).map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => vincularAtivo(a.id)}
+                  className="flex min-h-[34px] items-center justify-between gap-[8px] rounded-[10px] px-[10px] py-[6px] text-left text-[12px]"
+                  style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                >
+                  <span className="font-semibold">{(a as { descricao?: string }).descricao ?? a.id}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>{(a as { placa?: string }).placa ?? ''}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </Secao>
 
-      {msg && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>{msg}</div>}
+      {msg && <div className="rounded-[10px] p-[8px] text-[12px] lg:col-span-2" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>{msg}</div>}
     </div>
   );
 }
 
 function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
   return (
-    <div>
-      <div className="mb-[4px] text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>{rotulo}</div>
+    <div className="min-w-0">
+      <div className="mb-[4px] text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>{rotulo}</div>
       {children}
     </div>
   );

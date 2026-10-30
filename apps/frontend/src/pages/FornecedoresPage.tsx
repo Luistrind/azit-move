@@ -5,21 +5,30 @@ import { rotuloStatus, ROTULO_STATUS_FORNECEDOR } from '../lib/rotulos';
 import { mascararCpfCnpj, somenteDigitos } from '../lib/mascaras';
 import { Modal } from '../components/Modal';
 import { toast } from '../components/Toast';
+import { Tabela, type Coluna } from '../components/Tabela';
+import { Botao } from '../components/Botao';
+import { Bloco } from '../components/Bloco';
 import { FORNECEDOR_STATUS_COLORS } from '../config/statusColors';
 import { mensagemErro } from '../lib/permissoes';
 import { instanteBR } from '../lib/datas';
 
 // Fornecedores do contas a pagar (FA-CP-01): Financeiro cadastra, Diretor aprova
 // na Central; dados bancários VERSIONADOS; alerta no 1º pagamento após alteração.
+// Layout v2 (doc 03 §11): lista em <Tabela>, versões bancárias do fornecedor
+// aberto em um <Bloco> abaixo da grade.
 
-const card = 'rounded-[14px] p-[16px]';
-const cardStyle = { background: 'var(--surface)', border: '1px solid var(--border)' } as const;
-const inputCls = 'h-[34px] w-full rounded-[8px] px-[10px] text-[13px]';
-const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' } as const;
-const btn = 'rounded-[8px] px-[12px] py-[7px] text-[12px] font-bold';
-const btnP = `${btn} bg-[var(--navy)] text-white disabled:opacity-40`;
-const btnS = `${btn} border border-[var(--border)]`;
+const inputCls = 'h-[34px] w-full rounded-[10px] px-[10px] text-[13px]';
+const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' } as const;
+const lblCls = 'flex flex-col gap-[4px] text-[12px] font-semibold';
 
+function SeloStatus({ status }: { status: string }) {
+  const c = FORNECEDOR_STATUS_COLORS[status] ?? FORNECEDOR_STATUS_COLORS.EM_CADASTRO;
+  return (
+    <span className="whitespace-nowrap rounded-full px-[9px] py-[2px] text-[11px] font-bold" style={{ background: c.bg, color: c.fg }}>
+      {rotuloStatus(status)}
+    </span>
+  );
+}
 
 export function FornecedoresPage() {
   const qc = useQueryClient();
@@ -43,64 +52,77 @@ export function FornecedoresPage() {
     } catch (e) { toast.erro(mensagemErro(e)); } finally { setOcupado(false); }
   }
 
+  const lista = fornecedores.data ?? [];
+  const aberto = lista.find((f) => f.id === abertoId) ?? null;
+  const vigente = (f: FornecedorFinanceiro) => f.dadosBancarios.find((d) => d.ativo) ?? f.dadosBancarios[0];
+  const resumoBanco = (d?: FornecedorFinanceiro['dadosBancarios'][number]) =>
+    d ? [d.banco, d.agencia && `ag ${d.agencia}`, d.conta && `c/c ${d.conta}`, d.chavePix && `Pix ${d.chavePix}`].filter(Boolean).join(' · ') || 'sem dados' : '—';
+
+  const colunas: Coluna<FornecedorFinanceiro>[] = [
+    {
+      chave: 'nome',
+      titulo: 'Fornecedor',
+      celular: 'titulo',
+      render: (f) => (
+        <span className="inline-flex flex-wrap items-center gap-[6px]">
+          {f.nome}
+          {f.alertaProximoPagamento && (
+            <span className="rounded-full px-[8px] py-[1px] text-[10.5px] font-bold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }} title="Alteração bancária recente">
+              Conferir no próximo pagamento
+            </span>
+          )}
+        </span>
+      ),
+    },
+    { chave: 'doc', titulo: 'CPF / CNPJ', celular: 'subtitulo', classe: 'tabular-nums', render: (f) => mascararCpfCnpj(f.cpfCnpj) },
+    { chave: 'contato', titulo: 'Contato', celular: 'campo', render: (f) => [f.contato, f.email].filter(Boolean).join(' · ') || '—' },
+    { chave: 'banco', titulo: 'Dados de pagamento', celular: 'campo', render: (f) => resumoBanco(vigente(f)) },
+    { chave: 'status', titulo: 'Situação', celular: 'campo', render: (f) => <SeloStatus status={f.status} /> },
+  ];
+
   return (
-    <div className="flex flex-col gap-[14px] p-[24px]">
-      <div className="flex flex-wrap items-end justify-between gap-[10px]">
-        <div>
-          <h1 className="font-display text-[20px] font-bold">Fornecedores</h1>
-          <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
-            Cadastro mestre das contrapartes. Quem cadastra não ativa: a ativação e toda alteração
-            bancária passam pela aprovação do Diretor na Central. Fornecedor com histórico nunca é excluído.
-          </p>
-        </div>
-        <button className={btnP} onClick={() => setCriando(true)}>+ Novo fornecedor</button>
+    <div className="flex flex-col gap-[14px]">
+      <div className="flex flex-wrap items-center justify-between gap-[10px]">
+        <p className="m-0 max-w-[720px] text-[13px]" style={{ color: 'var(--text-muted)' }}>
+          Cadastro mestre das contrapartes. Quem cadastra não ativa: a ativação e toda alteração
+          bancária passam pela aprovação do Diretor na Central. Fornecedor com histórico nunca é excluído.
+        </p>
+        <Botao variante="primaria" onClick={() => setCriando(true)}>+ Novo fornecedor</Botao>
       </div>
 
-      {fornecedores.isLoading ? (
-        <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
-      ) : (fornecedores.data ?? []).length === 0 ? (
-        <div className={card} style={cardStyle}><span className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Nenhum fornecedor cadastrado.</span></div>
-      ) : (
-        (fornecedores.data ?? []).map((f) => (
-          <div key={f.id} className={card} style={cardStyle}>
-            <div className="flex flex-wrap items-center justify-between gap-[8px]">
-              <div>
-                <span className="font-display text-[14px] font-bold">{f.nome}</span>
-                <span className="ml-[8px] rounded-full px-[9px] py-[2px] text-[11px] font-bold" style={{ background: (FORNECEDOR_STATUS_COLORS[f.status] ?? FORNECEDOR_STATUS_COLORS.EM_CADASTRO).bg, color: (FORNECEDOR_STATUS_COLORS[f.status] ?? FORNECEDOR_STATUS_COLORS.EM_CADASTRO).fg }}>
-                  {rotuloStatus(f.status)}
+      <Tabela
+        colunas={colunas}
+        linhas={lista}
+        chave={(f) => f.id}
+        carregando={fornecedores.isLoading}
+        vazio="Nenhum fornecedor cadastrado."
+        larguraMinima={760}
+        onClick={(f) => setAbertoId(abertoId === f.id ? null : f.id)}
+        acoes={(f) => (
+          <>
+            <Botao tamanho="sm" onClick={() => setAbertoId(abertoId === f.id ? null : f.id)}>{abertoId === f.id ? 'Fechar' : 'Dados bancários'}</Botao>
+            <Botao tamanho="sm" disabled={ocupado} onClick={() => setAlterando(f)}>Alterar dados bancários</Botao>
+            {f.status === 'ATIVO' && <Botao tamanho="sm" variante="perigo" disabled={ocupado} onClick={() => mudarStatus(f, 'BLOQUEADO')}>Bloquear</Botao>}
+            {f.status === 'BLOQUEADO' && <Botao tamanho="sm" disabled={ocupado} onClick={() => mudarStatus(f, 'ATIVO')}>Desbloquear</Botao>}
+            {f.status === 'ATIVO' && <Botao tamanho="sm" disabled={ocupado} onClick={() => mudarStatus(f, 'INATIVO')}>Inativar</Botao>}
+          </>
+        )}
+      />
+
+      {aberto && (
+        <Bloco titulo={`Dados bancários — ${aberto.nome}`} tag={`${aberto.dadosBancarios.length} ${aberto.dadosBancarios.length === 1 ? 'versão' : 'versões'}`}>
+          <div className="flex flex-col gap-[4px]">
+            {aberto.dadosBancarios.map((d) => (
+              <div key={d.id} className="flex flex-wrap items-center justify-between gap-[6px] rounded-[10px] px-[10px] py-[6px] text-[12.5px]" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
+                <span>
+                  <b>Versão {d.versao}</b>{d.ativo ? ' · vigente' : ' · histórica'} — {resumoBanco(d)}
+                  {d.motivo ? ` · ${d.motivo}` : ''}
                 </span>
-                {f.alertaProximoPagamento && (
-                  <span className="ml-[6px] rounded-full px-[8px] py-[1px] text-[10.5px] font-bold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
-                    Conferir no próximo pagamento (alteração bancária)
-                  </span>
-                )}
-                <div className="mt-[2px] text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
-                  {mascararCpfCnpj(f.cpfCnpj)}{f.contato ? ` · ${f.contato}` : ''}{f.email ? ` · ${f.email}` : ''}
-                </div>
+                <span style={{ color: 'var(--text-muted)' }}>{instanteBR(d.criadoEm)}</span>
               </div>
-              <div className="flex flex-wrap gap-[6px]">
-                <button className={btnS} onClick={() => setAbertoId(abertoId === f.id ? null : f.id)}>{abertoId === f.id ? 'Fechar' : 'Dados bancários'}</button>
-                <button className={btnS} disabled={ocupado} onClick={() => setAlterando(f)}>Alterar dados bancários</button>
-                {f.status === 'ATIVO' && <button className={btnS} disabled={ocupado} onClick={() => mudarStatus(f, 'BLOQUEADO')}>Bloquear</button>}
-                {f.status === 'BLOQUEADO' && <button className={btnS} disabled={ocupado} onClick={() => mudarStatus(f, 'ATIVO')}>Desbloquear</button>}
-                {f.status === 'ATIVO' && <button className={btnS} disabled={ocupado} onClick={() => mudarStatus(f, 'INATIVO')}>Inativar</button>}
-              </div>
-            </div>
-            {abertoId === f.id && (
-              <div className="mt-[8px] flex flex-col gap-[4px]">
-                {f.dadosBancarios.map((d) => (
-                  <div key={d.id} className="flex items-center justify-between rounded-[8px] px-[10px] py-[6px] text-[12.5px]" style={{ background: 'var(--surface-input)' }}>
-                    <span>
-                      <b>Versão {d.versao}</b>{d.ativo ? ' · vigente' : ' · histórica'} — {[d.banco, d.agencia && `ag ${d.agencia}`, d.conta && `c/c ${d.conta}`, d.chavePix && `Pix ${d.chavePix}`].filter(Boolean).join(' · ') || 'sem dados'}
-                      {d.motivo ? ` · ${d.motivo}` : ''}
-                    </span>
-                    <span style={{ color: 'var(--text-muted)' }}>{instanteBR(d.criadoEm)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+            ))}
           </div>
-        ))
+        </Bloco>
       )}
 
       {criando && <ModalFornecedor fechar={() => setCriando(false)} onCriou={async () => { setCriando(false); await recarregar(); }} />}
@@ -131,33 +153,33 @@ function ModalFornecedor({ fechar, onCriou }: { fechar: () => void; onCriou: () 
   return (
     <Modal open onClose={fechar} title="Novo fornecedor">
       <div className="flex flex-col gap-[8px]">
-        <label className="text-[12px] font-semibold">CPF / CNPJ
+        <label className={lblCls}>CPF / CNPJ
           <input className={inputCls} style={inputStyle} inputMode="numeric" value={f.cpfCnpj} onChange={(e) => setF({ ...f, cpfCnpj: mascararCpfCnpj(e.target.value) })} /></label>
-        <label className="text-[12px] font-semibold">Nome / razão social
+        <label className={lblCls}>Nome / razão social
           <input className={inputCls} style={inputStyle} value={f.nome} onChange={set('nome')} /></label>
-        <div className="grid grid-cols-2 gap-[8px]">
-          <label className="text-[12px] font-semibold">Contato
+        <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-2">
+          <label className={lblCls}>Contato
             <input className={inputCls} style={inputStyle} value={f.contato} onChange={set('contato')} /></label>
-          <label className="text-[12px] font-semibold">E-mail
+          <label className={lblCls}>E-mail
             <input className={inputCls} style={inputStyle} value={f.email} onChange={set('email')} /></label>
         </div>
         <div className="text-[12px] font-bold">Dados de pagamento (versão 1 — ativados junto com o fornecedor)</div>
-        <div className="grid grid-cols-2 gap-[8px]">
-          <label className="text-[12px] font-semibold">Banco
+        <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-2">
+          <label className={lblCls}>Banco
             <input className={inputCls} style={inputStyle} value={f.banco} onChange={set('banco')} /></label>
-          <label className="text-[12px] font-semibold">Agência
+          <label className={lblCls}>Agência
             <input className={inputCls} style={inputStyle} value={f.agencia} onChange={set('agencia')} /></label>
-          <label className="text-[12px] font-semibold">Conta
+          <label className={lblCls}>Conta
             <input className={inputCls} style={inputStyle} value={f.conta} onChange={set('conta')} /></label>
-          <label className="text-[12px] font-semibold">Chave Pix
+          <label className={lblCls}>Chave Pix
             <input className={inputCls} style={inputStyle} value={f.chavePix} onChange={set('chavePix')} /></label>
         </div>
-        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>}
-        <div className="flex justify-end gap-[8px]">
-          <button className={btnS} onClick={fechar}>Cancelar</button>
-          <button className={btnP} disabled={ocupado || somenteDigitos(f.cpfCnpj).length < 11 || f.nome.trim().length < 2} onClick={criar}>
+        {erro && <div className="rounded-[10px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>}
+        <div className="flex flex-wrap justify-end gap-[8px]">
+          <Botao onClick={fechar}>Cancelar</Botao>
+          <Botao variante="primaria" carregando={ocupado} disabled={somenteDigitos(f.cpfCnpj).length < 11 || f.nome.trim().length < 2} onClick={criar}>
             Cadastrar e enviar para aprovação
-          </button>
+          </Botao>
         </div>
       </div>
     </Modal>
@@ -185,26 +207,26 @@ function ModalAlteracaoBancaria({ fornecedor, fechar, onCriou }: { fornecedor: F
   return (
     <Modal open onClose={fechar} title={`Alterar dados bancários — ${fornecedor.nome}`}>
       <div className="flex flex-col gap-[8px]">
-        <div className="rounded-[8px] p-[8px] text-[12px] font-semibold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
+        <div className="rounded-[10px] p-[8px] text-[12px] font-semibold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
           Troca de conta é o momento de maior risco de fraude: a versão anterior fica preservada, a nova só vale
           com aprovação do Diretor, e o primeiro pagamento seguinte é sinalizado para conferência.
         </div>
-        <div className="grid grid-cols-2 gap-[8px]">
-          <label className="text-[12px] font-semibold">Banco
+        <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-2">
+          <label className={lblCls}>Banco
             <input className={inputCls} style={inputStyle} value={f.banco} onChange={set('banco')} /></label>
-          <label className="text-[12px] font-semibold">Agência
+          <label className={lblCls}>Agência
             <input className={inputCls} style={inputStyle} value={f.agencia} onChange={set('agencia')} /></label>
-          <label className="text-[12px] font-semibold">Conta
+          <label className={lblCls}>Conta
             <input className={inputCls} style={inputStyle} value={f.conta} onChange={set('conta')} /></label>
-          <label className="text-[12px] font-semibold">Chave Pix
+          <label className={lblCls}>Chave Pix
             <input className={inputCls} style={inputStyle} value={f.chavePix} onChange={set('chavePix')} /></label>
         </div>
-        <label className="text-[12px] font-semibold">Motivo da alteração (obrigatório — vai para a auditoria)
+        <label className={lblCls}>Motivo da alteração (obrigatório — vai para a auditoria)
           <input className={inputCls} style={inputStyle} value={f.motivo} onChange={set('motivo')} /></label>
-        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>}
-        <div className="flex justify-end gap-[8px]">
-          <button className={btnS} onClick={fechar}>Cancelar</button>
-          <button className={btnP} disabled={ocupado || f.motivo.trim().length < 3} onClick={salvar}>Criar nova versão</button>
+        {erro && <div className="rounded-[10px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>}
+        <div className="flex flex-wrap justify-end gap-[8px]">
+          <Botao onClick={fechar}>Cancelar</Botao>
+          <Botao variante="primaria" carregando={ocupado} disabled={f.motivo.trim().length < 3} onClick={salvar}>Criar nova versão</Botao>
         </div>
       </div>
     </Modal>

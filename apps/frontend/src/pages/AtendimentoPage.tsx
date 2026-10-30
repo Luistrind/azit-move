@@ -13,9 +13,13 @@ import { titularService, Titular } from '../services/titular.service';
 import { buscarCep } from '../lib/cep';
 import { mascararCpf, mascararTelefone, mascararDinheiro, dinheiroParaCentavos, somenteDigitos } from '../lib/mascaras';
 import { mensagemErro } from '../lib/permissoes';
+import { Botao } from '../components/Botao';
 
 // UX-2 — Modo balcão (proposta UX §4.1): atendimento + simulação mobile-primeiro,
 // para usar NA FRENTE do cliente. Passos em tela cheia, cards grandes, sem tabela.
+// Layout v2 (30/10, doc 03 §11): só tokens; ações secundárias pelo <Botao>. Os
+// CTAs grandes (52–54 px) e os seletores de toque seguem com estrutura própria —
+// o balcão exige alvo de toque maior que o <Botao> md (36 px) oferece.
 // Homologação 04/08: triagem na mesma tela (cliente novo × existente + produto de
 // interesse), buscador de ativos, "ativo" na terminologia, cores da marca e
 // rótulos "Oferta padrão / personalizada" (visual herdado do Atendimento
@@ -455,11 +459,11 @@ export function AtendimentoPage() {
   }, [ativos.data, buscaAtivo]);
 
   return (
-    <div className="mx-auto flex w-full max-w-[520px] flex-col gap-[16px] p-[16px] pb-[40px]">
+    <div className="mx-auto flex w-full max-w-[520px] flex-col gap-[16px] pb-[40px]">
       {/* Cabeçalho do fluxo — enxuto */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-display text-[20px] font-bold">Atendimento</h1>
+          <h1 className="font-display text-[20px] font-bold" style={{ color: 'var(--text-primary)' }}>Atendimento</h1>
           <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
             {passo === 1 ? 'Quem é o cliente e o que ele procura'
               : passo === 2 ? 'Qual o ativo'
@@ -483,13 +487,9 @@ export function AtendimentoPage() {
       </div>
 
       {typeof passo === 'number' && passo > 1 && passo <= 3 && (
-        <button
-          onClick={() => setPasso((p) => ((p as number) === 3 ? 2 : 1) as Passo)}
-          className="self-start text-[14px] font-semibold"
-          style={{ color: 'var(--text-muted)', minHeight: 44 }}
-        >
+        <Botao variante="fantasma" className="self-start !px-0" onClick={() => setPasso((p) => ((p as number) === 3 ? 2 : 1) as Passo)}>
           ← Voltar
-        </button>
+        </Botao>
       )}
 
       {erro && (
@@ -566,9 +566,7 @@ export function AtendimentoPage() {
                     <div className="text-[15px] font-bold">{titular.nome}</div>
                     <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>{mascararCpf(titular.cpfCnpj)}</div>
                   </div>
-                  <button className="text-[13px] font-semibold" style={{ color: 'var(--text-muted)', minHeight: 44 }} onClick={() => setTitular(null)}>
-                    Trocar
-                  </button>
+                  <Botao variante="fantasma" onClick={() => setTitular(null)}>Trocar</Botao>
                 </div>
               ) : buscaLimpa.length >= 3 ? (
                 clientes.isLoading ? (
@@ -738,13 +736,14 @@ export function AtendimentoPage() {
                   <CartaoOferta oferta={o} titulo={rotuloOferta(o, padrao)} onSelecionar={() => selecionar(o)} />
                   {/* Apresentação limpa (Luís, 07/09): o operador escolhe o que o
                       cliente vê — oferta oculta não aparece no modo apresentação. */}
-                  <button
+                  <Botao
+                    variante="fantasma"
+                    tamanho="sm"
+                    className="self-end"
                     onClick={() => setOfertasOcultas((v) => (v.includes(o.id) ? v.filter((x) => x !== o.id) : [...v, o.id]))}
-                    className="self-end text-[12px] font-semibold"
-                    style={{ color: oculta ? 'var(--accent)' : 'var(--text-muted)' }}
                   >
                     {oculta ? 'Mostrar na apresentação' : 'Ocultar da apresentação'}
-                  </button>
+                  </Botao>
                 </div>
               );
             });
@@ -807,7 +806,7 @@ export function AtendimentoPage() {
           <button
             onClick={abrirApresentacao}
             className="h-[54px] rounded-[12px] text-[16px] font-bold"
-            style={{ background: 'var(--accent)', color: 'var(--text-primary)' }}
+            style={{ background: 'var(--accent)', color: 'var(--navy)' }}
           >
             Apresentar ao cliente
           </button>
@@ -896,7 +895,7 @@ export function AtendimentoPage() {
             <div className="flex flex-col gap-[10px] rounded-[14px] p-[14px]" style={{ background: 'var(--surface)', border: '1.5px dashed var(--border)' }}>
               <div className="flex items-center justify-between">
                 <span className="text-[14px] font-bold">Segundo comprador</span>
-                <button className="text-[13px] font-semibold" style={{ color: 'var(--text-muted)' }} onClick={() => setSegundo({ aberto: false, nome: '', cpf: '', telefone: '' })}>Remover</button>
+                <Botao variante="fantasma" tamanho="sm" onClick={() => setSegundo({ aberto: false, nome: '', cpf: '', telefone: '' })}>Remover</Botao>
               </div>
               <input value={segundo.nome} onChange={(e) => setSegundo({ ...segundo, nome: e.target.value })} placeholder="Nome completo" className={inputCls} style={{ background: 'var(--surface-input)', border: '1.5px solid var(--border)' }} />
               <div className="grid grid-cols-2 gap-[10px]">
@@ -939,10 +938,10 @@ export function AtendimentoPage() {
               <div className="flex items-center justify-between">
                 <span className="text-[15px] font-bold">Proteção Veicular {o.nome}</span>
                 {o.atual && (
-                  <span className="rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: 'var(--accent)', color: 'var(--text-primary)' }}>Escolhida</span>
+                  <span className="rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: 'var(--accent)', color: 'var(--navy)' }}>Escolhida</span>
                 )}
               </div>
-              {o.cobertura && <div className="mt-[2px] text-[13px]" style={{ color: 'var(--text-muted)' }}>{o.cobertura}</div>}
+              {o.cobertura &&<div className="mt-[2px] text-[13px]" style={{ color: 'var(--text-muted)' }}>{o.cobertura}</div>}
               <div className="mt-[6px] text-[14.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>
                 {o.adicionalPorPeriodo === 0
                   ? 'Já incluída na parcela'
@@ -1072,7 +1071,7 @@ export function AtendimentoPage() {
               <div className="text-[16px] font-semibold" style={{ color: 'var(--accent)' }}>
                 {simulacao.ativo ? rotuloAtivo(simulacao.ativo) : ''}
               </div>
-              <div className="text-[13px]" style={{ color: 'rgba(255,255,255,.6)' }}>
+              <div className="text-[13px]" style={{ color: 'var(--navy-text-body)' }}>
                 Condições para você
               </div>
             </div>
@@ -1090,12 +1089,14 @@ export function AtendimentoPage() {
                     onClick={() => selecionar(o)}
                     className="rounded-[16px] p-[18px] text-left"
                     style={{
-                      background: o.selecionada ? '#fff' : 'rgba(255,255,255,.08)',
+                      // Sobre o navy da apresentação: a escolhida é acento com texto navy
+                      // (mesmo par do botão primário); as demais só com fio claro.
+                      background: o.selecionada ? 'var(--accent)' : 'transparent',
                       color: o.selecionada ? 'var(--navy)' : '#fff',
-                      border: o.selecionada ? '2px solid var(--accent)' : '2px solid transparent',
+                      border: o.selecionada ? '2px solid var(--accent)' : '2px solid var(--navy-text-muted)',
                     }}
                   >
-                    <div className="text-[13px] font-semibold" style={{ color: o.selecionada ? 'var(--text-muted)' : 'rgba(255,255,255,.65)' }}>
+                    <div className="text-[13px] font-semibold" style={{ color: o.selecionada ? 'var(--navy)' : 'var(--navy-text-meta)', opacity: o.selecionada ? 0.75 : 1 }}>
                       {titulo}{o.selecionada ? ' · escolhida' : ''}
                     </div>
                     <div className="font-display text-[32px] font-extrabold leading-tight">
@@ -1111,7 +1112,7 @@ export function AtendimentoPage() {
               });
             })()}
 
-            <div className="text-center text-[12.5px]" style={{ color: 'rgba(255,255,255,.55)' }}>
+            <div className="text-center text-[12.5px]" style={{ color: 'var(--navy-text-muted)' }}>
               Valores válidos nesta simulação. Sujeito à análise de cadastro.
             </div>
 
@@ -1119,7 +1120,7 @@ export function AtendimentoPage() {
             <button
               onClick={() => setApresentando(false)}
               className="mb-[8px] h-[50px] rounded-[12px] text-[15px] font-bold"
-              style={{ background: 'rgba(255,255,255,.12)', color: '#fff' }}
+              style={{ background: 'transparent', border: '1.5px solid var(--navy-text-muted)', color: '#fff' }}
             >
               Encerrar apresentação
             </button>
@@ -1160,7 +1161,7 @@ function CartaoOferta({
             </span>
           )}
           {oferta.selecionada && (
-            <span className="rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: 'var(--accent)', color: 'var(--text-primary)' }}>
+            <span className="rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: 'var(--accent)', color: 'var(--navy)' }}>
               Escolhida
             </span>
           )}

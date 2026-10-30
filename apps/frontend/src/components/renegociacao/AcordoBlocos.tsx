@@ -31,8 +31,9 @@ export const PERIODICIDADE_LABEL: Record<string, string> = { semanal: 'semanal',
 // Instante ISO → dd/mm/aaaa hh:mm no fuso do negócio.
 export const fmtDataHora = (iso: string | null | undefined) => (iso ? `${instanteBR(iso)} ${horaBR(iso)}` : '—');
 
-const th = 'py-[7px] pr-[10px] text-left font-semibold';
-const thR = 'py-[7px] pl-[10px] text-right font-semibold';
+// Cabeçalho de grade no eyebrow do layout v2 (doc 03 §11.3).
+const th = 'py-[7px] pr-[10px] text-left text-[10.5px] font-semibold uppercase tracking-[0.1em]';
+const thR = 'py-[7px] pl-[10px] text-right text-[10.5px] font-semibold uppercase tracking-[0.1em]';
 
 // O que o acordo cobre/cobriu, por fatura. `compacto` (dossiê da Central): uma
 // linha por fatura — vencimento, valor coberto e mora na data-base — com o
@@ -63,7 +64,7 @@ export function CoberturaAcordo({ d, onContrato, compacto = false }: { d: Acordo
       <div className="flex flex-col gap-[10px]">
         {compacto && !aberto && (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[460px] text-[12.5px]">
+            <table className="w-full min-w-[460px] text-[12.5px]" style={{ color: 'var(--text-primary)' }}>
               <thead>
                 <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
                   <th className={th}>Fatura</th>
@@ -99,14 +100,16 @@ export function CoberturaAcordo({ d, onContrato, compacto = false }: { d: Acordo
           </div>
         )}
         {aberto && d.faturasCobertas.map((f) => (
-          <div key={f.id} className="rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)' }}>
+          <div key={f.id} className="rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
             <div className="flex flex-wrap items-center gap-[8px] text-[12px]">
               <span className="font-bold">Fatura #{f.numero}</span>
               <span style={{ color: 'var(--text-muted)' }}>venceu em {dataBR(f.dataVencimento)} · {f.diasAtrasoNaDataBase} dia(s) de atraso na data-base</span>
               <StatusBadge label={FATURA_SITUACAO_LABEL[f.status] ?? f.status} colors={FATURA_SITUACAO_COLORS} />
               <span className="ml-auto font-semibold tabular-nums">total {formatCurrency(f.valorTotal)}</span>
             </div>
-            <table className="mt-[6px] w-full text-[12px]">
+            {/* Parcelas da fatura: a grade rola só dentro dela no celular. */}
+            <div className="overflow-x-auto">
+            <table className="mt-[6px] w-full min-w-[560px] text-[12px]">
               <tbody>
                 {f.parcelas.map((p) => (
                   <tr key={p.parcelaId} style={{ borderTop: '1px solid var(--border)' }}>
@@ -128,13 +131,14 @@ export function CoberturaAcordo({ d, onContrato, compacto = false }: { d: Acordo
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         ))}
         {aberto && d.cobertasSemFatura.length > 0 && (
-          <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
-            <div className="font-bold">Parcelas cobertas sem fatura</div>
+          <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
+            <div className="font-display text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-label)' }}>Parcelas cobertas sem fatura</div>
             {d.cobertasSemFatura.map((p) => (
-              <div key={p.parcelaId} className="flex justify-between py-[3px]">
+              <div key={p.parcelaId} className="flex flex-wrap justify-between gap-[6px] py-[3px]">
                 <span>Parcela {p.display} · {p.contratoNumero} · venc. {dataBR(p.dataVencimento)} · {p.diasAtrasoNaDataBase} dia(s)</span>
                 <span className="tabular-nums">{formatCurrency(p.valorNominal)}</span>
               </div>
@@ -262,7 +266,7 @@ export function CotasAcordo({ d, onContrato }: { d: AcordoDetalhe; onContrato: (
       ) : (
         <>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-[12px]">
+            <table className="w-full min-w-[640px] text-[12px]" style={{ color: 'var(--text-primary)' }}>
               <thead>
                 <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
                   <th className={th}>Cota</th>

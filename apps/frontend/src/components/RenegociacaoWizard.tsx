@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '@azit/utils';
 import { Stepper } from './Stepper';
+import { Botao } from './Botao';
 import { toast } from './Toast';
 import { operacoesService } from '../services/operacoes.service';
 import { reaisParaCentavos } from '../lib/valor';
@@ -156,25 +157,30 @@ export function RenegociacaoWizard({
   }
 
   return (
+    // Layout v2 (doc 03 §11): cabe no celular (100vw − 24 px), os passos do
+    // Stepper quebram linha, o corpo rola dentro do card e o rodapé empilha.
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-[20px]"
+      className="fixed inset-0 z-50 flex items-center justify-center p-[12px] sm:p-[20px]"
       style={{ background: 'rgba(0,16,41,.45)' }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[86vh] w-[640px] max-w-full flex-col overflow-hidden rounded-[18px]"
-        style={{ background: 'var(--surface)', boxShadow: '0 30px 80px rgba(0,16,41,.4)' }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Renegociação — ${titular}`}
+        className="flex max-h-[88vh] w-[640px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-[16px]"
+        style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 30px 80px rgba(0,16,41,.4)' }}
       >
-        <div className="flex items-center justify-between px-[18px] py-[14px]" style={{ borderBottom: '1px solid var(--border)' }}>
-          <span className="font-display text-[14px] font-bold">Renegociação — {titular}</span>
-          <button onClick={onClose} className="text-[18px] leading-none" style={{ color: 'var(--text-muted)' }}>×</button>
+        <div className="flex items-center justify-between gap-[10px] px-[18px] py-[12px]" style={{ borderBottom: '1px solid var(--border)' }}>
+          <span className="min-w-0 truncate font-display text-[14px] font-bold" style={{ color: 'var(--text-primary)' }}>Renegociação — {titular}</span>
+          <button type="button" onClick={onClose} aria-label="Fechar" className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-[10px] text-[18px] leading-none hover:bg-[var(--surface-input)]" style={{ color: 'var(--text-muted)' }}>×</button>
         </div>
 
-        <div className="px-[18px] pt-[14px]">
+        <div className="px-[14px] pt-[12px] sm:px-[18px]">
           <Stepper steps={STEPS} current={step} maxReachable={resultado ? 3 : step} onSelect={setStep} />
         </div>
 
-        <div className="flex-1 overflow-auto p-[18px]">
+        <div className="min-h-0 flex-1 overflow-auto p-[14px] sm:p-[18px]" style={{ color: 'var(--text-primary)' }}>
           {/* Passo 1 — Diagnóstico do atraso da conta */}
           {step === 0 && (
             <div className="flex flex-col gap-[12px]">
@@ -225,8 +231,8 @@ export function RenegociacaoWizard({
                               value={exclusoes[f.faturaId]}
                               onChange={(e) => setExclusoes({ ...exclusoes, [f.faturaId]: e.target.value })}
                               placeholder="Justificativa da exclusão (obrigatória, mín. 10 caracteres) — fica auditada na proposta"
-                              className="h-[32px] w-full rounded-[8px] px-[10px] text-[12px]"
-                              style={{ background: 'var(--surface)', border: '1px solid #e0a800' }}
+                              className="h-[32px] w-full rounded-[10px] px-[10px] text-[12px]"
+                              style={{ background: 'var(--surface)', border: '1px solid var(--warn-fg)', color: 'var(--text-primary)' }}
                             />
                           </div>
                         )}
@@ -286,22 +292,22 @@ export function RenegociacaoWizard({
           {/* Passo 2 — Proposta (números do servidor — RAP031) */}
           {step === 1 && (
             <div className="flex flex-col gap-[12px]">
-              <div className="grid grid-cols-2 gap-[10px]">
+              <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-2">
                 <label className="flex flex-col gap-[4px] text-[12px]">
                   <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Entrada (R$){p?.motor === 'catalogo' ? ` — mínima ${formatCurrency(p.entradaMinima)}` : ''}</span>
-                  <input value={entrada} onChange={(e) => setEntrada(e.target.value)} placeholder="0,00" className="h-[34px] rounded-[8px] px-[10px] text-right text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+                  <input value={entrada} onChange={(e) => setEntrada(e.target.value)} placeholder="0,00" className="h-[34px] rounded-[10px] px-[10px] text-right text-[13px] tabular-nums" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
                 </label>
                 <label className="flex flex-col gap-[4px] text-[12px]">
                   <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Nº de parcelas novas</span>
-                  <input value={parcelas} onChange={(e) => setParcelas(e.target.value.replace(/\D/g, ''))} className="h-[34px] rounded-[8px] px-[10px] text-right text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+                  <input value={parcelas} onChange={(e) => setParcelas(e.target.value.replace(/\D/g, ''))} className="h-[34px] rounded-[10px] px-[10px] text-right text-[13px] tabular-nums" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
                 </label>
                 <label className="flex flex-col gap-[4px] text-[12px]">
                   <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Pagamento da entrada até</span>
-                  <input type="date" value={dataEntrada} onChange={(e) => setDataEntrada(e.target.value)} className="h-[34px] rounded-[8px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+                  <input type="date" value={dataEntrada} onChange={(e) => setDataEntrada(e.target.value)} className="h-[34px] rounded-[10px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
                 </label>
                 <label className="flex flex-col gap-[4px] text-[12px]">
                   <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Periodicidade</span>
-                  <div className="flex h-[34px] items-center rounded-[8px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                  <div className="flex h-[34px] items-center rounded-[10px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
                     {p?.periodicidade ? p.periodicidade.charAt(0).toUpperCase() + p.periodicidade.slice(1) : '…'} · herdada do contrato
                   </div>
                 </label>
@@ -320,8 +326,8 @@ export function RenegociacaoWizard({
                 {p && <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Total a pagar (entrada + parcelas)</span><span className="font-bold tabular-nums">{formatCurrency(p.totalAPagar)}</span></div>}
               </div>
               {durante && (
-                <div className="flex flex-col gap-[6px] rounded-[10px] p-[12px] text-[12.5px]" style={{ background: 'var(--ok-bg)', border: '1px solid #bfe3cf' }}>
-                  <div className="text-[13px] font-bold">Parcela do cliente durante o acordo</div>
+                <div className="flex flex-col gap-[6px] rounded-[10px] p-[12px] text-[12.5px]" style={{ background: 'var(--ok-bg)', border: '1px solid var(--border)' }}>
+                  <div className="font-display text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-label)' }}>Parcela do cliente durante o acordo</div>
                   <div className="flex justify-between"><span style={{ color: 'var(--text-label)' }}>Parcelas futuras</span><span className="font-bold tabular-nums">{formatCurrency(durante.valorParcela)}</span></div>
                   <div className="flex justify-between"><span style={{ color: 'var(--text-label)' }}>+ Acordo</span><span className="font-bold tabular-nums">{formatCurrency(durante.valorCota)}</span></div>
                   <div className="flex items-baseline justify-between border-t pt-[6px]" style={{ borderColor: 'var(--ok-bg)' }}>
@@ -355,7 +361,7 @@ export function RenegociacaoWizard({
           {step === 2 && (
             <div className="flex flex-col gap-[12px] text-[13px]">
               <div className="rounded-[10px] p-[14px]" style={{ background: 'var(--surface-input)' }}>
-                <div className="mb-[8px] font-bold">Resumo do acordo</div>
+                <div className="mb-[8px] font-display text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-label)' }}>Resumo do acordo</div>
                 <div className="flex flex-col gap-[4px] text-[12.5px]">
                   <div className="flex justify-between"><span>Faturas selecionadas</span><b>{selecionadas.length}{vincendasSel.length > 0 ? ` (${vincendasSel.length} a vencer incluída(s))` : ''}{Object.keys(exclusoes).length > 0 ? ` (${Object.keys(exclusoes).length} excluída(s) com justificativa)` : ''}</b></div>
                   <div className="flex justify-between"><span>Total renegociado (com mora)</span><b className="tabular-nums">{formatCurrency(total)}</b></div>
@@ -367,14 +373,14 @@ export function RenegociacaoWizard({
                 </div>
               </div>
               {/* De acordo do cliente via WhatsApp (doc 02 §7.7, 09/09) — substitui o termo */}
-              <div className="flex flex-col gap-[8px] rounded-[10px] p-[14px]" style={{ background: 'var(--ok-bg)', border: '1px solid #bfe3cf' }}>
-                <div className="flex items-center justify-between gap-[8px]">
-                  <span className="text-[12.5px] font-bold" style={{ color: 'var(--ok-fg)' }}>De acordo do cliente (WhatsApp)</span>
-                  <button onClick={() => void copiarMensagem()} className="rounded-[7px] px-[10px] py-[5px] text-[11.5px] font-semibold" style={{ background: 'var(--ok-fg)', color: '#fff' }}>
+              <div className="flex flex-col gap-[8px] rounded-[10px] p-[14px]" style={{ background: 'var(--ok-bg)', border: '1px solid var(--border)' }}>
+                <div className="flex flex-wrap items-center justify-between gap-[8px]">
+                  <span className="font-display text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--ok-fg)' }}>De acordo do cliente (WhatsApp)</span>
+                  <Botao tamanho="sm" variante="secundaria" onClick={() => void copiarMensagem()}>
                     {copiado ? '✓ Copiada' : 'Copiar mensagem'}
-                  </button>
+                  </Botao>
                 </div>
-                <pre className="whitespace-pre-wrap rounded-[8px] p-[10px] font-sans text-[12px] leading-[1.5]" style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)' }}>{mensagemWhatsApp()}</pre>
+                <pre className="whitespace-pre-wrap break-words rounded-[10px] p-[10px] font-sans text-[12px] leading-[1.5]" style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)' }}>{mensagemWhatsApp()}</pre>
                 <label className="flex cursor-pointer items-start gap-[8px] text-[12.5px] font-semibold" style={{ color: 'var(--ok-fg)' }}>
                   <input type="checkbox" checked={aceite} onChange={(e) => setAceite(e.target.checked)} className="mt-[2px]" />
                   O cliente respondeu o "de acordo" no WhatsApp com estas condições
@@ -384,8 +390,8 @@ export function RenegociacaoWizard({
                   onChange={(e) => setRespostaCliente(e.target.value)}
                   rows={2}
                   placeholder='Cole aqui a resposta do cliente (ex.: "De acordo, pago a entrada quinta") — quem aprova lê na Central'
-                  className="rounded-[8px] p-[10px] text-[12.5px]"
-                  style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                  className="rounded-[10px] p-[10px] text-[12.5px]"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
                 />
               </div>
               <label className="flex flex-col gap-[4px] text-[12px] font-semibold" style={{ color: 'var(--text-body)' }}>
@@ -395,8 +401,8 @@ export function RenegociacaoWizard({
                   onChange={(e) => setObservacao(e.target.value)}
                   rows={3}
                   placeholder="Contexto da negociação: o que o cliente pediu, por que este plano, o que pesa na decisão…"
-                  className="rounded-[8px] p-[10px] text-[12.5px] font-normal"
-                  style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
+                  className="rounded-[10px] p-[10px] text-[12.5px] font-normal"
+                  style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
                 />
               </label>
               <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
@@ -420,29 +426,28 @@ export function RenegociacaoWizard({
           )}
         </div>
 
-        <div className="flex items-center justify-between px-[18px] py-[14px]" style={{ borderTop: '1px solid var(--border)' }}>
+        <div className="flex flex-wrap items-center justify-between gap-[8px] px-[14px] py-[12px] sm:px-[18px]" style={{ borderTop: '1px solid var(--border)' }}>
           {step > 0 && step < 3 ? (
-            <button onClick={() => setStep(step - 1)} className="h-[36px] rounded-[9px] px-[16px] text-[13px] font-semibold" style={{ background: 'var(--surface-input)' }}>← Voltar</button>
+            <Botao variante="secundaria" onClick={() => setStep(step - 1)}>← Voltar</Botao>
           ) : <span />}
           {step === 0 && (
-            <button disabled={!eleg.data || total <= 0 || !justificativasOk || (eleg.data.acordosAbertos ?? 0) >= 2} onClick={() => setStep(1)} className="h-[36px] rounded-[9px] px-[16px] text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--navy)', color: '#fff' }}>Estruturar proposta →</button>
+            <Botao variante="primaria" disabled={!eleg.data || total <= 0 || !justificativasOk || (eleg.data.acordosAbertos ?? 0) >= 2} onClick={() => setStep(1)}>Estruturar proposta →</Botao>
           )}
           {step === 1 && (
-            <button disabled={!propostaValida} onClick={() => setStep(2)} className="h-[36px] rounded-[9px] px-[16px] text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--navy)', color: '#fff' }}>Revisar →</button>
+            <Botao variante="primaria" disabled={!propostaValida} onClick={() => setStep(2)}>Revisar →</Botao>
           )}
           {step === 2 && (
-            <button
+            <Botao
+              variante="primaria"
               disabled={enviando || !propostaValida || !aceite}
-              onClick={enviar}
+              onClick={() => void enviar()}
               title={aceite ? undefined : 'Marque o "de acordo" do cliente para liberar o envio'}
-              className="h-[36px] rounded-[9px] px-[16px] text-[13px] font-semibold disabled:opacity-50"
-              style={{ background: 'var(--accent)', color: '#fff' }}
             >
               {enviando ? 'Enviando…' : aceite ? 'Enviar para aprovação' : 'Aguardando o de acordo do cliente'}
-            </button>
+            </Botao>
           )}
           {step === 3 && (
-            <button onClick={onClose} className="h-[36px] rounded-[9px] px-[16px] text-[13px] font-semibold" style={{ background: 'var(--navy)', color: '#fff' }}>Fechar</button>
+            <Botao variante="primaria" onClick={onClose}>Fechar</Botao>
           )}
         </div>
       </div>

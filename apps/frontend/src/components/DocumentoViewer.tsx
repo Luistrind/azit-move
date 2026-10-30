@@ -51,21 +51,25 @@ export function DocumentoViewer({ doc, onClose }: { doc: { nome: string; url: st
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-[20px]"
+      className="fixed inset-0 z-50 flex items-center justify-center p-[12px] sm:p-[20px]"
       style={{ background: 'rgba(0,16,41,.6)' }}
     >
+      {/* Layout v2 (doc 03 §11): cabe no celular (100vw − 24 px), rolagem interna, só tokens. */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[90vh] w-[900px] max-w-full flex-col overflow-hidden rounded-[14px]"
-        style={{ background: 'var(--surface)', boxShadow: '0 30px 80px rgba(0,16,41,.4)' }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={doc.nome}
+        className="flex max-h-[90vh] w-[900px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-[16px]"
+        style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 30px 80px rgba(0,16,41,.4)' }}
       >
-        <div className="flex items-center justify-between px-[16px] py-[12px]" style={{ borderBottom: '1px solid var(--border)' }}>
-          <span className="truncate text-[13px] font-bold">{doc.nome}</span>
-          <div className="flex items-center gap-[12px]">
-            <a href={doc.url} download={doc.nome} className="text-[12.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+        <div className="flex items-center justify-between gap-[10px] px-[16px] py-[12px]" style={{ borderBottom: '1px solid var(--border)' }}>
+          <span className="min-w-0 truncate font-display text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>{doc.nome}</span>
+          <div className="flex flex-none items-center gap-[8px]">
+            <a href={doc.url} download={doc.nome} className="inline-flex h-[30px] items-center rounded-[10px] px-[10px] text-[12px] font-semibold" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
               Baixar
             </a>
-            <button onClick={onClose} className="text-[18px] leading-none" style={{ color: 'var(--text-muted)' }} aria-label="Fechar">×</button>
+            <button type="button" onClick={onClose} className="flex h-[30px] w-[30px] items-center justify-center rounded-[10px] text-[18px] leading-none hover:bg-[var(--surface-input)]" style={{ color: 'var(--text-muted)' }} aria-label="Fechar">×</button>
           </div>
         </div>
         <div className="flex min-h-[300px] flex-1 items-center justify-center overflow-auto p-[12px]" style={{ background: 'var(--surface-input)' }}>

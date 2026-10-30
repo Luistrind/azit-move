@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '@azit/utils';
 import { analiseService, DossieAnalise, ParticipanteAnalise } from '../services/analise.service';
@@ -10,18 +10,20 @@ import { Modal } from '../components/Modal';
 import { BotaoVerRetorno } from '../components/RetornoBiro';
 import { toast } from '../components/Toast';
 import { DocumentoViewer, useDocumentoViewer } from '../components/DocumentoViewer';
+import { Bloco } from '../components/Bloco';
+import { Botao } from '../components/Botao';
+import { Metrica } from '../components/Metrica';
+import { Tabela, type Coluna } from '../components/Tabela';
 import { ANALISE_SITUACAO_FG } from '../config/statusColors';
 import { mensagemErro } from '../lib/permissoes';
-import { instanteBR } from '../lib/datas';
+import { horaBR, instanteBR } from '../lib/datas';
 
 // UX-3 — Análise de cadastro GUIADA (proposta UX §4.2): stepper de etapas,
 // próximo passo sempre visível, modais no lugar de prompts, status por extenso.
+// Layout v2 (doc 03 §11, 30/10): header da entidade em navy, cada quadro é um
+// <Bloco>, documentos na <Tabela>, botões em <Botao>, só tokens de cor.
 
-const inputCls = 'w-full rounded-[8px] border border-[var(--border)] bg-[var(--surface)] px-[10px] py-[7px] text-[13px]';
-const btn = 'rounded-[8px] px-[12px] py-[7px] text-[12px] font-bold';
-const btnP = `${btn} bg-[var(--navy)] text-white disabled:opacity-40`;
-const btnS = `${btn} border border-[var(--border)]`;
-const card = 'rounded-[12px] border border-[var(--border)] bg-[var(--surface)] p-[16px]';
+const inputCls = 'w-full rounded-[10px] border border-[var(--border)] bg-[var(--surface-input)] px-[10px] py-[7px] text-[13px] text-[var(--text-primary)]';
 
 const SIT_ROTULO: Record<string, string> = { alcada: 'Conforme', complemento: 'Pede complemento', cocad: 'Vai ao Comitê' };
 const ROTULO_DOC: Record<string, string> = {
@@ -94,6 +96,9 @@ function moeda(c: number | null | undefined) {
   return c === null || c === undefined ? '—' : formatCurrency(c);
 }
 
+// INSTANTE → 'DD/MM/YYYY HH:mm' no fuso do negócio (Regra 15).
+const quando = (iso: string) => `${instanteBR(iso)} ${horaBR(iso)}`;
+
 // Onde resolver cada item pendente do pacote mínimo (feedback 28/08).
 const DICA_PACOTE: Record<string, string> = {
   'Decisão válida (aprovação não vencida)': 'a análise precisa estar aprovada (alçada ou COCAD) há menos de 10 dias úteis',
@@ -150,6 +155,8 @@ function proximoPasso(d: DossieAnalise): string {
   }
 }
 
+type DocumentoProposta = DossieAnalise['documentosProposta'][number];
+
 export function AnalisePage() {
   const { id = '' } = useParams();
   const qc = useQueryClient();
@@ -173,62 +180,116 @@ export function AnalisePage() {
     } catch (e) { toast.erro(mensagemErro(e)); } finally { setOcupado(false); }
   }
 
-  if (!d) return <div className="p-[24px] text-[13px]">Carregando análise…</div>;
+  if (!d) return <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando análise…</div>;
 
   const final = ['LIBERADO_PARA_FORMALIZACAO', 'NAO_APROVADO', 'PROPOSTA_ENCERRADA'].includes(d.status);
+  const negativa = d.status === 'NAO_APROVADO' || d.status === 'PROPOSTA_ENCERRADA';
   const etapaAtual = ETAPA_DO_STATUS[d.status] ?? 0;
+  const principal = d.participantes.find((p) => p.papel === 'COMPRADOR_PRINCIPAL') ?? d.participantes[0];
+
+  const colunasDocs: Coluna<DocumentoProposta>[] = [
+    { chave: 'tipo', titulo: 'Documento', celular: 'titulo', render: (doc) => ROTULO_DOC[doc.tipo] ?? doc.tipo.replace(/_/g, ' ') },
+    { chave: 'nome', titulo: 'Arquivo', celular: 'subtitulo', render: (doc) => doc.nome },
+    { chave: 'anexadoEm', titulo: 'Anexado em', celular: 'campo', classe: 'tabular-nums', render: (doc) => instanteBR(doc.anexadoEm) },
+  ];
 
   return (
-    <div className="flex flex-col gap-[16px] p-[8px]">
+    <div className="flex flex-col gap-[14px]">
       {viewer.doc && <DocumentoViewer doc={viewer.doc} onClose={viewer.fechar} />}
-      <div className="flex flex-wrap items-center justify-between gap-[8px]">
-        <div>
-          <h1 className="font-display text-[20px] font-bold">Análise de Cadastro</h1>
-          <div className="text-[12px] opacity-70">
-            Política v{d.politicaVersao} · <Link className="underline" to={`/propostas/${d.propostaId}`}>abrir proposta</Link> ·
-            {' '}Parcela mensal equivalente: <b>{moeda(d.parcelaMensalEquivalente)}</b> ·
-            {' '}Comprometimento de renda: <b>{d.comprometimento !== null ? `${(d.comprometimento * 100).toFixed(1)}%` : '—'}</b>
+
+      {/* Header da entidade (navy): quem está sendo analisado, situação por
+          extenso e os números que a política consome. O título da tela
+          ("Análise de cadastro") vem do Shell. */}
+      <div className="rounded-card p-[18px]" style={{ background: 'var(--navy)', color: '#fff' }}>
+        <div className="flex flex-wrap items-start justify-between gap-[10px]">
+          <div className="min-w-0">
+            <h2 className="font-display text-[18px] font-bold" style={{ color: '#fff' }}>{principal?.nome ?? 'Análise de cadastro'}</h2>
+            <div className="text-[12px]" style={{ color: 'var(--navy-text-meta)' }}>
+              Política v{d.politicaVersao} · <Link className="font-semibold underline" style={{ color: 'var(--navy-text-body)' }} to={`/propostas/${d.propostaId}`}>abrir proposta</Link>
+              {d.participantes.length > 1 ? ` · ${d.participantes.length} participantes` : ''}
+            </div>
           </div>
+          <span className="rounded-[8px] px-[10px] py-[6px] text-[12px] font-bold" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
+            {rotuloStatus(d.status)}
+          </span>
         </div>
-        <span className="rounded-[8px] border border-[var(--border)] px-[10px] py-[6px] text-[12px] font-bold">
-          {rotuloStatus(d.status)}
-        </span>
+        <div className="mt-[14px] grid grid-cols-2 gap-[12px] sm:grid-cols-3">
+          <Metrica tom="escuro" label="Parcela mensal equivalente" valor={moeda(d.parcelaMensalEquivalente)} />
+          <Metrica tom="escuro" label="Comprometimento de renda" valor={d.comprometimento !== null ? `${(d.comprometimento * 100).toFixed(1)}%` : '—'} destaque={d.comprometimento !== null && d.criterios.some((c) => c.chave === 'comprometimento')} />
+          <Metrica tom="escuro" label="Etapa" valor={final ? 'Concluída' : ETAPAS[Math.min(etapaAtual, ETAPAS.length - 1)]} detalhe={`${Math.min(etapaAtual + 1, ETAPAS.length)} de ${ETAPAS.length}`} />
+        </div>
+      </div>
+
+      {/* Stepper de etapas (só leitura — a etapa é derivada do status) */}
+      <div className="flex flex-wrap items-center gap-[6px]">
+        {ETAPAS.map((etapa, i) => (
+          <div key={etapa} className="flex items-center gap-[6px]">
+            <div
+              className="flex min-h-[30px] items-center gap-[6px] rounded-full border px-[12px] text-[12px] font-semibold"
+              style={
+                i < etapaAtual
+                  ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)', borderColor: 'transparent' }
+                  : i === etapaAtual && !final
+                    ? { background: 'var(--text-primary)', color: 'var(--surface)', borderColor: 'var(--text-primary)' }
+                    : { background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text-muted)' }
+              }
+            >
+              {i < etapaAtual ? '✓' : i + 1} {etapa}
+            </div>
+            {i < ETAPAS.length - 1 && <span className="hidden sm:inline" style={{ color: 'var(--border)' }}>—</span>}
+          </div>
+        ))}
+      </div>
+
+      {/* Próximo passo — sempre visível */}
+      <div
+        className="flex flex-wrap items-center justify-between gap-[10px] rounded-[12px] p-[14px]"
+        style={
+          negativa
+            ? { background: 'var(--danger-bg)', border: '1px solid var(--danger-fg)', color: 'var(--text-primary)' }
+            : { background: 'var(--info-bg)', border: '1px solid var(--info-fg)', color: 'var(--text-primary)' }
+        }
+      >
+        <div className="min-w-0 flex-1 basis-[240px] text-[13px]">
+          <b>{final ? 'Situação: ' : 'Próximo passo: '}</b>
+          {proximoPasso(d)}
+        </div>
+        <ProximaAcao d={d} ocupado={ocupado} acao={acao} />
       </div>
 
       {/* Observação do vendedor (passo 10 do atendimento) — visível em todos os
           passos; antes ficava só na proposta e o analista não a via (28/10). */}
-      <div className="rounded-[12px] p-[14px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="font-display text-[13px] font-bold">🗣️ Observação do vendedor</div>
+      <Bloco titulo="🗣️ Observação do vendedor">
         {d.observacaoVendedor ? (
-          <div className="mt-[6px] whitespace-pre-wrap text-[13px] leading-[1.5]" style={{ color: 'var(--text-body)' }}>{d.observacaoVendedor}</div>
+          <div className="whitespace-pre-wrap text-[13px] leading-[1.5]" style={{ color: 'var(--text-body)' }}>{d.observacaoVendedor}</div>
         ) : (
-          <div className="mt-[4px] text-[12px]" style={{ color: 'var(--text-muted)' }}>O vendedor não deixou observação no envio da proposta.</div>
+          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>O vendedor não deixou observação no envio da proposta.</div>
         )}
-      </div>
+      </Bloco>
 
       {/* Resumo do assistente (IA — 14/09): relatório cadastral automático a
           partir das consultas + documentos. APOIO ao analista — a decisão e o
           restante da tela seguem exatamente como antes. */}
-      <div className="rounded-[12px] p-[16px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="mb-[8px] flex flex-wrap items-center justify-between gap-[8px]">
-          <span className="font-display text-[13px] font-bold">
-            🤖 Resumo do assistente
-            {d.resumoIa?.status === 'concluido' && d.resumoIa.geradoEm && (
-              <span className="ml-[8px] text-[11px] font-normal" style={{ color: 'var(--text-muted)' }}>
-                gerado em {new Date(d.resumoIa.geradoEm).toLocaleString('pt-BR')} · {d.resumoIa.insumos?.consultas ?? 0} consulta(s) · {d.resumoIa.insumos?.documentos ?? 0} documento(s)
-              </span>
-            )}
-          </span>
-          {!final && d.resumoIa?.status !== 'gerando' && (
-            <button
-              className={btnS}
+      <Bloco
+        titulo="🤖 Resumo do assistente"
+        acao={
+          !final && d.resumoIa?.status !== 'gerando' ? (
+            <Botao
+              variante="secundaria"
+              tamanho="sm"
               disabled={ocupado}
               onClick={() => void acao(async () => { await analiseService.gerarResumoIa(d.id); return analiseService.dossie(d.id); }, 'Resumo em geração — a tela atualiza sozinha.')}
             >
               {d.resumoIa?.status === 'concluido' ? 'Atualizar resumo' : 'Gerar resumo'}
-            </button>
-          )}
-        </div>
+            </Botao>
+          ) : undefined
+        }
+      >
+        {d.resumoIa?.status === 'concluido' && d.resumoIa.geradoEm && (
+          <div className="-mt-[4px] text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            gerado em {quando(d.resumoIa.geradoEm)} · {d.resumoIa.insumos?.consultas ?? 0} consulta(s) · {d.resumoIa.insumos?.documentos ?? 0} documento(s)
+          </div>
+        )}
         {!d.resumoIa && (
           <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
             Nenhum resumo gerado ainda — clique em "Gerar resumo" (ele também nasce sozinho quando um cadastro novo chega à análise).
@@ -240,12 +301,12 @@ export function AnalisePage() {
           </div>
         )}
         {d.resumoIa?.status === 'nao_configurado' && (
-          <div className="rounded-[8px] px-[12px] py-[8px] text-[12px]" style={{ background: 'var(--warn-bg)', border: '1px solid #f0dfae', color: 'var(--warn-ink)' }}>
+          <div className="rounded-[8px] px-[12px] py-[8px] text-[12px]" style={{ background: 'var(--warn-bg)', border: '1px solid var(--warn-fg)', color: 'var(--warn-ink)' }}>
             O assistente ainda não está configurado neste ambiente ({d.resumoIa.erro}).
           </div>
         )}
         {d.resumoIa?.status === 'falha' && (
-          <div className="rounded-[8px] px-[12px] py-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', border: '1px solid #f5c6c3', color: 'var(--danger-fg)' }}>
+          <div className="rounded-[8px] px-[12px] py-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger-fg)', color: 'var(--danger-fg)' }}>
             A geração falhou: {d.resumoIa.erro} — use "Gerar resumo" para tentar de novo.
           </div>
         )}
@@ -255,48 +316,11 @@ export function AnalisePage() {
           </div>
         )}
         {d.resumoIa?.status === 'concluido' && (
-          <div className="mt-[10px] text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
             Relatório factual gerado por IA ({d.resumoIa.modelo}) — não é parecer nem recomendação; a decisão é sempre do analista. Confira os números nas consultas abaixo.
           </div>
         )}
-      </div>
-
-      {/* Stepper de etapas */}
-      <div className="flex flex-wrap items-center gap-[6px]">
-        {ETAPAS.map((etapa, i) => (
-          <div key={etapa} className="flex items-center gap-[6px]">
-            <div
-              className="flex items-center gap-[6px] rounded-full px-[12px] py-[6px] text-[12px] font-semibold"
-              style={
-                i < etapaAtual
-                  ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' }
-                  : i === etapaAtual && !final
-                    ? { background: 'var(--navy)', color: '#fff' }
-                    : { background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-muted)' }
-              }
-            >
-              {i < etapaAtual ? '✓' : i + 1} {etapa}
-            </div>
-            {i < ETAPAS.length - 1 && <span style={{ color: 'var(--border)' }}>—</span>}
-          </div>
-        ))}
-      </div>
-
-      {/* Próximo passo — sempre visível */}
-      <div
-        className="flex flex-wrap items-center justify-between gap-[10px] rounded-[12px] p-[14px]"
-        style={
-          d.status === 'NAO_APROVADO' || d.status === 'PROPOSTA_ENCERRADA'
-            ? { background: 'var(--danger-bg)', border: '1px solid #f2c4c2' }
-            : { background: 'var(--info-bg)', border: '1px solid #c9dbf5' }
-        }
-      >
-        <div className="text-[13px]">
-          <b>{final ? 'Situação: ' : 'Próximo passo: '}</b>
-          {proximoPasso(d)}
-        </div>
-        <ProximaAcao d={d} ocupado={ocupado} acao={acao} />
-      </div>
+      </Bloco>
 
       {/* Participantes */}
       {d.participantes.map((p) => (
@@ -305,63 +329,50 @@ export function AnalisePage() {
 
       {/* Documentos anexados na proposta (decisão 08/08 Q4): CNH + complementares,
           que podem ou não ser comprovante de renda — o analista decide. */}
-      <div className={card}>
-        <div className="mb-[8px] font-display text-[13px] font-bold">Documentos da proposta</div>
-        {d.documentosProposta.length === 0 ? (
-          <div className="text-[12px] opacity-70">Nenhum documento anexado na proposta.</div>
-        ) : (
-          d.documentosProposta.map((doc) => (
-            <div key={doc.id} className="flex items-center justify-between border-t border-[var(--border)] py-[6px] text-[12px]">
-              <span>
-                <b>{ROTULO_DOC[doc.tipo] ?? doc.tipo.replace(/_/g, ' ')}</b> · {doc.nome}
-                <span className="opacity-60"> · {instanteBR(doc.anexadoEm)}</span>
-              </span>
-              <span className="flex items-center gap-[10px]">
-                <button
-                  className="font-semibold"
-                  style={{ color: 'var(--accent)' }}
-                  onClick={() => void viewer.abrir(doc.id, doc.nome)}
+      <Bloco titulo="Documentos da proposta" tag={d.documentosProposta.length ? String(d.documentosProposta.length) : undefined}>
+        <Tabela
+          colunas={colunasDocs}
+          linhas={d.documentosProposta}
+          chave={(doc) => doc.id}
+          larguraMinima={520}
+          vazio="Nenhum documento anexado na proposta."
+          acoes={(doc) => (
+            <>
+              <Botao variante="fantasma" tamanho="sm" onClick={() => void viewer.abrir(doc.id, doc.nome)}>Visualizar</Botao>
+              <Botao variante="secundaria" tamanho="sm" onClick={() => void originacaoService.baixarDocumento(doc.id, doc.nome)}>Baixar</Botao>
+              {!final && (
+                <Botao
+                  variante="perigo"
+                  tamanho="sm"
+                  disabled={ocupado}
+                  onClick={() => {
+                    if (!window.confirm(`Remover o documento "${doc.nome}"? Use para trocar um anexo enviado por engano.`)) return;
+                    void acao(async () => { await originacaoService.removerDocumento(d.propostaId, doc.id); return analiseService.dossie(d.id); }, 'Documento removido — anexe o correto pela proposta.');
+                  }}
                 >
-                  Visualizar
-                </button>
-                <button
-                  className="font-semibold"
-                  style={{ color: 'var(--text-primary)' }}
-                  onClick={() => void originacaoService.baixarDocumento(doc.id, doc.nome)}
-                >
-                  Baixar
-                </button>
-                {!final && (
-                  <button
-                    className="font-semibold"
-                    style={{ color: 'var(--danger-fg)' }}
-                    disabled={ocupado}
-                    onClick={() => {
-                      if (!window.confirm(`Remover o documento "${doc.nome}"? Use para trocar um anexo enviado por engano.`)) return;
-                      void acao(async () => { await originacaoService.removerDocumento(d.propostaId, doc.id); return analiseService.dossie(d.id); }, 'Documento removido — anexe o correto pela proposta.');
-                    }}
-                  >
-                    Remover
-                  </button>
-                )}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
+                  Remover
+                </Botao>
+              )}
+            </>
+          )}
+        />
+      </Bloco>
 
       {/* Consultas (Fase 1: registro manual) */}
       {/* Transcrição manual de consulta REMOVIDA da tela (feedback 28/08 — não é
           usada; o fluxo oficial é o birô pelos botões do quadro de consultas).
           O endpoint continua existindo como plano B de emergência via API. */}
+      {/* Cada consulta é um registro rico (resumo, mensagem da API, eliminatórios,
+          alertas, retorno bruto) — não cabe em grade; fica como lista empilhada. */}
       {d.consultas.length > 0 && (
-        <div className={card}>
-          <div className="mb-[8px] flex flex-wrap items-center justify-between gap-[8px]">
-            <span className="font-display text-[13px] font-bold">Consultas registradas</span>
-            {!final && (
-              <span className="flex flex-wrap gap-[6px]">
-                <button
-                  className={btnS}
+        <Bloco
+          titulo="Consultas registradas"
+          acao={
+            !final ? (
+              <span className="flex flex-wrap justify-end gap-[6px]">
+                <Botao
+                  variante="secundaria"
+                  tamanho="sm"
                   disabled={ocupado}
                   onClick={() => {
                     if (!window.confirm('Repetir a consulta da Camada 1 no birô agora? Consome consultas da franquia (3 datasets).')) return;
@@ -369,13 +380,14 @@ export function AnalisePage() {
                   }}
                 >
                   Repetir Camada 1 no birô
-                </button>
+                </Botao>
                 {(() => {
                   const pend = birosPendentes(d);
                   if (pend.length === 0) return null;
                   return (
-                    <button
-                      className={btnS}
+                    <Botao
+                      variante="secundaria"
+                      tamanho="sm"
                       disabled={ocupado}
                       onClick={() => {
                         const linhas = pend.map((t) => `• ${t.label}${t.pago ? ' (paga)' : ' (franquia)'}`).join('\n');
@@ -384,123 +396,135 @@ export function AnalisePage() {
                       }}
                     >
                       Consultar birôs ({pend.length} pendente{pend.length > 1 ? 's' : ''})
-                    </button>
+                    </Botao>
                   );
                 })()}
               </span>
-            )}
+            ) : undefined
+          }
+        >
+          <div className="flex flex-col">
+            {d.consultas.map((c) => {
+              const r = (c.resultado ?? {}) as Record<string, unknown>;
+              const motivos = Array.isArray(r.motivos) ? (r.motivos as string[]) : [];
+              const alertas = Array.isArray(r.alertas) ? (r.alertas as string[]) : [];
+              // Registro antigo sem os dados que a política consome: não conta.
+              const semDados =
+                c.situacao === 'CONCLUIDA' &&
+                ((c.tipo === 'SCORE_QUOD' && typeof r.score !== 'number') ||
+                  (c.tipo === 'RESTRITIVOS' && (typeof r.restritivosFinanceiros !== 'number' || typeof r.restritivosNaoFinanceiros !== 'number')));
+              return (
+                <div key={c.id} className="py-[8px] text-[12px] first:pt-0" style={{ borderTop: '1px solid var(--border-light)', color: 'var(--text-body)' }}>
+                  <b style={{ color: 'var(--text-primary)' }}>{TIPO_CONSULTA_LABEL[c.tipo] ?? c.tipo}</b> · {c.fornecedor} {c.protocolo && `· ${c.protocolo}`} · {instanteBR(c.dataConsulta)} ·
+                  {c.situacao === 'FALHA' ? <span style={{ color: 'var(--danger-fg)' }}> falhou ({c.motivoFalha}) · tentativa {c.tentativas}</span> : c.valida ? ' válida' : <span style={{ color: 'var(--warn-fg)' }}> vencida (mais de 30 dias)</span>}
+                  {c.resultado && ` · ${resumoResultado(c.resultado)}`}
+                  {semDados && (
+                    <span className="ml-[6px] rounded-full px-[8px] py-[1px] text-[11px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
+                      sem valores — não conta para a política, registre de novo
+                    </span>
+                  )}
+                  <BotaoVerRetorno
+                    titulo={`Retorno do birô — ${TIPO_CONSULTA_LABEL[c.tipo] ?? c.tipo} · ${instanteBR(c.dataConsulta)}`}
+                    resultado={c.resultado}
+                  />
+                  {typeof r.statusApi === 'string' && r.statusApi && (
+                    <div className="mt-[3px] rounded-[8px] px-[8px] py-[4px] text-[11.5px]" style={{ background: 'var(--surface-muted)', color: 'var(--text-body)' }}>
+                      <b>Mensagem da API do birô:</b> {r.statusApi}
+                    </div>
+                  )}
+                  {/* Camada 1 (decisão 08/08 Q3): motivos internos e alertas SEMPRE visíveis ao analista */}
+                  {motivos.length > 0 && (
+                    <div className="mt-[3px] rounded-[8px] px-[8px] py-[4px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
+                      <b>Eliminatórios (internos — não mostrados ao operador/cliente):</b> {motivos.join(' · ')}
+                    </div>
+                  )}
+                  {alertas.length > 0 && (
+                    <div className="mt-[3px] rounded-[8px] px-[8px] py-[4px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
+                      <b>Alertas:</b> {alertas.join(' · ')}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          {d.consultas.map((c) => {
-            const r = (c.resultado ?? {}) as Record<string, unknown>;
-            const motivos = Array.isArray(r.motivos) ? (r.motivos as string[]) : [];
-            const alertas = Array.isArray(r.alertas) ? (r.alertas as string[]) : [];
-            // Registro antigo sem os dados que a política consome: não conta.
-            const semDados =
-              c.situacao === 'CONCLUIDA' &&
-              ((c.tipo === 'SCORE_QUOD' && typeof r.score !== 'number') ||
-                (c.tipo === 'RESTRITIVOS' && (typeof r.restritivosFinanceiros !== 'number' || typeof r.restritivosNaoFinanceiros !== 'number')));
-            return (
-              <div key={c.id} className="border-t border-[var(--border)] py-[6px] text-[12px]">
-                <b>{TIPO_CONSULTA_LABEL[c.tipo] ?? c.tipo}</b> · {c.fornecedor} {c.protocolo && `· ${c.protocolo}`} · {instanteBR(c.dataConsulta)} ·
-                {c.situacao === 'FALHA' ? <span style={{ color: 'var(--danger-fg)' }}> falhou ({c.motivoFalha}) · tentativa {c.tentativas}</span> : c.valida ? ' válida' : <span style={{ color: 'var(--warn-fg)' }}> vencida (mais de 30 dias)</span>}
-                {c.resultado && ` · ${resumoResultado(c.resultado)}`}
-                {semDados && (
-                  <span className="ml-[6px] rounded-full px-[8px] py-[1px] text-[11px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
-                    sem valores — não conta para a política, registre de novo
-                  </span>
-                )}
-                <BotaoVerRetorno
-                  titulo={`Retorno do birô — ${TIPO_CONSULTA_LABEL[c.tipo] ?? c.tipo} · ${instanteBR(c.dataConsulta)}`}
-                  resultado={c.resultado}
-                />
-                {typeof r.statusApi === 'string' && r.statusApi && (
-                  <div className="mt-[3px] rounded-[8px] px-[8px] py-[4px] text-[11.5px]" style={{ background: 'var(--surface-muted)', color: 'var(--text-body)' }}>
-                    <b>Mensagem da API do birô:</b> {r.statusApi}
-                  </div>
-                )}
-                {/* Camada 1 (decisão 08/08 Q3): motivos internos e alertas SEMPRE visíveis ao analista */}
-                {motivos.length > 0 && (
-                  <div className="mt-[3px] rounded-[8px] px-[8px] py-[4px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
-                    <b>Eliminatórios (internos — não mostrados ao operador/cliente):</b> {motivos.join(' · ')}
-                  </div>
-                )}
-                {alertas.length > 0 && (
-                  <div className="mt-[3px] rounded-[8px] px-[8px] py-[4px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
-                    <b>Alertas:</b> {alertas.join(' · ')}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        </Bloco>
       )}
 
       {/* Critérios do motor */}
-      <div className={card}>
-        <div className="mb-[8px] font-display text-[13px] font-bold">
-          Critérios da política {d.aprovacaoDiretaPermitida ? '— todos conformes (alçada do analista)' : ''}
-        </div>
-        {d.criterios.length === 0 && <div className="text-[12px] opacity-70">Nenhum apontamento — proposta dentro da política.</div>}
-        {d.criterios.map((c, i) => (
-          <div key={i} className="border-t border-[var(--border)] py-[6px] text-[12px]">
-            <b style={{ color: ANALISE_SITUACAO_FG[c.situacao] }}>{SIT_ROTULO[c.situacao] ?? c.situacao}</b> {c.codigo && `· ${c.codigo}`} · {c.descricao}
-            {c.valorObservado && ` (${c.valorObservado})`}
+      <Bloco titulo="Critérios da política" tag={d.aprovacaoDiretaPermitida ? 'todos conformes (alçada do analista)' : undefined}>
+        {d.criterios.length === 0 && <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum apontamento — proposta dentro da política.</div>}
+        {d.criterios.length > 0 && (
+          <div className="flex flex-col">
+            {d.criterios.map((c, i) => (
+              <div key={i} className="py-[6px] text-[12px] first:pt-0" style={{ borderTop: '1px solid var(--border-light)', color: 'var(--text-body)' }}>
+                <b style={{ color: ANALISE_SITUACAO_FG[c.situacao] }}>{SIT_ROTULO[c.situacao] ?? c.situacao}</b> {c.codigo && `· ${c.codigo}`} · {c.descricao}
+                {c.valorObservado && ` (${c.valorObservado})`}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        )}
+      </Bloco>
 
       {/* Pendências e ressalvas */}
       {(d.pendencias.length > 0 || d.ressalvas.length > 0) && (
-        <div className={card}>
-          <div className="mb-[8px] font-display text-[13px] font-bold">Pendências e ressalvas</div>
-          {d.pendencias.map((p) => (
-            <div key={p.id} className="flex items-center justify-between border-t border-[var(--border)] py-[6px] text-[12px]">
-              <span>Pendência <b>{p.codigo}</b> · {p.descricao} · {p.situacao === 'ABERTA' ? 'aberta' : 'cumprida'}</span>
-              {p.situacao === 'ABERTA' && (
-                <button className={btnS} disabled={ocupado} onClick={() => acao(() => analiseService.cumprirPendencia(d.id, p.id), 'Pendência cumprida — a análise retomou da etapa de origem.')}>Marcar como cumprida</button>
-              )}
-            </div>
-          ))}
-          {d.ressalvas.map((r) => (
-            <div key={r.id} className="flex items-center justify-between border-t border-[var(--border)] py-[6px] text-[12px]">
-              <span>Ressalva <b>{r.tipo.replaceAll('_', ' ').toLowerCase()}</b> · {r.condicao} · {r.situacao.toLowerCase()}</span>
-              {['PENDENTE', 'CUMPRIDA'].includes(r.situacao) && (
-                <button className={btnS} disabled={ocupado} title="Validação é alçada de Aprovador/Diretor (Admin também pode)" onClick={() => acao(() => analiseService.validarRessalva(d.id, r.id), 'Ressalva validada.')}>Validar (Aprovador/Diretor)</button>
-              )}
-            </div>
-          ))}
-        </div>
+        <Bloco titulo="Pendências e ressalvas">
+          <div className="flex flex-col">
+            {d.pendencias.map((p) => (
+              <div key={p.id} className="flex flex-wrap items-center justify-between gap-[8px] py-[6px] text-[12px] first:pt-0" style={{ borderTop: '1px solid var(--border-light)', color: 'var(--text-body)' }}>
+                <span>Pendência <b style={{ color: 'var(--text-primary)' }}>{p.codigo}</b> · {p.descricao} · {p.situacao === 'ABERTA' ? 'aberta' : 'cumprida'}</span>
+                {p.situacao === 'ABERTA' && (
+                  <Botao variante="secundaria" tamanho="sm" disabled={ocupado} onClick={() => acao(() => analiseService.cumprirPendencia(d.id, p.id), 'Pendência cumprida — a análise retomou da etapa de origem.')}>Marcar como cumprida</Botao>
+                )}
+              </div>
+            ))}
+            {d.ressalvas.map((r) => (
+              <div key={r.id} className="flex flex-wrap items-center justify-between gap-[8px] py-[6px] text-[12px] first:pt-0" style={{ borderTop: '1px solid var(--border-light)', color: 'var(--text-body)' }}>
+                <span>Ressalva <b style={{ color: 'var(--text-primary)' }}>{r.tipo.replaceAll('_', ' ').toLowerCase()}</b> · {r.condicao} · {r.situacao.toLowerCase()}</span>
+                {['PENDENTE', 'CUMPRIDA'].includes(r.situacao) && (
+                  <Botao variante="secundaria" tamanho="sm" disabled={ocupado} title="Validação é alçada de Aprovador/Diretor (Admin também pode)" onClick={() => acao(() => analiseService.validarRessalva(d.id, r.id), 'Ressalva validada.')}>Validar (Aprovador/Diretor)</Botao>
+                )}
+              </div>
+            ))}
+          </div>
+        </Bloco>
       )}
 
       {/* Pacote mínimo (RF-22): checklist bloqueante da liberação. Feedback
           28/08: item pendente diz ONDE se resolve — texto morto não guia. */}
-      <div className={card}>
-        <div className="mb-[8px] font-display text-[13px] font-bold">Pacote mínimo para formalização</div>
-        <div className="mb-[6px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
-          Checklist que trava o botão "Liberar para formalização" — todos os itens precisam estar ✓.
+      <Bloco
+        titulo="Pacote mínimo para formalização"
+        tag={`${d.pacoteMinimo.filter((x) => x.ok).length} de ${d.pacoteMinimo.length}`}
+        leitura={
+          d.pacoteMinimo.every((x) => x.ok)
+            ? 'Todos os itens do pacote estão em dia — a liberação para formalização está destravada.'
+            : `${d.pacoteMinimo.filter((x) => !x.ok).length} item(ns) pendente(s) travam o botão "Liberar para formalização".`
+        }
+      >
+        <div className="flex flex-col gap-[4px]">
+          {d.pacoteMinimo.map((x, i) => (
+            <div key={i} className="text-[12px]" style={{ color: 'var(--text-body)' }}>
+              <span style={{ color: x.ok ? 'var(--ok-fg)' : 'var(--danger-fg)' }}>{x.ok ? '✓' : '✗'}</span> {x.item}
+              {!x.ok && DICA_PACOTE[x.item] && (
+                <span className="ml-[6px] text-[11px]" style={{ color: 'var(--text-muted)' }}>→ {DICA_PACOTE[x.item]}</span>
+              )}
+            </div>
+          ))}
         </div>
-        {d.pacoteMinimo.map((x, i) => (
-          <div key={i} className="text-[12px]">
-            <span style={{ color: x.ok ? 'var(--ok-fg)' : 'var(--danger-fg)' }}>{x.ok ? '✓' : '✗'}</span> {x.item}
-            {!x.ok && DICA_PACOTE[x.item] && (
-              <span className="ml-[6px] text-[11px]" style={{ color: 'var(--text-muted)' }}>→ {DICA_PACOTE[x.item]}</span>
-            )}
-          </div>
-        ))}
-      </div>
+      </Bloco>
 
       {/* Ações de decisão */}
       {!final && <Decisao d={d} ocupado={ocupado} acao={acao} />}
 
       {/* Trilha */}
-      <div className={card}>
-        <div className="mb-[8px] font-display text-[13px] font-bold">Trilha de estados</div>
-        {d.transicoes.map((t, i) => (
-          <div key={i} className="text-[11px] opacity-80">
-            {new Date(t.createdAt).toLocaleString('pt-BR')} · {t.de ? rotuloStatus(t.de) : 'início'} → <b>{rotuloStatus(t.para)}</b>{t.motivo && ` · ${t.motivo}`}
-          </div>
-        ))}
-      </div>
+      <Bloco titulo="Trilha de estados">
+        <div className="flex flex-col gap-[2px]">
+          {d.transicoes.map((t, i) => (
+            <div key={i} className="text-[11px]" style={{ color: 'var(--text-body)' }}>
+              <span className="tabular-nums">{quando(t.createdAt)}</span> · {t.de ? rotuloStatus(t.de) : 'início'} → <b style={{ color: 'var(--text-primary)' }}>{rotuloStatus(t.para)}</b>{t.motivo && ` · ${t.motivo}`}
+            </div>
+          ))}
+        </div>
+      </Bloco>
     </div>
   );
 }
@@ -532,25 +556,26 @@ function resumoResultado(r: Record<string, unknown>): string {
 
 // Botão da ação principal do momento, ao lado do texto de próximo passo.
 function ProximaAcao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean; acao: (fn: () => Promise<DossieAnalise>, ok?: string) => Promise<void> }) {
+  const navigate = useNavigate();
   if (d.status === 'CADASTRO_EM_PREENCHIMENTO') {
     return (
-      <button className={btnP} disabled={ocupado} onClick={() => acao(() => analiseService.transicionar(d.id, 'DOCUMENTOS_ENVIADOS'), 'Documentos confirmados — siga para as consultas.')}>
+      <Botao variante="primaria" disabled={ocupado} carregando={ocupado} onClick={() => acao(() => analiseService.transicionar(d.id, 'DOCUMENTOS_ENVIADOS'), 'Documentos confirmados — siga para as consultas.')}>
         Confirmar documentos enviados
-      </button>
+      </Botao>
     );
   }
   if (d.status === 'AGUARDANDO_COCAD') {
-    return <Link to="/aprovacoes" className={btnP}>Abrir Central de Aprovações</Link>;
+    return <Botao variante="primaria" onClick={() => navigate('/aprovacoes')}>Abrir Central de Aprovações</Botao>;
   }
   if (['APROVADO_ALCADA_ANALISTA', 'APROVADO_COCAD'].includes(d.status)) {
     return (
-      <button className={btnP} disabled={ocupado} onClick={() => acao(() => analiseService.liberar(d.id), 'Liberada para formalização.')}>
+      <Botao variante="primaria" disabled={ocupado} carregando={ocupado} onClick={() => acao(() => analiseService.liberar(d.id), 'Liberada para formalização.')}>
         Liberar para formalização
-      </button>
+      </Botao>
     );
   }
   if (d.status === 'LIBERADO_PARA_FORMALIZACAO') {
-    return <Link to={`/propostas/${d.propostaId}`} className={btnP}>Ir para a proposta</Link>;
+    return <Botao variante="primaria" onClick={() => navigate(`/propostas/${d.propostaId}`)}>Ir para a proposta</Botao>;
   }
   return null;
 }
@@ -566,22 +591,18 @@ function Participante({ d, p, ocupado, acao, final }: { d: DossieAnalise; p: Par
   }
 
   return (
-    <div className={card}>
-      <div className="mb-[8px] flex flex-wrap items-center justify-between gap-[6px]">
-        <div className="font-display text-[13px] font-bold">
-          {p.nome} · {PAPEL[p.papel] ?? p.papel} {condutor && <span style={{ color: 'var(--ok-fg)' }}>· condutor principal</span>}
-        </div>
-        {!final && (
-          <div className="flex flex-wrap gap-[6px]">
-            {/* Decisão 08/08: autorização de consulta é verbal — botão removido. */}
-            {!condutor && p.papel !== 'GARANTIDOR' && (
-              <button className={btnS} disabled={ocupado || !p.cnhValida} title={p.cnhValida ? '' : 'Exige CNH válida'} onClick={() => acao(() => analiseService.definirCondutor(d.id, p.titularId), 'Condutor principal definido.')}>
-                Definir condutor
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+    <Bloco
+      titulo={`${p.nome} · ${PAPEL[p.papel] ?? p.papel}`}
+      tag={condutor ? <span style={{ color: 'var(--ok-fg)' }}>condutor principal</span> : undefined}
+      acao={
+        /* Decisão 08/08: autorização de consulta é verbal — botão removido. */
+        !final && !condutor && p.papel !== 'GARANTIDOR' ? (
+          <Botao variante="secundaria" tamanho="sm" disabled={ocupado || !p.cnhValida} title={p.cnhValida ? '' : 'Exige CNH válida'} onClick={() => acao(() => analiseService.definirCondutor(d.id, p.titularId), 'Condutor principal definido.')}>
+            Definir condutor
+          </Botao>
+        ) : undefined
+      }
+    >
       {/* Decisão 28/08: renda PRESUMIDA saiu como campo — só declarada e apurada.
           O valor do birô continua visível no retorno da consulta (Camada 1).
           Decisão 28/10: a APURADA do comprador principal vem preenchida pelo
@@ -591,7 +612,7 @@ function Participante({ d, p, ocupado, acao, final }: { d: DossieAnalise; p: Par
           ['Renda declarada (R$)', rd, setRd, 'rendaDeclarada', undefined],
           ['Renda APURADA (R$)', ra, setRa, 'rendaApurada', p.rendaApurada],
         ].map(([rotulo, valor, setValor, campo, atual]) => (
-          <label key={campo as string} className="flex flex-col gap-[4px] text-[11px] font-bold">
+          <label key={campo as string} className="flex flex-col gap-[4px] text-[11px] font-bold" style={{ color: 'var(--text-label)' }}>
             {rotulo as string}
             <input className={inputCls} value={valor as string} disabled={final} onChange={(e) => (setValor as (v: string) => void)(e.target.value)} />
             {campo === 'rendaApurada' && (
@@ -607,13 +628,13 @@ function Participante({ d, p, ocupado, acao, final }: { d: DossieAnalise; p: Par
         ))}
       </div>
       {!final && (
-        <div className="mt-[8px] flex flex-wrap items-start gap-[14px] text-[12px]">
-          <button className={btnP} disabled={ocupado} onClick={() => acao(() =>
+        <div className="flex flex-wrap items-start gap-[14px] text-[12px]" style={{ color: 'var(--text-primary)' }}>
+          <Botao variante="primaria" tamanho="sm" disabled={ocupado} onClick={() => acao(() =>
             analiseService.atualizarParticipante(d.id, p.titularId, {
               rendaDeclarada: rd ? reaisParaCentavos(rd) : null,
               rendaApurada: ra ? reaisParaCentavos(ra) : null,
               ...(just ? { justificativaRendaApurada: just } : {}),
-            }), 'Rendas salvas.')}>Salvar rendas</button>
+            }), 'Rendas salvas.')}>Salvar rendas</Botao>
           {/* Decisão 08/08: só checks do que COLETAMOS — CNH (arquivo na proposta)
               e identidade (nome oficial da Camada 1). Decisão 28/10: os dois vêm
               marcados pelo sistema quando a evidência existe, com a origem ao
@@ -624,8 +645,8 @@ function Participante({ d, p, ocupado, acao, final }: { d: DossieAnalise; p: Par
             ['identidadeValidada', 'Identidade validada', p.identidadeValidada, p.identidadeValidadaOrigem, 'confira o nome oficial na consulta Camada 1 — o sistema marca quando CPF regular, sem óbito e nome igual ao cadastrado'],
             ['cnhValida', 'CNH anexada (validação documental)', p.cnhValida, p.cnhValidaOrigem, 'não há consulta de CNH — o sistema marca quando há arquivo CNH do próprio comprador em Documentos da proposta'],
           ].map(([campo, rotulo, marcado, origem, ajuda]) => (
-            <div key={campo as string} className="flex flex-col gap-[2px]">
-              <label className="flex items-center gap-[4px]">
+            <div key={campo as string} className="flex min-w-0 flex-col gap-[2px]">
+              <label className="flex min-h-[30px] items-center gap-[6px]">
                 <input type="checkbox" checked={marcado as boolean} disabled={ocupado} onChange={(e) => flag(campo as string, e.target.checked)} />
                 {rotulo as string}
               </label>
@@ -634,7 +655,7 @@ function Participante({ d, p, ocupado, acao, final }: { d: DossieAnalise; p: Par
           ))}
         </div>
       )}
-    </div>
+    </Bloco>
   );
 }
 
@@ -658,20 +679,20 @@ function GatilhosAlcada({ d, ocupado, acao, bloqueado }: { d: DossieAnalise; ocu
     void acao(() => analiseService.atualizarParticipante(d.id, titularId, { [campo]: valor }), valor ? 'Gatilho marcado — a decisão passa a recomendar o COCAD.' : 'Gatilho desmarcado.');
   }
   return (
-    <div className="mb-[10px] rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
-      <div className="text-[11px] font-bold uppercase tracking-[.04em]" style={{ color: 'var(--text-muted)' }}>Gatilhos de alçada</div>
+    <div className="rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+      <div className="font-display text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-label)' }}>Gatilhos de alçada</div>
       <div className="mb-[6px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
         Marcar qualquer um eleva a decisão ao COCAD (critérios COC-08 e COC-06). É julgamento do analista — o sistema só sugere.
         {bloqueado && ' Decisão já encaminhada: não é mais possível alterar.'}
       </div>
       {compradores.map((p) => (
-        <div key={p.titularId} className="flex flex-col gap-[4px] border-t border-[var(--border)] py-[6px] text-[12px]">
+        <div key={p.titularId} className="flex flex-col gap-[4px] py-[6px] text-[12px]" style={{ borderTop: '1px solid var(--border)', color: 'var(--text-primary)' }}>
           <div className="font-semibold">{p.nome}</div>
-          <label className="flex items-center gap-[4px]">
+          <label className="flex flex-wrap items-center gap-[4px]">
             <input type="checkbox" checked={p.rendaParcialmenteComprovada} disabled={ocupado || bloqueado} onChange={(e) => flag(p.titularId, 'rendaParcialmenteComprovada', e.target.checked)} />
             Renda só parcialmente comprovada <span style={{ color: 'var(--text-muted)' }}>· eleva ao COCAD (COC-08)</span>
           </label>
-          <label className="flex items-center gap-[4px]">
+          <label className="flex flex-wrap items-center gap-[4px]">
             <input type="checkbox" checked={p.processosRelevantes} disabled={ocupado || bloqueado} onChange={(e) => flag(p.titularId, 'processosRelevantes', e.target.checked)} />
             Processo judicial relevante ativo <span style={{ color: 'var(--text-muted)' }}>· eleva ao COCAD (COC-06)</span>
           </label>
@@ -682,7 +703,7 @@ function GatilhosAlcada({ d, ocupado, acao, bloqueado }: { d: DossieAnalise; ocu
                 <div key={i}>• {pr.numero ?? 'sem número'} · {pr.assunto}{pr.status ? ` · ${pr.status}` : ''}{pr.poloPassivo === true ? ' · cliente no polo passivo' : ''}</div>
               ))}
               {p.processosSugestao.sugerir && !p.processosRelevantes && !bloqueado && (
-                <button className="mt-[4px] font-bold underline" disabled={ocupado} onClick={() => flag(p.titularId, 'processosRelevantes', true)}>Marcar como relevante</button>
+                <button type="button" className="mt-[4px] font-bold underline" disabled={ocupado} onClick={() => flag(p.titularId, 'processosRelevantes', true)}>Marcar como relevante</button>
               )}
             </div>
           )}
@@ -723,9 +744,7 @@ function Decisao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean; aca
   const codigosCocad = d.criterios.filter((c) => c.situacao === 'cocad' && c.codigo).map((c) => c.codigo as string);
 
   return (
-    <div className={card}>
-      <div className="mb-[8px] font-display text-[13px] font-bold">Decisão</div>
-
+    <Bloco titulo="Decisão">
       {/* Gatilhos de alçada (COC-08/COC-06) moram aqui — onde a decisão é
           tomada — e não mais no bloco do participante (28/10). */}
       <GatilhosAlcada d={d} ocupado={ocupado} acao={acao} bloqueado={decidida} />
@@ -733,10 +752,10 @@ function Decisao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean; aca
       {/* Parecer do analista — visível a quem decide (caso real 22/09: o texto
           só ia para a auditoria e o aprovador não tinha onde lê-lo). */}
       {d.parecer && (
-        <div className="mb-[10px] rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+        <div className="rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
           <div className="flex flex-wrap items-center gap-[8px] text-[11px]" style={{ color: 'var(--text-muted)' }}>
-            <span className="font-bold uppercase tracking-[.04em]">Parecer do analista</span>
-            <span>· {d.parecer.emitidoPor} · {new Date(d.parecer.emitidoEm).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+            <span className="font-display font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-label)' }}>Parecer do analista</span>
+            <span>· {d.parecer.emitidoPor} · {quando(d.parecer.emitidoEm)}</span>
             {d.parecer.tipo && <span>· {d.parecer.tipo === 'aprovacao' ? 'recomenda aprovação' : d.parecer.tipo === 'cocad' ? 'encaminha ao Comitê' : d.parecer.tipo}</span>}
             {d.parecer.comprometimento != null && <span>· comprometimento {(d.parecer.comprometimento * 100).toFixed(1)}% no momento do parecer</span>}
             {d.pareceres.length > 1 && <span>· {d.pareceres.length}ª versão</span>}
@@ -749,13 +768,13 @@ function Decisao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean; aca
         <div className="flex flex-col gap-[8px]">
           <textarea className={inputCls} rows={3} placeholder="Parecer do analista (os números vêm do sistema — descreva a conclusão)" value={parecer} onChange={(e) => setParecer(e.target.value)} />
           <div className="flex flex-wrap gap-[8px]">
-            <button className={btnP} disabled={ocupado || parecer.length < 10} onClick={() => acao(() =>
+            <Botao variante="primaria" disabled={ocupado || parecer.length < 10} onClick={() => acao(() =>
               analiseService.emitirParecer(d.id, {
                 tipo: d.aprovacaoDiretaPermitida ? 'aprovacao' : 'cocad',
                 texto: parecer,
                 codigos: d.aprovacaoDiretaPermitida ? ['APR-01'] : d.criterios.filter((c) => c.codigo).map((c) => c.codigo as string),
-              }), 'Parecer emitido.')}>Emitir parecer</button>
-            <button className={btnS} disabled={ocupado} onClick={() => setModal('encerrar')}>Encerrar (operacional)</button>
+              }), 'Parecer emitido.')}>Emitir parecer</Botao>
+            <Botao variante="secundaria" disabled={ocupado} onClick={() => setModal('encerrar')}>Encerrar (operacional)</Botao>
           </div>
         </div>
       )}
@@ -768,26 +787,26 @@ function Decisao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean; aca
             </div>
           )}
           <div className="flex flex-wrap gap-[8px]">
-            <button
-              className={btnP}
+            <Botao
+              variante="primaria"
               disabled={ocupado || temComplemento}
               title={temComplemento ? 'Itens de complemento pendentes (dados incompletos)' : codigosCocad.length ? 'Aprovar contra a recomendação exige justificativa' : ''}
               onClick={() => (codigosCocad.length ? setModal('aprovar_justificando') : void acao(() => analiseService.aprovar(d.id), 'Aprovada na alçada do analista.'))}
             >
               Aprovar (alçada do analista)
-            </button>
-            <button className={btnS} disabled={ocupado} onClick={() => acao(() => analiseService.submeterCocad(d.id, 'Ver parecer'), 'Submetida ao Comitê — decisão na Central de Aprovações.')}>Submeter ao Comitê de Cadastro</button>
-            <button className={btnS} disabled={ocupado} onClick={() => setModal('nao_aprovar')}>Não aprovar</button>
-            <button className={btnS} disabled={ocupado} onClick={() => setModal('encerrar')}>Encerrar (operacional)</button>
+            </Botao>
+            <Botao variante="secundaria" disabled={ocupado} onClick={() => acao(() => analiseService.submeterCocad(d.id, 'Ver parecer'), 'Submetida ao Comitê — decisão na Central de Aprovações.')}>Submeter ao Comitê de Cadastro</Botao>
+            <Botao variante="perigo" disabled={ocupado} onClick={() => setModal('nao_aprovar')}>Não aprovar</Botao>
+            <Botao variante="secundaria" disabled={ocupado} onClick={() => setModal('encerrar')}>Encerrar (operacional)</Botao>
           </div>
         </div>
       )}
 
       {d.status === 'AGUARDANDO_COCAD' && (
-        <div className="flex flex-wrap items-center gap-[8px] text-[12px]">
-          <span>No Comitê — aprovar/não aprovar acontece na <Link className="underline" to="/aprovacoes">Central de Aprovações</Link>. Alternativas:</span>
-          <button className={btnS} disabled={ocupado} onClick={() => setModal('ressalvas')}>Aprovar com ressalvas</button>
-          <button className={btnS} disabled={ocupado} onClick={() => setModal('complemento')}>Solicitar complemento</button>
+        <div className="flex flex-wrap items-center gap-[8px] text-[12px]" style={{ color: 'var(--text-body)' }}>
+          <span>No Comitê — aprovar/não aprovar acontece na <Link className="font-semibold underline" style={{ color: 'var(--accent)' }} to="/aprovacoes">Central de Aprovações</Link>. Alternativas:</span>
+          <Botao variante="secundaria" tamanho="sm" disabled={ocupado} onClick={() => setModal('ressalvas')}>Aprovar com ressalvas</Botao>
+          <Botao variante="secundaria" tamanho="sm" disabled={ocupado} onClick={() => setModal('complemento')}>Solicitar complemento</Botao>
         </div>
       )}
 
@@ -804,9 +823,12 @@ function Decisao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean; aca
       <ModalNaoAprovar aberto={modal === 'nao_aprovar'} fechar={() => setModal(null)} ocupado={ocupado} confirmar={(codigo, justificativa) => { setModal(null); void acao(() => analiseService.naoAprovar(d.id, codigo, justificativa), 'Não aprovada (decisão humana registrada).'); }} />
       <ModalRessalvas aberto={modal === 'ressalvas'} fechar={() => setModal(null)} ocupado={ocupado} confirmar={(tipo, condicao) => { setModal(null); void acao(() => analiseService.aprovarComRessalvas(d.id, [{ tipo, condicao }]), 'Aprovada com ressalvas.'); }} />
       <ModalComplemento aberto={modal === 'complemento'} fechar={() => setModal(null)} ocupado={ocupado} confirmar={(descricao) => { setModal(null); void acao(() => analiseService.criarPendencia(d.id, { codigo: 'COM-10', descricao }), 'Complemento solicitado.'); }} />
-    </div>
+    </Bloco>
   );
 }
+
+// Rótulo de campo dos modais.
+const rotuloCls = 'text-[12px] font-semibold text-[var(--text-primary)]';
 
 // Decisão 2026-08-15: aprovar com critérios COC presentes é decisão do analista,
 // com justificativa obrigatória — o modal deixa claro o que está sendo assumido.
@@ -819,11 +841,11 @@ function ModalAprovarJustificando({ aberto, codigos, fechar, ocupado, confirmar 
           Os critérios <b>{codigos.join(', ')}</b> recomendam o Comitê de Cadastro. Você pode aprovar
           na sua alçada mesmo assim — a justificativa fica registrada na trilha da análise e na auditoria.
         </div>
-        <label className="text-[12px] font-semibold">Justificativa (obrigatória)</label>
+        <label className={rotuloCls}>Justificativa (obrigatória)</label>
         <textarea className={inputCls} rows={3} value={justificativa} onChange={(e) => setJustificativa(e.target.value)} placeholder="ex.: renda apurada consistente com extratos; comprometimento mitigado por entrada reforçada" />
-        <div className="flex justify-end gap-[8px]">
-          <button className={btnS} onClick={fechar}>Cancelar</button>
-          <button className={btnP} disabled={ocupado || justificativa.trim().length < 10} onClick={() => confirmar(justificativa.trim())}>Aprovar com justificativa</button>
+        <div className="flex flex-wrap justify-end gap-[8px]">
+          <Botao variante="secundaria" onClick={fechar}>Cancelar</Botao>
+          <Botao variante="primaria" disabled={ocupado || justificativa.trim().length < 10} onClick={() => confirmar(justificativa.trim())}>Aprovar com justificativa</Botao>
         </div>
       </div>
     </Modal>
@@ -838,13 +860,13 @@ function ModalEncerrar({ aberto, fechar, ocupado, confirmar }: { aberto: boolean
         <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
           Isso vai encerrar a análise <b>sem reprovar o cliente</b> — desistência não é não aprovação e não impede uma nova proposta no futuro.
         </div>
-        <label className="text-[12px] font-semibold">Motivo do encerramento</label>
+        <label className={rotuloCls}>Motivo do encerramento</label>
         <select className={inputCls} value={motivo} onChange={(e) => setMotivo(e.target.value)}>
           {MOTIVOS_ENCERRAMENTO.map((m) => <option key={m.v} value={m.v}>{m.l}</option>)}
         </select>
-        <div className="flex justify-end gap-[8px]">
-          <button className={btnS} onClick={fechar}>Cancelar</button>
-          <button className={btnP} disabled={ocupado} onClick={() => confirmar(motivo)}>Encerrar análise</button>
+        <div className="flex flex-wrap justify-end gap-[8px]">
+          <Botao variante="secundaria" onClick={fechar}>Cancelar</Botao>
+          <Botao variante="primaria" disabled={ocupado} onClick={() => confirmar(motivo)}>Encerrar análise</Botao>
         </div>
       </div>
     </Modal>
@@ -860,15 +882,15 @@ function ModalNaoAprovar({ aberto, fechar, ocupado, confirmar }: { aberto: boole
         <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
           Decisão humana fundamentada (a política não reprova automaticamente). Isso vai encerrar a análise como <b>não aprovada</b>.
         </div>
-        <label className="text-[12px] font-semibold">Código da não aprovação</label>
+        <label className={rotuloCls}>Código da não aprovação</label>
         <select className={inputCls} value={codigo} onChange={(e) => setCodigo(e.target.value)}>
           {CODIGOS_NAP.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
-        <label className="text-[12px] font-semibold">Justificativa</label>
+        <label className={rotuloCls}>Justificativa</label>
         <textarea className={inputCls} rows={3} value={justificativa} onChange={(e) => setJustificativa(e.target.value)} placeholder="Fundamente a decisão — fica registrado na trilha e na auditoria." />
-        <div className="flex justify-end gap-[8px]">
-          <button className={btnS} onClick={fechar}>Cancelar</button>
-          <button className={btnP} disabled={ocupado || justificativa.trim().length < 10} onClick={() => confirmar(codigo, justificativa.trim())}>Não aprovar</button>
+        <div className="flex flex-wrap justify-end gap-[8px]">
+          <Botao variante="secundaria" onClick={fechar}>Cancelar</Botao>
+          <Botao variante="perigo" disabled={ocupado || justificativa.trim().length < 10} onClick={() => confirmar(codigo, justificativa.trim())}>Não aprovar</Botao>
         </div>
       </div>
     </Modal>
@@ -884,15 +906,15 @@ function ModalRessalvas({ aberto, fechar, ocupado, confirmar }: { aberto: boolea
         <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
           A aprovação só vale depois que a ressalva for cumprida e validada.
         </div>
-        <label className="text-[12px] font-semibold">Tipo de ressalva</label>
+        <label className={rotuloCls}>Tipo de ressalva</label>
         <select className={inputCls} value={tipo} onChange={(e) => setTipo(e.target.value)}>
           {TIPOS_RESSALVA.map((t) => <option key={t.v} value={t.v}>{t.l}</option>)}
         </select>
-        <label className="text-[12px] font-semibold">Condição objetiva</label>
+        <label className={rotuloCls}>Condição objetiva</label>
         <input className={inputCls} value={condicao} onChange={(e) => setCondicao(e.target.value)} placeholder="ex.: entrada mínima de R$ 6.000,00" />
-        <div className="flex justify-end gap-[8px]">
-          <button className={btnS} onClick={fechar}>Cancelar</button>
-          <button className={btnP} disabled={ocupado || condicao.trim().length < 3} onClick={() => confirmar(tipo, condicao.trim())}>Aprovar com ressalva</button>
+        <div className="flex flex-wrap justify-end gap-[8px]">
+          <Botao variante="secundaria" onClick={fechar}>Cancelar</Botao>
+          <Botao variante="primaria" disabled={ocupado || condicao.trim().length < 3} onClick={() => confirmar(tipo, condicao.trim())}>Aprovar com ressalva</Botao>
         </div>
       </div>
     </Modal>
@@ -907,11 +929,11 @@ function ModalComplemento({ aberto, fechar, ocupado, confirmar }: { aberto: bool
         <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
           A análise volta para complemento e retoma automaticamente quando a pendência for cumprida.
         </div>
-        <label className="text-[12px] font-semibold">O que precisa ser complementado (específico)</label>
+        <label className={rotuloCls}>O que precisa ser complementado (específico)</label>
         <textarea className={inputCls} rows={3} value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="ex.: extrato do aplicativo dos últimos 90 dias do comprador principal" />
-        <div className="flex justify-end gap-[8px]">
-          <button className={btnS} onClick={fechar}>Cancelar</button>
-          <button className={btnP} disabled={ocupado || descricao.trim().length < 5} onClick={() => confirmar(descricao.trim())}>Solicitar</button>
+        <div className="flex flex-wrap justify-end gap-[8px]">
+          <Botao variante="secundaria" onClick={fechar}>Cancelar</Botao>
+          <Botao variante="primaria" disabled={ocupado || descricao.trim().length < 5} onClick={() => confirmar(descricao.trim())}>Solicitar</Botao>
         </div>
       </div>
     </Modal>

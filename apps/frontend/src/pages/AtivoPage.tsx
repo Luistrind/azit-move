@@ -11,6 +11,13 @@ import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
 import { reaisParaCentavos, inteiroBR } from '../lib/valor';
 import { toast } from '../components/Toast';
 import { instanteBR } from '../lib/datas';
+import { Tabela } from '../components/Tabela';
+import { Chips } from '../components/Chips';
+import { Botao } from '../components/Botao';
+import { Secao } from '../components/Secao';
+
+// Layout v2 (doc 03 §11): filtro de status em Chips, estoque em Tabela
+// responsiva (celular = cartões), formulário em Secaos, botões do kit.
 
 const DOC_TIPOS: { v: string; l: string }[] = [
   { v: 'crlv', l: 'CRLV / documento' },
@@ -25,8 +32,8 @@ const STATUS_LABEL: Record<string, string> = {
 const COMBUSTIVEIS = ['flex', 'gasolina', 'eletrico', 'diesel', 'hibrido'];
 const ORIGENS = ['locadora', 'particular', 'concessionaria'];
 
-const inputCls = 'h-[34px] rounded-[8px] px-[10px] text-[12.5px]';
-const inStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' };
+const inputCls = 'h-[34px] rounded-[10px] px-[10px] text-[12.5px]';
+const inStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' };
 const Lbl = ({ children }: { children: React.ReactNode }) => (
   <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>{children}</span>
 );
@@ -174,191 +181,197 @@ export function AtivoPage() {
 
   return (
     <div className="flex flex-col gap-[16px]">
-      {/* Barra de ações */}
+      {/* Barra de controles: busca + filtro de status em chips + ação principal */}
       <div className="flex flex-wrap items-center gap-[10px]">
-        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar placa/chassi" className={`${inputCls} w-[200px]`} style={inStyle} />
-        <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className={`${inputCls} w-[160px]`} style={inStyle}>
-          <option value="">Todos os status</option>
-          {/* Regra "não clica, não exiba" (doc 03 §1): quitado/recuperado/sinistrado
-              não têm produtor hoje (grupo B da varredura) — filtro que nada retorna
-              some; voltam quando as transições existirem. */}
-          {Object.entries(STATUS_LABEL)
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar placa/chassi" aria-label="Buscar placa ou chassi" className={`${inputCls} min-w-0 flex-1 sm:max-w-[220px]`} style={inStyle} />
+        {/* Regra "não clica, não exiba" (doc 03 §1): quitado/recuperado/sinistrado
+            não têm produtor hoje (grupo B da varredura) — filtro que nada retorna
+            some; voltam quando as transições existirem. */}
+        <Chips
+          itens={Object.entries(STATUS_LABEL)
             .filter(([k]) => k !== 'recuperado') // recuperado ainda sem produtor (retomada é processo futuro)
-            .map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
+            .map(([k, v]) => ({ chave: k, rotulo: v }))}
+          valor={filtroStatus || null}
+          onChange={(k) => setFiltroStatus(k ?? '')}
+          todos="Todos"
+        />
         <div className="flex-1" />
         {podeEditar && (
-          <button onClick={novo} className="h-[34px] rounded-[8px] px-[16px] text-[12.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff' }}>
-            + Novo ativo
-          </button>
+          <Botao variante="primaria" onClick={novo}>+ Novo ativo</Botao>
         )}
       </div>
 
       {/* Formulário */}
       {aberto && podeEditar && (
         <div className="rounded-card p-[18px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <div className="mb-[12px] font-display text-[14px] font-bold">{editId ? 'Editar ativo' : 'Novo ativo'}</div>
-          <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2 lg:grid-cols-4">
-            <label className="flex flex-col gap-[4px]"><Lbl>Estrutura jurídica dona (obrigatória)</Lbl>
-              <select value={form.estruturaJuridicaId} onChange={set('estruturaJuridicaId')} className={inputCls} style={inStyle}>
-                <option value="">Selecione a estrutura…</option>
-                {estruturas.data?.filter((e) => e.ativo !== false).map((e) => (
-                  <option key={e.id} value={e.id}>{e.nome}</option>
-                ))}
-              </select>
-              <Link to="/estruturas" className="text-[10.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>Cadastrar/gerenciar estruturas →</Link>
-            </label>
-            <label className="flex flex-col gap-[4px]"><Lbl>Marca</Lbl><input value={form.marca} onChange={set('marca')} className={inputCls} style={inStyle} /></label>
-            <label className="flex flex-col gap-[4px]"><Lbl>Modelo</Lbl><input value={form.modelo} onChange={set('modelo')} className={inputCls} style={inStyle} /></label>
-            <label className="flex flex-col gap-[4px]"><Lbl>Ano fab.</Lbl><input value={form.anoFabricacao} onChange={set('anoFabricacao')} className={inputCls} style={inStyle} /></label>
-            <label className="flex flex-col gap-[4px]"><Lbl>Ano modelo</Lbl><input value={form.anoModelo} onChange={set('anoModelo')} className={inputCls} style={inStyle} /></label>
-            <label className="flex flex-col gap-[4px]"><Lbl>Cor</Lbl><input value={form.cor} onChange={set('cor')} className={inputCls} style={inStyle} /></label>
-            <label className="flex flex-col gap-[4px]"><Lbl>Placa</Lbl><input value={form.placa} onChange={set('placa')} className={inputCls} style={inStyle} /></label>
-            <label className="flex flex-col gap-[4px]"><Lbl>Tipo de bem (variante do produto)</Lbl>
-              <select value={form.varianteCatalogo} onChange={set('varianteCatalogo')} className={inputCls} style={inStyle}>
-                <option value="carro">Carro</option>
-                <option value="moto">Moto</option>
-                <option value="outro">Outro</option>
-              </select></label>
-            <label className="flex flex-col gap-[4px]"><Lbl>Chassi</Lbl><input value={form.chassi} onChange={set('chassi')} className={inputCls} style={inStyle} /></label>
-            <label className="flex flex-col gap-[4px]"><Lbl>RENAVAM</Lbl><input value={form.renavam} onChange={set('renavam')} className={inputCls} style={inStyle} /></label>
-            <label className="flex flex-col gap-[4px]"><Lbl>Combustível</Lbl>
-              <select value={form.combustivel} onChange={set('combustivel')} className={inputCls} style={inStyle}>
-                {COMBUSTIVEIS.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </label>
-            <label className="flex flex-col gap-[4px]"><Lbl>Origem</Lbl>
-              <select value={form.origem} onChange={set('origem')} className={inputCls} style={inStyle}>
-                <option value="">—</option>
-                {ORIGENS.map((o) => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </label>
-            <label className="flex flex-col gap-[4px]"><Lbl>Km entrada</Lbl><input value={form.quilometragemEntrada} onChange={set('quilometragemEntrada')} className={inputCls} style={inStyle} /></label>
-            <label className="flex flex-col gap-[4px]"><Lbl>Valor aquisição (R$)</Lbl><input value={form.valorAquisicao} onChange={set('valorAquisicao')} className={inputCls} style={inStyle} /></label>
-            <label className="flex flex-col gap-[4px]"><Lbl>Valor de venda (R$)</Lbl><input value={form.valorVenda} onChange={set('valorVenda')} className={inputCls} style={inStyle} /></label>
-            <label className="flex flex-col gap-[4px]"><Lbl>Oferta fixa (opcional)</Lbl>
-              <select value={form.ofertaFixaId} onChange={set('ofertaFixaId')} className={inputCls} style={inStyle}>
-                <option value="">Sem oferta vinculada</option>
-                {ofertasFixas.data?.filter((o) => o.ativa).map((o) => (
-                  <option key={o.id} value={o.id}>{o.nome} · {formatCurrency(o.valorParcela)}/{o.frequencia}</option>
-                ))}
-              </select>
-              <Link to="/configuracoes/simulador" className="text-[10.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>Cadastrar/gerenciar ofertas fixas →</Link>
-            </label>
-            {editId && (
-              <label className="flex flex-col gap-[4px]"><Lbl>Status</Lbl>
-                <select value={status} onChange={(e) => setStatus(e.target.value)} className={inputCls} style={inStyle}>
-                  {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          <Secao titulo={editId ? 'Editar ativo' : 'Novo ativo'}>
+            <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2 lg:grid-cols-4">
+              <label className="flex flex-col gap-[4px]"><Lbl>Estrutura jurídica dona (obrigatória)</Lbl>
+                <select value={form.estruturaJuridicaId} onChange={set('estruturaJuridicaId')} className={inputCls} style={inStyle}>
+                  <option value="">Selecione a estrutura…</option>
+                  {estruturas.data?.filter((e) => e.ativo !== false).map((e) => (
+                    <option key={e.id} value={e.id}>{e.nome}</option>
+                  ))}
+                </select>
+                <Link to="/estruturas" className="text-[10.5px] font-semibold" style={{ color: 'var(--accent)' }}>Cadastrar/gerenciar estruturas →</Link>
+              </label>
+              <label className="flex flex-col gap-[4px]"><Lbl>Marca</Lbl><input value={form.marca} onChange={set('marca')} className={inputCls} style={inStyle} /></label>
+              <label className="flex flex-col gap-[4px]"><Lbl>Modelo</Lbl><input value={form.modelo} onChange={set('modelo')} className={inputCls} style={inStyle} /></label>
+              <label className="flex flex-col gap-[4px]"><Lbl>Ano fab.</Lbl><input value={form.anoFabricacao} onChange={set('anoFabricacao')} className={inputCls} style={inStyle} /></label>
+              <label className="flex flex-col gap-[4px]"><Lbl>Ano modelo</Lbl><input value={form.anoModelo} onChange={set('anoModelo')} className={inputCls} style={inStyle} /></label>
+              <label className="flex flex-col gap-[4px]"><Lbl>Cor</Lbl><input value={form.cor} onChange={set('cor')} className={inputCls} style={inStyle} /></label>
+              <label className="flex flex-col gap-[4px]"><Lbl>Placa</Lbl><input value={form.placa} onChange={set('placa')} className={inputCls} style={inStyle} /></label>
+              <label className="flex flex-col gap-[4px]"><Lbl>Tipo de bem (variante do produto)</Lbl>
+                <select value={form.varianteCatalogo} onChange={set('varianteCatalogo')} className={inputCls} style={inStyle}>
+                  <option value="carro">Carro</option>
+                  <option value="moto">Moto</option>
+                  <option value="outro">Outro</option>
+                </select></label>
+              <label className="flex flex-col gap-[4px]"><Lbl>Chassi</Lbl><input value={form.chassi} onChange={set('chassi')} className={inputCls} style={inStyle} /></label>
+              <label className="flex flex-col gap-[4px]"><Lbl>RENAVAM</Lbl><input value={form.renavam} onChange={set('renavam')} className={inputCls} style={inStyle} /></label>
+              <label className="flex flex-col gap-[4px]"><Lbl>Combustível</Lbl>
+                <select value={form.combustivel} onChange={set('combustivel')} className={inputCls} style={inStyle}>
+                  {COMBUSTIVEIS.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </label>
-            )}
-          </div>
+              <label className="flex flex-col gap-[4px]"><Lbl>Origem</Lbl>
+                <select value={form.origem} onChange={set('origem')} className={inputCls} style={inStyle}>
+                  <option value="">—</option>
+                  {ORIGENS.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col gap-[4px]"><Lbl>Km entrada</Lbl><input value={form.quilometragemEntrada} onChange={set('quilometragemEntrada')} className={inputCls} style={inStyle} /></label>
+              <label className="flex flex-col gap-[4px]"><Lbl>Valor aquisição (R$)</Lbl><input value={form.valorAquisicao} onChange={set('valorAquisicao')} className={inputCls} style={inStyle} /></label>
+              <label className="flex flex-col gap-[4px]"><Lbl>Valor de venda (R$)</Lbl><input value={form.valorVenda} onChange={set('valorVenda')} className={inputCls} style={inStyle} /></label>
+              <label className="flex flex-col gap-[4px]"><Lbl>Oferta fixa (opcional)</Lbl>
+                <select value={form.ofertaFixaId} onChange={set('ofertaFixaId')} className={inputCls} style={inStyle}>
+                  <option value="">Sem oferta vinculada</option>
+                  {ofertasFixas.data?.filter((o) => o.ativa).map((o) => (
+                    <option key={o.id} value={o.id}>{o.nome} · {formatCurrency(o.valorParcela)}/{o.frequencia}</option>
+                  ))}
+                </select>
+                <Link to="/configuracoes/simulador" className="text-[10.5px] font-semibold" style={{ color: 'var(--accent)' }}>Cadastrar/gerenciar ofertas fixas →</Link>
+              </label>
+              {editId && (
+                <label className="flex flex-col gap-[4px]"><Lbl>Status</Lbl>
+                  <select value={status} onChange={(e) => setStatus(e.target.value)} className={inputCls} style={inStyle}>
+                    {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </label>
+              )}
+            </div>
+          </Secao>
 
           {/* Central de documentos do veículo (Doc 2 §4.4-A) — só ao editar */}
           {editId && (
             <div className="mt-[14px] border-t pt-[14px]" style={{ borderColor: 'var(--border)' }}>
-              <div className="mb-[8px] flex items-center gap-[10px]">
-                <span className="text-[12px] font-semibold" style={{ color: 'var(--text-body)' }}>Documentos do veículo</span>
-                <select value={docTipo} onChange={(e) => setDocTipo(e.target.value)} className="h-[30px] rounded-[8px] px-[8px] text-[12px]" style={inStyle}>
-                  {DOC_TIPOS.map((t) => <option key={t.v} value={t.v}>{t.l}</option>)}
-                </select>
-                <label className="h-[30px] cursor-pointer rounded-[8px] px-[12px] text-[12px] font-semibold leading-[30px]" style={{ background: 'var(--navy)', color: '#fff', opacity: docBusy ? 0.6 : 1 }}>
-                  {docBusy ? 'Anexando…' : '+ Anexar arquivo'}
-                  <input type="file" className="hidden" disabled={docBusy}
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void anexarDoc(f); e.target.value = ''; }} />
-                </label>
-              </div>
-              {documentos.data?.length === 0 ? (
-                <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum documento anexado.</div>
-              ) : (
-                <div className="flex flex-col gap-[4px]">
-                  {documentos.data?.map((d) => (
-                    <div key={d.id} className="flex items-center justify-between rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
-                      <span><b>{DOC_TIPOS.find((t) => t.v === d.tipo)?.l ?? d.tipo}</b> · {d.nome} <span style={{ color: 'var(--text-muted)' }}>· {instanteBR(d.anexadoEm)}</span></span>
-                      <span className="flex items-center gap-[10px]">
-                        <button onClick={() => ativoService.baixarDocumento(d.id, d.nome).catch((e) => toast.erro(mensagemErro(e)))} className="font-semibold" style={{ color: 'var(--text-primary)' }}>Baixar</button>
-                        <button onClick={() => removerDoc(d.id)} className="text-[13px]" style={{ color: 'var(--danger-fg)' }} title="Remover">×</button>
-                      </span>
-                    </div>
-                  ))}
+              <Secao
+                titulo="Documentos do veículo"
+                acao={
+                  <div className="flex flex-wrap items-center gap-[8px]">
+                    <select value={docTipo} onChange={(e) => setDocTipo(e.target.value)} className="h-[30px] rounded-[10px] px-[8px] text-[12px]" style={inStyle}>
+                      {DOC_TIPOS.map((t) => <option key={t.v} value={t.v}>{t.l}</option>)}
+                    </select>
+                    {/* É um <label> com o <input type=file> escondido — não cabe no Botao; mesmo desenho da primária. */}
+                    <label className="inline-flex h-[30px] cursor-pointer items-center rounded-[10px] px-[11px] text-[12px] font-semibold" style={{ background: 'var(--accent)', color: 'var(--navy)', opacity: docBusy ? 0.6 : 1 }}>
+                      {docBusy ? 'Anexando…' : '+ Anexar arquivo'}
+                      <input type="file" className="hidden" disabled={docBusy}
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) void anexarDoc(f); e.target.value = ''; }} />
+                    </label>
+                  </div>
+                }
+              >
+                {documentos.data?.length === 0 ? (
+                  <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum documento anexado.</div>
+                ) : (
+                  <div className="flex flex-col gap-[4px]">
+                    {documentos.data?.map((d) => (
+                      <div key={d.id} className="flex flex-wrap items-center justify-between gap-[6px] rounded-[10px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
+                        <span><b>{DOC_TIPOS.find((t) => t.v === d.tipo)?.l ?? d.tipo}</b> · {d.nome} <span style={{ color: 'var(--text-muted)' }}>· {instanteBR(d.anexadoEm)}</span></span>
+                        <span className="flex items-center gap-[10px]">
+                          <button type="button" onClick={() => ativoService.baixarDocumento(d.id, d.nome).catch((e) => toast.erro(mensagemErro(e)))} className="font-semibold" style={{ color: 'var(--accent)' }}>Baixar</button>
+                          <button type="button" onClick={() => removerDoc(d.id)} className="text-[13px]" style={{ color: 'var(--danger-fg)' }} title="Remover">×</button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-[6px] text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  Dica: o preenchimento automático dos campos (placa, chassi…) a partir do documento entra numa próxima etapa (leitura por OCR).
                 </div>
-              )}
-              <div className="mt-[6px] text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                Dica: o preenchimento automático dos campos (placa, chassi…) a partir do documento entra numa próxima etapa (leitura por OCR).
-              </div>
+              </Secao>
             </div>
           )}
 
-          <div className="mt-[14px] flex gap-[8px]">
-            <button onClick={salvar} disabled={ocupado} className="h-[34px] rounded-[8px] px-[16px] text-[12.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>
+          <div className="mt-[14px] flex flex-wrap gap-[8px]">
+            <Botao variante="primaria" onClick={salvar} carregando={ocupado}>
               {editId ? 'Salvar' : 'Cadastrar'}
-            </button>
-            <button onClick={() => setAberto(false)} className="h-[34px] rounded-[8px] px-[12px] text-[12px]" style={{ color: 'var(--text-muted)' }}>Cancelar</button>
+            </Botao>
+            <Botao variante="fantasma" onClick={() => setAberto(false)}>Cancelar</Botao>
           </div>
         </div>
       )}
 
-      {/* Estoque */}
-      <div className="rounded-card overflow-x-auto" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
-          <thead>
-            <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Ativo</th>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Placa</th>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Estrutura jurídica</th>
-              <th className="px-[18px] py-[12px] text-right font-semibold">Valor de venda</th>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Status</th>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Cliente</th>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Observação</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ativos.data?.data.length === 0 && (
-              <tr><td colSpan={7} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>Nenhum ativo.</td></tr>
-            )}
-            {ativos.data?.data.map((a) => (
-              <tr key={a.id} className={podeEditar ? 'cursor-pointer hover:bg-[var(--surface-input)]' : ''}
-                onClick={() => podeEditar && editar(a.id)} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                <td className="px-[18px] py-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{a.descricao}</td>
-                <td className="px-[18px] py-[12px]" style={{ color: 'var(--text-body)' }}>{a.placa ?? '—'}</td>
-                <td className="px-[18px] py-[12px]" style={{ color: 'var(--text-body)' }}>
-                  {a.estruturaJuridica?.nome ?? (
-                    <span className="rounded-full px-[8px] py-[2px] text-[11px] font-bold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
-                      Sem estrutura — vincular
-                    </span>
-                  )}
-                </td>
-                <td className="px-[18px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>{a.valorVenda ? formatCurrency(a.valorVenda) : '—'}</td>
-                <td className="px-[18px] py-[12px]"><StatusBadge label={STATUS_LABEL[a.status] ?? a.status} colors={ATIVO_STATUS_COLORS} /></td>
-                <td className="px-[18px] py-[12px]" style={{ color: 'var(--text-body)' }}>
-                  {a.cliente ? (
-                    <Link to={`/contratos/${a.cliente.contratoId}`} onClick={(e) => e.stopPropagation()} className="hover:underline" style={{ color: 'var(--text-primary)' }}>
-                      {a.cliente.nome}
-                      <span className="block text-[11px]" style={{ color: 'var(--text-muted)' }}>{a.cliente.contratoNumero}</span>
-                    </Link>
-                  ) : '—'}
-                </td>
-                {/* Observação livre da operação — editada aqui mesmo (doc 02 §25.1). */}
-                <td className="px-[18px] py-[8px]" onClick={(e) => e.stopPropagation()}>
-                  {podeEditar ? (
-                    <input
-                      defaultValue={a.observacao ?? ''}
-                      placeholder="—"
-                      title="Anotação livre: na oficina, aguardando documento…"
-                      onBlur={(e) => void salvarObservacao(a.id, e.target.value, a.observacao)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                      className="w-full min-w-[160px] rounded-[7px] px-[8px] py-[5px] text-[12px]"
-                      style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
-                    />
-                  ) : (
-                    <span style={{ color: 'var(--text-body)' }}>{a.observacao ?? '—'}</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* Estoque. A observação é um <input> editado na própria linha; para ele
+          funcionar também no cartão de celular, a linha não é clicável — o
+          "Editar" vive nas ações da linha. */}
+      <Tabela
+        colunas={[
+          { chave: 'ativo', titulo: 'Ativo', celular: 'titulo', render: (a) => a.descricao },
+          { chave: 'placa', titulo: 'Placa', celular: 'subtitulo', classe: 'tabular-nums', render: (a) => a.placa ?? '—' },
+          {
+            chave: 'estrutura',
+            titulo: 'Estrutura jurídica',
+            celular: 'campo',
+            render: (a) =>
+              a.estruturaJuridica?.nome ?? (
+                <span className="rounded-full px-[8px] py-[2px] text-[11px] font-bold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
+                  Sem estrutura — vincular
+                </span>
+              ),
+          },
+          { chave: 'venda', titulo: 'Valor de venda', alinhar: 'right', celular: 'destaque', classe: 'tabular-nums', render: (a) => (a.valorVenda ? formatCurrency(a.valorVenda) : '—') },
+          { chave: 'status', titulo: 'Status', celular: 'campo', render: (a) => <StatusBadge label={STATUS_LABEL[a.status] ?? a.status} colors={ATIVO_STATUS_COLORS} /> },
+          {
+            chave: 'cliente',
+            titulo: 'Cliente',
+            celular: 'campo',
+            render: (a) =>
+              a.cliente ? (
+                <Link to={`/contratos/${a.cliente.contratoId}`} onClick={(e) => e.stopPropagation()} className="hover:underline" style={{ color: 'var(--text-primary)' }}>
+                  {a.cliente.nome}
+                  <span className="block text-[11px]" style={{ color: 'var(--text-muted)' }}>{a.cliente.contratoNumero}</span>
+                </Link>
+              ) : '—',
+          },
+          {
+            chave: 'observacao',
+            titulo: 'Observação',
+            celular: 'campo',
+            // Observação livre da operação — editada aqui mesmo (doc 02 §25.1).
+            render: (a) =>
+              podeEditar ? (
+                <input
+                  defaultValue={a.observacao ?? ''}
+                  placeholder="—"
+                  title="Anotação livre: na oficina, aguardando documento…"
+                  onBlur={(e) => void salvarObservacao(a.id, e.target.value, a.observacao)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                  className="w-full min-w-[140px] rounded-[10px] px-[8px] py-[5px] text-[12px]"
+                  style={inStyle}
+                />
+              ) : (
+                <span style={{ color: 'var(--text-body)' }}>{a.observacao ?? '—'}</span>
+              ),
+          },
+        ]}
+        linhas={ativos.data?.data ?? []}
+        chave={(a) => a.id}
+        carregando={ativos.isLoading}
+        larguraMinima={960}
+        vazio="Nenhum ativo."
+        acoes={podeEditar ? (a) => <Botao variante="secundaria" tamanho="sm" onClick={() => editar(a.id)} disabled={ocupado}>Editar</Botao> : undefined}
+      />
     </div>
   );
 }

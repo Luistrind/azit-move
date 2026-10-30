@@ -8,27 +8,34 @@ import {
   formatarParametro,
   NOME_CICLO,
   PARAMETROS_CONHECIDOS,
+  type ProdutoCatalogoResumo,
+  type ProdutoCatalogoDetalhe,
 } from '../services/catalogo.service';
 import { capitalService } from '../services/capital.service';
 import { usePodeRole, mensagemErro } from '../lib/permissoes';
 import { Modal } from '../components/Modal';
 import { toast } from '../components/Toast';
+import { Tabela, type Coluna } from '../components/Tabela';
+import { Botao } from '../components/Botao';
+import { Bloco } from '../components/Bloco';
+import { Chips } from '../components/Chips';
+import { Secao } from '../components/Secao';
 import { CATALOGO_CICLO_COLORS } from '../config/statusColors';
 import { instanteBR } from '../lib/datas';
 
 // Catálogo de Produtos F1 (doc 02 §17): Produto → Variante → Versão, com herança
 // visível (herdado × sobrescrito), ciclo de vida e histórico de versões.
 // Produtos nascem em Rascunho — o simulador só consome o catálogo na F2.
+// Layout v2 (doc 03 §11): produtos em <Tabela> (clicar abre), detalhe do produto
+// aberto em um <Bloco> abaixo da grade, abas em <Chips>, parâmetros em <Tabela>.
 
-const cardStyle = { background: 'var(--surface)', border: '1px solid var(--border)' } as const;
-const btn = 'rounded-[8px] px-[12px] py-[7px] text-[12px] font-bold';
-const btnP = `${btn} bg-[var(--navy)] text-white disabled:opacity-40`;
-const btnS = `${btn} border border-[var(--border)]`;
+const inputCls = 'w-full rounded-[10px] px-[10px] py-[7px] text-[13px]';
+const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' } as const;
 
 function ChipCiclo({ status }: { status: string }) {
   const c = CATALOGO_CICLO_COLORS[status] ?? CATALOGO_CICLO_COLORS.RASCUNHO;
   return (
-    <span className="rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: c.bg, color: c.fg }}>
+    <span className="whitespace-nowrap rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: c.bg, color: c.fg }}>
       {NOME_CICLO[status] ?? status}
     </span>
   );
@@ -40,73 +47,96 @@ export function CatalogoPage() {
   const estruturas = useQuery({ queryKey: ['estruturas'], queryFn: () => capitalService.estruturas() });
   const [abertoId, setAbertoId] = useState<string | null>(null);
 
-  return (
-    <div className="flex flex-col gap-[16px] p-[24px]">
-      <div>
-        <h1 className="font-display text-[20px] font-bold">Catálogo de produtos</h1>
-        <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
-          Produto → Variante → Versão. Mudança de parâmetro cria versão nova (contratos ficam presos à
-          versão contratada); só produto <b>Ativo</b> aparece para simulação e venda — o Catálogo é a
-          fonte única de precificação do simulador, da proteção veicular e do crédito avulso.
-        </p>
-      </div>
+  const lista = produtos.data ?? [];
+  const aberto = lista.find((p) => p.id === abertoId) ?? null;
+  // Os controles da linha (select/checkbox) não podem disparar o clique da linha.
+  const parar = (e: React.SyntheticEvent) => e.stopPropagation();
 
-      {produtos.isLoading ? (
-        <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
-      ) : (
-        (produtos.data ?? []).map((p) => (
-          <div key={p.id} className="flex flex-col gap-[10px] rounded-[14px] p-[16px]" style={cardStyle}>
-            <div className="flex flex-wrap items-center justify-between gap-[8px]">
-              <div>
-                <div className="flex items-center gap-[8px]">
-                  <span className="font-display text-[15px] font-bold">{p.nome}</span>
-                  <ChipCiclo status={p.status} />
-                  {p.contratacaoAvulsa && (
-                    <span className="rounded-full px-[8px] py-[2px] text-[10.5px] font-bold" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}
-                      title='Aparece em "+ Contratar crédito" para cliente ativo (doc 02 §17)'>
-                      Contratação avulsa
-                    </span>
-                  )}
-                </div>
-                <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                  {p.classificacao ? `${p.classificacao} · ` : ''}{p.finalidade ?? ''}
-                  {p.variantes.length > 0 && ` · Variantes: ${p.variantes.map((v) => v.nome).join(', ')}`}
-                  {` · ${p.totalVersoes} ${p.totalVersoes === 1 ? 'versão' : 'versões'}`}
-                </div>
-              </div>
-              <div className="flex items-center gap-[8px]">
-                <label className="flex items-center gap-[5px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}
-                  title="Estrutura jurídica DONA do produto (doc 02 §19) — base do capital e do split. Vazio = herda a estrutura do veículo (Compra Parcelada).">
-                  Estrutura dona
-                  <select
-                    value={p.estruturaJuridica?.id ?? ''}
-                    onChange={(e) => { void catalogoService.atualizarCadastral(p.id, { estruturaJuridicaId: e.target.value || null }).then(() => produtos.refetch()).catch((err) => { toast.erro(mensagemErro(err)); void produtos.refetch(); }); }}
-                    className="h-[28px] rounded-[7px] px-[6px] text-[11.5px]"
-                    style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
-                  >
-                    <option value="">herda do veículo</option>
-                    {(estruturas.data ?? []).map((e) => (
-                      <option key={e.id} value={e.id}>{e.nome}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex items-center gap-[5px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}
-                  title="Produto contratável avulso por cliente já ativo — alimenta o modal + Novo produto">
-                  <input
-                    type="checkbox"
-                    checked={p.contratacaoAvulsa}
-                    onChange={(e) => { void catalogoService.atualizarCadastral(p.id, { contratacaoAvulsa: e.target.checked }).then(() => produtos.refetch()).catch((err) => { toast.erro(mensagemErro(err)); void produtos.refetch(); }); }}
-                  />
-                  Contratação avulsa
-                </label>
-                <button className={btnP} onClick={() => setAbertoId(abertoId === p.id ? null : p.id)}>
-                  {abertoId === p.id ? 'Fechar' : 'Abrir produto'}
-                </button>
-              </div>
-            </div>
-            {abertoId === p.id && <DetalheProduto id={p.id} />}
-          </div>
-        ))
+  const colunas: Coluna<ProdutoCatalogoResumo>[] = [
+    {
+      chave: 'nome',
+      titulo: 'Produto',
+      celular: 'titulo',
+      render: (p) => (
+        <span className="inline-flex flex-wrap items-center gap-[6px]">
+          {p.nome}
+          <ChipCiclo status={p.status} />
+          {p.contratacaoAvulsa && (
+            <span className="rounded-full px-[8px] py-[2px] text-[10.5px] font-bold" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}
+              title='Aparece em "+ Contratar crédito" para cliente ativo (doc 02 §17)'>
+              Contratação avulsa
+            </span>
+          )}
+        </span>
+      ),
+    },
+    { chave: 'finalidade', titulo: 'Classificação · finalidade', celular: 'subtitulo', render: (p) => [p.classificacao, p.finalidade].filter(Boolean).join(' · ') || '—' },
+    { chave: 'variantes', titulo: 'Variantes', celular: 'campo', render: (p) => (p.variantes.length ? p.variantes.map((v) => v.nome).join(', ') : '—') },
+    { chave: 'versoes', titulo: 'Versões', alinhar: 'center', classe: 'tabular-nums', celular: 'campo', render: (p) => p.totalVersoes },
+    {
+      chave: 'estrutura',
+      titulo: 'Estrutura dona',
+      celular: 'campo',
+      render: (p) => (
+        <select
+          value={p.estruturaJuridica?.id ?? ''}
+          onClick={parar}
+          onChange={(e) => { void catalogoService.atualizarCadastral(p.id, { estruturaJuridicaId: e.target.value || null }).then(() => produtos.refetch()).catch((err) => { toast.erro(mensagemErro(err)); void produtos.refetch(); }); }}
+          className="h-[30px] max-w-full rounded-[8px] px-[6px] text-[11.5px]"
+          style={inputStyle}
+          title="Estrutura jurídica DONA do produto (doc 02 §19) — base do capital e do split. Vazio = herda a estrutura do veículo (Compra Parcelada)."
+        >
+          <option value="">herda do veículo</option>
+          {(estruturas.data ?? []).map((e) => (
+            <option key={e.id} value={e.id}>{e.nome}</option>
+          ))}
+        </select>
+      ),
+    },
+    {
+      chave: 'avulsa',
+      titulo: 'Contratação avulsa',
+      alinhar: 'center',
+      celular: 'campo',
+      render: (p) => (
+        <input
+          type="checkbox"
+          checked={p.contratacaoAvulsa}
+          onClick={parar}
+          onChange={(e) => { void catalogoService.atualizarCadastral(p.id, { contratacaoAvulsa: e.target.checked }).then(() => produtos.refetch()).catch((err) => { toast.erro(mensagemErro(err)); void produtos.refetch(); }); }}
+          title="Produto contratável avulso por cliente já ativo — alimenta o modal + Novo produto"
+        />
+      ),
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-[14px]">
+      <p className="m-0 max-w-[760px] text-[13px]" style={{ color: 'var(--text-muted)' }}>
+        Produto → Variante → Versão. Mudança de parâmetro cria versão nova (contratos ficam presos à
+        versão contratada); só produto <b>Ativo</b> aparece para simulação e venda — o Catálogo é a
+        fonte única de precificação do simulador, da proteção veicular e do crédito avulso.
+      </p>
+
+      <Tabela
+        colunas={colunas}
+        linhas={lista}
+        chave={(p) => p.id}
+        carregando={produtos.isLoading}
+        vazio="Nenhum produto no catálogo."
+        larguraMinima={860}
+        onClick={(p) => setAbertoId(abertoId === p.id ? null : p.id)}
+        acoes={(p) => (
+          <Botao tamanho="sm" variante={abertoId === p.id ? 'secundaria' : 'primaria'} onClick={() => setAbertoId(abertoId === p.id ? null : p.id)}>
+            {abertoId === p.id ? 'Fechar' : 'Abrir produto'}
+          </Botao>
+        )}
+      />
+
+      {aberto && (
+        <Bloco titulo={aberto.nome} tag={<ChipCiclo status={aberto.status} />} id={`produto-${aberto.id}`}>
+          <DetalheProduto id={aberto.id} />
+        </Bloco>
       )}
     </div>
   );
@@ -133,6 +163,8 @@ function comParamsPV(chaveProduto: string, p: Parametros): Parametros {
   if (chaveProduto !== 'protecao_veicular') return p;
   return { taxaDescontoProtecaoAntecipacao: 0, ...p };
 }
+
+type Versao = ProdutoCatalogoDetalhe['versoes'][number];
 
 function DetalheProduto({ id }: { id: string }) {
   const qc = useQueryClient();
@@ -161,51 +193,44 @@ function DetalheProduto({ id }: { id: string }) {
 
   const varianteAtiva = d.variantes.find((v) => v.id === aba) ?? null;
 
+  const colunasVersao: Coluna<Versao>[] = [
+    { chave: 'numero', titulo: 'Versão', celular: 'titulo', render: (v) => `V${v.numero}` },
+    { chave: 'nivel', titulo: 'Nível', celular: 'subtitulo', render: (v) => v.nivel },
+    { chave: 'vigencia', titulo: 'Vigência', celular: 'campo', render: (v) => `${instanteBR(v.vigenteDesde)}${v.vigenteAte ? ` até ${instanteBR(v.vigenteAte)}` : ' (vigente)'}` },
+    { chave: 'obs', titulo: 'Observação', celular: 'campo', render: (v) => v.observacao || '—' },
+  ];
+
   return (
-    <div className="flex flex-col gap-[12px] rounded-[12px] p-[14px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+    <div className="flex flex-col gap-[12px]">
       {/* Ciclo de vida */}
       {podeEditar && (
-        <div className="flex flex-wrap items-center gap-[8px] text-[12px]">
-          <span style={{ color: 'var(--text-muted)' }}>Ciclo de vida:</span>
-          {d.status === 'RASCUNHO' && <button className={btnS} disabled={ocupado} onClick={() => mudarStatus('ATIVO')}>Ativar produto</button>}
-          {d.status === 'ATIVO' && <button className={btnS} disabled={ocupado} onClick={() => mudarStatus('SUSPENSO')}>Suspender vendas</button>}
-          {d.status === 'SUSPENSO' && <button className={btnS} disabled={ocupado} onClick={() => mudarStatus('ATIVO')}>Reativar</button>}
-          {['ATIVO', 'SUSPENSO'].includes(d.status) && <button className={btnS} disabled={ocupado} onClick={() => mudarStatus('ENCERRADO')}>Encerrar produto</button>}
-          {d.status === 'RASCUNHO' && <span style={{ color: 'var(--text-muted)' }}>— em rascunho não aparece para simulação nem venda.</span>}
-        </div>
+        <Secao titulo="Ciclo de vida" tag={d.status === 'RASCUNHO' ? 'em rascunho não aparece para simulação nem venda' : undefined}>
+          <div className="flex flex-wrap items-center gap-[6px]">
+            {d.status === 'RASCUNHO' && <Botao tamanho="sm" variante="primaria" disabled={ocupado} onClick={() => mudarStatus('ATIVO')}>Ativar produto</Botao>}
+            {d.status === 'ATIVO' && <Botao tamanho="sm" disabled={ocupado} onClick={() => mudarStatus('SUSPENSO')}>Suspender vendas</Botao>}
+            {d.status === 'SUSPENSO' && <Botao tamanho="sm" variante="primaria" disabled={ocupado} onClick={() => mudarStatus('ATIVO')}>Reativar</Botao>}
+            {['ATIVO', 'SUSPENSO'].includes(d.status) && <Botao tamanho="sm" variante="perigo" disabled={ocupado} onClick={() => mudarStatus('ENCERRADO')}>Encerrar produto</Botao>}
+          </div>
+        </Secao>
       )}
 
       {/* Abas: parâmetros do produto / por variante / histórico */}
-      <div className="flex flex-wrap gap-[6px]">
-        <button
-          className="h-[30px] rounded-[8px] px-[12px] text-[12px] font-semibold"
-          style={aba === 'produto' ? { background: 'var(--navy)', color: '#fff' } : { background: 'var(--surface)', border: '1px solid var(--border)' }}
-          onClick={() => setAba('produto')}
-        >
-          Parâmetros do produto
-        </button>
-        {d.variantes.map((v) => (
-          <button
-            key={v.id}
-            className="h-[30px] rounded-[8px] px-[12px] text-[12px] font-semibold"
-            style={aba === v.id ? { background: 'var(--navy)', color: '#fff' } : { background: 'var(--surface)', border: '1px solid var(--border)' }}
-            onClick={() => setAba(v.id)}
-          >
-            {v.nome}
-          </button>
-        ))}
-        <button
-          className="h-[30px] rounded-[8px] px-[12px] text-[12px] font-semibold"
-          style={aba === 'historico' ? { background: 'var(--navy)', color: '#fff' } : { background: 'var(--surface)', border: '1px solid var(--border)' }}
-          onClick={() => setAba('historico')}
-        >
-          Histórico de versões
-        </button>
-      </div>
+      <Chips
+        todos={null}
+        tamanho="sm"
+        valor={aba}
+        onChange={(k) => { if (k) setAba(k); }}
+        itens={[
+          { chave: 'produto', rotulo: 'Parâmetros do produto' },
+          ...d.variantes.map((v) => ({ chave: v.id, rotulo: v.nome })),
+          { chave: 'historico', rotulo: 'Histórico de versões', contagem: d.versoes.length },
+        ]}
+      />
 
       {aba === 'produto' && (
         <TabelaParametros
-          titulo={`Nível produto — ${d.versaoProduto ? `V${d.versaoProduto}` : 'sem versão'} (vale para todas as variantes)`}
+          titulo={`Nível produto — ${d.versaoProduto ? `V${d.versaoProduto}` : 'sem versão'}`}
+          nota="vale para todas as variantes"
           parametros={semParamsRemovidos(d.chave, d.parametrosProduto)}
           origem={() => 'produto'}
           podeEditar={podeEditar}
@@ -215,7 +240,8 @@ function DetalheProduto({ id }: { id: string }) {
 
       {varianteAtiva && (
         <TabelaParametros
-          titulo={`Variante ${varianteAtiva.nome} — ${varianteAtiva.versao ? `V${varianteAtiva.versao}` : 'sem versão'} (efetivo = produto + sobrescritas da variante)`}
+          titulo={`Variante ${varianteAtiva.nome} — ${varianteAtiva.versao ? `V${varianteAtiva.versao}` : 'sem versão'}`}
+          nota="efetivo = produto + sobrescritas da variante"
           parametros={semParamsRemovidos(d.chave, varianteAtiva.parametrosEfetivos)}
           origem={(chave) => (chave in varianteAtiva.parametros ? 'variante' : 'produto')}
           podeEditar={podeEditar}
@@ -224,15 +250,7 @@ function DetalheProduto({ id }: { id: string }) {
       )}
 
       {aba === 'historico' && (
-        <div className="flex flex-col gap-[6px]">
-          {d.versoes.map((v) => (
-            <div key={v.id} className="rounded-[10px] p-[10px] text-[12px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-              <b>V{v.numero}</b> · nível {v.nivel} · vigente desde {instanteBR(v.vigenteDesde)}
-              {v.vigenteAte ? ` até ${instanteBR(v.vigenteAte)}` : ' (vigente)'}
-              {v.observacao && <div style={{ color: 'var(--text-muted)' }}>{v.observacao}</div>}
-            </div>
-          ))}
-        </div>
+        <Tabela colunas={colunasVersao} linhas={d.versoes} chave={(v) => v.id} vazio="Nenhuma versão ainda." larguraMinima={560} />
       )}
 
       {editando && (
@@ -257,58 +275,41 @@ function DetalheProduto({ id }: { id: string }) {
 
 function TabelaParametros({
   titulo,
+  nota,
   parametros,
   origem,
   podeEditar,
   onNovaVersao,
 }: {
   titulo: string;
+  nota?: string;
   parametros: Parametros;
   origem: (chave: string) => 'produto' | 'variante';
   podeEditar: boolean;
   onNovaVersao: () => void;
 }) {
   const chaves = Object.keys(parametros);
+  const colunas: Coluna<string>[] = [
+    { chave: 'parametro', titulo: 'Parâmetro', celular: 'titulo', render: (chave) => nomeParametro(chave) },
+    { chave: 'valor', titulo: 'Valor', celular: 'destaque', classe: 'font-semibold', render: (chave) => formatarParametro(chave, parametros[chave]) },
+    {
+      chave: 'origem',
+      titulo: 'Origem',
+      celular: 'campo',
+      render: (chave) => (
+        <span
+          className="whitespace-nowrap rounded-full px-[8px] py-[1px] text-[10.5px] font-bold"
+          style={origem(chave) === 'variante' ? { background: 'var(--info-bg)', color: 'var(--info-fg)' } : { background: 'var(--surface-muted)', color: 'var(--text-body)' }}
+        >
+          {origem(chave) === 'variante' ? 'Sobrescrito na variante' : 'Herdado do produto'}
+        </span>
+      ),
+    },
+  ];
   return (
-    <div className="flex flex-col gap-[8px]">
-      <div className="flex flex-wrap items-center justify-between gap-[8px]">
-        <div className="text-[12.5px] font-bold">{titulo}</div>
-        {podeEditar && (
-          <button className={btnP} onClick={onNovaVersao}>Alterar parâmetros (nova versão)</button>
-        )}
-      </div>
-      {chaves.length === 0 ? (
-        <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum parâmetro neste nível ainda.</div>
-      ) : (
-        <div className="overflow-x-auto rounded-[10px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <table className="w-full min-w-[560px] border-collapse text-[12.5px]">
-            <thead>
-              <tr className="text-left" style={{ color: 'var(--text-muted)' }}>
-                <th className="px-[12px] py-[8px] font-semibold">Parâmetro</th>
-                <th className="px-[12px] py-[8px] font-semibold">Valor</th>
-                <th className="px-[12px] py-[8px] font-semibold">Origem</th>
-              </tr>
-            </thead>
-            <tbody>
-              {chaves.map((chave) => (
-                <tr key={chave} style={{ borderTop: '1px solid var(--border-light)' }}>
-                  <td className="px-[12px] py-[7px]">{nomeParametro(chave)}</td>
-                  <td className="px-[12px] py-[7px] font-semibold">{formatarParametro(chave, parametros[chave])}</td>
-                  <td className="px-[12px] py-[7px]">
-                    <span
-                      className="rounded-full px-[8px] py-[1px] text-[10.5px] font-bold"
-                      style={origem(chave) === 'variante' ? { background: 'var(--info-bg)', color: 'var(--info-fg)' } : { background: 'var(--surface-muted)', color: 'var(--text-body)' }}
-                    >
-                      {origem(chave) === 'variante' ? 'Sobrescrito na variante' : 'Herdado do produto'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    <Secao titulo={titulo} tag={nota} acao={podeEditar ? <Botao tamanho="sm" variante="primaria" onClick={onNovaVersao}>Alterar parâmetros (nova versão)</Botao> : undefined}>
+      <Tabela colunas={colunas} linhas={chaves} chave={(c) => c} vazio="Nenhum parâmetro neste nível ainda." larguraMinima={520} />
+    </Secao>
   );
 }
 
@@ -352,30 +353,34 @@ function EditorVersao({
           Isso vai criar uma <b>versão nova</b> e encerrar a vigente. Contratos existentes continuam na
           versão com que foram contratados.
         </div>
-        {Object.keys(valores).map((chave) => (
-          <label key={chave} className="flex flex-col gap-[3px] text-[11.5px] font-semibold">
-            {nomeParametro(chave)} {sufixo(chave)}
-            <input
-              className="w-full rounded-[8px] border border-[var(--border)] bg-[var(--surface)] px-[10px] py-[7px] text-[13px]"
-              value={valores[chave]}
-              onChange={(e) => setValores({ ...valores, [chave]: e.target.value })}
-            />
-          </label>
-        ))}
-        <label className="flex flex-col gap-[3px] text-[11.5px] font-semibold">
+        <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-2">
+          {Object.keys(valores).map((chave) => (
+            <label key={chave} className="flex flex-col gap-[3px] text-[11.5px] font-semibold" style={{ color: 'var(--text-label)' }}>
+              {nomeParametro(chave)} {sufixo(chave)}
+              <input
+                className={inputCls}
+                style={inputStyle}
+                value={valores[chave]}
+                onChange={(e) => setValores({ ...valores, [chave]: e.target.value })}
+              />
+            </label>
+          ))}
+        </div>
+        <label className="flex flex-col gap-[3px] text-[11.5px] font-semibold" style={{ color: 'var(--text-label)' }}>
           Motivo da alteração
           <textarea
-            className="w-full rounded-[8px] border border-[var(--border)] bg-[var(--surface)] px-[10px] py-[7px] text-[13px]"
+            className={inputCls}
+            style={inputStyle}
             rows={2}
             value={observacao}
             onChange={(e) => setObservacao(e.target.value)}
             placeholder="ex.: reajuste da comissão recorrente aprovado na diretoria de agosto"
           />
         </label>
-        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>}
-        <div className="flex justify-end gap-[8px]">
-          <button className={btnS} onClick={fechar}>Cancelar</button>
-          <button className={btnP} onClick={salvar}>Criar nova versão</button>
+        {erro && <div className="rounded-[10px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>}
+        <div className="flex flex-wrap justify-end gap-[8px]">
+          <Botao onClick={fechar}>Cancelar</Botao>
+          <Botao variante="primaria" onClick={salvar}>Criar nova versão</Botao>
         </div>
       </div>
     </Modal>

@@ -1,12 +1,18 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '@azit/utils';
-import { produtoService, ProdutoBody } from '../services/produto.service';
+import { produtoService, ProdutoBody, type Produto } from '../services/produto.service';
 import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
 import { reaisParaCentavos } from '../lib/valor';
+import { Tabela, type Coluna } from '../components/Tabela';
+import { Botao } from '../components/Botao';
+import { Bloco } from '../components/Bloco';
 
-const inputCls = 'h-[34px] rounded-[8px] px-[10px] text-[12.5px]';
-const inStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' };
+// Itens avulsos de contrato (proteção, rastreador, taxas). Layout v2 (doc 03
+// §11): grade em <Tabela>, formulário em <Bloco>, botões do kit.
+
+const inputCls = 'h-[34px] w-full rounded-[10px] px-[10px] text-[12.5px]';
+const inStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' };
 const Lbl = ({ children }: { children: React.ReactNode }) => (
   <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>{children}</span>
 );
@@ -48,7 +54,7 @@ export function ProdutosPage() {
     } catch (e) { alert(mensagemErro(e)); } finally { setOcupado(false); }
   }
 
-  function editar(p: NonNullable<typeof produtos.data>[number]) {
+  function editar(p: Produto) {
     setEditId(p.id);
     setForm({
       nome: p.nome, natureza: p.natureza, credorPadrao: p.credorPadrao,
@@ -58,23 +64,28 @@ export function ProdutosPage() {
     setAberto(true);
   }
 
+  const colunas: Coluna<Produto>[] = [
+    { chave: 'nome', titulo: 'Produto', celular: 'titulo', render: (p) => p.nome },
+    { chave: 'tipo', titulo: 'Tipo', celular: 'subtitulo', render: (p) => (p.ancora ? 'Âncora' : p.apartado ? 'Apartado' : 'Cesta') },
+    { chave: 'natureza', titulo: 'Natureza', celular: 'campo', render: (p) => `${NAT[p.natureza]}${p.periodicidade ? ` · ${p.periodicidade}` : ''}` },
+    { chave: 'credor', titulo: 'Credor', celular: 'campo', render: (p) => CRED[p.credorPadrao] },
+    { chave: 'valor', titulo: 'Valor padrão', alinhar: 'right', classe: 'tabular-nums', celular: 'destaque', render: (p) => (p.valorPadrao != null ? formatCurrency(p.valorPadrao) : '—') },
+  ];
+
   return (
-    <div className="flex flex-col gap-[16px]">
-      <div className="flex items-center justify-between">
-        <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
+    <div className="flex flex-col gap-[14px]">
+      <div className="flex flex-wrap items-center justify-between gap-[10px]">
+        <p className="m-0 max-w-[720px] text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
           <b>Itens avulsos de contrato</b> (proteção, rastreador, taxas) — entram no carrinho da proposta; seguro é <b>apartado</b> (contrato próprio).
           Produto comercial (venda, Reembolso Parcelado, proteção veicular) é gerido no <b>Catálogo de produtos</b>.
-        </div>
-        {podeEditar && (
-          <button onClick={novo} className="h-[34px] rounded-[8px] px-[16px] text-[12.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff' }}>+ Novo item</button>
-        )}
+        </p>
+        {podeEditar && <Botao variante="primaria" onClick={novo}>+ Novo item</Botao>}
       </div>
 
       {aberto && podeEditar && (
-        <div className="rounded-card p-[18px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <div className="mb-[12px] font-display text-[14px] font-bold">{editId ? 'Editar produto' : 'Novo produto'}</div>
+        <Bloco titulo={editId ? 'Editar produto' : 'Novo produto'}>
           <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2 lg:grid-cols-4">
-            <label className="flex flex-col gap-[4px] col-span-2"><Lbl>Nome</Lbl>
+            <label className="flex flex-col gap-[4px] sm:col-span-2"><Lbl>Nome</Lbl>
               <input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} className={inputCls} style={inStyle} /></label>
             <label className="flex flex-col gap-[4px]"><Lbl>Natureza</Lbl>
               <select value={form.natureza} onChange={(e) => setForm({ ...form, natureza: e.target.value })} className={inputCls} style={inStyle}>
@@ -92,45 +103,28 @@ export function ProdutosPage() {
                   <option value="semanal">Semanal</option><option value="quinzenal">Quinzenal</option><option value="mensal">Mensal</option>
                 </select></label>
             )}
-            <label className="flex items-center gap-[6px] pt-[18px] text-[12px]" style={{ color: 'var(--text-body)' }}>
+            <label className="flex min-h-[34px] items-center gap-[6px] self-end text-[12px]" style={{ color: 'var(--text-body)' }}>
               <input type="checkbox" checked={form.apartado} onChange={(e) => setForm({ ...form, apartado: e.target.checked })} /> Apartado (contrato próprio)
             </label>
-            <label className="flex items-center gap-[6px] pt-[18px] text-[12px]" style={{ color: 'var(--text-body)' }}>
+            <label className="flex min-h-[34px] items-center gap-[6px] self-end text-[12px]" style={{ color: 'var(--text-body)' }}>
               <input type="checkbox" checked={form.ancora} onChange={(e) => setForm({ ...form, ancora: e.target.checked })} /> Âncora do contrato
             </label>
           </div>
-          <div className="mt-[14px] flex gap-[8px]">
-            <button onClick={salvar} disabled={ocupado || !form.nome.trim()} className="h-[34px] rounded-[8px] px-[16px] text-[12.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>{editId ? 'Salvar' : 'Cadastrar'}</button>
-            <button onClick={() => setAberto(false)} className="h-[34px] rounded-[8px] px-[12px] text-[12px]" style={{ color: 'var(--text-muted)' }}>Cancelar</button>
+          <div className="flex flex-wrap gap-[8px]">
+            <Botao variante="primaria" onClick={salvar} carregando={ocupado} disabled={!form.nome.trim()}>{editId ? 'Salvar' : 'Cadastrar'}</Botao>
+            <Botao variante="fantasma" onClick={() => setAberto(false)}>Cancelar</Botao>
           </div>
-        </div>
+        </Bloco>
       )}
 
-      <div className="rounded-card overflow-x-auto" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
-          <thead>
-            <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Produto</th>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Natureza</th>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Credor</th>
-              <th className="px-[18px] py-[12px] text-right font-semibold">Valor padrão</th>
-              <th className="px-[18px] py-[12px] text-left font-semibold">Tipo</th>
-            </tr>
-          </thead>
-          <tbody>
-            {produtos.data?.length === 0 && <tr><td colSpan={5} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>Nenhum produto.</td></tr>}
-            {produtos.data?.map((p) => (
-              <tr key={p.id} className={podeEditar ? 'cursor-pointer hover:bg-[var(--surface-input)]' : ''} onClick={() => podeEditar && editar(p)} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                <td className="px-[18px] py-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{p.nome}</td>
-                <td className="px-[18px] py-[12px]" style={{ color: 'var(--text-body)' }}>{NAT[p.natureza]}{p.periodicidade ? ` · ${p.periodicidade}` : ''}</td>
-                <td className="px-[18px] py-[12px]" style={{ color: 'var(--text-body)' }}>{CRED[p.credorPadrao]}</td>
-                <td className="px-[18px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>{p.valorPadrao != null ? formatCurrency(p.valorPadrao) : '—'}</td>
-                <td className="px-[18px] py-[12px] text-[11px]" style={{ color: 'var(--text-muted)' }}>{p.ancora ? 'Âncora' : p.apartado ? 'Apartado' : 'Cesta'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Tabela
+        colunas={colunas}
+        linhas={produtos.data ?? []}
+        chave={(p) => p.id}
+        carregando={produtos.isLoading}
+        vazio="Nenhum produto."
+        onClick={podeEditar ? (p) => editar(p) : undefined}
+      />
     </div>
   );
 }

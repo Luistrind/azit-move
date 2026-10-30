@@ -5,6 +5,9 @@ import { formatCurrency } from '@azit/utils';
 import { VezAprovacao } from '@azit/types';
 import { aprovacaoService, Aprovacao } from '../services/aprovacao.service';
 import { StatusBadge } from '../components/StatusBadge';
+import { Tabela, type Coluna } from '../components/Tabela';
+import { Chips } from '../components/Chips';
+import { Metrica } from '../components/Metrica';
 import { esperaDesde, instanteCurtoBR } from '../lib/datas';
 import { motivosDe, resumoDecisoes, tituloHumano } from '../lib/aprovacao';
 import {
@@ -20,13 +23,12 @@ const ESPERA_ALERTA_HORAS = 48;
 // "Minhas para decidir": o que depende de quem está olhando.
 const VEZ_MINHA = new Set<string>([VezAprovacao.DECIDIR, VezAprovacao.RECOMENDAR, VezAprovacao.RESPONDER_COMPLEMENTO]);
 
-const card = { background: 'var(--surface)', border: '1px solid var(--border)' } as const;
-const th = 'px-[12px] py-[10px] text-left text-[11px] font-semibold uppercase tracking-[.04em]';
-
 // Central única de aprovações (Doc 2 §7.9-A) — LISTA (protótipo de 14/10,
 // implementado em 21/10): tipo, pedido em uma frase, com quem é a operação,
 // valor, quem pediu, espera, decisões e de quem é a vez. A linha abre o
 // dossiê (/aprovacoes/:id) — aprovar às cegas não é aprovar.
+// Layout v2 (doc 03 §11, 30/10): indicadores clicáveis filtram a fila; abas e
+// filtros são Chips; a grade é a Tabela responsiva.
 export function AprovacoesPage() {
   const navigate = useNavigate();
   const [aba, setAba] = useState<'pendentes' | 'historico'>('pendentes');
@@ -46,132 +48,158 @@ export function AprovacoesPage() {
   const carregando = aba === 'pendentes' ? pendentes.isLoading : historico.isLoading;
 
   const maisAntiga = (pendentes.data ?? []).reduce<string | null>((min, a) => (!min || a.solicitadoEm < min ? a.solicitadoEm : min), null);
+  const esperaMaisAntiga = maisAntiga ? esperaDesde(maisAntiga) : null;
+  const pendente = aba === 'pendentes';
 
-  const chip = (on: boolean) =>
-    on
-      ? { background: 'var(--surface-input)', color: 'var(--text-primary)', border: '1px solid var(--navy)' }
-      : { background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)' };
+  const colunas: Coluna<Aprovacao>[] = [
+    {
+      chave: 'tipo',
+      titulo: 'Tipo',
+      celular: 'subtitulo',
+      render: (a) => (
+        <span className="whitespace-nowrap rounded-[6px] px-[8px] py-[2px] text-[10.5px] font-bold uppercase tracking-[.04em]" style={{ background: 'var(--surface-input)', color: 'var(--text-label)' }}>
+          {a.tipoOperacaoNome}
+        </span>
+      ),
+    },
+    {
+      chave: 'pedido',
+      titulo: 'Pedido',
+      celular: 'titulo',
+      render: (a) => {
+        const motivos = motivosDe(a);
+        return (
+          <>
+            <div className="font-bold" style={{ color: 'var(--text-primary)' }}>{tituloHumano(a.resumo)}</div>
+            {motivos.length > 0 && (
+              <div className="mt-[2px] text-[11.5px] font-normal" style={{ color: TOM_DOSSIE_FG.atencao }}>⚠ {motivos[0]}{motivos.length > 1 ? ` (+${motivos.length - 1})` : ''}</div>
+            )}
+          </>
+        );
+      },
+    },
+    { chave: 'contraparte', titulo: 'Titular / fornecedor', celular: 'campo', render: (a) => a.contraparte?.nome ?? '—' },
+    { chave: 'valor', titulo: 'Valor', alinhar: 'right', celular: 'destaque', classe: 'whitespace-nowrap font-bold tabular-nums', render: (a) => formatCurrency(a.valor) },
+    { chave: 'solicitante', titulo: 'Solicitante', celular: 'campo', render: (a) => a.solicitante },
+    {
+      chave: 'espera',
+      titulo: pendente ? 'Espera' : 'Pedido em',
+      celular: 'campo',
+      classe: 'whitespace-nowrap text-[11.5px]',
+      render: (a) => {
+        if (!pendente) return <span style={{ color: 'var(--text-muted)' }}>{instanteCurtoBR(a.solicitadoEm)}</span>;
+        const espera = esperaDesde(a.solicitadoEm);
+        return <span style={espera.horas >= ESPERA_ALERTA_HORAS ? { color: TOM_DOSSIE_FG.alerta, fontWeight: 700 } : { color: 'var(--text-muted)' }}>{espera.texto}</span>;
+      },
+    },
+    {
+      chave: 'decisoes',
+      titulo: 'Decisões',
+      celular: 'campo',
+      classe: 'text-[11.5px]',
+      render: (a) => (
+        <span style={{ color: 'var(--text-muted)' }}>
+          {resumoDecisoes(a)}
+          {a.complementoAberto && <div style={{ color: TOM_DOSSIE_FG.atencao }}>complemento pedido · aguardando resposta</div>}
+        </span>
+      ),
+    },
+    {
+      chave: 'vez',
+      titulo: pendente ? 'Sua vez?' : 'Resultado',
+      celular: 'campo',
+      render: (a) => {
+        if (!pendente) return <StatusBadge label={APROVACAO_STATUS_LABEL[a.status] ?? a.status} colors={APROVACAO_STATUS_COLORS} />;
+        const vez = a.minha.vez ? VEZ_APROVACAO_LABEL[a.minha.vez] : null;
+        return vez ? <StatusBadge label={vez} colors={VEZ_APROVACAO_COLORS} /> : '—';
+      },
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-[14px]">
-      <div className="flex flex-wrap items-center gap-[10px]">
-        <div className="min-w-[220px] flex-1 text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
-          {pendentes.data
-            ? [
-                `${pendentes.data.length} pendente(s)`,
-                `${minhas.length} ${minhas.length === 1 ? 'depende' : 'dependem'} de você`,
-                maisAntiga ? `a mais antiga espera há ${esperaDesde(maisAntiga).texto}` : null,
-              ].filter(Boolean).join(' · ')
-            : ' '}
-        </div>
-        {(['pendentes', 'historico'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => { setAba(t); setFiltroTipo(''); }}
-            className="h-[32px] rounded-[9px] px-[14px] text-[12.5px] font-semibold"
-            style={aba === t ? { background: 'var(--navy)', color: '#fff' } : { background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)' }}
-          >
-            {t === 'pendentes' ? `Pendentes${pendentes.data ? ` (${pendentes.data.length})` : ''}` : 'Histórico'}
-          </button>
-        ))}
+      {/* Indicadores da fila — "todo dado é link": clicar filtra a lista. */}
+      <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-3">
+        <Metrica
+          tom="kpi"
+          label="Pendentes"
+          valor={pendentes.data ? String(pendentes.data.length) : '—'}
+          detalhe="aguardando alguma decisão"
+          onClick={() => { setAba('pendentes'); setEscopo('todas'); setFiltroTipo(''); }}
+          ativo={pendente && escopoEfetivo === 'todas'}
+        />
+        <Metrica
+          tom="kpi"
+          label="Dependem de você"
+          valor={pendentes.data ? String(minhas.length) : '—'}
+          detalhe={minhas.length === 1 ? 'decisão, recomendação ou resposta' : 'decisões, recomendações ou respostas'}
+          alerta={minhas.length > 0}
+          onClick={() => { setAba('pendentes'); setEscopo('minhas'); setFiltroTipo(''); }}
+          ativo={pendente && escopoEfetivo === 'minhas'}
+        />
+        <Metrica
+          tom="kpi"
+          label="Mais antiga espera há"
+          valor={pendentes.data ? (esperaMaisAntiga?.texto ?? '—') : '—'}
+          detalhe={esperaMaisAntiga ? (esperaMaisAntiga.horas >= ESPERA_ALERTA_HORAS ? 'fila parada há mais de 2 dias' : 'dentro do prazo esperado') : 'nenhuma pendente'}
+          alerta={!!esperaMaisAntiga && esperaMaisAntiga.horas >= ESPERA_ALERTA_HORAS}
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-[8px]">
-        {aba === 'pendentes' && (
+        <Chips
+          todos={null}
+          valor={aba}
+          onChange={(v) => { setAba((v as 'pendentes' | 'historico') ?? 'pendentes'); setFiltroTipo(''); }}
+          itens={[
+            { chave: 'pendentes', rotulo: 'Pendentes', contagem: pendentes.data?.length },
+            { chave: 'historico', rotulo: 'Histórico' },
+          ]}
+        />
+        {pendente && (
           <>
-            <button onClick={() => setEscopo('minhas')} className="h-[28px] rounded-[9px] px-[10px] text-[12px] font-semibold" style={chip(escopoEfetivo === 'minhas')}>
-              Minhas para decidir ({minhas.length})
-            </button>
-            <button onClick={() => setEscopo('todas')} className="h-[28px] rounded-[9px] px-[10px] text-[12px] font-semibold" style={chip(escopoEfetivo === 'todas')}>
-              Todas
-            </button>
+            <span className="hidden h-[18px] w-px sm:block" style={{ background: 'var(--border)' }} />
+            <Chips
+              todos={null}
+              tamanho="sm"
+              valor={escopoEfetivo}
+              onChange={(v) => setEscopo((v as 'minhas' | 'todas') ?? 'todas')}
+              itens={[
+                { chave: 'minhas', rotulo: 'Minhas para decidir', contagem: minhas.length },
+                { chave: 'todas', rotulo: 'Todas' },
+              ]}
+            />
           </>
         )}
         {tipos.length > 1 && (
           <>
-            <span className="mx-[4px] text-[12px]" style={{ color: 'var(--text-muted)' }}>Tipo:</span>
-            {tipos.map((t) => (
-              <button key={t} onClick={() => setFiltroTipo(filtroTipo === t ? '' : t)} className="h-[28px] rounded-[9px] px-[10px] text-[12px] font-semibold" style={chip(filtroTipo === t)}>
-                {t}
-              </button>
-            ))}
+            <span className="hidden h-[18px] w-px sm:block" style={{ background: 'var(--border)' }} />
+            <Chips
+              todos="Todos os tipos"
+              tamanho="sm"
+              valor={filtroTipo || null}
+              onChange={(v) => setFiltroTipo(v ?? '')}
+              itens={tipos.map((t) => ({ chave: t, rotulo: t, contagem: lista.filter((a) => a.tipoOperacaoNome === t).length }))}
+            />
           </>
         )}
       </div>
 
-      {carregando ? (
-        <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
-      ) : filtrada.length === 0 ? (
-        <div className="rounded-[14px] py-[32px] text-center text-[13px]" style={{ ...card, color: 'var(--text-muted)' }}>
-          {aba === 'historico'
+      <Tabela
+        colunas={colunas}
+        linhas={filtrada}
+        chave={(a) => a.id}
+        carregando={carregando}
+        onClick={(a) => navigate(`/aprovacoes/${a.id}`)}
+        larguraMinima={980}
+        vazio={
+          aba === 'historico'
             ? 'Sem histórico ainda.'
             : escopoEfetivo === 'minhas'
               ? 'Nada depende de você agora — veja "Todas" para acompanhar a fila.'
-              : 'Nenhuma solicitação aguardando aprovação.'}
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-[14px]" style={card}>
-          <table className="w-full min-w-[980px] border-collapse text-[12.5px]">
-            <thead>
-              <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
-                <th className={th}>Tipo</th>
-                <th className={th}>Pedido</th>
-                <th className={th}>Titular / fornecedor</th>
-                <th className={th + ' text-right'}>Valor</th>
-                <th className={th}>Solicitante</th>
-                <th className={th}>{aba === 'pendentes' ? 'Espera' : 'Pedido em'}</th>
-                <th className={th}>Decisões</th>
-                <th className={th}>{aba === 'pendentes' ? 'Sua vez?' : 'Resultado'}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtrada.map((a) => (
-                <LinhaAprovacao key={a.id} a={a} pendente={aba === 'pendentes'} onAbrir={() => navigate(`/aprovacoes/${a.id}`)} />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              : 'Nenhuma solicitação aguardando aprovação.'
+        }
+      />
     </div>
-  );
-}
-
-function LinhaAprovacao({ a, pendente, onAbrir }: { a: Aprovacao; pendente: boolean; onAbrir: () => void }) {
-  const espera = esperaDesde(a.solicitadoEm);
-  const motivos = motivosDe(a);
-  const vez = a.minha.vez ? VEZ_APROVACAO_LABEL[a.minha.vez] : null;
-  return (
-    <tr onClick={onAbrir} className="cursor-pointer hover:bg-[var(--surface-muted)]" style={{ borderBottom: '1px solid var(--border-light)' }}>
-      <td className="px-[12px] py-[11px] align-middle">
-        <span className="whitespace-nowrap rounded-[6px] px-[8px] py-[2px] text-[10.5px] font-bold uppercase tracking-[.04em]" style={{ background: 'var(--surface-input)', color: 'var(--text-label)' }}>
-          {a.tipoOperacaoNome}
-        </span>
-      </td>
-      <td className="px-[12px] py-[11px] align-middle">
-        <div className="font-bold" style={{ color: 'var(--text-primary)' }}>{tituloHumano(a.resumo)}</div>
-        {motivos.length > 0 && (
-          <div className="mt-[2px] text-[11.5px]" style={{ color: TOM_DOSSIE_FG.atencao }}>⚠ {motivos[0]}{motivos.length > 1 ? ` (+${motivos.length - 1})` : ''}</div>
-        )}
-      </td>
-      <td className="px-[12px] py-[11px] align-middle">{a.contraparte?.nome ?? '—'}</td>
-      <td className="whitespace-nowrap px-[12px] py-[11px] text-right align-middle font-bold tabular-nums">{formatCurrency(a.valor)}</td>
-      <td className="px-[12px] py-[11px] align-middle">{a.solicitante}</td>
-      <td className="whitespace-nowrap px-[12px] py-[11px] align-middle text-[11.5px]">
-        {pendente ? (
-          <span style={espera.horas >= ESPERA_ALERTA_HORAS ? { color: TOM_DOSSIE_FG.alerta, fontWeight: 700 } : { color: 'var(--text-muted)' }}>{espera.texto}</span>
-        ) : (
-          <span style={{ color: 'var(--text-muted)' }}>{instanteCurtoBR(a.solicitadoEm)}</span>
-        )}
-      </td>
-      <td className="px-[12px] py-[11px] align-middle text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
-        {resumoDecisoes(a)}
-        {a.complementoAberto && <div style={{ color: TOM_DOSSIE_FG.atencao }}>complemento pedido · aguardando resposta</div>}
-      </td>
-      <td className="px-[12px] py-[11px] align-middle">
-        {pendente
-          ? vez && <StatusBadge label={vez} colors={VEZ_APROVACAO_COLORS} />
-          : <StatusBadge label={APROVACAO_STATUS_LABEL[a.status] ?? a.status} colors={APROVACAO_STATUS_COLORS} />}
-      </td>
-    </tr>
   );
 }

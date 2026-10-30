@@ -3,16 +3,18 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { assinaturaConfigService, ParametrosAssinatura } from '../services/assinaturaConfig.service';
 import { toast } from '../components/Toast';
 import { mensagemErro } from '../lib/permissoes';
+import { Botao } from '../components/Botao';
+import { Secao } from '../components/Secao';
 
 // Configuração → Assinatura digital (doc 02 §21 F1.1): quem assina pela Azit
 // (João Pedro), as duas testemunhas padrão (impressas no contrato E signatárias
 // na ZapSign) e o envio automático do link por WhatsApp.
+// Layout v2 (doc 03 §11): cartões com <Secao>, ações em <Botao>, só tokens.
 
-const card = 'rounded-[14px] p-[16px]';
+const card = 'rounded-card p-[16px]';
 const cardStyle = { background: 'var(--surface)', border: '1px solid var(--border)' } as const;
-const inputCls = 'h-[32px] w-full rounded-[8px] px-[10px] text-[12.5px]';
-const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' } as const;
-const btnP = 'rounded-[8px] bg-[var(--navy)] px-[14px] py-[8px] text-[12px] font-bold text-white disabled:opacity-40';
+const inputCls = 'h-[32px] w-full rounded-[10px] px-[10px] text-[12.5px]';
+const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' } as const;
 const Lbl = ({ children }: { children: React.ReactNode }) => (
   <label className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>{children}</label>
 );
@@ -31,22 +33,23 @@ function BlocoPessoa({ titulo, sub, prefixo, form, set }: {
   const zap = `${prefixo}Whatsapp` as keyof Form;
   return (
     <div className={card} style={cardStyle}>
-      <div className="font-display text-[13px] font-bold">{titulo}</div>
-      <div className="mb-[10px] text-[12px]" style={{ color: 'var(--text-muted)' }}>{sub}</div>
-      <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-3">
-        <div className="flex flex-col gap-[4px]">
-          <Lbl>Nome completo</Lbl>
-          <input className={inputCls} style={inputStyle} value={form[nome] as string} onChange={(e) => set({ [nome]: e.target.value } as Partial<Form>)} />
+      <Secao titulo={titulo}>
+        <div className="mb-[10px] text-[12px]" style={{ color: 'var(--text-muted)' }}>{sub}</div>
+        <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-3">
+          <div className="flex flex-col gap-[4px]">
+            <Lbl>Nome completo</Lbl>
+            <input className={inputCls} style={inputStyle} value={form[nome] as string} onChange={(e) => set({ [nome]: e.target.value } as Partial<Form>)} />
+          </div>
+          <div className="flex flex-col gap-[4px]">
+            <Lbl>CPF</Lbl>
+            <input className={inputCls} style={inputStyle} value={form[cpf] as string} onChange={(e) => set({ [cpf]: e.target.value } as Partial<Form>)} placeholder="000.000.000-00" />
+          </div>
+          <div className="flex flex-col gap-[4px]">
+            <Lbl>WhatsApp (DDD + número)</Lbl>
+            <input className={inputCls} style={inputStyle} value={form[zap] as string} onChange={(e) => set({ [zap]: e.target.value } as Partial<Form>)} placeholder="27999999999" />
+          </div>
         </div>
-        <div className="flex flex-col gap-[4px]">
-          <Lbl>CPF</Lbl>
-          <input className={inputCls} style={inputStyle} value={form[cpf] as string} onChange={(e) => set({ [cpf]: e.target.value } as Partial<Form>)} placeholder="000.000.000-00" />
-        </div>
-        <div className="flex flex-col gap-[4px]">
-          <Lbl>WhatsApp (DDD + número)</Lbl>
-          <input className={inputCls} style={inputStyle} value={form[zap] as string} onChange={(e) => set({ [zap]: e.target.value } as Partial<Form>)} placeholder="27999999999" />
-        </div>
-      </div>
+      </Secao>
     </div>
   );
 }
@@ -64,7 +67,7 @@ export function AssinaturaConfigPage() {
     }
   }, [q.data, form]);
 
-  if (!form) return <div className="p-[24px] text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>;
+  if (!form) return <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>;
   const set = (patch: Partial<Form>) => setForm({ ...form, ...patch });
 
   async function salvar() {
@@ -78,9 +81,9 @@ export function AssinaturaConfigPage() {
   }
 
   return (
-    <div className="flex flex-col gap-[14px] p-[24px]">
+    <div className="flex flex-col gap-[14px]">
       <div>
-        <h1 className="font-display text-[20px] font-bold">Assinatura digital</h1>
+        <h1 className="font-display text-[20px] font-bold" style={{ color: 'var(--text-primary)' }}>Assinatura digital</h1>
         <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
           Signatários padrão de todo contrato enviado à ZapSign: os compradores assinam primeiro, depois as
           duas testemunhas (que também saem impressas no contrato) e por último quem assina pela Azit.
@@ -94,35 +97,39 @@ export function AssinaturaConfigPage() {
       <BlocoPessoa titulo="Testemunha 2" sub="Impressa na seção de testemunhas e signatária na ZapSign." prefixo="testemunha2" form={form} set={set} />
 
       <div className={card} style={cardStyle}>
-        <label className="flex items-center gap-[8px] text-[12.5px] font-semibold">
-          <input type="checkbox" checked={form.envioAutomaticoWhatsapp} onChange={(e) => set({ envioAutomaticoWhatsapp: e.target.checked })} />
-          Envio automático do link por WhatsApp (pela ZapSign)
-        </label>
-        <div className="mt-[4px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
-          Requer créditos de WhatsApp no plano ZapSign. Vale para signatários com telefone preenchido —
-          os demais continuam recebendo o link pelo operador.
-        </div>
+        <Secao titulo="Envio do link">
+          <label className="flex min-h-[30px] items-center gap-[8px] text-[12.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+            <input type="checkbox" checked={form.envioAutomaticoWhatsapp} onChange={(e) => set({ envioAutomaticoWhatsapp: e.target.checked })} />
+            Envio automático do link por WhatsApp (pela ZapSign)
+          </label>
+          <div className="mt-[4px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
+            Requer créditos de WhatsApp no plano ZapSign. Vale para signatários com telefone preenchido —
+            os demais continuam recebendo o link pelo operador.
+          </div>
+        </Secao>
       </div>
 
       <div className={card} style={cardStyle}>
-        <label className="flex items-center gap-[10px] text-[12.5px] font-semibold">
-          Validade do contrato não efetivado
-          <input
-            value={String(form.validadeDias ?? 7)}
-            onChange={(e) => set({ validadeDias: Math.max(1, parseInt(e.target.value.replace(/\D/g, '') || '7', 10)) })}
-            className="h-[32px] w-[64px] rounded-[8px] px-[8px] text-right text-[13px]"
-            style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
-          />
-          dias
-        </label>
-        <div className="mt-[4px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
-          Instrumento não assinado (ou entrada não paga) além desse prazo EXPIRA automaticamente:
-          o contrato é cancelado, o veículo volta ao estoque e a proposta pode ser reformalizada.
-          O cancelamento manual continua disponível no detalhe do contrato.
-        </div>
+        <Secao titulo="Validade">
+          <label className="flex flex-wrap items-center gap-[10px] text-[12.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+            Validade do contrato não efetivado
+            <input
+              value={String(form.validadeDias ?? 7)}
+              onChange={(e) => set({ validadeDias: Math.max(1, parseInt(e.target.value.replace(/\D/g, '') || '7', 10)) })}
+              className="h-[32px] w-[64px] rounded-[10px] px-[8px] text-right text-[13px] tabular-nums"
+              style={inputStyle}
+            />
+            dias
+          </label>
+          <div className="mt-[4px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
+            Instrumento não assinado (ou entrada não paga) além desse prazo EXPIRA automaticamente:
+            o contrato é cancelado, o veículo volta ao estoque e a proposta pode ser reformalizada.
+            O cancelamento manual continua disponível no detalhe do contrato.
+          </div>
+        </Secao>
       </div>
 
-      <button className={`${btnP} self-start`} disabled={ocupado} onClick={() => void salvar()}>Salvar parâmetros</button>
+      <Botao variante="primaria" className="self-start" carregando={ocupado} onClick={() => void salvar()}>Salvar parâmetros</Botao>
     </div>
   );
 }

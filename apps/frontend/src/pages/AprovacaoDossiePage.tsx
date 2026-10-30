@@ -14,8 +14,10 @@ import { operacoesService, type AcordoDetalhe, type NovacaoDetalhe } from '../se
 import { analiseService, type DossieAnalise } from '../services/analise.service';
 import { StatusBadge } from '../components/StatusBadge';
 import { Trilha } from '../components/Trilha';
-import { Campo } from '../components/Metrica';
+import { Campo, Metrica } from '../components/Metrica';
 import { Secao } from '../components/Secao';
+import { Tabela, type Coluna } from '../components/Tabela';
+import { Botao } from '../components/Botao';
 import { toast } from '../components/Toast';
 import { AceiteWhatsapp, CalculoAcordo, CoberturaAcordo, PERIODICIDADE_LABEL, SelecaoAcordo } from '../components/renegociacao/AcordoBlocos';
 import { ContratosNovacao, DecomposicaoNovacao } from '../components/renegociacao/NovacaoBlocos';
@@ -48,6 +50,8 @@ const quando = (iso: string) => `${instanteBR(iso)} às ${horaBR(iso)}`;
 // DOSSIÊ da solicitação (protótipo de 14/10, implementado em 21/10): o que está
 // sendo aprovado, com o mesmo detalhe que a tela de Renegociações mostra (os
 // blocos são os mesmos componentes), o contexto da conta e o painel de decisão.
+// Layout v2 (doc 03 §11, 30/10): header da entidade em navy com Metrica escura,
+// trechos em <Secao>, tabelas na <Tabela> responsiva, ações em <Botao>.
 export function AprovacaoDossiePage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
@@ -72,46 +76,50 @@ export function AprovacaoDossiePage() {
   const onContrato = (cid: string) => navigate(`/contratos/${cid}`);
   const conta = a.detalhe?.conta ?? null;
   const cab = cabecalho(a, acordo.data, novacao.data);
+  const espera = a.status === 'PENDENTE' ? esperaDesde(a.solicitadoEm) : null;
+  const vezLabel = a.minha.vez ? VEZ_APROVACAO_LABEL[a.minha.vez] : null;
 
   return (
     <div className="flex flex-col gap-[14px]">
       <Voltar />
-      {/* Cabeçalho: tipo, de quem é a vez, título humano, quem pediu e há quanto tempo, valor */}
-      <div className="flex flex-wrap items-start gap-[16px] rounded-[14px] p-[18px]" style={card}>
-        <div className="min-w-[260px] flex-1">
-          <div className="flex flex-wrap items-center gap-[8px]">
-            <span className="rounded-[6px] px-[8px] py-[2px] text-[10.5px] font-bold uppercase tracking-[.04em]" style={{ background: 'var(--surface-input)', color: 'var(--text-label)' }}>{a.tipoOperacaoNome}</span>
-            {a.status === 'PENDENTE' && a.minha.vez ? (
-              <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-bold" style={{ background: VEZ_APROVACAO_COLORS[VEZ_APROVACAO_LABEL[a.minha.vez]]?.bg, color: VEZ_APROVACAO_COLORS[VEZ_APROVACAO_LABEL[a.minha.vez]]?.fg }}>
-                {[VEZ_APROVACAO_LABEL[a.minha.vez], `${a.aprovacoesFeitas} de ${a.aprovacoesNecessarias}`, ...a.decisoes.filter((d) => d.decisao === 'APROVADA').map((d) => `${d.usuario.split(' ')[0]} já aprovou`)].join(' · ')}
-              </span>
-            ) : (
-              <StatusBadge label={APROVACAO_STATUS_LABEL[a.status] ?? a.status} colors={APROVACAO_STATUS_COLORS} />
-            )}
+      {/* Header da entidade (navy): tipo, de quem é a vez, título humano, quem
+          pediu e há quanto tempo, valor em destaque. */}
+      <div className="rounded-card p-[18px]" style={{ background: 'var(--navy)', color: '#fff' }}>
+        <div className="flex flex-wrap items-start gap-[16px]">
+          <div className="min-w-0 flex-1 basis-[260px]">
+            <div className="flex flex-wrap items-center gap-[8px]">
+              <span className="rounded-[6px] px-[8px] py-[2px] text-[10.5px] font-bold uppercase tracking-[.04em]" style={{ background: 'var(--surface-input)', color: 'var(--text-label)' }}>{a.tipoOperacaoNome}</span>
+              {a.status === 'PENDENTE' && vezLabel ? (
+                <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-bold" style={{ background: VEZ_APROVACAO_COLORS[vezLabel]?.bg, color: VEZ_APROVACAO_COLORS[vezLabel]?.fg }}>
+                  {[vezLabel, `${a.aprovacoesFeitas} de ${a.aprovacoesNecessarias}`, ...a.decisoes.filter((d) => d.decisao === 'APROVADA').map((d) => `${d.usuario.split(' ')[0]} já aprovou`)].join(' · ')}
+                </span>
+              ) : (
+                <StatusBadge label={APROVACAO_STATUS_LABEL[a.status] ?? a.status} colors={APROVACAO_STATUS_COLORS} />
+              )}
+            </div>
+            <h2 className="mb-[4px] mt-[8px] font-display text-[18px] font-bold" style={{ color: '#fff' }}>{cab.titulo}</h2>
+            <div className="text-[12.5px]" style={{ color: 'var(--navy-text-meta)' }}>
+              Pedido por <b style={{ color: 'var(--navy-text-body)' }}>{a.solicitante}</b> em {quando(a.solicitadoEm)}
+              {espera && (
+                <> · espera há <b style={{ color: espera.horas >= ESPERA_ALERTA_HORAS ? 'var(--accent)' : 'var(--navy-text-body)' }}>{espera.texto}</b></>
+              )}
+              {cab.contexto.map((c) => <span key={c}> · {c}</span>)}
+            </div>
           </div>
-          <h2 className="mb-[4px] mt-[6px] font-display text-[18px] font-bold">{cab.titulo}</h2>
-          <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
-            Pedido por <b style={{ color: 'var(--text-body)' }}>{a.solicitante}</b> em {quando(a.solicitadoEm)}
-            {a.status === 'PENDENTE' && (
-              <> · espera há <b style={esperaDesde(a.solicitadoEm).horas >= ESPERA_ALERTA_HORAS ? { color: TOM_DOSSIE_FG.alerta } : undefined}>{esperaDesde(a.solicitadoEm).texto}</b></>
-            )}
-            {cab.contexto.map((c) => <span key={c}> · {c}</span>)}
+          <div className="min-w-0 sm:max-w-[360px] sm:text-right">
+            <Metrica tom="escuro" destaque label="Valor" valor={formatCurrency(cab.valor ?? a.valor)} detalhe={cab.composicao} />
           </div>
-        </div>
-        <div className="text-right">
-          <div className="font-display text-[26px] font-bold tabular-nums">{formatCurrency(cab.valor ?? a.valor)}</div>
-          <div className="max-w-[360px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>{cab.composicao}</div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 items-start gap-[14px] lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="flex flex-col overflow-hidden rounded-[14px]" style={card}>
+        <div className="flex min-w-0 flex-col overflow-hidden rounded-card" style={card}>
           {motivosDe(a).length > 0 && (
-            <Bloco titulo="Por que subiu para aprovação">
-              <ul className="flex flex-col gap-[3px] text-[12.5px]">
+            <Trecho titulo="Por que subiu para aprovação">
+              <ul className="flex flex-col gap-[3px] text-[12.5px]" style={{ color: 'var(--text-primary)' }}>
                 {motivosDe(a).map((m) => <li key={m} className="flex gap-[6px]"><span style={{ color: TOM_DOSSIE_FG.atencao }}>⚠</span><span>{m}</span></li>)}
               </ul>
-            </Bloco>
+            </Trecho>
           )}
 
           {tipo === 'acordo' && (acordo.data ? <DossieAcordo a={a} d={acordo.data} conta={conta} onContrato={onContrato} /> : <Carregando q={acordo} />)}
@@ -119,7 +127,7 @@ export function AprovacaoDossiePage() {
           {tipo === 'analise_cadastro' && <DossieAnaliseCadastro a={a} d={analise.data ?? null} />}
           {tipo !== 'acordo' && tipo !== 'novacao' && tipo !== 'analise_cadastro' && <DossieGenerico a={a} />}
 
-          <Bloco titulo="Trilha da solicitação">
+          <Trecho titulo="Trilha da solicitação">
             <Trilha eventos={trilhaDaSolicitacao(a)} />
             {a.status === 'PENDENTE' && (
               <div className="mt-[6px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
@@ -128,7 +136,7 @@ export function AprovacaoDossiePage() {
                   : `Aguardando ${a.aprovacoesFaltando} aprovação(ões) · segregação: quem solicitou não decide.`}
               </div>
             )}
-          </Bloco>
+          </Trecho>
         </div>
 
         <PainelDecisao a={a} />
@@ -139,14 +147,15 @@ export function AprovacaoDossiePage() {
 
 function Voltar() {
   return (
-    <Link to="/aprovacoes" className="self-start rounded-[8px] px-[10px] py-[6px] text-[12px] font-semibold" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>
+    <Link to="/aprovacoes" className="inline-flex h-[30px] items-center self-start rounded-[10px] px-[11px] text-[12px] font-semibold" style={{ background: 'var(--surface-input)', color: 'var(--text-body)', border: '1px solid var(--border)' }}>
       ← Aprovações
     </Link>
   );
 }
 
-// Bloco do dossiê; sem título quando o componente reaproveitado já traz o seu.
-function Bloco({ titulo, acao, children }: { titulo?: string; acao?: React.ReactNode; children: React.ReactNode }) {
+// Trecho do dossiê (uma <Secao> separada por fio dentro do cartão único); sem
+// título quando o componente reaproveitado já traz o seu.
+function Trecho({ titulo, acao, children }: { titulo?: string; acao?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="border-t border-[var(--border)] px-[18px] py-[16px] first:border-t-0">
       {titulo ? <Secao titulo={titulo} acao={acao}>{children}</Secao> : children}
@@ -164,13 +173,20 @@ function Carregando({ q }: { q: { isError: boolean; error: unknown } }) {
 
 function Observacao({ autor, em, texto, vazio }: { autor: string | null; em: string | null; texto: string | null; vazio: string }) {
   return (
-    <Bloco titulo={`Observação${autor ? ` — ${autor}` : ''}${em ? ` · ${instanteBR(em)}` : ''}`}>
+    <Trecho titulo={`Observação${autor ? ` — ${autor}` : ''}${em ? ` · ${instanteBR(em)}` : ''}`}>
       {texto ? (
         <div className="whitespace-pre-wrap rounded-[10px] px-[12px] py-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>{texto}</div>
       ) : (
         <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>{vazio}</div>
       )}
-    </Bloco>
+    </Trecho>
+  );
+}
+
+// Link-botão de leitura dentro de um trecho (acento, sem fundo).
+function LinkTexto({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <Link to={to} className="mt-[10px] inline-block text-[12px] font-semibold" style={{ color: 'var(--accent)' }}>{children}</Link>
   );
 }
 
@@ -228,13 +244,13 @@ function DossieAcordo({ a, d, conta, onContrato }: { a: AprovacaoDossie; d: Acor
   return (
     <>
       <Observacao autor={d.criadoPor} em={d.criadoEm} texto={d.legado ? null : d.observacao} vazio="Quem propôs não escreveu observação (o campo entrou na revisão da renegociação em 21/10)." />
-      <Bloco>
+      <Trecho>
         <div className="flex flex-col gap-[12px]">
           <CoberturaAcordo d={d} onContrato={onContrato} compacto />
           <SelecaoAcordo d={d} />
         </div>
-      </Bloco>
-      <Bloco titulo="Condições propostas">
+      </Trecho>
+      <Trecho titulo="Condições propostas">
         <div className="grid grid-cols-1 gap-[10px] text-[12.5px] sm:grid-cols-2 xl:grid-cols-4">
           <Campo label="Entrada" valor={d.entrada.valor > 0 ? `${formatCurrency(d.entrada.valor)} · até ${instanteBR(d.entrada.dataLimite)}` : 'sem entrada'} />
           <Campo label="Parcelas novas" valor={`${d.plano.numeroParcelasNovas} × ${formatCurrency(d.plano.valorParcelaNova)} (somadas à fatura ${periodicidade})`} />
@@ -251,19 +267,22 @@ function DossieAcordo({ a, d, conta, onContrato }: { a: AprovacaoDossie; d: Acor
           <Campo label="Desbloqueio do veículo" valor={bloqueado ? 'Manual, depois da entrada confirmada (Regra 6)' : 'Veículo não está bloqueado'} />
         </div>
         <div className="mt-[14px]"><CalculoAcordo d={d} /></div>
-      </Bloco>
-      <Bloco titulo={`"De acordo" do cliente · WhatsApp${d.aceiteWhatsapp ? ` · ${quando(d.aceiteWhatsapp.confirmadoPeloOperadorEm)}` : ''}`}>
+      </Trecho>
+      <Trecho titulo={`"De acordo" do cliente · WhatsApp${d.aceiteWhatsapp ? ` · ${quando(d.aceiteWhatsapp.confirmadoPeloOperadorEm)}` : ''}`}>
         <AceiteWhatsapp d={d} destaque />
-      </Bloco>
+      </Trecho>
       <HistoricoRecuperacao a={a} conta={conta} rotuloComprometimento="Comprometimento com o acordo" />
-      <Bloco titulo="Na tela de Renegociações">
-        <Link to={`/acordos?acordo=${d.id}`} className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Ver o acordo completo (cotas, entrada, trilha da operação) →</Link>
-      </Bloco>
+      <Trecho titulo="Na tela de Renegociações">
+        <LinkTexto to={`/acordos?acordo=${d.id}`}>Ver o acordo completo (cotas, entrada, trilha da operação) →</LinkTexto>
+      </Trecho>
     </>
   );
 }
 
 // --- Novação ------------------------------------------------------------------------
+
+// Linha da comparação "hoje × depois da novação".
+type LinhaMudanca = { chave: string; rotulo: string; hoje: React.ReactNode; depois: React.ReactNode };
 
 function DossieNovacao({ a, d, conta, onContrato }: { a: AprovacaoDossie; d: NovacaoDetalhe; conta: ContextoContaDossie | null; onContrato: (id: string) => void }) {
   const sim = d.simulacao;
@@ -273,60 +292,62 @@ function DossieNovacao({ a, d, conta, onContrato }: { a: AprovacaoDossie; d: Nov
   const restantes = contratos.reduce((s, c) => s + Math.max(0, c.numeroParcelas - c.parcelasPagas), 0);
   const ultimo = contratos.map((c) => c.ultimoVencimento).filter((x): x is string => !!x).sort().pop() ?? null;
   const atual = conta?.proximaFatura?.valorTotal ?? null;
-  const td = 'py-[8px] pr-[10px] align-top';
+
+  const mudancas: LinhaMudanca[] = [
+    {
+      chave: 'contratos',
+      rotulo: 'Contratos',
+      hoje: contratos.length ? contratos.map((c) => `${c.numero} · ${c.descricao}${c.placa ? ` (${c.placa})` : ''}`).join('; ') : '—',
+      depois: d.contratoUnico ? 'Contrato único de Compra Parcelada' : 'Contrato do veículo + Termo de Regularização (assinados juntos)',
+    },
+    {
+      chave: 'veiculo',
+      rotulo: 'Veículo',
+      hoje: comVeiculo ? `${comVeiculo.descricao}${comVeiculo.placa ? ` (${comVeiculo.placa})` : ''}` : '—',
+      depois: sim?.troca ? `${sim.troca.entraDescricao} (troca — ajuste ${formatCurrency(sim.troca.ajuste)})` : 'o mesmo',
+    },
+    {
+      chave: 'fatura',
+      rotulo: `Fatura ${freq || 'do período'}`,
+      hoje: <span className="tabular-nums">{atual !== null ? `${formatCurrency(atual)} (próxima, #${conta?.proximaFatura?.numero})` : '—'}</span>,
+      depois: (
+        <span className="font-bold tabular-nums">
+          {formatCurrency(d.valorParcela)}
+          {atual !== null && <span style={{ color: d.valorParcela > atual ? TOM_DOSSIE_FG.alerta : TOM_DOSSIE_FG.ok }}> ({d.valorParcela >= atual ? '+' : '−'} {formatCurrency(Math.abs(d.valorParcela - atual))})</span>}
+        </span>
+      ),
+    },
+    {
+      chave: 'parcelas',
+      rotulo: 'Parcelas',
+      hoje: contratos.length ? `${restantes} restante(s)${ultimo ? ` · última em ${dataBR(ultimo)}` : ''}` : '—',
+      depois: sim ? `${sim.contrato1.totalParcelas + sim.contrato2.totalParcelas} · 1ª em ${dataBR(d.termos?.dataPrimeiraParcela ?? sim.dataPrimeiraParcela)}` : '—',
+    },
+  ];
+  const colunas: Coluna<LinhaMudanca>[] = [
+    { chave: 'rotulo', titulo: '', render: (l) => l.rotulo, celular: 'titulo' },
+    { chave: 'hoje', titulo: 'Hoje', render: (l) => l.hoje, celular: 'campo' },
+    { chave: 'depois', titulo: 'Depois da novação', render: (l) => l.depois, celular: 'campo' },
+  ];
+
   return (
     <>
       <Observacao autor={d.criadaPor} em={d.criadaEm} texto={d.observacao} vazio="Quem propôs não escreveu observação." />
-      <Bloco titulo="O que muda">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[520px] text-[12.5px]">
-            <thead>
-              <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
-                <th className="py-[7px] pr-[10px] text-left font-semibold"></th>
-                <th className="py-[7px] pr-[10px] text-left font-semibold">Hoje</th>
-                <th className="py-[7px] pr-[10px] text-left font-semibold">Depois da novação</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
-                <td className={td} style={{ color: 'var(--text-muted)' }}>Contratos</td>
-                <td className={td}>{contratos.length ? contratos.map((c) => `${c.numero} · ${c.descricao}${c.placa ? ` (${c.placa})` : ''}`).join('; ') : '—'}</td>
-                <td className={td}>{d.contratoUnico ? 'Contrato único de Compra Parcelada' : 'Contrato do veículo + Termo de Regularização (assinados juntos)'}</td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
-                <td className={td} style={{ color: 'var(--text-muted)' }}>Veículo</td>
-                <td className={td}>{comVeiculo ? `${comVeiculo.descricao}${comVeiculo.placa ? ` (${comVeiculo.placa})` : ''}` : '—'}</td>
-                <td className={td}>{sim?.troca ? `${sim.troca.entraDescricao} (troca — ajuste ${formatCurrency(sim.troca.ajuste)})` : 'o mesmo'}</td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
-                <td className={td} style={{ color: 'var(--text-muted)' }}>{`Fatura ${freq || 'do período'}`}</td>
-                <td className={td + ' tabular-nums'}>{atual !== null ? `${formatCurrency(atual)} (próxima, #${conta?.proximaFatura?.numero})` : '—'}</td>
-                <td className={td + ' tabular-nums font-bold'}>
-                  {formatCurrency(d.valorParcela)}
-                  {atual !== null && <span style={{ color: d.valorParcela > atual ? TOM_DOSSIE_FG.alerta : TOM_DOSSIE_FG.ok }}> ({d.valorParcela >= atual ? '+' : '−'} {formatCurrency(Math.abs(d.valorParcela - atual))})</span>}
-                </td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
-                <td className={td} style={{ color: 'var(--text-muted)' }}>Parcelas</td>
-                <td className={td}>{contratos.length ? `${restantes} restante(s)${ultimo ? ` · última em ${dataBR(ultimo)}` : ''}` : '—'}</td>
-                <td className={td}>{sim ? `${sim.contrato1.totalParcelas + sim.contrato2.totalParcelas} · 1ª em ${dataBR(d.termos?.dataPrimeiraParcela ?? sim.dataPrimeiraParcela)}` : '—'}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </Bloco>
-      <Bloco>
+      <Trecho titulo="O que muda">
+        <Tabela colunas={colunas} linhas={mudancas} chave={(l) => l.chave} larguraMinima={520} />
+      </Trecho>
+      <Trecho>
         <DecomposicaoNovacao d={d} titulo={`Composição do saldo novado — data-base${d.dataBase ? ` ${quando(d.dataBase)}` : ''} (memória interna: o instrumento do cliente mostra o valor consolidado)`} />
-      </Bloco>
+      </Trecho>
       <HistoricoRecuperacao a={a} conta={conta} rotuloComprometimento="Comprometimento com a nova parcela" />
       {(d.contratoVeiculo || d.contratoTermo) && (
-        <Bloco>
+        <Trecho>
           <ContratosNovacao d={d} onContrato={onContrato} />
-        </Bloco>
+        </Trecho>
       )}
-      <Bloco titulo="Na tela de Renegociações">
-        <Link to={`/acordos?novacao=${d.id}`} className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Ver a novação completa (origens, contratos, assinatura, trilha) →</Link>
-      </Bloco>
+      <Trecho titulo="Na tela de Renegociações">
+        <LinkTexto to={`/acordos?novacao=${d.id}`}>Ver a novação completa (origens, contratos, assinatura, trilha) →</LinkTexto>
+      </Trecho>
     </>
   );
 }
@@ -339,7 +360,7 @@ function HistoricoRecuperacao({ a, conta, rotuloComprometimento }: { a: Aprovaca
   const acima = comp?.comOperacao != null && comp.limitePolitica != null && comp.comOperacao > comp.limitePolitica;
   const porStatus = conta.acordos.reduce<Record<string, number>>((m, x) => ({ ...m, [x.status]: (m[x.status] ?? 0) + 1 }), {});
   return (
-    <Bloco titulo="Histórico de recuperação do titular">
+    <Trecho titulo="Histórico de recuperação do titular">
       <div className="grid grid-cols-1 gap-[12px] text-[12.5px] sm:grid-cols-2">
         <Campo label="Acordos anteriores">
           {conta.acordos.length === 0 ? (
@@ -394,10 +415,8 @@ function HistoricoRecuperacao({ a, conta, rotuloComprometimento }: { a: Aprovaca
         )}
         <Campo label="Cliente desde" valor={mesAnoBR(conta.clienteDesde)} />
       </div>
-      {a.titular && (
-        <Link to={`/titulares/${a.titular.id}`} className="mt-[10px] inline-block text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Abrir ficha do titular →</Link>
-      )}
-    </Bloco>
+      {a.titular && <LinkTexto to={`/titulares/${a.titular.id}`}>Abrir ficha do titular →</LinkTexto>}
+    </Trecho>
   );
 }
 
@@ -409,7 +428,7 @@ function DossieAnaliseCadastro({ a, d }: { a: AprovacaoDossie; d: DossieAnalise 
   const abertas = d?.pendencias.filter((p) => p.situacao === 'ABERTA') ?? [];
   return (
     <>
-      <Bloco titulo="Proposta e veículo">
+      <Trecho titulo="Proposta e veículo">
         <div className="grid grid-cols-1 gap-[10px] text-[12.5px] sm:grid-cols-2 xl:grid-cols-3">
           <Campo label="Veículo" valor={c.ativo} />
           <Campo label="Ano / quilometragem na entrada" valor={[c.veiculo?.ano, c.veiculo?.quilometragem != null ? `${c.veiculo.quilometragem.toLocaleString('pt-BR')} km` : 'km não informada'].filter(Boolean).join(' · ')} />
@@ -420,21 +439,21 @@ function DossieAnaliseCadastro({ a, d }: { a: AprovacaoDossie; d: DossieAnalise 
             <span style={{ color: d?.comprometimento != null && d.criterios.some((x) => x.chave === 'comprometimento') ? TOM_DOSSIE_FG.alerta : undefined }}>{d ? pct(d.comprometimento) : '…'}</span>
           </Campo>
         </div>
-      </Bloco>
-      <Bloco titulo={`Parecer${c.parecer ? ` — ${c.parecer.emitidoPor} · ${quando(c.parecer.emitidoEm)}` : ''}`}>
+      </Trecho>
+      <Trecho titulo={`Parecer${c.parecer ? ` — ${c.parecer.emitidoPor} · ${quando(c.parecer.emitidoEm)}` : ''}`}>
         {c.parecer ? (
           <div className="whitespace-pre-wrap rounded-[10px] px-[12px] py-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>{c.parecer.texto}</div>
         ) : (
           <div className="text-[12px]" style={{ color: TOM_DOSSIE_FG.atencao }}>Sem parecer emitido para esta análise.</div>
         )}
-      </Bloco>
-      <Bloco titulo="Critérios da política">
+      </Trecho>
+      <Trecho titulo="Critérios da política">
         {!d ? (
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Carregando os critérios…</div>
         ) : d.criterios.length === 0 ? (
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum apontamento — proposta dentro da política.</div>
         ) : (
-          <ul className="flex flex-col gap-[4px] text-[12.5px]">
+          <ul className="flex flex-col gap-[4px] text-[12.5px]" style={{ color: 'var(--text-primary)' }}>
             {d.criterios.map((x, i) => (
               <li key={i}><b style={{ color: ANALISE_SITUACAO_FG[x.situacao] }}>{SIT_CRITERIO[x.situacao] ?? x.situacao}</b> · {x.descricao}{x.valorObservado ? ` (${x.valorObservado})` : ''}</li>
             ))}
@@ -445,8 +464,8 @@ function DossieAnaliseCadastro({ a, d }: { a: AprovacaoDossie; d: DossieAnalise 
             {abertas.length} pendência(s) aberta(s): {abertas.map((p) => p.descricao).join(' · ')}
           </div>
         )}
-        <Link to={`/analises/${c.analiseId}`} className="mt-[10px] inline-block text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Abrir o dossiê completo da análise (consultas, documentos, relatório) →</Link>
-      </Bloco>
+        <LinkTexto to={`/analises/${c.analiseId}`}>Abrir o dossiê completo da análise (consultas, documentos, relatório) →</LinkTexto>
+      </Trecho>
     </>
   );
 }
@@ -462,26 +481,42 @@ function DossieGenerico({ a }: { a: AprovacaoDossie }) {
       {det?.conta ? (
         <HistoricoRecuperacao a={a} conta={det.conta} rotuloComprometimento="Comprometimento da próxima fatura" />
       ) : a.contexto ? (
-        <Bloco titulo="Contexto do titular">
+        <Trecho titulo="Contexto do titular">
           <div className="grid grid-cols-2 gap-[10px] text-[12.5px] sm:grid-cols-4">
             <Campo label="Contratos ativos" valor={String(a.contexto.contratosAtivos)} />
             <Campo label="Saldo devedor" valor={formatCurrency(a.contexto.saldoDevedor)} />
             <Campo label="Em atraso"><span style={{ color: a.contexto.valorEmAtraso > 0 ? TOM_DOSSIE_FG.alerta : undefined }}>{formatCurrency(a.contexto.valorEmAtraso)}</span></Campo>
             <Campo label="Faturas vencidas" valor={String(a.contexto.faturasVencidas)} />
           </div>
-        </Bloco>
+        </Trecho>
       ) : null}
       {!det?.blocos.length && !det?.conta && !a.contexto && (
-        <Bloco titulo="Pedido"><div className="text-[12.5px]">{tituloHumano(a.resumo)}</div></Bloco>
+        <Trecho titulo="Pedido"><div className="text-[12.5px]" style={{ color: 'var(--text-primary)' }}>{tituloHumano(a.resumo)}</div></Trecho>
       )}
     </>
   );
 }
 
 // Bloco genérico do backend: campos rótulo/valor e/ou tabela (configurado por props).
+// A tabela vem como colunas + linhas de células; vira <Tabela> com a 1ª coluna
+// como título do cartão no celular. Linha de destaque (total) sai em negrito.
+type LinhaGenerica = { indice: number; celulas: string[]; destaque?: boolean };
+
 function BlocoGenerico({ b }: { b: BlocoDossie }) {
+  const tabela = b.tabela;
+  const colunas: Coluna<LinhaGenerica>[] = tabela
+    ? tabela.colunas.map((titulo, i) => ({
+        chave: String(i),
+        titulo,
+        alinhar: tabela.direita?.includes(i) ? 'right' : 'left',
+        celular: i === 0 ? 'titulo' : 'campo',
+        classe: tabela.direita?.includes(i) ? 'tabular-nums' : undefined,
+        render: (l) => (l.destaque ? <b>{l.celulas[i]}</b> : l.celulas[i]),
+      }))
+    : [];
+  const linhas: LinhaGenerica[] = tabela ? tabela.linhas.map((l, indice) => ({ indice, celulas: l.celulas, destaque: l.destaque })) : [];
   return (
-    <Bloco titulo={b.titulo}>
+    <Trecho titulo={b.titulo}>
       {b.campos && b.campos.length > 0 && (
         <div className="grid grid-cols-1 gap-[10px] text-[12.5px] sm:grid-cols-2 xl:grid-cols-3">
           {b.campos.map((c) => (
@@ -489,26 +524,13 @@ function BlocoGenerico({ b }: { b: BlocoDossie }) {
           ))}
         </div>
       )}
-      {b.tabela && (
-        <div className={`overflow-x-auto ${b.campos?.length ? 'mt-[12px]' : ''}`}>
-          <table className="w-full min-w-[480px] text-[12.5px]">
-            <thead>
-              <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
-                {b.tabela.colunas.map((c, i) => <th key={i} className={`py-[7px] pr-[10px] font-semibold ${b.tabela!.direita?.includes(i) ? 'text-right' : 'text-left'}`}>{c}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {b.tabela.linhas.map((l, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid var(--border-light)', background: l.destaque ? 'var(--surface-muted)' : undefined, fontWeight: l.destaque ? 700 : undefined }}>
-                  {l.celulas.map((c, j) => <td key={j} className={`py-[7px] pr-[10px] ${b.tabela!.direita?.includes(j) ? 'text-right tabular-nums' : ''}`}>{c}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {tabela && (
+        <div className={b.campos?.length ? 'mt-[12px]' : ''}>
+          <Tabela colunas={colunas} linhas={linhas} chave={(l) => String(l.indice)} larguraMinima={480} />
         </div>
       )}
       {b.nota && <div className="mt-[8px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>{b.nota}</div>}
-    </Bloco>
+    </Trecho>
   );
 }
 
@@ -565,11 +587,10 @@ function PainelDecisao({ a }: { a: AprovacaoDossie }) {
       onChange={(e) => setTexto(e.target.value)}
       rows={4}
       placeholder={placeholder}
-      className="w-full rounded-[8px] p-[9px] text-[12.5px]"
-      style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
+      className="w-full rounded-[10px] p-[9px] text-[12.5px]"
+      style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
     />
   );
-  const btn = 'h-[38px] w-full rounded-[9px] text-[13px] font-bold disabled:opacity-50';
   const semTexto = texto.trim().length < 5;
   const aviso = (t: React.ReactNode) => <div className="rounded-[10px] px-[12px] py-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>{t}</div>;
 
@@ -587,7 +608,7 @@ function PainelDecisao({ a }: { a: AprovacaoDossie }) {
         {aviso(<><b>{a.complementoAberto.pedidoPor}</b> pediu complemento em {quando(a.complementoAberto.pedidoEm)}:<div className="mt-[4px] whitespace-pre-wrap">“{a.complementoAberto.pergunta}”</div></>)}
         <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>Aprovar e recomendar ficam parados até a sua resposta.</div>
         {area('Sua resposta para quem perguntou')}
-        <button disabled={ocupado || texto.trim().length < 2} onClick={() => void responder()} className={btn} style={{ background: 'var(--accent)', color: 'var(--text-primary)' }}>Enviar resposta</button>
+        <Botao variante="primaria" className="w-full" disabled={ocupado || texto.trim().length < 2} carregando={ocupado} onClick={() => void responder()}>Enviar resposta</Botao>
       </div>
     );
   } else if (vez === VezAprovacao.AGUARDANDO_COMPLEMENTO && a.complementoAberto) {
@@ -600,7 +621,7 @@ function PainelDecisao({ a }: { a: AprovacaoDossie }) {
         {a.minha.podeAprovar && (
           <>
             {area('Parecer (obrigatório para reprovar)')}
-            <button disabled={ocupado || semTexto} onClick={() => void decidir('reprovar')} className={btn} style={{ background: 'var(--surface)', color: TOM_DOSSIE_FG.alerta, border: '1px solid var(--border)' }}>Reprovar</button>
+            <Botao variante="perigo" className="w-full" disabled={ocupado || semTexto} carregando={ocupado} onClick={() => void decidir('reprovar')}>Reprovar</Botao>
           </>
         )}
       </div>
@@ -611,15 +632,15 @@ function PainelDecisao({ a }: { a: AprovacaoDossie }) {
       <div className="flex flex-col gap-[8px]">
         {area('Parecer (obrigatório para reprovar ou pedir complemento)')}
         {podeAprovar ? (
-          <button disabled={ocupado} onClick={() => void decidir('aprovar')} className={btn} style={{ background: 'var(--accent)', color: 'var(--text-primary)' }}>Aprovar</button>
+          <Botao variante="primaria" className="w-full" disabled={ocupado} carregando={ocupado} onClick={() => void decidir('aprovar')}>Aprovar</Botao>
         ) : (
-          <button disabled={ocupado} onClick={() => void decidir('recomendar')} className={btn} style={{ background: 'var(--navy)', color: '#fff' }}>Recomendar ↑ (acima da minha alçada)</button>
+          <Botao variante="primaria" className="w-full" disabled={ocupado} carregando={ocupado} onClick={() => void decidir('recomendar')}>Recomendar ↑ (acima da minha alçada)</Botao>
         )}
-        <button disabled={ocupado || semTexto} onClick={() => void pedirComplemento()} className={btn} style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }} title="Escreva a pergunta no campo acima">
+        <Botao variante="secundaria" className="w-full" disabled={ocupado || semTexto} onClick={() => void pedirComplemento()} title="Escreva a pergunta no campo acima">
           Pedir complemento a {a.solicitante.split(' ')[0]}
-        </button>
+        </Botao>
         {podeAprovar && (
-          <button disabled={ocupado || semTexto} onClick={() => void decidir('reprovar')} className={btn} style={{ background: 'var(--surface)', color: TOM_DOSSIE_FG.alerta, border: '1px solid var(--border)' }} title="Escreva o motivo no campo acima">Reprovar</button>
+          <Botao variante="perigo" className="w-full" disabled={ocupado || semTexto} onClick={() => void decidir('reprovar')} title="Escreva o motivo no campo acima">Reprovar</Botao>
         )}
         <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
           {podeAprovar
@@ -632,7 +653,7 @@ function PainelDecisao({ a }: { a: AprovacaoDossie }) {
   }
 
   return (
-    <div className="rounded-[14px] p-[18px] lg:sticky lg:top-[16px]" style={card}>
+    <div className="rounded-card p-[18px] lg:sticky lg:top-[16px]" style={card}>
       <Secao titulo="Sua decisão">{corpo}</Secao>
     </div>
   );

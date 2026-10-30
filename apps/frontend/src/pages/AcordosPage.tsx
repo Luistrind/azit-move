@@ -15,6 +15,8 @@ import { StatusBadge } from '../components/StatusBadge';
 import { Trilha } from '../components/Trilha';
 import { Metrica } from '../components/Metrica';
 import { Secao } from '../components/Secao';
+import { Chips } from '../components/Chips';
+import { Botao } from '../components/Botao';
 import {
   CoberturaAcordo, SelecaoAcordo, EntradaAcordo, CalculoAcordo, CotasAcordo, LegadoAcordo, PERIODICIDADE_LABEL, fmtDataHora,
 } from '../components/renegociacao/AcordoBlocos';
@@ -57,6 +59,9 @@ const card = { background: 'var(--surface)', border: '1px solid var(--border)' }
 // (Renegociar atraso / Novação) — aqui é esteira: status, entrada, efetivação
 // e, desde 21/10, o DETALHE de cada operação (o que cobriu, o que gerou, a
 // trilha), na mesma clareza da Central de Aprovações.
+// Layout v2 (doc 03 §11, 30/10): abas em Chips, seções em <Secao>, botões em
+// <Botao>. Cada operação continua um cartão expansível (estrutura própria: o
+// detalhe abre embaixo do próprio cartão, como um dossiê) — só com tokens.
 export function AcordosPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -98,6 +103,7 @@ export function AcordosPage() {
   const novacoesLista = useMemo(() => novacoesDoFiltro.filter((n) => NOVACAO_EM_ANDAMENTO.has(n.status) === (aba === 'andamento')), [novacoesDoFiltro, aba]);
   const nAndamento = acordosDoFiltro.filter((a) => ACORDO_EM_ANDAMENTO.has(a.status)).length + novacoesDoFiltro.filter((n) => NOVACAO_EM_ANDAMENTO.has(n.status)).length;
   const nHistorico = acordosDoFiltro.length + novacoesDoFiltro.length - nAndamento;
+  const contagens = acordos.data && novacoes.data;
 
   async function refetch() {
     await new Promise((r) => setTimeout(r, 700));
@@ -149,7 +155,7 @@ export function AcordosPage() {
         <div className="rounded-[12px] px-[16px] py-[12px] text-[12.5px]" style={{ background: 'var(--info-bg)', color: 'var(--text-primary)' }}>
           💡 A renegociação nasce da <b>ficha do titular</b> (botão "Renegociar atraso") — ela cobre as
           parcelas em atraso de todos os contratos da conta e passa pela Central de Aprovações.{' '}
-          <button onClick={() => navigate('/carteira')} className="font-semibold underline">Abrir a carteira →</button>
+          <button type="button" onClick={() => navigate('/carteira')} className="font-semibold underline">Abrir a carteira →</button>
         </div>
       )}
       {podeNovar && (
@@ -157,30 +163,28 @@ export function AcordosPage() {
           💡 A novação também nasce da <b>ficha do titular</b> (botão "Novação (prévia do saldo)"):
           o sistema decompõe o saldo da conta por produto — parte do veículo × demais produtos — e a
           proposta dos dois contratos será montada a partir daí.{' '}
-          <button onClick={() => navigate('/carteira')} className="font-semibold underline">Abrir a carteira →</button>
+          <button type="button" onClick={() => navigate('/carteira')} className="font-semibold underline">Abrir a carteira →</button>
         </div>
       )}
 
       {/* Abas (mesmo padrão da Central): em andamento × histórico */}
       <div className="flex flex-wrap items-center gap-[10px]">
-        {(['andamento', 'historico'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setAba(t)}
-            className="h-[32px] rounded-[9px] px-[14px] text-[12.5px] font-semibold"
-            style={aba === t ? { background: 'var(--navy)', color: '#fff' } : { background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)' }}
-          >
-            {t === 'andamento' ? `Em andamento${acordos.data && novacoes.data ? ` (${nAndamento})` : ''}` : `Histórico${acordos.data && novacoes.data ? ` (${nHistorico})` : ''}`}
-          </button>
-        ))}
+        <Chips
+          todos={null}
+          valor={aba}
+          onChange={(v) => setAba((v as 'andamento' | 'historico') ?? 'andamento')}
+          itens={[
+            { chave: 'andamento', rotulo: 'Em andamento', contagem: contagens ? nAndamento : undefined },
+            { chave: 'historico', rotulo: 'Histórico', contagem: contagens ? nHistorico : undefined },
+          ]}
+        />
         {filtroTitular && (
-          <span className="inline-flex items-center gap-[8px] rounded-[9px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>
+          <span className="inline-flex min-h-[30px] items-center gap-[8px] rounded-full px-[11px] text-[12px]" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>
             Só de <b>{nomeTitularFiltro ?? 'um titular'}</b>
-            <button onClick={() => { params.delete('titular'); setParams(params, { replace: true }); }} className="font-semibold" style={{ color: 'var(--text-primary)' }} title="Ver todos">×</button>
+            <button type="button" onClick={() => { params.delete('titular'); setParams(params, { replace: true }); }} className="font-semibold" style={{ color: 'var(--text-primary)' }} title="Ver todos">×</button>
           </span>
         )}
-        <div className="flex-1" />
-        <span className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+        <span className="basis-full text-[11.5px] lg:ml-auto lg:basis-auto lg:text-right" style={{ color: 'var(--text-muted)' }}>
           {aba === 'andamento' ? 'Aguardando aprovação, entrada, assinatura ou recebimento, e acordos ativos.' : 'Acordos cumpridos, novados, cancelados ou expirados e novações concluídas, canceladas ou expiradas.'}
         </span>
       </div>
@@ -189,66 +193,77 @@ export function AcordosPage() {
 
       {/* Acordos */}
       {!carregando && (
-        <section className="flex flex-col gap-[10px]">
-          <div className="font-display text-[13px] font-bold">Acordos de pagamento ({acordosLista.length})</div>
-          {acordosLista.length === 0 ? (
-            <div className="rounded-[14px] py-[22px] text-center text-[12.5px]" style={{ ...card, color: 'var(--text-muted)' }}>
-              {aba === 'andamento' ? 'Nenhum acordo em andamento.' : 'Nenhum acordo no histórico.'}
-            </div>
-          ) : (
-            acordosLista.map((a) => (
-              <CardAcordo
-                key={a.id}
-                a={a}
-                aberto={aberto === `acordo:${a.id}`}
-                onAlternar={() => alternar(`acordo:${a.id}`)}
-                onTitular={() => navigate(`/titulares/${a.titularId}`)}
-                onContrato={(id) => navigate(`/contratos/${id}`)}
-                acaoDev={
-                  (a.status === 'aguardando_entrada' || a.status === 'rascunho') && podeRenegociar && FERRAMENTAS_TESTE ? (
-                    <button onClick={() => efetivar(a.id)} disabled={ocupado} className="rounded-[7px] px-[12px] py-[5px] text-[11.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>
-                      Simular entrada (dev)
-                    </button>
-                  ) : null
-                }
-              />
-            ))
-          )}
-        </section>
+        <Secao titulo="Acordos de pagamento" tag={String(acordosLista.length)}>
+          <div className="flex flex-col gap-[10px]">
+            {acordosLista.length === 0 ? (
+              <div className="rounded-card py-[22px] text-center text-[12.5px]" style={{ ...card, color: 'var(--text-muted)' }}>
+                {aba === 'andamento' ? 'Nenhum acordo em andamento.' : 'Nenhum acordo no histórico.'}
+              </div>
+            ) : (
+              acordosLista.map((a) => (
+                <CardAcordo
+                  key={a.id}
+                  a={a}
+                  aberto={aberto === `acordo:${a.id}`}
+                  onAlternar={() => alternar(`acordo:${a.id}`)}
+                  onTitular={() => navigate(`/titulares/${a.titularId}`)}
+                  onContrato={(id) => navigate(`/contratos/${id}`)}
+                  acaoDev={
+                    (a.status === 'aguardando_entrada' || a.status === 'rascunho') && podeRenegociar && FERRAMENTAS_TESTE ? (
+                      <Botao variante="primaria" tamanho="sm" onClick={() => efetivar(a.id)} disabled={ocupado} carregando={ocupado}>
+                        Simular entrada (dev)
+                      </Botao>
+                    ) : null
+                  }
+                />
+              ))
+            )}
+          </div>
+        </Secao>
       )}
 
       {/* Novações (F2 — conta-cêntrica: 2 contratos assinados juntos) */}
       {!carregando && (
-        <section className="flex flex-col gap-[10px]">
-          <div className="font-display text-[13px] font-bold">Novações ({novacoesLista.length})</div>
-          {novacoesLista.length === 0 ? (
-            <div className="rounded-[14px] py-[22px] text-center text-[12.5px]" style={{ ...card, color: 'var(--text-muted)' }}>
-              {aba === 'andamento' ? 'Nenhuma novação em andamento — ela nasce da ficha do titular.' : 'Nenhuma novação no histórico.'}
-            </div>
-          ) : (
-            novacoesLista.map((nv) => (
-              <CardNovacao
-                key={nv.id}
-                nv={nv}
-                aberto={aberto === `novacao:${nv.id}`}
-                onAlternar={() => alternar(`novacao:${nv.id}`)}
-                onTitular={() => navigate(`/titulares/${nv.titularId}`)}
-                onContrato={(id) => navigate(`/contratos/${id}`)}
-                podeEditar={podeNovar}
-                onAlterada={refetch}
-                acaoDev={
-                  nv.status === 'aguardando_recebimento' && podeNovar && FERRAMENTAS_TESTE ? (
-                    <button onClick={() => simularRecebimento(nv.id)} disabled={ocupado} className="rounded-[7px] px-[12px] py-[5px] text-[11.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>
-                      Simular recebimento (dev)
-                    </button>
-                  ) : null
-                }
-              />
-            ))
-          )}
-        </section>
+        <Secao titulo="Novações" tag={String(novacoesLista.length)}>
+          <div className="flex flex-col gap-[10px]">
+            {novacoesLista.length === 0 ? (
+              <div className="rounded-card py-[22px] text-center text-[12.5px]" style={{ ...card, color: 'var(--text-muted)' }}>
+                {aba === 'andamento' ? 'Nenhuma novação em andamento — ela nasce da ficha do titular.' : 'Nenhuma novação no histórico.'}
+              </div>
+            ) : (
+              novacoesLista.map((nv) => (
+                <CardNovacao
+                  key={nv.id}
+                  nv={nv}
+                  aberto={aberto === `novacao:${nv.id}`}
+                  onAlternar={() => alternar(`novacao:${nv.id}`)}
+                  onTitular={() => navigate(`/titulares/${nv.titularId}`)}
+                  onContrato={(id) => navigate(`/contratos/${id}`)}
+                  podeEditar={podeNovar}
+                  onAlterada={refetch}
+                  acaoDev={
+                    nv.status === 'aguardando_recebimento' && podeNovar && FERRAMENTAS_TESTE ? (
+                      <Botao variante="primaria" tamanho="sm" onClick={() => simularRecebimento(nv.id)} disabled={ocupado} carregando={ocupado}>
+                        Simular recebimento (dev)
+                      </Botao>
+                    ) : null
+                  }
+                />
+              ))
+            )}
+          </div>
+        </Secao>
       )}
     </div>
+  );
+}
+
+// Etiqueta de tipo da operação (Acordo / Novação) — mesma do dossiê da Central.
+function Etiqueta({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-[6px] px-[8px] py-[3px] text-[10.5px] font-bold uppercase tracking-[0.04em]" style={{ background: 'var(--surface-input)', color: 'var(--text-label)' }}>
+      {children}
+    </span>
   );
 }
 
@@ -259,26 +274,26 @@ function CardAcordo({ a, aberto, onAlternar, onTitular, onContrato, acaoDev }: {
 }) {
   const periodicidade = PERIODICIDADE_LABEL[a.periodicidade] ?? a.periodicidade;
   return (
-    <div className="rounded-[14px] p-[16px]" style={card}>
+    <div className="rounded-card p-[16px]" style={card}>
       <div className="flex flex-wrap items-start gap-[12px]">
-        <div className="min-w-[240px] flex-1">
+        <div className="min-w-0 flex-1 basis-[240px]">
           <div className="flex flex-wrap items-center gap-[8px]">
-            <span className="rounded-[6px] px-[8px] py-[3px] text-[10.5px] font-bold uppercase tracking-[0.04em]" style={{ background: 'var(--surface-input)', color: 'var(--text-label)' }}>Acordo</span>
+            <Etiqueta>Acordo</Etiqueta>
             {a.origem === 'legado' && (
               <span className="rounded-[6px] px-[8px] py-[3px] text-[10.5px] font-semibold" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }} title="Acordo que já existia no Asaas e foi importado pela migração do legado">importado do legado</span>
             )}
             <StatusBadge label={LABEL_STATUS[a.status] ?? a.status} colors={ACORDO_STATUS_COLORS} />
           </div>
-          <div className="mt-[6px] text-[14px] font-bold">
+          <div className="mt-[6px] text-[14px] font-bold" style={{ color: 'var(--text-primary)' }}>
             Acordo de {a.numeroParcelasNovas} parcelas de {formatCurrency(a.valorParcelaNova)} ({periodicidade})
             {a.valorEntrada > 0 ? <span className="font-semibold" style={{ color: 'var(--text-body)' }}> · entrada {formatCurrency(a.valorEntrada)}</span> : <span className="font-semibold" style={{ color: 'var(--text-muted)' }}> · sem entrada</span>}
           </div>
           <div className="mt-[3px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
-            <button onClick={onTitular} className="font-semibold" style={{ color: 'var(--text-primary)' }}>{a.titular}</button>
+            <button type="button" onClick={onTitular} className="font-semibold" style={{ color: 'var(--text-primary)' }}>{a.titular}</button>
             {a.contratos.map((c) => (
               <span key={c.id}>
                 {' · '}
-                <button onClick={() => onContrato(c.id)} className="font-semibold" style={{ color: 'var(--text-primary)' }} title={c.descricao}>{c.numero}</button>
+                <button type="button" onClick={() => onContrato(c.id)} className="font-semibold" style={{ color: 'var(--text-primary)' }} title={c.descricao}>{c.numero}</button>
                 {c.placa ? ` (${c.placa})` : c.descricao === 'Reembolso Parcelado' ? ' (reembolso)' : ''}
               </span>
             ))}
@@ -289,15 +304,15 @@ function CardAcordo({ a, aberto, onAlternar, onTitular, onContrato, acaoDev }: {
             {a.dataEfetivacao && a.origem !== 'legado' ? ` · efetivado em ${fmtDataHora(a.dataEfetivacao)}` : ''}
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-[16px] font-bold tabular-nums">{formatCurrency(a.valorTotalRenegociado)}</div>
+        <div className="text-left sm:text-right">
+          <div className="font-display text-[16px] font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>{formatCurrency(a.valorTotalRenegociado)}</div>
           <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>renegociado na data-base</div>
         </div>
       </div>
-      <div className="mt-[12px] flex flex-wrap items-center gap-[8px] border-t pt-[10px]" style={{ borderColor: 'var(--border-light)' }}>
-        <button onClick={onAlternar} className="h-[30px] rounded-[8px] px-[12px] text-[12px] font-semibold" style={{ background: aberto ? 'var(--navy)' : 'var(--surface-input)', color: aberto ? '#fff' : 'var(--text-primary)' }}>
-          {aberto ? '▴ Ocultar detalhe' : '▾ Ver detalhe — parcelas cobertas, entrada, cotas e trilha'}
-        </button>
+      <div className="mt-[12px] flex flex-wrap items-center gap-[8px] pt-[10px]" style={{ borderTop: '1px solid var(--border-light)' }}>
+        <Botao variante="secundaria" tamanho="sm" onClick={onAlternar} aria-expanded={aberto}>
+          {aberto ? '▴ Ocultar detalhe' : '▾ Ver detalhe'}
+        </Botao>
         <div className="flex-1" />
         {acaoDev}
       </div>
@@ -332,12 +347,12 @@ function DetalheAcordo({ id, onContrato }: { id: string; onContrato: (id: string
       <CalculoAcordo d={d} />
       <CotasAcordo d={d} onContrato={onContrato} />
       <LegadoAcordo d={d} />
-      {!d.legado && d.observacao && <Secao titulo="Observação"><div className="text-[12px]">{d.observacao}</div></Secao>}
+      {!d.legado && d.observacao && <Secao titulo="Observação"><div className="text-[12px]" style={{ color: 'var(--text-body)' }}>{d.observacao}</div></Secao>}
       <Secao titulo="Trilha">
         <Trilha eventos={d.trilha} />
         {d.aprovacao && <LinhaAprovacao ap={d.aprovacao} />}
         {d.novacaoId && (
-          <button onClick={() => navigate(`/acordos?novacao=${d.novacaoId}`)} className="mt-[6px] text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Ver a novação que absorveu este acordo →</button>
+          <button type="button" onClick={() => navigate(`/acordos?novacao=${d.novacaoId}`)} className="mt-[6px] text-[12px] font-semibold" style={{ color: 'var(--accent)' }}>Ver a novação que absorveu este acordo →</button>
         )}
       </Secao>
     </div>
@@ -352,39 +367,39 @@ function CardNovacao({ nv, aberto, onAlternar, onTitular, onContrato, podeEditar
 }) {
   const total = nv.saldoVeiculo + nv.saldoDemais;
   return (
-    <div className="rounded-[14px] p-[16px]" style={card}>
+    <div className="rounded-card p-[16px]" style={card}>
       <div className="flex flex-wrap items-start gap-[12px]">
-        <div className="min-w-[240px] flex-1">
+        <div className="min-w-0 flex-1 basis-[240px]">
           <div className="flex flex-wrap items-center gap-[8px]">
-            <span className="rounded-[6px] px-[8px] py-[3px] text-[10.5px] font-bold uppercase tracking-[0.04em]" style={{ background: 'var(--surface-input)', color: 'var(--text-label)' }}>Novação</span>
+            <Etiqueta>Novação</Etiqueta>
             {nv.contratoUnico && <span className="rounded-[6px] px-[8px] py-[3px] text-[10.5px] font-semibold" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }} title="Um só contrato de Compra Parcelada com o valor global (adaptação 13/10)">contrato único</span>}
             <StatusBadge label={LABEL_STATUS_NOVACAO[nv.status] ?? nv.status} colors={NOVACAO_STATUS_COLORS} />
           </div>
-          <div className="mt-[6px] text-[14px] font-bold">
+          <div className="mt-[6px] text-[14px] font-bold" style={{ color: 'var(--text-primary)' }}>
             Novação de {formatCurrency(total)} em parcela única de {formatCurrency(nv.valorParcela)}{nv.frequencia ? ` (${PERIODICIDADE_LABEL[nv.frequencia] ?? nv.frequencia})` : ''}
           </div>
           <div className="mt-[3px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
-            <button onClick={onTitular} className="font-semibold" style={{ color: 'var(--text-primary)' }}>{nv.titular}</button>
+            <button type="button" onClick={onTitular} className="font-semibold" style={{ color: 'var(--text-primary)' }}>{nv.titular}</button>
             {nv.veiculo ? ` · ${nv.veiculo.descricao}${nv.veiculo.placa ? ` (${nv.veiculo.placa})` : ''}` : ''}
             {nv.contratosOrigem.length > 0 ? ` · substitui ${nv.contratosOrigem.join(', ')}` : ''}
           </div>
           <div className="mt-[2px] flex flex-wrap items-center gap-x-[10px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
             <span>proposta por {nv.criadaPor} em {fmtDataHora(nv.criadaEm)}{nv.dataAtivacao ? ` · ativada em ${fmtDataHora(nv.dataAtivacao)}` : ''}</span>
-            {nv.contratoVeiculo && <button onClick={() => onContrato(nv.contratoVeiculo!.id)} className="font-semibold" style={{ color: 'var(--text-primary)' }}>{nv.contratoVeiculo.numero} · veículo</button>}
-            {nv.contratoTermo && <button onClick={() => onContrato(nv.contratoTermo!.id)} className="font-semibold" style={{ color: 'var(--text-primary)' }}>{nv.contratoTermo.numero} · termo</button>}
+            {nv.contratoVeiculo && <button type="button" onClick={() => onContrato(nv.contratoVeiculo!.id)} className="font-semibold" style={{ color: 'var(--text-primary)' }}>{nv.contratoVeiculo.numero} · veículo</button>}
+            {nv.contratoTermo && <button type="button" onClick={() => onContrato(nv.contratoTermo!.id)} className="font-semibold" style={{ color: 'var(--text-primary)' }}>{nv.contratoTermo.numero} · termo</button>}
             {!nv.contratoVeiculo && !nv.contratoTermo && <span>contratos nascem na aprovação</span>}
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-[16px] font-bold tabular-nums">{formatCurrency(total)}</div>
+        <div className="text-left sm:text-right">
+          <div className="font-display text-[16px] font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>{formatCurrency(total)}</div>
           <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>veículo {formatCurrency(nv.saldoVeiculo)} · termo {formatCurrency(nv.saldoDemais)}</div>
           <div className="mt-[4px] text-[12px]"><PrimeiraParcelaNovacao nv={nv} podeEditar={podeEditar} onAlterada={onAlterada} /></div>
         </div>
       </div>
-      <div className="mt-[12px] flex flex-wrap items-center gap-[8px] border-t pt-[10px]" style={{ borderColor: 'var(--border-light)' }}>
-        <button onClick={onAlternar} className="h-[30px] rounded-[8px] px-[12px] text-[12px] font-semibold" style={{ background: aberto ? 'var(--navy)' : 'var(--surface-input)', color: aberto ? '#fff' : 'var(--text-primary)' }}>
-          {aberto ? '▴ Ocultar detalhe' : '▾ Ver detalhe — origens, decomposição, contratos novos e trilha'}
-        </button>
+      <div className="mt-[12px] flex flex-wrap items-center gap-[8px] pt-[10px]" style={{ borderTop: '1px solid var(--border-light)' }}>
+        <Botao variante="secundaria" tamanho="sm" onClick={onAlternar} aria-expanded={aberto}>
+          {aberto ? '▴ Ocultar detalhe' : '▾ Ver detalhe'}
+        </Botao>
         <div className="flex-1" />
         {acaoDev}
       </div>
@@ -443,10 +458,10 @@ function PrimeiraParcelaNovacao({ nv, podeEditar, onAlterada }: { nv: Novacao; p
   const freq = nv.frequencia ? ` · ${nv.frequencia}` : '';
   if (!editando) {
     return (
-      <span className="flex flex-col items-end gap-[2px]">
+      <span className="flex flex-col items-start gap-[2px] sm:items-end">
         <span className="tabular-nums" style={{ color: 'var(--text-primary)' }}>1ª parcela {fmtDia(nv.primeiraParcela)}<span style={{ color: 'var(--text-muted)' }}>{freq}</span></span>
         {nv.podeAlterarPrimeiraParcela && podeEditar && (
-          <button onClick={() => setEditando(true)} className="text-left text-[11.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>alterar antes da assinatura</button>
+          <button type="button" onClick={() => setEditando(true)} className="text-left text-[11.5px] font-semibold" style={{ color: 'var(--accent)' }}>alterar antes da assinatura</button>
         )}
       </span>
     );
@@ -467,11 +482,11 @@ function PrimeiraParcelaNovacao({ nv, podeEditar, onAlterada }: { nv: Novacao; p
     }
   }
   return (
-    <span className="flex flex-col items-end gap-[4px]">
-      <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="h-[30px] w-[140px] rounded-[7px] px-[6px] text-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
-      <span className="flex gap-[6px]">
-        <button onClick={salvar} disabled={salvando || !data} className="rounded-[7px] px-[10px] py-[4px] text-[11.5px] font-semibold disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>Salvar e reenviar</button>
-        <button onClick={() => { setEditando(false); setData(nv.primeiraParcela ?? ''); }} className="text-[11.5px] font-semibold" style={{ color: 'var(--text-muted)' }}>cancelar</button>
+    <span className="flex flex-col items-start gap-[4px] sm:items-end">
+      <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="h-[30px] w-[150px] rounded-[10px] px-[8px] text-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
+      <span className="flex flex-wrap gap-[6px]">
+        <Botao variante="primaria" tamanho="sm" onClick={salvar} disabled={salvando || !data} carregando={salvando}>Salvar e reenviar</Botao>
+        <Botao variante="fantasma" tamanho="sm" onClick={() => { setEditando(false); setData(nv.primeiraParcela ?? ''); }}>cancelar</Botao>
       </span>
       {nv.frequencia === 'mensal' && <span className="text-[10.5px]" style={{ color: 'var(--text-muted)' }}>mensal: mesmo dia todo mês; mês sem o dia vence no último dia</span>}
     </span>

@@ -3,6 +3,7 @@ import { originacaoService } from '../services/originacao.service';
 import { toast } from './Toast';
 import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 import { instanteBR } from '../lib/datas';
+import { Botao } from './Botao';
 
 // ---------------------------------------------------------------------------
 // Assinatura digital ZapSign F1 (doc 02 §21): cartão por signatário com link
@@ -54,10 +55,12 @@ export function BlocoAssinaturaDigital({ contratoId, ocupado, run, titulo }: {
     cancelado: 'Cancelado',
   };
 
+  // Layout v2 (doc 03 §11): rótulo no eyebrow do sistema, ações em <Botao>,
+  // cartões de signatário que empilham no celular; só tokens.
   return (
-    <div className="rounded-[8px] p-[12px]" style={{ background: 'var(--surface-input)' }}>
+    <div className="rounded-[12px] p-[12px]" style={{ background: 'var(--surface-input)' }}>
       <div className="mb-[8px] flex flex-wrap items-center justify-between gap-[8px]">
-        <span className="text-[12px] font-semibold">
+        <span className="font-display text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-label)' }}>
           {titulo ?? 'Assinatura digital (ZapSign)'}{a.simulado ? ' — SIMULADA (sem credenciais no ambiente)' : ''}
         </span>
         {a.existe && (
@@ -70,26 +73,25 @@ export function BlocoAssinaturaDigital({ contratoId, ocupado, run, titulo }: {
 
       {!a.existe ? (
         <div className="flex flex-wrap items-center gap-[10px]">
-          <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+          <span className="min-w-0 flex-1 basis-[240px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
             Envia o documento congelado no snapshot para assinatura eletrônica — o documento é criado
             na ZapSign SÓ neste clique (cada criação consome o plano).
           </span>
-          <button disabled={ocupado}
-            onClick={() => run(async () => { await originacaoService.enviarAssinaturaDigital(contratoId); await recarregar(); })}
-            className="h-[32px] rounded-[8px] px-[12px] text-[12px] font-semibold" style={{ background: 'var(--navy)', color: '#fff' }}>
+          <Botao variante="primaria" tamanho="sm" disabled={ocupado}
+            onClick={() => run(async () => { await originacaoService.enviarAssinaturaDigital(contratoId); await recarregar(); })}>
             Enviar para assinatura digital
-          </button>
+          </Botao>
         </div>
       ) : (
         <div className="flex flex-col gap-[8px]">
           {a.motivoRecusa && (
-            <div className="rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
+            <div className="rounded-[10px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
               Motivo da recusa: {a.motivoRecusa}
             </div>
           )}
           {(a.signatarios ?? []).map((s) => (
-            <div key={s.papel + s.nome} className="flex flex-wrap items-center gap-[8px] rounded-[8px] px-[10px] py-[7px] text-[12px]" style={{ background: 'var(--surface)', border: '1px solid var(--border-light)' }}>
-              <span className="min-w-[220px] font-semibold">{s.nome} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>· {PAPEL_ASSINATURA[s.papel] ?? s.papel}</span></span>
+            <div key={s.papel + s.nome} className="flex flex-wrap items-center gap-[8px] rounded-[10px] px-[10px] py-[7px] text-[12px]" style={{ background: 'var(--surface)', border: '1px solid var(--border-light)', color: 'var(--text-primary)' }}>
+              <span className="min-w-0 flex-1 basis-[200px] font-semibold">{s.nome} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>· {PAPEL_ASSINATURA[s.papel] ?? s.papel}</span></span>
               {s.assinouEm ? (
                 <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>✓ Assinou em {instanteBR(s.assinouEm)}</span>
               ) : (
@@ -97,12 +99,11 @@ export function BlocoAssinaturaDigital({ contratoId, ocupado, run, titulo }: {
                   <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={{ background: s.visualizouEm ? 'var(--warn-bg)' : 'var(--surface-muted)', color: s.visualizouEm ? 'var(--warn-ink)' : 'var(--text-body)' }}>
                     {s.visualizouEm ? 'Visualizou — não assinou' : 'Aguardando'}
                   </span>
-                  <button onClick={() => { void navigator.clipboard.writeText(s.signUrl); toast.sucesso('Link de assinatura copiado.'); }}
-                    className="h-[28px] rounded-[8px] px-[10px] text-[11.5px] font-semibold" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+                  <Botao tamanho="sm" variante="secundaria" onClick={() => { void navigator.clipboard.writeText(s.signUrl); toast.sucesso('Link de assinatura copiado.'); }}>
                     Copiar link
-                  </button>
+                  </Botao>
                   <a href={`https://wa.me/?text=${encodeURIComponent(`Olá! Segue o link para assinatura do seu documento Azit Move: ${s.signUrl}`)}`} target="_blank" rel="noreferrer"
-                    className="flex h-[28px] items-center rounded-[8px] px-[10px] text-[11.5px] font-semibold" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+                    className="inline-flex h-[30px] items-center rounded-[10px] px-[11px] text-[12px] font-semibold" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
                     Abrir WhatsApp
                   </a>
                 </>
@@ -111,24 +112,21 @@ export function BlocoAssinaturaDigital({ contratoId, ocupado, run, titulo }: {
           ))}
           <div className="flex flex-wrap gap-[8px]">
             {a.pdfDisponivel && (
-              <button onClick={() => void originacaoService.baixarPdfAssinado(contratoId)}
-                className="h-[30px] rounded-[8px] px-[12px] text-[11.5px] font-semibold" style={{ background: 'var(--navy)', color: '#fff' }}>
+              <Botao tamanho="sm" variante="primaria" onClick={() => void originacaoService.baixarPdfAssinado(contratoId)}>
                 Baixar documento assinado (PDF)
-              </button>
+              </Botao>
             )}
             {a.status === 'recusado' && (
-              <button disabled={ocupado}
-                onClick={() => run(async () => { await originacaoService.enviarAssinaturaDigital(contratoId); await recarregar(); })}
-                className="h-[30px] rounded-[8px] px-[12px] text-[11.5px] font-semibold" style={{ background: 'var(--navy)', color: '#fff' }}>
+              <Botao tamanho="sm" variante="primaria" disabled={ocupado}
+                onClick={() => run(async () => { await originacaoService.enviarAssinaturaDigital(contratoId); await recarregar(); })}>
                 Reenviar para assinatura (novo documento — consome o plano)
-              </button>
+              </Botao>
             )}
             {FERRAMENTAS_TESTE && a.status !== 'assinado' && (
-              <button disabled={ocupado}
-                onClick={() => run(async () => { await originacaoService.simularAssinaturaDigital(contratoId); await recarregar(); })}
-                className="h-[30px] rounded-[8px] px-[12px] text-[11.5px] font-semibold" style={{ background: 'var(--accent)', color: 'var(--text-primary)' }}>
+              <Botao tamanho="sm" variante="secundaria" disabled={ocupado}
+                onClick={() => run(async () => { await originacaoService.simularAssinaturaDigital(contratoId); await recarregar(); })}>
                 Simular todos assinando (dev)
-              </button>
+              </Botao>
             )}
           </div>
         </div>

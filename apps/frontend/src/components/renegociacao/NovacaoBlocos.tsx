@@ -31,8 +31,9 @@ const PAPEL_SIGNATARIO: Record<string, string> = {
   titular: 'Titular', solidario: 'Comprador solidário', garantidor: 'Garantidor', azit: 'Pela Azit', testemunha1: 'Testemunha', testemunha2: 'Testemunha',
 };
 
-const th = 'py-[7px] pr-[10px] text-left font-semibold';
-const thR = 'py-[7px] pl-[10px] text-right font-semibold';
+// Cabeçalho de grade no eyebrow do layout v2 (doc 03 §11.3).
+const th = 'py-[7px] pr-[10px] text-left text-[10.5px] font-semibold uppercase tracking-[0.1em]';
+const thR = 'py-[7px] pl-[10px] text-right text-[10.5px] font-semibold uppercase tracking-[0.1em]';
 
 // Contratos de origem liquidados por novação (só existem depois da ativação).
 export function OrigensNovacao({ d, onContrato }: { d: NovacaoDetalhe; onContrato: (id: string) => void }) {
@@ -45,7 +46,7 @@ export function OrigensNovacao({ d, onContrato }: { d: NovacaoDetalhe; onContrat
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-[12px]">
+          <table className="w-full min-w-[640px] text-[12px]" style={{ color: 'var(--text-primary)' }}>
             <thead>
               <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
                 <th className={th}>Contrato</th>
@@ -151,14 +152,14 @@ export function RecebimentoNovacao({ d }: { d: NovacaoDetalhe }) {
 function CartaoContratoNovo({ c, unico, onContrato }: { c: ContratoNovacao; unico: boolean; onContrato: (id: string) => void }) {
   const statusLabel = ROTULO_STATUS_CONTRATO[c.status.toUpperCase()] ?? c.status;
   return (
-    <div className="rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)' }}>
+    <div className="rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
       <div className="flex flex-wrap items-center gap-[8px]">
-        <span className="text-[11px] font-bold uppercase tracking-[.04em]" style={{ color: 'var(--text-label)' }}>{unico ? 'Contrato único' : c.papel === 'termo' ? 'Contrato 2 — Termo' : 'Contrato 1 — Veículo'}</span>
+        <span className="font-display text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-label)' }}>{unico ? 'Contrato único' : c.papel === 'termo' ? 'Contrato 2 — Termo' : 'Contrato 1 — Veículo'}</span>
         <button onClick={() => onContrato(c.id)} className="text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>{c.numero} →</button>
         <StatusBadge label={statusLabel} colors={CONTRATO_STATUS_COLORS} />
       </div>
       <div className="mt-[4px] text-[12px]" style={{ color: 'var(--text-body)' }}>{c.descricao}{c.placa ? ` · ${c.placa}` : ''}</div>
-      <div className="mt-[6px] grid grid-cols-2 gap-[6px] text-[12px]">
+      <div className="mt-[6px] grid grid-cols-1 gap-[6px] text-[12px] sm:grid-cols-2">
         <Campo label="Plano" valor={`${c.numeroParcelas} × ${formatCurrency(c.valorParcela)} (${PERIODICIDADE_LABEL[c.periodicidade] ?? c.periodicidade})`} />
         <Campo label="1ª parcela" valor={dataBR(c.dataPrimeiraParcela)} />
         <Campo label="Cronograma" valor={c.cronogramaGerado ? `${c.cronograma.total} parcelas · ${c.cronograma.pagas} paga(s) · ${c.cronograma.vencidas} vencida(s) · ${c.cronograma.aVencer} a vencer${c.cronograma.proximoVencimento ? ` · próxima ${dataBR(c.cronograma.proximoVencimento)}` : ''}` : 'ainda não gerado (nasce na ativação)'} />

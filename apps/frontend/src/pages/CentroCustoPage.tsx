@@ -1,12 +1,17 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '@azit/utils';
-import { centroCustoService } from '../services/centro-custo.service';
+import { centroCustoService, type CentroCustoAtivo, type CentroCustoCredito } from '../services/centro-custo.service';
 import { Modal } from '../components/Modal';
 import { toast } from '../components/Toast';
 import { mensagemErro } from '../lib/permissoes';
 import { reaisParaCentavos } from '../lib/valor';
 import { Metrica } from '../components/Metrica';
+import { Bloco } from '../components/Bloco';
+import { Chips } from '../components/Chips';
+import { Tabela, type Coluna } from '../components/Tabela';
+import { Secao } from '../components/Secao';
+import { Botao } from '../components/Botao';
 import { dataMistaBR } from '../lib/datas';
 
 const TIPOS_CUSTO = ['manutencao', 'documentacao', 'seguro', 'franquia', 'preparacao', 'outro'];
@@ -14,8 +19,8 @@ const TIPO_LABEL: Record<string, string> = {
   manutencao: 'Manutenção', documentacao: 'Documentação', seguro: 'Seguro',
   franquia: 'Franquia', preparacao: 'Preparação', outro: 'Outro',
 };
-const inputCls = 'h-[32px] rounded-[8px] px-[10px] text-[12.5px]';
-const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' };
+const inputCls = 'h-[34px] rounded-[10px] px-[10px] text-[12.5px]';
+const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' };
 
 function Resultado({ valor }: { valor: number }) {
   return (
@@ -25,8 +30,11 @@ function Resultado({ valor }: { valor: number }) {
   );
 }
 
+type Credito = CentroCustoCredito['creditos'][number];
+
 // Centro de custo (Doc 2 §4.4-A): por veículo (gasto × recebido × resultado) e
-// crédito avulso como centro próprio (liberado × retornado).
+// crédito avulso como centro próprio (liberado × retornado). Layout v2 (doc 03
+// §11): painel em <Bloco> com Leitura do Hub, grade em <Tabela>, abas em <Chips>.
 export function CentroCustoPage() {
   const queryClient = useQueryClient();
   const [aba, setAba] = useState<'veiculos' | 'credito'>('veiculos');
@@ -80,99 +88,97 @@ export function CentroCustoPage() {
     (t, a) => ({ gasto: t.gasto + a.totalGasto, recebido: t.recebido + a.recebido, aReceber: t.aReceber + a.aReceber }),
     { gasto: 0, recebido: 0, aReceber: 0 },
   );
+  const resultadoFrota = totais.recebido - totais.gasto;
+  const cr = credito.data;
+
+  const colunasVeiculo: Coluna<CentroCustoAtivo>[] = [
+    { chave: 'veiculo', titulo: 'Veículo', celular: 'titulo', render: (a) => `${a.descricao}${a.placa ? ` · ${a.placa}` : ''}` },
+    { chave: 'status', titulo: 'Situação', celular: 'subtitulo', render: (a) => a.status },
+    { chave: 'aquisicao', titulo: 'Aquisição', alinhar: 'right', classe: 'tabular-nums', celular: 'campo', render: (a) => (a.aquisicao ? formatCurrency(a.aquisicao) : '—') },
+    { chave: 'custos', titulo: 'Custos', alinhar: 'right', classe: 'tabular-nums', celular: 'campo', render: (a) => (a.custosExtras ? formatCurrency(a.custosExtras) : '—') },
+    { chave: 'recebido', titulo: 'Recebido', alinhar: 'right', classe: 'tabular-nums', celular: 'campo', render: (a) => formatCurrency(a.recebido) },
+    { chave: 'aReceber', titulo: 'A receber', alinhar: 'right', classe: 'tabular-nums', celular: 'campo', render: (a) => <span style={{ color: 'var(--text-muted)' }}>{formatCurrency(a.aReceber)}</span> },
+    { chave: 'resultado', titulo: 'Resultado', alinhar: 'right', celular: 'destaque', render: (a) => <Resultado valor={a.resultado} /> },
+  ];
+
+  const colunasCredito: Coluna<Credito>[] = [
+    { chave: 'numero', titulo: 'Contrato', celular: 'titulo', render: (c) => `${c.numero} · ${c.status}` },
+    { chave: 'titular', titulo: 'Titular', celular: 'subtitulo', render: (c) => c.titular },
+    { chave: 'finalidade', titulo: 'Finalidade', celular: 'campo', render: (c) => c.finalidade },
+    { chave: 'liberado', titulo: 'Liberado', alinhar: 'right', classe: 'tabular-nums', celular: 'campo', render: (c) => formatCurrency(c.liberado) },
+    { chave: 'retornado', titulo: 'Retornado', alinhar: 'right', classe: 'tabular-nums', celular: 'campo', render: (c) => formatCurrency(c.retornado) },
+    { chave: 'emAberto', titulo: 'Em aberto', alinhar: 'right', classe: 'tabular-nums', celular: 'destaque', render: (c) => formatCurrency(c.emAberto) },
+  ];
 
   return (
-    <div className="flex flex-col gap-[16px]">
-      <div className="flex items-center gap-[10px]">
-        {(['veiculos', 'credito'] as const).map((t) => (
-          <button key={t} onClick={() => setAba(t)}
-            className="h-[32px] rounded-[9px] px-[14px] text-[12.5px] font-semibold"
-            style={aba === t ? { background: 'var(--navy)', color: '#fff' } : { background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)' }}>
-            {t === 'veiculos' ? `Veículos${ativos.data ? ` (${ativos.data.length})` : ''}` : 'Crédito avulso'}
-          </button>
-        ))}
-      </div>
+    <div className="flex flex-col gap-[14px]">
+      <Chips
+        todos={null}
+        valor={aba}
+        onChange={(k) => { if (k === 'veiculos' || k === 'credito') setAba(k); }}
+        itens={[
+          { chave: 'veiculos', rotulo: 'Veículos', contagem: ativos.data?.length },
+          { chave: 'credito', rotulo: 'Crédito avulso', contagem: cr?.quantidade },
+        ]}
+      />
 
       {aba === 'veiculos' && (
         <>
-          <div className="grid grid-cols-2 gap-[12px] sm:grid-cols-4">
-            <Metrica tom="kpi" label="Total investido" valor={formatCurrency(totais.gasto)} />
-            <Metrica tom="kpi" label="Total recebido" valor={formatCurrency(totais.recebido)} />
-            <Metrica tom="kpi" label="A receber" valor={formatCurrency(totais.aReceber)} />
-            <Metrica tom="kpi" label="Resultado" valor={<Resultado valor={totais.recebido - totais.gasto} />} />
-          </div>
+          <Bloco
+            titulo="Posição da frota"
+            tag={ativos.data ? `${ativos.data.length} ${ativos.data.length === 1 ? 'veículo' : 'veículos'}` : undefined}
+            leitura={
+              ativos.data
+                ? <>Gasto <b>{formatCurrency(totais.gasto)}</b> × recebido <b>{formatCurrency(totais.recebido)}</b>: resultado de <Resultado valor={resultadoFrota} />, com {formatCurrency(totais.aReceber)} ainda a receber.</>
+                : 'Carregando…'
+            }
+          >
+            <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-2 lg:grid-cols-4">
+              <Metrica tom="kpi" label="Total investido" valor={formatCurrency(totais.gasto)} detalhe="aquisição + custos" />
+              <Metrica tom="kpi" label="Total recebido" valor={formatCurrency(totais.recebido)} />
+              <Metrica tom="kpi" label="A receber" valor={formatCurrency(totais.aReceber)} />
+              <Metrica tom="kpi" label="Resultado" valor={<Resultado valor={resultadoFrota} />} alerta={resultadoFrota < 0} />
+            </div>
+          </Bloco>
 
-          <div className="rounded-card overflow-x-auto" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-            <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
-              <thead>
-                <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
-                  <th className="px-[16px] py-[12px] text-left font-semibold">Veículo</th>
-                  <th className="px-[16px] py-[12px] text-right font-semibold">Aquisição</th>
-                  <th className="px-[16px] py-[12px] text-right font-semibold">Custos</th>
-                  <th className="px-[16px] py-[12px] text-right font-semibold">Recebido</th>
-                  <th className="px-[16px] py-[12px] text-right font-semibold">A receber</th>
-                  <th className="px-[16px] py-[12px] text-right font-semibold">Resultado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ativos.isLoading && <tr><td colSpan={6} className="px-[16px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>Carregando…</td></tr>}
-                {ativos.data?.length === 0 && <tr><td colSpan={6} className="px-[16px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>Nenhum veículo cadastrado.</td></tr>}
-                {ativos.data?.map((a) => (
-                  <tr key={a.ativoId} onClick={() => setAtivoSel(a.ativoId)}
-                    className="cursor-pointer transition-colors hover:bg-[var(--surface-muted)]"
-                    style={{ borderBottom: '1px solid var(--border-light)' }}>
-                    <td className="px-[16px] py-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>
-                      {a.descricao}{a.placa ? ` · ${a.placa}` : ''}
-                      <div className="text-[10.5px] font-normal" style={{ color: 'var(--text-muted)' }}>{a.status}</div>
-                    </td>
-                    <td className="px-[16px] py-[12px] text-right tabular-nums">{a.aquisicao ? formatCurrency(a.aquisicao) : '—'}</td>
-                    <td className="px-[16px] py-[12px] text-right tabular-nums">{a.custosExtras ? formatCurrency(a.custosExtras) : '—'}</td>
-                    <td className="px-[16px] py-[12px] text-right tabular-nums">{formatCurrency(a.recebido)}</td>
-                    <td className="px-[16px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-muted)' }}>{formatCurrency(a.aReceber)}</td>
-                    <td className="px-[16px] py-[12px] text-right"><Resultado valor={a.resultado} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Tabela
+            colunas={colunasVeiculo}
+            linhas={ativos.data ?? []}
+            chave={(a) => a.ativoId}
+            carregando={ativos.isLoading}
+            vazio="Nenhum veículo cadastrado."
+            larguraMinima={760}
+            onClick={(a) => setAtivoSel(a.ativoId)}
+          />
         </>
       )}
 
       {aba === 'credito' && (
         <>
-          <div className="grid grid-cols-2 gap-[12px] sm:grid-cols-4">
-            <Metrica tom="kpi" label="Créditos concedidos" valor={String(credito.data?.quantidade ?? '—')} />
-            <Metrica tom="kpi" label="Total liberado" valor={formatCurrency(credito.data?.totalLiberado ?? 0)} />
-            <Metrica tom="kpi" label="Retornado" valor={formatCurrency(credito.data?.totalRetornado ?? 0)} />
-            <Metrica tom="kpi" label="Em aberto" valor={formatCurrency(credito.data?.totalEmAberto ?? 0)} />
-          </div>
-          <div className="rounded-card overflow-x-auto" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-            <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
-              <thead>
-                <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
-                  <th className="px-[16px] py-[12px] text-left font-semibold">Contrato</th>
-                  <th className="px-[16px] py-[12px] text-left font-semibold">Titular</th>
-                  <th className="px-[16px] py-[12px] text-left font-semibold">Finalidade</th>
-                  <th className="px-[16px] py-[12px] text-right font-semibold">Liberado</th>
-                  <th className="px-[16px] py-[12px] text-right font-semibold">Retornado</th>
-                  <th className="px-[16px] py-[12px] text-right font-semibold">Em aberto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {credito.data?.creditos.length === 0 && <tr><td colSpan={6} className="px-[16px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>Nenhum crédito avulso concedido.</td></tr>}
-                {credito.data?.creditos.map((c) => (
-                  <tr key={c.contratoId} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                    <td className="px-[16px] py-[12px] font-semibold">{c.numero}<div className="text-[10.5px] font-normal" style={{ color: 'var(--text-muted)' }}>{c.status}</div></td>
-                    <td className="px-[16px] py-[12px]">{c.titular}</td>
-                    <td className="px-[16px] py-[12px]">{c.finalidade}</td>
-                    <td className="px-[16px] py-[12px] text-right tabular-nums">{formatCurrency(c.liberado)}</td>
-                    <td className="px-[16px] py-[12px] text-right tabular-nums">{formatCurrency(c.retornado)}</td>
-                    <td className="px-[16px] py-[12px] text-right tabular-nums" style={{ color: 'var(--text-muted)' }}>{formatCurrency(c.emAberto)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Bloco
+            titulo="Crédito avulso"
+            tag={cr ? `${cr.quantidade} ${cr.quantidade === 1 ? 'crédito' : 'créditos'}` : undefined}
+            leitura={
+              cr
+                ? <>Liberados <b>{formatCurrency(cr.totalLiberado)}</b>, retornados <b>{formatCurrency(cr.totalRetornado)}</b>; {formatCurrency(cr.totalEmAberto)} em aberto.</>
+                : 'Carregando…'
+            }
+          >
+            <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-2 lg:grid-cols-4">
+              <Metrica tom="kpi" label="Créditos concedidos" valor={String(cr?.quantidade ?? '—')} />
+              <Metrica tom="kpi" label="Total liberado" valor={formatCurrency(cr?.totalLiberado ?? 0)} />
+              <Metrica tom="kpi" label="Retornado" valor={formatCurrency(cr?.totalRetornado ?? 0)} />
+              <Metrica tom="kpi" label="Em aberto" valor={formatCurrency(cr?.totalEmAberto ?? 0)} />
+            </div>
+          </Bloco>
+          <Tabela
+            colunas={colunasCredito}
+            linhas={cr?.creditos ?? []}
+            chave={(c) => c.contratoId}
+            carregando={credito.isLoading}
+            vazio="Nenhum crédito avulso concedido."
+            larguraMinima={720}
+          />
         </>
       )}
 
@@ -182,59 +188,52 @@ export function CentroCustoPage() {
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
         ) : (
           <div className="flex flex-col gap-[14px]">
-            <div className="grid grid-cols-2 gap-[8px] text-[12px]">
-              <div className="rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)' }}>
-                <div style={{ color: 'var(--text-muted)' }}>Gasto (aquisição + custos)</div>
-                <div className="text-[14px] font-bold tabular-nums">{formatCurrency(detalhe.data.totalGasto)}</div>
-              </div>
-              <div className="rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)' }}>
-                <div style={{ color: 'var(--text-muted)' }}>Recebido · a receber</div>
-                <div className="text-[14px] font-bold tabular-nums">{formatCurrency(detalhe.data.recebido)} <span className="text-[11px] font-normal" style={{ color: 'var(--text-muted)' }}>· {formatCurrency(detalhe.data.aReceber)}</span></div>
-              </div>
+            <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-2">
+              <Metrica label="Gasto" valor={formatCurrency(detalhe.data.totalGasto)} detalhe="aquisição + custos" />
+              <Metrica label="Recebido" valor={formatCurrency(detalhe.data.recebido)} detalhe={`a receber ${formatCurrency(detalhe.data.aReceber)}`} />
             </div>
-            <div className="flex items-center justify-between rounded-[10px] px-[12px] py-[8px] text-[13px] font-bold" style={{ background: 'var(--surface-input)' }}>
+            <div className="flex items-center justify-between rounded-[10px] px-[12px] py-[8px] text-[13px] font-bold" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
               <span>Resultado</span><Resultado valor={detalhe.data.resultado} />
             </div>
 
             {detalhe.data.contratos.length > 0 && (
-              <div className="flex flex-col gap-[4px] text-[12px]">
-                <div className="font-semibold" style={{ color: 'var(--text-label)' }}>Contratos</div>
-                {detalhe.data.contratos.map((c) => (
-                  <div key={c.contratoId} className="flex justify-between">
-                    <span>{c.numero} · {c.titular} <span style={{ color: 'var(--text-muted)' }}>({c.status})</span></span>
-                    <span className="tabular-nums">{formatCurrency(c.entradaPaga + c.parcelasPagas)}</span>
-                  </div>
-                ))}
-              </div>
+              <Secao titulo="Contratos">
+                <div className="flex flex-col gap-[4px] text-[12px]" style={{ color: 'var(--text-primary)' }}>
+                  {detalhe.data.contratos.map((c) => (
+                    <div key={c.contratoId} className="flex justify-between gap-[8px]">
+                      <span>{c.numero} · {c.titular} <span style={{ color: 'var(--text-muted)' }}>({c.status})</span></span>
+                      <span className="tabular-nums">{formatCurrency(c.entradaPaga + c.parcelasPagas)}</span>
+                    </div>
+                  ))}
+                </div>
+              </Secao>
             )}
 
-            <div className="flex flex-col gap-[6px]">
-              <div className="text-[12px] font-semibold" style={{ color: 'var(--text-label)' }}>Lançamentos de custo</div>
-              {detalhe.data.lancamentos.length === 0 && <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum custo lançado além da aquisição.</div>}
-              {detalhe.data.lancamentos.map((l) => (
-                <div key={l.id} className="flex items-center justify-between rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
-                  <span><b>{TIPO_LABEL[l.tipo] ?? l.tipo}</b> · {l.descricao} <span style={{ color: 'var(--text-muted)' }}>· {dataMistaBR(l.data)}</span></span>
-                  <span className="flex items-center gap-[8px]">
-                    <span className="tabular-nums font-semibold">{formatCurrency(l.valor)}</span>
-                    <button onClick={() => remover(l.id)} className="text-[13px]" style={{ color: 'var(--danger-fg)' }} title="Remover">×</button>
-                  </span>
+            <Secao titulo="Lançamentos de custo">
+              <div className="flex flex-col gap-[6px]">
+                {detalhe.data.lancamentos.length === 0 && <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum custo lançado além da aquisição.</div>}
+                {detalhe.data.lancamentos.map((l) => (
+                  <div key={l.id} className="flex items-center justify-between gap-[8px] rounded-[10px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
+                    <span><b>{TIPO_LABEL[l.tipo] ?? l.tipo}</b> · {l.descricao} <span style={{ color: 'var(--text-muted)' }}>· {dataMistaBR(l.data)}</span></span>
+                    <span className="flex flex-none items-center gap-[8px]">
+                      <span className="tabular-nums font-semibold">{formatCurrency(l.valor)}</span>
+                      <button type="button" onClick={() => remover(l.id)} className="flex h-[30px] w-[30px] items-center justify-center text-[15px]" style={{ color: 'var(--danger-fg)' }} title="Remover" aria-label="Remover">×</button>
+                    </span>
+                  </div>
+                ))}
+                <div className="mt-[4px] grid grid-cols-1 items-end gap-[8px] sm:grid-cols-[auto_1fr_110px_auto]">
+                  <select value={lanc.tipo} onChange={(e) => setLanc({ ...lanc, tipo: e.target.value })} className={inputCls} style={inputStyle}>
+                    {TIPOS_CUSTO.map((t) => <option key={t} value={t}>{TIPO_LABEL[t]}</option>)}
+                  </select>
+                  <input value={lanc.descricao} onChange={(e) => setLanc({ ...lanc, descricao: e.target.value })} placeholder="Descrição" className={`${inputCls} w-full`} style={inputStyle} />
+                  <input value={lanc.valor} onChange={(e) => setLanc({ ...lanc, valor: e.target.value })} placeholder="R$" className={`${inputCls} w-full text-right`} style={inputStyle} />
+                  <Botao variante="primaria" onClick={adicionarLancamento} carregando={salvando} disabled={!lanc.descricao.trim() || reaisParaCentavos(lanc.valor) <= 0}>+ Lançar</Botao>
                 </div>
-              ))}
-              <div className="mt-[4px] flex flex-wrap items-end gap-[8px]">
-                <select value={lanc.tipo} onChange={(e) => setLanc({ ...lanc, tipo: e.target.value })} className={inputCls} style={inputStyle}>
-                  {TIPOS_CUSTO.map((t) => <option key={t} value={t}>{TIPO_LABEL[t]}</option>)}
-                </select>
-                <input value={lanc.descricao} onChange={(e) => setLanc({ ...lanc, descricao: e.target.value })} placeholder="Descrição" className={`${inputCls} flex-1`} style={inputStyle} />
-                <input value={lanc.valor} onChange={(e) => setLanc({ ...lanc, valor: e.target.value })} placeholder="R$" className={`${inputCls} w-[100px] text-right`} style={inputStyle} />
-                <button onClick={adicionarLancamento} disabled={salvando || !lanc.descricao.trim() || reaisParaCentavos(lanc.valor) <= 0}
-                  className="h-[32px] rounded-[8px] px-[12px] text-[12px] font-semibold disabled:opacity-50"
-                  style={{ background: 'var(--navy)', color: '#fff' }}>+ Lançar</button>
               </div>
-            </div>
+            </Secao>
           </div>
         )}
       </Modal>
     </div>
   );
 }
-

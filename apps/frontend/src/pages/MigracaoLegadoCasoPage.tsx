@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '@azit/utils';
@@ -9,14 +9,17 @@ import {
   type TermosContratoLegado,
   type TipoCobrancaLegada,
   type DesfechoDivergencia,
-  type DivergenciaReconhecida,
   type ModoConciliacao,
   type OrigemVencimentoLegado,
   type PlanoMigracao,
 } from '../services/migracao-legado.service';
+import { Bloco } from '../components/Bloco';
+import { Botao } from '../components/Botao';
 import { Modal } from '../components/Modal';
 import { Metrica } from '../components/Metrica';
+import { Secao } from '../components/Secao';
 import { StatusBadge } from '../components/StatusBadge';
+import { Tabela, type Coluna } from '../components/Tabela';
 import { toast } from '../components/Toast';
 import { mensagemErro, usePodeRole } from '../lib/permissoes';
 import { reaisParaCentavos } from '../lib/valor';
@@ -25,6 +28,9 @@ import { CASO_LEGADO_STATUS_COLORS, COBRANCA_LEGADA_COLORS, CONCILIACAO_LINHA_CO
 // Caso do legado — F2 (doc 02 §26.7): o lado PopHub (termos + PDF), a leitura
 // das cobranças e a conciliação. Regras propõem, o operador decide; validar
 // só libera sem pendência.
+// Layout v2 (doc 03 §11): bancada longa organizada em blocos rotulados
+// (<Bloco>/<Secao>) que empilham no celular; grades em <Tabela> (cartões no
+// celular, com as ações da linha no rodapé); botões em <Botao>; só tokens.
 
 const dataBR = (iso: string | null) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—');
 const dataHoraBR = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
@@ -44,19 +50,17 @@ const anoOuNull = (s: string) => { const n = intOuNull(s); return n != null && n
 const ROLE_LEGADO = ['ADMIN', 'DIRETOR', 'OPERADOR', 'FINANCEIRO'];
 // Migrar (F3) é a liberação para produção: só ADMIN/DIRETOR, caso a caso.
 const ROLE_MIGRAR = ['ADMIN', 'DIRETOR'];
-const btn = 'h-[32px] rounded-[8px] px-[12px] text-[12px] font-semibold disabled:opacity-50';
-const btnPri = { background: 'var(--accent)', color: '#fff' } as const;
-const btnSec = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-body)' } as const;
-const inputCls = 'w-full rounded-[8px] px-[9px] py-[6px] text-[12.5px]';
-const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' } as const;
-const th = 'px-[8px] py-[7px] text-left text-[10.5px] font-bold uppercase tracking-[.04em]';
-const td = 'px-[8px] py-[6px] text-[12px] align-top';
+const inputCls = 'w-full rounded-[10px] px-[9px] py-[6px] text-[12.5px]';
+const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' } as const;
+const inputMini = 'rounded-[8px] px-[6px] py-[3px] text-[11px]';
 // Doc 02 §26.15 item 5: de onde veio a data efetiva de cada parcela na prévia da migração.
 const ORIGEM_VENCIMENTO_ROTULO: Record<OrigemVencimentoLegado, string> = { cobranca: 'cobrança real do Asaas', cadencia: 'cadência da última cobrança', contrato: 'data do contrato (sem cobrança antes)' };
 // Status com que a fatura NASCE na migração → situação exibida (cores/rótulos únicos de statusColors.ts).
 const FATURA_PLANO_SITUACAO: Record<string, string> = { PAGA: 'paga', PAGA_EM_ATRASO: 'paga_em_atraso', ABERTA: 'em_aberto', FECHADA: 'vencida', RENEGOCIADA: 'renegociada' };
-const bloco = { background: 'var(--surface)', border: '1px solid var(--border)' } as const;
-const tituloBloco = 'text-[11px] font-bold uppercase tracking-[.04em]';
+const cartao = { background: 'var(--surface)', border: '1px solid var(--border)' } as const;
+// Rótulo de subseção (mesmo eyebrow do Bloco/Secao, doc 03 §11.3).
+const eyebrow = 'font-display text-[11px] font-bold uppercase tracking-[0.14em]';
+const linkInline = 'underline';
 
 const SITUACAO_LINHA_ROTULO: Record<string, string> = {
   paga: 'paga', paga_com_encargo: 'paga c/ encargo', paga_por_acordo: 'paga por acordo', em_acordo: 'em acordo', pendente: 'pendente', vencida: 'vencida', nao_cobrada: 'não cobrada', futura: 'futura', valor_diverge: 'valor diverge',
@@ -135,6 +139,7 @@ export function MigracaoLegadoCasoPage() {
   const [qtdAcordo, setQtdAcordo] = useState<Record<string, number>>({});
   const [chavesAcordo, setChavesAcordo] = useState<Record<string, string>>({});
   const [soDuvidas, setSoDuvidas] = useState(false);
+  const inputPdf = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (c && !formSujo) setForm(formDosTermos(c.termos));
@@ -220,11 +225,206 @@ export function MigracaoLegadoCasoPage() {
   const r = conc.resumo;
   const linhas = soDivergencias ? conc.linhas.filter((l) => l.divergencia) : conc.linhas;
   const cobrancas = soDuvidas ? c.cobrancas.filter((p) => p.duvida) : c.cobrancas;
+  const desfechosLinha = c.desfechosDivergencia.filter((d) => d.valor !== 'COBRANCA_AVULSA');
+
+  // ----- Conciliação: colunas da grade (a divergência é a AÇÃO da linha) -----
+  const colunasConc: Coluna<LinhaConciliacao>[] = [
+    {
+      chave: 'item',
+      titulo: 'Item',
+      celular: 'titulo',
+      render: (l) => (
+        <span className="inline-flex items-center gap-[6px]" title={l.confianca === 'alta' ? 'Casou sem ressalva' : l.confianca === 'media' ? 'Conferir: casou com deslocamento, em partes, por vínculo ou por acordo' : 'Decidir: diverge ou não há cobrança'}>
+          <span className="inline-block h-[9px] w-[9px] flex-none rounded-full" style={{ background: CONFIANCA_LINHA_COLORS[l.confianca]?.fg }} />
+          {l.serie === 'entrada' ? 'Entrada' : l.serie === 'parcela' ? `Parcela ${l.numero}` : `Intermediária ${l.numero}`}
+        </span>
+      ),
+    },
+    { chave: 'esperadoEm', titulo: 'Esperado em', classe: 'tabular-nums', render: (l) => dataBR(l.esperadoEm) },
+    { chave: 'esperado', titulo: 'Esperado', alinhar: 'right', classe: 'tabular-nums', render: (l) => formatCurrency(l.esperadoValor) },
+    {
+      chave: 'cobradoEm',
+      titulo: 'Cobrado em',
+      classe: 'tabular-nums',
+      render: (l) => (
+        <span className="whitespace-normal">
+          {dataBR(l.cobradoEm)}
+          {l.partes.length > 1 && <div className="text-[10.5px]" style={{ color: 'var(--text-muted)' }}>{l.partes.length} transações</div>}
+          {l.observacao && <div className="text-[10.5px]" style={{ color: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.fg }}>{l.observacao}</div>}
+          {editavel && vinculadasDe(l).length > 0 && (
+            <div className="text-[10.5px]">
+              {vinculadasDe(l).map((cid) => <button key={cid} type="button" className={`mr-[6px] ${linkInline}`} style={{ color: 'var(--text-muted)' }} onClick={() => rodar(() => svc.desvincular(id, cid), 'Vínculo desfeito')}>desvincular</button>)}
+            </div>
+          )}
+        </span>
+      ),
+    },
+    {
+      chave: 'cobrado',
+      titulo: 'Cobrado',
+      alinhar: 'right',
+      classe: 'tabular-nums',
+      render: (l) => (
+        <span className="whitespace-normal" style={{ color: l.situacao === 'valor_diverge' ? SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg : undefined }}>
+          {l.cobradoValor == null ? '—' : formatCurrency(l.cobradoValor)}
+          {/* Entrada em várias transações (23/09): mostra as partes somadas. */}
+          {l.partes.length > 1 && <div className="text-[10.5px] font-normal" style={{ color: 'var(--text-muted)' }}>{l.partes.map((x) => `${dataBR(x.vencimento)} ${formatCurrency(x.valor)}`).join(' + ')}</div>}
+          {/* Despesa repassada junto da parcela: explica o "cobrado" maior que o esperado. */}
+          {l.componentes && (l.componentes.extra > 0 || l.componentes.intermediaria > 0) && (
+            <div className="text-[10.5px] font-normal" style={{ color: 'var(--text-muted)' }}>
+              {l.componentes.intermediaria > 0 && `+ intermediária ${formatCurrency(l.componentes.intermediaria)} `}
+              {l.componentes.extra > 0 && `+ ${l.componentes.extraRotulo ?? 'despesa'} ${formatCurrency(l.componentes.extra)}`}
+            </div>
+          )}
+          {/* Parcela de acordo cobrada junto (§26.14): não é desta parcela — quita outra. */}
+          {l.componentes && l.componentes.acordo > 0 && (
+            <div className="text-[10.5px] font-normal" style={{ color: 'var(--text-muted)' }}>+ acordo {formatCurrency(l.componentes.acordo)} (quita outra parcela)</div>
+          )}
+        </span>
+      ),
+    },
+    { chave: 'pagoEm', titulo: 'Pago em', classe: 'tabular-nums', render: (l) => dataBR(l.pagoEm) },
+    { chave: 'pago', titulo: 'Pago', alinhar: 'right', classe: 'tabular-nums', render: (l) => (l.pagoValor == null ? '—' : formatCurrency(l.pagoValor)) },
+    {
+      chave: 'encargo',
+      titulo: 'Encargo',
+      alinhar: 'right',
+      classe: 'tabular-nums',
+      render: (l) => <span style={{ color: l.encargo ? SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg : 'var(--text-muted)' }}>{l.encargo ? formatCurrency(l.encargo) : '—'}</span>,
+    },
+    {
+      chave: 'situacao',
+      titulo: 'Situação',
+      celular: 'destaque',
+      render: (l) => {
+        const cor = CONCILIACAO_LINHA_COLORS[l.situacao];
+        return <span className="inline-flex items-center rounded-[6px] px-[7px] py-[2px] text-[10.5px] font-semibold" style={{ background: cor.bg, color: cor.fg }}>{SITUACAO_LINHA_ROTULO[l.situacao]}</span>;
+      },
+    },
+  ];
+  function vinculadasDe(l: LinhaConciliacao): string[] {
+    return [...(l.partes.length ? l.partes.map((x) => x.cobrancaId) : l.cobrancaId ? [l.cobrancaId] : [])].filter((cid) => vinculoPorCobranca.has(cid));
+  }
+  function divergenciaDaLinha(l: LinhaConciliacao) {
+    const reconhecida = reconhecidas.get(l.chave) ?? null;
+    const nota = notaDiv[l.chave] ?? '';
+    const desfecho = desfechoDiv[l.chave] ?? '';
+    if (!l.divergencia) return <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>—</span>;
+    if (reconhecida) {
+      return (
+        <span className="text-left text-[11px]" style={{ color: reconhecida.desfecho ? CASO_LEGADO_STATUS_COLORS.MIGRADO.fg : SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>
+          {reconhecida.desfecho ? `${desfechosLinha.find((d) => d.valor === reconhecida.desfecho)?.rotulo ?? reconhecida.desfecho}: ` : 'reconhecida sem desfecho, reconheça de novo: '}{reconhecida.nota}
+          {editavel && <button type="button" className={`ml-[6px] ${linkInline}`} onClick={() => rodar(() => svc.desfazerReconhecimento(id, l.chave), '')}>desfazer</button>}
+        </span>
+      );
+    }
+    if (!editavel) return <span className="text-[11px]" style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>sem reconhecimento</span>;
+    return (
+      <span className="flex flex-wrap items-center gap-[4px]">
+        <select className={`${inputMini} max-w-full`} style={inputStyle} value={desfecho} onChange={(e) => setDesfechoDiv({ ...desfechoDiv, [l.chave]: e.target.value as DesfechoDivergencia | '' })}>
+          <option value="">desfecho na migração…</option>
+          {desfechosLinha.map((d) => <option key={d.valor} value={d.valor}>{d.rotulo}</option>)}
+        </select>
+        <input className={`${inputMini} w-[180px] max-w-full`} style={inputStyle} placeholder="por quê? (ex.: pago em dinheiro)" value={nota} onChange={(e) => setNotaDiv({ ...notaDiv, [l.chave]: e.target.value })} />
+        <Botao tamanho="sm" variante="fantasma" disabled={!nota.trim() || !desfecho} onClick={() => rodar(() => svc.reconhecerDivergencia(id, l.chave, nota, desfecho), 'Divergência reconhecida')}>reconhecer</Botao>
+      </span>
+    );
+  }
+
+  // ----- Cobranças do Asaas: colunas da grade -----
+  const colunasCob: Coluna<CobrancaLegada>[] = [
+    {
+      chave: 'venc',
+      titulo: 'Venc.',
+      celular: 'titulo',
+      classe: 'tabular-nums whitespace-nowrap',
+      render: (p) => (
+        // Cobrança apagada no Asaas: data riscada e apagada (a linha inteira vinha a 50%).
+        <span style={p.deletada ? { color: 'var(--text-muted)', textDecoration: 'line-through' } : undefined} title={p.deletada ? 'cobrança apagada no Asaas' : undefined}>{dataBR(p.vencimento)}</span>
+      ),
+    },
+    { chave: 'valor', titulo: 'Valor', alinhar: 'right', celular: 'destaque', classe: 'tabular-nums font-semibold', render: (p) => formatCurrency(p.valorOriginal) },
+    {
+      chave: 'encargo',
+      titulo: 'Encargo',
+      alinhar: 'right',
+      classe: 'tabular-nums',
+      render: (p) => <span style={{ color: p.encargoPago ? SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg : 'var(--text-muted)' }}>{p.encargoPago ? formatCurrency(p.encargoPago) : '—'}</span>,
+    },
+    { chave: 'pagoEm', titulo: 'Pago em', classe: 'tabular-nums whitespace-nowrap', render: (p) => dataBR(p.pagoEm) },
+    { chave: 'situacao', titulo: 'Situação', render: (p) => <StatusBadge label={p.classe} colors={COBRANCA_LEGADA_COLORS} /> },
+    {
+      chave: 'tipo',
+      titulo: 'Tipo',
+      render: (p) => (
+        editavel ? (
+          <select className={`${inputMini} max-w-full py-[4px] text-[11.5px]`} style={inputStyle} value={p.tipoInterpretado ?? ''} onChange={(e) => mudarTipo(p, e.target.value as TipoCobrancaLegada)} disabled={ocupado}>
+            <option value="" disabled>—</option>
+            {c.tiposCobranca.map((t) => <option key={t.valor} value={t.valor}>{t.rotulo}</option>)}
+          </select>
+        ) : <span>{p.tipoRotulo ?? '—'}</span>
+      ),
+    },
+    {
+      chave: 'decomposicao',
+      titulo: 'Decomposição',
+      classe: 'tabular-nums',
+      render: (p) => (
+        <span className="whitespace-normal" style={{ color: 'var(--text-secondary)' }}>
+          {p.interpretacao ? <>{formatCurrency(p.interpretacao.parcelamento)}{p.interpretacao.seguro ? ` + seg ${formatCurrency(p.interpretacao.seguro)}` : ''}{p.interpretacao.taxa ? ` + taxa ${formatCurrency(p.interpretacao.taxa)}` : ''}{p.interpretacao.intermediaria ? ` + inter ${formatCurrency(p.interpretacao.intermediaria)}` : ''}{p.interpretacao.extra ? ` + ${p.interpretacao.extraRotulo ?? 'despesa'} ${formatCurrency(p.interpretacao.extra)}` : ''}{p.interpretacao.encargo ? ` + juros/multa ${formatCurrency(p.interpretacao.encargo)}` : ''}</> : '—'}
+        </span>
+      ),
+    },
+    {
+      chave: 'leitura',
+      titulo: 'Leitura',
+      render: (p) => (
+        <span className="whitespace-normal">
+          {p.duvida && <span className="mr-[4px] inline-flex items-center rounded-full px-[6px] py-[1px] text-[10px] font-bold" style={{ background: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.bg, color: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.fg }}>dúvida</span>}
+          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{p.interpretadoPor === 'operador' ? 'você' : p.interpretadoPor ?? '—'}{p.interpretacao?.motivo ? ` · ${p.interpretacao.motivo}` : ''}</span>
+          {p.interpretacaoObs && <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{p.interpretacaoObs}</div>}
+        </span>
+      ),
+    },
+    {
+      chave: 'descricao',
+      titulo: 'Descrição',
+      render: (p) => <span className="whitespace-normal" style={{ color: 'var(--text-body)' }}>{p.descricao ?? <span style={{ color: 'var(--text-muted)' }}>sem descrição</span>}</span>,
+    },
+  ];
+  const acoesCobranca = (p: CobrancaLegada) => (
+    <>
+      {editavel && p.duvida && p.interpretacao && <Botao tamanho="sm" variante="fantasma" disabled={ocupado} onClick={() => void confirmarProposta(p)}>confirmar</Botao>}
+      {editavel && <Botao tamanho="sm" variante="fantasma" disabled={ocupado} onClick={() => setAjuste(p)}>ajustar</Botao>}
+      {editavel && p.interpretadoPor === 'operador' && <Botao tamanho="sm" variante="fantasma" disabled={ocupado} onClick={() => rodar(() => svc.desfazerInterpretacao(id, p.id), '')}>desfazer</Botao>}
+      {p.invoiceUrl && <a href={p.invoiceUrl} target="_blank" rel="noreferrer" className="inline-flex h-[30px] items-center px-[8px] text-[12px] font-semibold underline" style={{ color: 'var(--accent)' }}>boleto</a>}
+    </>
+  );
+  const temAcoesCobranca = editavel || c.cobrancas.some((p) => !!p.invoiceUrl);
+
+  // ----- Prévia da migração: parcelas com a data efetiva (doc 02 §26.15 item 5) -----
+  const colunasPrevia = (plano: PlanoMigracao): Coluna<PlanoMigracao['vencimentos']['parcelas'][number]>[] => [
+    { chave: 'parcela', titulo: 'Parcela', celular: 'titulo', classe: 'tabular-nums', render: (p) => `${p.numero}/${plano.contrato.numeroParcelas}` },
+    { chave: 'contrato', titulo: 'Contrato', classe: 'tabular-nums', render: (p) => dataBR(p.contrato) },
+    {
+      chave: 'efetivo',
+      titulo: 'Vence em',
+      celular: 'destaque',
+      classe: 'tabular-nums font-semibold',
+      render: (p) => <span style={{ color: p.diverge ? CASO_LEGADO_STATUS_COLORS.EM_REVISAO.fg : undefined }} title={p.diverge ? 'data diferente da do contrato' : undefined}>{dataBR(p.efetivo)}{p.diverge ? ' ≠' : ''}</span>,
+    },
+    { chave: 'origem', titulo: 'Origem da data', render: (p) => <span className="whitespace-normal" style={{ color: 'var(--text-secondary)' }}>{ORIGEM_VENCIMENTO_ROTULO[p.origem]}</span> },
+    {
+      chave: 'fatura',
+      titulo: 'Fatura',
+      render: (p) => { const k = FATURA_PLANO_SITUACAO[p.status] ?? 'em_aberto'; const cor = FATURA_SITUACAO_COLORS[k]; return <span className="inline-flex items-center rounded-full px-[7px] py-[1px] text-[10.5px] font-semibold" style={{ background: cor.bg, color: cor.fg }}>{FATURA_SITUACAO_LABEL[k]}</span>; },
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-[14px]">
       {/* Cabeçalho */}
-      <div className="rounded-[12px] p-[14px]" style={bloco}>
+      <div className="rounded-card p-[14px]" style={cartao}>
         <div className="flex flex-wrap items-start justify-between gap-[10px]">
           <div className="min-w-0">
             <Link to="/migracao-legado" className="text-[11.5px] underline" style={{ color: 'var(--text-muted)' }}>← Migração do legado</Link>
@@ -240,30 +440,30 @@ export function MigracaoLegadoCasoPage() {
           </div>
           {podeOperar && (
             <div className="flex flex-wrap items-center gap-[8px]">
-              {c.status === 'COLETADO' && <button className={btn} style={btnPri} disabled={ocupado} onClick={() => rodar(() => svc.mudarStatus(id, 'EM_REVISAO'), 'Caso em revisão')}>Começar a revisão</button>}
+              {c.status === 'COLETADO' && <Botao tamanho="sm" variante="primaria" disabled={ocupado} onClick={() => rodar(() => svc.mudarStatus(id, 'EM_REVISAO'), 'Caso em revisão')}>Começar a revisão</Botao>}
               {c.status === 'EM_REVISAO' && (
-                <button className={btn} style={c.pendenciasParaValidar.length ? btnSec : btnPri} disabled={ocupado || c.pendenciasParaValidar.length > 0}
+                <Botao tamanho="sm" variante={c.pendenciasParaValidar.length ? 'secundaria' : 'primaria'} disabled={ocupado || c.pendenciasParaValidar.length > 0}
                   title={c.pendenciasParaValidar.length ? 'Resolva as pendências abaixo' : 'Caso conciliado — pronto para migrar (F3)'}
-                  onClick={() => rodar(() => svc.validar(id), 'Caso validado')}>Validar caso</button>
+                  onClick={() => rodar(() => svc.validar(id), 'Caso validado')}>Validar caso</Botao>
               )}
-              {c.status === 'EM_REVISAO' && <button className={btn} style={btnSec} disabled={ocupado} onClick={() => rodar(() => svc.mudarStatus(id, 'COLETADO'), 'Caso devolvido à fila')}>Devolver à fila</button>}
+              {c.status === 'EM_REVISAO' && <Botao tamanho="sm" variante="secundaria" disabled={ocupado} onClick={() => rodar(() => svc.mudarStatus(id, 'COLETADO'), 'Caso devolvido à fila')}>Devolver à fila</Botao>}
               {c.status === 'VALIDADO' && podeMigrar && (
-                <button className={btn} style={btnPri} disabled={ocupado || carregandoPrevia} title="Gera titular, veículo, contrato e cronograma no sistema e para a assinatura no Asaas"
+                <Botao tamanho="sm" variante="primaria" disabled={ocupado || carregandoPrevia} title="Gera titular, veículo, contrato e cronograma no sistema e para a assinatura no Asaas"
                   onClick={async () => { setCarregandoPrevia(true); try { setPrevia(await svc.previaMigracao(id)); } catch (e) { toast.erro(mensagemErro(e)); } finally { setCarregandoPrevia(false); } }}>
                   {carregandoPrevia ? 'Preparando prévia…' : 'Migrar para o sistema'}
-                </button>
+                </Botao>
               )}
-              {c.status === 'VALIDADO' && <button className={btn} style={btnSec} disabled={ocupado} onClick={() => rodar(() => svc.mudarStatus(id, 'EM_REVISAO'), 'Caso reaberto')}>Reabrir (voltar à revisão)</button>}
-              {(c.status === 'COLETADO' || c.status === 'EM_REVISAO') && !descartando && <button className={btn} style={btnSec} disabled={ocupado} onClick={() => setDescartando(true)}>Descartar</button>}
-              {c.status === 'DESCARTADO' && <button className={btn} style={btnSec} disabled={ocupado} onClick={() => rodar(() => svc.mudarStatus(id, 'COLETADO'), 'Caso de volta à fila')}>Voltar para a fila</button>}
+              {c.status === 'VALIDADO' && <Botao tamanho="sm" variante="secundaria" disabled={ocupado} onClick={() => rodar(() => svc.mudarStatus(id, 'EM_REVISAO'), 'Caso reaberto')}>Reabrir (voltar à revisão)</Botao>}
+              {(c.status === 'COLETADO' || c.status === 'EM_REVISAO') && !descartando && <Botao tamanho="sm" variante="secundaria" disabled={ocupado} onClick={() => setDescartando(true)}>Descartar</Botao>}
+              {c.status === 'DESCARTADO' && <Botao tamanho="sm" variante="secundaria" disabled={ocupado} onClick={() => rodar(() => svc.mudarStatus(id, 'COLETADO'), 'Caso de volta à fila')}>Voltar para a fila</Botao>}
             </div>
           )}
         </div>
         {descartando && (
           <div className="mt-[10px] flex flex-wrap items-center gap-[8px] rounded-[10px] p-[10px]" style={{ background: CASO_LEGADO_STATUS_COLORS.DESCARTADO.bg }}>
-            <input className={`${inputCls} min-w-[280px] flex-1`} style={inputStyle} placeholder="Por que descartar? (obrigatório)" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
-            <button className={btn} style={{ background: CASO_LEGADO_STATUS_COLORS.DESCARTADO.fg, color: '#fff' }} disabled={ocupado || !motivo.trim()} onClick={() => rodar(() => svc.mudarStatus(id, 'DESCARTADO', motivo), 'Caso descartado').then(() => setDescartando(false))}>Confirmar descarte</button>
-            <button className={btn} style={btnSec} onClick={() => setDescartando(false)}>Cancelar</button>
+            <input className={`${inputCls} min-w-[200px] flex-1`} style={inputStyle} placeholder="Por que descartar? (obrigatório)" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+            <Botao tamanho="sm" variante="perigo" disabled={ocupado || !motivo.trim()} onClick={() => rodar(() => svc.mudarStatus(id, 'DESCARTADO', motivo), 'Caso descartado').then(() => setDescartando(false))}>Confirmar descarte</Botao>
+            <Botao tamanho="sm" variante="secundaria" onClick={() => setDescartando(false)}>Cancelar</Botao>
           </div>
         )}
         {c.status === 'EM_REVISAO' && c.pendenciasParaValidar.length > 0 && (
@@ -279,10 +479,10 @@ export function MigracaoLegadoCasoPage() {
             {c.contratoId && <Link to={`/contratos/${c.contratoId}`} className="underline">contrato {c.migracao.resumo?.contratoNumero ?? ''}</Link>}
             {c.titularId && <> · <Link to={`/titulares/${c.titularId}`} className="underline">titular</Link></>}
             {c.migracao.resumo && <> · {c.migracao.resumo.faturas ?? 0} faturas ({c.migracao.resumo.faturasPagas ?? 0} pagas, {c.migracao.resumo.faturasFechadas ?? 0} com a cobrança antiga mantida, {c.migracao.resumo.faturasAbertas ?? 0} a emitir) · {c.migracao.resumo.reembolsos ?? 0} reembolso(s) · {c.migracao.resumo.avulsas ?? 0} avulsa(s){c.migracao.resumo.pdfCopiado === false ? ' · PDF não copiado' : ''}{c.migracao.resumo.cobrancasApagadas != null && <> · {c.migracao.resumo.cobrancasApagadas} cobrança(s) antiga(s) apagada(s), {c.migracao.resumo.emitidasAgora ?? 0} emitida(s) na hora</>}</>}
-            <div className="mt-[4px]">
-              {(c.migracao.resumo?.orfasApagadas ?? 0) > 0 && <>{c.migracao.resumo?.orfasApagadas} cobrança(s) órfã(s) da assinatura apagada(s). </>}
-              {podeMigrar && <button className="mr-[10px] underline" disabled={ocupado} title="Grava a taxa de desconto vigente no contrato e a FIPE oficial no veículo, só onde estiver vazio" onClick={() => rodar(async () => { const r = await svc.completar(id); if (r.fipeMotivo) toast.erro(`FIPE não preenchida: ${r.fipeMotivo}`); else toast.sucesso(`${r.taxaGravada ? 'Taxa gravada. ' : ''}${r.fipeGravada && r.fipe ? `FIPE ${formatCurrency(r.fipe.valor)} (${r.fipe.modeloFipe}, ${r.fipe.referencia}).` : 'FIPE já estava preenchida.'}`); return r; }, '')}>Completar taxa e FIPE</button>}
-              {podeMigrar && <button className="underline" disabled={ocupado} title="Apaga no Asaas cobranças a vencer que a assinatura antiga emitiu depois da coleta (sem referência do sistema)" onClick={() => rodar(async () => { const r = await svc.limparCobrancasOrfas(id); if (r.erro) toast.erro(`Falha ao apagar órfã: ${r.erro}`); return r; }, 'Cobranças órfãs verificadas')}>Verificar cobranças órfãs no Asaas</button>}
+            <div className="mt-[4px] flex flex-wrap items-center gap-[6px]">
+              {(c.migracao.resumo?.orfasApagadas ?? 0) > 0 && <span>{c.migracao.resumo?.orfasApagadas} cobrança(s) órfã(s) da assinatura apagada(s). </span>}
+              {podeMigrar && <Botao tamanho="sm" variante="fantasma" disabled={ocupado} title="Grava a taxa de desconto vigente no contrato e a FIPE oficial no veículo, só onde estiver vazio" onClick={() => rodar(async () => { const r = await svc.completar(id); if (r.fipeMotivo) toast.erro(`FIPE não preenchida: ${r.fipeMotivo}`); else toast.sucesso(`${r.taxaGravada ? 'Taxa gravada. ' : ''}${r.fipeGravada && r.fipe ? `FIPE ${formatCurrency(r.fipe.valor)} (${r.fipe.modeloFipe}, ${r.fipe.referencia}).` : 'FIPE já estava preenchida.'}`); return r; }, '')}>Completar taxa e FIPE</Botao>}
+              {podeMigrar && <Botao tamanho="sm" variante="fantasma" disabled={ocupado} title="Apaga no Asaas cobranças a vencer que a assinatura antiga emitiu depois da coleta (sem referência do sistema)" onClick={() => rodar(async () => { const r = await svc.limparCobrancasOrfas(id); if (r.erro) toast.erro(`Falha ao apagar órfã: ${r.erro}`); return r; }, 'Cobranças órfãs verificadas')}>Verificar cobranças órfãs no Asaas</Botao>}
             </div>
             {(c.migracao.resumo?.conciliadasNaMigracao ?? 0) > 0 && <div className="mt-[4px]" title="Cobranças antigas que o cliente pagou entre a coleta do caso e a migração: não foram apagadas; a fatura ficou amarrada a elas e a conciliação (a mesma do webhook) foi enfileirada na hora"><b>{c.migracao.resumo?.conciliadasNaMigracao} cobrança(s) já paga(s) no Asaas conciliada(s) na migração</b>{(c.migracao.resumo?.conciliadasNaMigracaoVencimentos?.length ?? 0) > 0 ? <>: {c.migracao.resumo?.conciliadasNaMigracaoVencimentos?.map((v) => dataBR(v)).join(', ')}</> : null}.</div>}
             {c.migracao.resumo?.conciliacoesNaoEnfileiradas && c.migracao.resumo.conciliacoesNaoEnfileiradas.length > 0 && <div className="mt-[4px]" style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}><b>{c.migracao.resumo.conciliacoesNaoEnfileiradas.length} cobrança(s) vencida(s) já paga(s) no Asaas sem conciliação enfileirada</b> — use "Conferir pagamento" na fatura: {c.migracao.resumo.conciliacoesNaoEnfileiradas.map((m) => dataBR(m.vencimento)).join(', ')}.</div>}
@@ -291,72 +491,55 @@ export function MigracaoLegadoCasoPage() {
             <div className="mt-[4px]">
               {!c.migracao.assinaturaId ? 'Sem assinatura no Asaas para parar.'
                 : c.migracao.assinaturaParadaEm ? `Assinatura do Asaas parada em ${dataHoraBR(c.migracao.assinaturaParadaEm)} — o sistema assume a emissão.`
-                : <span style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}><b>Assinatura do Asaas AINDA ATIVA</b>{c.migracao.assinaturaParadaErro ? ` — ${c.migracao.assinaturaParadaErro}` : ''}. {podeMigrar && <button className="underline" disabled={ocupado} onClick={() => rodar(() => svc.pararAssinatura(id), 'Assinatura parada')}>Parar assinatura agora</button>}</span>}
+                : <span style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}><b>Assinatura do Asaas AINDA ATIVA</b>{c.migracao.assinaturaParadaErro ? ` — ${c.migracao.assinaturaParadaErro}` : ''}. {podeMigrar && <button type="button" className={linkInline} disabled={ocupado} onClick={() => rodar(() => svc.pararAssinatura(id), 'Assinatura parada')}>Parar assinatura agora</button>}</span>}
             </div>
           </div>
         )}
       </div>
 
       {previa && (
-        <Modal open onClose={() => setPrevia(null)} title={`Migrar para o sistema — ${c.nome}`} largura={640}>
-          <div className="flex flex-col gap-[8px] text-[12.5px]" style={{ color: 'var(--text-body)' }}>
+        <Modal open onClose={() => setPrevia(null)} title={`Migrar para o sistema — ${c.nome}`} largura={680}>
+          <div className="flex flex-col gap-[10px] text-[12.5px]" style={{ color: 'var(--text-body)' }}>
             <div>Nada foi gravado ainda. Confira o que vai nascer e confirme. A operação é uma só e, no fim, a assinatura do Asaas é parada (as cobranças já emitidas são preservadas).</div>
-            <table className="w-full border-collapse text-[12px]">
-              <tbody>
-                <tr><td className={td}>Titular</td><td className={td}>{previa.titular.existente ? <>já existe: <b>{previa.titular.existente.nome}</b> (reaproveitado)</> : <>novo: <b>{previa.titular.nome}</b> · {cpfBR(previa.titular.cpfCnpj)}</>}</td></tr>
-                <tr><td className={td}>Veículo</td><td className={td}>{previa.veiculo.existente ? <>já cadastrado: <b>{previa.veiculo.existente.descricao}</b></> : <>novo: <b>{previa.veiculo.descricao}</b>{previa.veiculo.placa ? ` · ${previa.veiculo.placa}` : ''}</>} · estrutura Azit</td></tr>
-                <tr><td className={td}>Contrato</td><td className={td}><b>{previa.contrato.numero}</b> · assinado em {dataBR(previa.contrato.dataAssinatura)} · {previa.contrato.numeroParcelas}× {formatCurrency(previa.contrato.valorParcela)} ({previa.contrato.periodicidade}) a partir de {dataBR(previa.contrato.dataPrimeiraParcela)} · total {formatCurrency(previa.contrato.valorTotal)}</td></tr>
-                {/* Doc 02 §26.15 item 5: parcela, fatura e recebível vencem no mesmo dia — o da cobrança real. */}
-                <tr><td className={td}>Vencimentos</td><td className={td}>
-                  <div>Parcela, fatura e recebível vencem no <b>mesmo dia</b>: o da cobrança real do Asaas. Sem cobrança, a cadência ({previa.contrato.periodicidade}) continua a partir da última data real. A data do contrato ({dataBR(previa.contrato.dataPrimeiraParcela)}) fica registrada só como 1ª parcela do contrato.</div>
-                  {previa.vencimentos.aviso
-                    ? <div className="mt-[4px] rounded-[6px] px-[8px] py-[4px] font-semibold" style={{ background: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.bg, color: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.fg }}>Atenção — {previa.vencimentos.aviso}.</div>
-                    : <div className="mt-[4px]" style={{ color: 'var(--text-muted)' }}>Nenhuma parcela com data diferente da do contrato.</div>}
-                  {previa.vencimentos.parcelas.length > 0 && (
-                    <div className="mt-[6px] max-h-[220px] overflow-auto rounded-[8px]" style={{ border: '1px solid var(--border)' }}>
-                      <table className="w-full border-collapse">
-                        <thead className="sticky top-0" style={{ background: 'var(--surface)' }}>
-                          <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}><th className={th}>Parcela</th><th className={th}>Contrato</th><th className={th}>Vence em</th><th className={th}>Origem da data</th><th className={th}>Fatura</th></tr>
-                        </thead>
-                        <tbody>
-                          {previa.vencimentos.parcelas.map((p) => (
-                            <tr key={p.numero} style={{ borderBottom: '1px solid var(--border)' }}>
-                              <td className={`${td} tabular-nums`}>{p.numero}/{previa.contrato.numeroParcelas}</td>
-                              <td className={`${td} tabular-nums`}>{dataBR(p.contrato)}</td>
-                              <td className={`${td} tabular-nums font-semibold`} style={{ color: p.diverge ? CASO_LEGADO_STATUS_COLORS.EM_REVISAO.fg : undefined }} title={p.diverge ? 'data diferente da do contrato' : undefined}>{dataBR(p.efetivo)}{p.diverge ? ' ≠' : ''}</td>
-                              <td className={td} style={{ color: 'var(--text-secondary)' }}>{ORIGEM_VENCIMENTO_ROTULO[p.origem]}</td>
-                              <td className={td}>{(() => { const k = FATURA_PLANO_SITUACAO[p.status] ?? 'em_aberto'; const cor = FATURA_SITUACAO_COLORS[k]; return <span className="rounded-full px-[7px] py-[1px] text-[10.5px] font-semibold" style={{ background: cor.bg, color: cor.fg }}>{FATURA_SITUACAO_LABEL[k]}</span>; })()}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </td></tr>
-                <tr><td className={td}>FIPE do veículo</td><td className={td}>{previa.veiculo.fipe ? <><b>{formatCurrency(previa.veiculo.fipe.valor)}</b> · {previa.veiculo.fipe.modeloFipe} {previa.veiculo.fipe.anoModelo} · código {previa.veiculo.fipe.codigoFipe} · {previa.veiculo.fipe.referencia} (fonte oficial){previa.veiculo.fipe.alternativas.length > 0 && <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>outros modelos próximos: {previa.veiculo.fipe.alternativas.join(' · ')}</div>}</> : previa.veiculo.fipeMotivo ? <span style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>não preenchida — {previa.veiculo.fipeMotivo}. Corrija marca/modelo/ano nos termos; sem FIPE a novação não calcula a proteção.</span> : 'veículo já tem valor de venda'}</td></tr>
-                <tr><td className={td}>Taxa de desconto</td><td className={td}>{previa.contrato.taxaDescontoMensal ? <>{(previa.contrato.taxaDescontoMensal * 100).toFixed(2).replace('.', ',')}% ao mês — a mesma dos contratos gerados hoje (antecipação e novação)</> : <span style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>não definida — sem taxa vigente no Catálogo</span>}</td></tr>
-                <tr><td className={td}>Entrada</td><td className={td}>{previa.entrada ? <>{formatCurrency(previa.entrada.valor)} paga em {dataBR(previa.entrada.pagoEm)}</> : 'sem entrada'}</td></tr>
-                <tr><td className={td}>Faturas</td><td className={td}>{previa.faturas.length} no total: <b>{previa.resumo.faturasPagas}</b> pagas, <b>{previa.resumo.faturasFechadas}</b> com a cobrança antiga do Asaas mantida (vencidas ou vencendo até amanhã), <b>{previa.resumo.faturasAbertas}</b> a emitir pelo sistema{previa.resumo.faturasRenegociadas > 0 && <>, <b>{previa.resumo.faturasRenegociadas}</b> cobertas pelo acordo (sem cobrança própria)</>}</td></tr>
-                {previa.acordo && (
-                  <tr><td className={td}>Acordo em andamento</td><td className={td}>nasce <b>ATIVO</b>: entrada {formatCurrency(previa.acordo.entrada.valor)} paga em {dataBR(previa.acordo.entrada.pagoEm)} · <b>{previa.acordo.numeroParcelas}×</b> {formatCurrency(previa.acordo.valorParcela)} somadas às faturas semanais de {dataBR(previa.acordo.primeiraEm)} a {dataBR(previa.acordo.ultimaEm)} ({previa.acordo.cotas.filter((x) => x.paga).length} cota(s) já paga(s)) · cobre as parcelas {previa.acordo.cobertas.join(', ')} ({formatCurrency(previa.acordo.valorCoberto)}){previa.resumo.removidas > 0 && <> · <b>{previa.resumo.removidas}</b> cobrança(s) antiga(s) dessas parcelas serão apagadas no Asaas</>}</td></tr>
+            <div className="flex flex-col text-[12px]">
+              <LinhaPrevia rotulo="Titular">{previa.titular.existente ? <>já existe: <b>{previa.titular.existente.nome}</b> (reaproveitado)</> : <>novo: <b>{previa.titular.nome}</b> · {cpfBR(previa.titular.cpfCnpj)}</>}</LinhaPrevia>
+              <LinhaPrevia rotulo="Veículo">{previa.veiculo.existente ? <>já cadastrado: <b>{previa.veiculo.existente.descricao}</b></> : <>novo: <b>{previa.veiculo.descricao}</b>{previa.veiculo.placa ? ` · ${previa.veiculo.placa}` : ''}</>} · estrutura Azit</LinhaPrevia>
+              <LinhaPrevia rotulo="Contrato"><b>{previa.contrato.numero}</b> · assinado em {dataBR(previa.contrato.dataAssinatura)} · {previa.contrato.numeroParcelas}× {formatCurrency(previa.contrato.valorParcela)} ({previa.contrato.periodicidade}) a partir de {dataBR(previa.contrato.dataPrimeiraParcela)} · total {formatCurrency(previa.contrato.valorTotal)}</LinhaPrevia>
+              {/* Doc 02 §26.15 item 5: parcela, fatura e recebível vencem no mesmo dia — o da cobrança real. */}
+              <LinhaPrevia rotulo="Vencimentos">
+                <div>Parcela, fatura e recebível vencem no <b>mesmo dia</b>: o da cobrança real do Asaas. Sem cobrança, a cadência ({previa.contrato.periodicidade}) continua a partir da última data real. A data do contrato ({dataBR(previa.contrato.dataPrimeiraParcela)}) fica registrada só como 1ª parcela do contrato.</div>
+                {previa.vencimentos.aviso
+                  ? <div className="mt-[4px] rounded-[6px] px-[8px] py-[4px] font-semibold" style={{ background: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.bg, color: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.fg }}>Atenção — {previa.vencimentos.aviso}.</div>
+                  : <div className="mt-[4px]" style={{ color: 'var(--text-muted)' }}>Nenhuma parcela com data diferente da do contrato.</div>}
+                {previa.vencimentos.parcelas.length > 0 && (
+                  <div className="mt-[6px] max-h-[260px] overflow-auto">
+                    <Tabela colunas={colunasPrevia(previa)} linhas={previa.vencimentos.parcelas} chave={(p) => String(p.numero)} larguraMinima={480} />
+                  </div>
                 )}
-                <tr><td className={td}>Cobranças a vencer</td><td className={td}>{previa.resumo.substituidas === 0 ? (previa.cobrancasMantidas.length ? 'nenhuma será substituída' : 'nenhuma emitida pela assinatura') :<><b>{previa.resumo.substituidas}</b> serão apagadas no Asaas e substituídas pelas do sistema{previa.resumo.emitidasAgora > 0 && <>, <b>{previa.resumo.emitidasAgora}</b> emitida(s) na hora por vencerem em até 5 dias (a nova é criada antes de a antiga ser apagada)</>}</>}
-                  {previa.cobrancasMantidas.length > 0 && (
-                    <div className="mt-[4px] rounded-[6px] px-[8px] py-[4px]" style={{ background: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.bg, color: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.fg }}>
-                      <div className="font-semibold">Não serão apagadas nem substituídas (vencidas, de hoje ou de amanhã ficam amarradas à fatura; só a partir de D+2 o sistema substitui):</div>
-                      {previa.cobrancasMantidas.map((m) => <div key={m.chargeId}>· {m.aviso}</div>)}
-                    </div>
-                  )}
-                </td></tr>
-                <tr><td className={td}>Reembolsos Parcelados</td><td className={td}>{previa.rps.length === 0 ? 'nenhum' : previa.rps.map((r) => `${r.rotulo} (${r.parcelas.length}×)`).join(' · ')}</td></tr>
-                <tr><td className={td}>Cobranças avulsas</td><td className={td}>{previa.resumo.avulsas}</td></tr>
-                <tr><td className={td}>Encargos já pagos</td><td className={td}>{formatCurrency(previa.resumo.encargos)}</td></tr>
-                <tr><td className={td}>Assinatura do Asaas</td><td className={td}>{previa.resumo.assinaturaId ? `${previa.resumo.assinaturaId} será PARADA (INACTIVE)` : 'nenhuma'}</td></tr>
-              </tbody>
-            </table>
-            <div className="flex justify-end gap-[8px]">
-              <button className={btn} style={btnSec} onClick={() => setPrevia(null)}>Cancelar</button>
-              <button className={btn} style={btnPri} disabled={ocupado} onClick={() => { const p = previa; setPrevia(null); void rodar(async () => { const r = await svc.migrar(id); if (!r.assinatura.parada) toast.erro(`Contrato ${r.contratoNumero} criado, mas a assinatura do Asaas não foi parada: ${r.assinatura.motivo}`); if (r.substituicao?.mantidas?.length) toast.erro(`${r.substituicao.mantidas.length} cobrança(s) a vencer não foram apagadas no Asaas e ficaram amarradas`); if (r.removidas?.mantidas?.length) toast.erro(`${r.removidas.mantidas.length} cobrança(s) antiga(s) cobertas pelo acordo não foram apagadas no Asaas — apague no painel`); return r; }, `Caso migrado — contrato ${p.contrato.numero}`); }}>Confirmar migração</button>
+              </LinhaPrevia>
+              <LinhaPrevia rotulo="FIPE do veículo">{previa.veiculo.fipe ? <><b>{formatCurrency(previa.veiculo.fipe.valor)}</b> · {previa.veiculo.fipe.modeloFipe} {previa.veiculo.fipe.anoModelo} · código {previa.veiculo.fipe.codigoFipe} · {previa.veiculo.fipe.referencia} (fonte oficial){previa.veiculo.fipe.alternativas.length > 0 && <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>outros modelos próximos: {previa.veiculo.fipe.alternativas.join(' · ')}</div>}</> : previa.veiculo.fipeMotivo ? <span style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>não preenchida — {previa.veiculo.fipeMotivo}. Corrija marca/modelo/ano nos termos; sem FIPE a novação não calcula a proteção.</span> : 'veículo já tem valor de venda'}</LinhaPrevia>
+              <LinhaPrevia rotulo="Taxa de desconto">{previa.contrato.taxaDescontoMensal ? <>{(previa.contrato.taxaDescontoMensal * 100).toFixed(2).replace('.', ',')}% ao mês — a mesma dos contratos gerados hoje (antecipação e novação)</> : <span style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>não definida — sem taxa vigente no Catálogo</span>}</LinhaPrevia>
+              <LinhaPrevia rotulo="Entrada">{previa.entrada ? <>{formatCurrency(previa.entrada.valor)} paga em {dataBR(previa.entrada.pagoEm)}</> : 'sem entrada'}</LinhaPrevia>
+              <LinhaPrevia rotulo="Faturas">{previa.faturas.length} no total: <b>{previa.resumo.faturasPagas}</b> pagas, <b>{previa.resumo.faturasFechadas}</b> com a cobrança antiga do Asaas mantida (vencidas ou vencendo até amanhã), <b>{previa.resumo.faturasAbertas}</b> a emitir pelo sistema{previa.resumo.faturasRenegociadas > 0 && <>, <b>{previa.resumo.faturasRenegociadas}</b> cobertas pelo acordo (sem cobrança própria)</>}</LinhaPrevia>
+              {previa.acordo && (
+                <LinhaPrevia rotulo="Acordo em andamento">nasce <b>ATIVO</b>: entrada {formatCurrency(previa.acordo.entrada.valor)} paga em {dataBR(previa.acordo.entrada.pagoEm)} · <b>{previa.acordo.numeroParcelas}×</b> {formatCurrency(previa.acordo.valorParcela)} somadas às faturas semanais de {dataBR(previa.acordo.primeiraEm)} a {dataBR(previa.acordo.ultimaEm)} ({previa.acordo.cotas.filter((x) => x.paga).length} cota(s) já paga(s)) · cobre as parcelas {previa.acordo.cobertas.join(', ')} ({formatCurrency(previa.acordo.valorCoberto)}){previa.resumo.removidas > 0 && <> · <b>{previa.resumo.removidas}</b> cobrança(s) antiga(s) dessas parcelas serão apagadas no Asaas</>}</LinhaPrevia>
+              )}
+              <LinhaPrevia rotulo="Cobranças a vencer">{previa.resumo.substituidas === 0 ? (previa.cobrancasMantidas.length ? 'nenhuma será substituída' : 'nenhuma emitida pela assinatura') :<><b>{previa.resumo.substituidas}</b> serão apagadas no Asaas e substituídas pelas do sistema{previa.resumo.emitidasAgora > 0 && <>, <b>{previa.resumo.emitidasAgora}</b> emitida(s) na hora por vencerem em até 5 dias (a nova é criada antes de a antiga ser apagada)</>}</>}
+                {previa.cobrancasMantidas.length > 0 && (
+                  <div className="mt-[4px] rounded-[6px] px-[8px] py-[4px]" style={{ background: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.bg, color: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.fg }}>
+                    <div className="font-semibold">Não serão apagadas nem substituídas (vencidas, de hoje ou de amanhã ficam amarradas à fatura; só a partir de D+2 o sistema substitui):</div>
+                    {previa.cobrancasMantidas.map((m) => <div key={m.chargeId}>· {m.aviso}</div>)}
+                  </div>
+                )}
+              </LinhaPrevia>
+              <LinhaPrevia rotulo="Reembolsos Parcelados">{previa.rps.length === 0 ? 'nenhum' : previa.rps.map((r) => `${r.rotulo} (${r.parcelas.length}×)`).join(' · ')}</LinhaPrevia>
+              <LinhaPrevia rotulo="Cobranças avulsas">{previa.resumo.avulsas}</LinhaPrevia>
+              <LinhaPrevia rotulo="Encargos já pagos">{formatCurrency(previa.resumo.encargos)}</LinhaPrevia>
+              <LinhaPrevia rotulo="Assinatura do Asaas">{previa.resumo.assinaturaId ? `${previa.resumo.assinaturaId} será PARADA (INACTIVE)` : 'nenhuma'}</LinhaPrevia>
+            </div>
+            <div className="flex flex-wrap justify-end gap-[8px]">
+              <Botao variante="secundaria" onClick={() => setPrevia(null)}>Cancelar</Botao>
+              <Botao variante="primaria" disabled={ocupado} onClick={() => { const p = previa; setPrevia(null); void rodar(async () => { const r = await svc.migrar(id); if (!r.assinatura.parada) toast.erro(`Contrato ${r.contratoNumero} criado, mas a assinatura do Asaas não foi parada: ${r.assinatura.motivo}`); if (r.substituicao?.mantidas?.length) toast.erro(`${r.substituicao.mantidas.length} cobrança(s) a vencer não foram apagadas no Asaas e ficaram amarradas`); if (r.removidas?.mantidas?.length) toast.erro(`${r.removidas.mantidas.length} cobrança(s) antiga(s) cobertas pelo acordo não foram apagadas no Asaas — apague no painel`); return r; }, `Caso migrado — contrato ${p.contrato.numero}`); }}>Confirmar migração</Botao>
             </div>
           </div>
         </Modal>
@@ -365,139 +548,142 @@ export function MigracaoLegadoCasoPage() {
       {/* Termos + Asaas */}
       <div className="grid grid-cols-1 gap-[14px] xl:grid-cols-[3fr_2fr]">
         {/* Termos */}
-        <div className="rounded-[12px] p-[14px]" style={bloco}>
-          <div className="flex flex-wrap items-center justify-between gap-[8px]">
-            <div className={tituloBloco} style={{ color: 'var(--text-muted)' }}>Termos do contrato (PopHub)</div>
-            <div className="flex items-center gap-[8px]">
-              {c.pdf ? (
-                <a href={svc.urlPdf(id)} target="_blank" rel="noreferrer" className="text-[11.5px] underline" style={{ color: 'var(--accent)' }}>abrir PDF ({c.pdf.nome})</a>
-              ) : (
-                <span className="text-[11.5px]" style={{ color: CASO_LEGADO_STATUS_COLORS.DESCARTADO.fg }}>sem PDF</span>
-              )}
-              {editavel && (
-                <label className={`${btn} flex cursor-pointer items-center`} style={btnSec}>
-                  {c.pdf ? 'Trocar PDF' : 'Anexar PDF do contrato'}
-                  <input type="file" accept="application/pdf" className="hidden" onChange={anexarPdf} disabled={ocupado} />
-                </label>
-              )}
-            </div>
-          </div>
-          {c.extracaoPdf && (
-            <div className="mt-[6px] text-[11px]" style={{ color: c.extracaoPdf.cpfDiverge ? CASO_LEGADO_STATUS_COLORS.DESCARTADO.fg : 'var(--text-muted)' }}>
-              {c.extracaoPdf.erro ? `Leitura do PDF falhou: ${c.extracaoPdf.erro}` : c.extracaoPdf.modeloReconhecido ? `Modelo Mod06 reconhecido — ${c.extracaoPdf.extraidos.length} campo(s) lidos do PDF.` : 'PDF de outro modelo — termos preenchidos à mão.'}
-            </div>
-          )}
-          {c.contratoDeOutroCliente && (
-            <div className="mt-[8px] rounded-[10px] p-[10px] text-[12px]" style={{ background: CASO_LEGADO_STATUS_COLORS.DESCARTADO.bg, color: CASO_LEGADO_STATUS_COLORS.DESCARTADO.fg }}>
-              <div className="font-bold">Este contrato é de outro cliente</div>
-              <div className="mt-[2px]">
-                O contrato é de <b>{c.contratoDeOutroCliente.nomeContrato ?? 'comprador sem nome'}</b> (CPF {cpfBR(c.contratoDeOutroCliente.cpfContrato)}), mas as cobranças deste caso são de <b>{c.nome}</b> (CPF {cpfBR(c.cpfCnpj)}) no Asaas. O caso não pode ser validado assim.
+        <div className="rounded-card p-[14px]" style={cartao}>
+          <Secao
+            titulo="Termos do contrato (PopHub)"
+            acao={
+              <div className="flex flex-wrap items-center gap-[8px]">
+                {c.pdf ? (
+                  <a href={svc.urlPdf(id)} target="_blank" rel="noreferrer" className="text-[11.5px] underline" style={{ color: 'var(--accent)' }}>abrir PDF ({c.pdf.nome})</a>
+                ) : (
+                  <span className="text-[11.5px]" style={{ color: CASO_LEGADO_STATUS_COLORS.DESCARTADO.fg }}>sem PDF</span>
+                )}
+                {editavel && (
+                  <>
+                    <Botao tamanho="sm" variante="secundaria" disabled={ocupado} onClick={() => inputPdf.current?.click()}>
+                      {c.pdf ? 'Trocar PDF' : 'Anexar PDF do contrato'}
+                    </Botao>
+                    <input ref={inputPdf} type="file" accept="application/pdf" className="hidden" onChange={anexarPdf} disabled={ocupado} />
+                  </>
+                )}
               </div>
-              {c.contratoDeOutroCliente.casos.length === 0 && (
-                <div className="mt-[6px]">Nenhum cliente lido do Asaas tem exatamente o CPF {cpfBR(c.contratoDeOutroCliente.cpfContrato)}. Confira o CPF no cadastro do Asaas e leia o Asaas de novo na fila — ou retire o contrato deste caso.</div>
-              )}
-              {c.contratoDeOutroCliente.casos.map((d) => (
-                <div key={d.id} className="mt-[6px] flex flex-wrap items-center gap-[8px]">
-                  <span>Cliente do Asaas com este CPF: <Link to={`/migracao-legado/${d.id}`} className="font-bold underline">{d.nome}</Link> · {d.asaasCustomerId} · {d.cobrancasPagas} paga(s) de {d.totalCobrancas} cobrança(s)</span>
-                  {editavel && !d.temContrato && !d.fechado && (
-                    <button className={btn} style={btnPri} disabled={ocupado}
-                      onClick={() => { if (window.confirm(`Mover o PDF e os termos para o caso de ${d.nome}? Este caso fica sem contrato.`)) void rodar(() => svc.moverContrato(id, d.id), `Contrato movido para o caso de ${d.nome}`); }}>
-                      Mover o contrato para este caso
-                    </button>
-                  )}
-                  {d.temContrato && <span>— já tem contrato anexado; abra e confira.</span>}
-                  {!d.temContrato && d.fechado && <span>— caso já validado ou migrado.</span>}
-                </div>
-              ))}
-              {editavel && (
-                <div className="mt-[8px]">
-                  <button className={btn} style={btnSec} disabled={ocupado}
-                    onClick={() => { if (window.confirm('Retirar o PDF e os termos deste caso? As cobranças lidas do Asaas ficam.')) void rodar(() => svc.retirarContrato(id), 'Contrato retirado deste caso'); }}>
-                    Retirar o contrato deste caso
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-          <fieldset disabled={!editavel} className="mt-[10px] grid grid-cols-2 gap-[8px] sm:grid-cols-3 lg:grid-cols-4">
-            <Campo rotulo="Nº do contrato *"><input className={inputCls} style={inputStyle} value={form.numeroOrigem} onChange={set('numeroOrigem')} /></Campo>
-            <Campo rotulo="Assinatura *"><input type="date" className={inputCls} style={inputStyle} value={form.dataAssinatura} onChange={set('dataAssinatura')} /></Campo>
-            <Campo rotulo="Comprador"><input className={inputCls} style={inputStyle} value={form.compradorNome} onChange={set('compradorNome')} /></Campo>
-            <Campo rotulo="CPF do comprador *"><input className={inputCls} style={inputStyle} value={form.compradorCpf} onChange={set('compradorCpf')} /></Campo>
-            <Campo rotulo="Garantidor"><input className={inputCls} style={inputStyle} value={form.garantidorNome} onChange={set('garantidorNome')} placeholder="quando houver" /></Campo>
-            <Campo rotulo="CPF do garantidor"><input className={inputCls} style={inputStyle} value={form.garantidorCpf} onChange={set('garantidorCpf')} /></Campo>
-            <div className="col-span-full mt-[4px] text-[10.5px] font-bold uppercase tracking-[.04em]" style={{ color: 'var(--text-muted)' }}>Veículo (cláusula 2.1)</div>
-            <Campo rotulo="Marca"><input className={inputCls} style={inputStyle} value={form.marca} onChange={set('marca')} /></Campo>
-            <Campo rotulo="Modelo"><input className={inputCls} style={inputStyle} value={form.modelo} onChange={set('modelo')} /></Campo>
-            <Campo rotulo="Ano fab."><input className={inputCls} style={inputStyle} value={form.anoFabricacao} onChange={set('anoFabricacao')} /></Campo>
-            <Campo rotulo="Ano modelo"><input className={inputCls} style={inputStyle} value={form.anoModelo} onChange={set('anoModelo')} /></Campo>
-            <Campo rotulo="Placa *"><input className={inputCls} style={inputStyle} value={form.placa} onChange={set('placa')} /></Campo>
-            <Campo rotulo="Chassi *"><input className={inputCls} style={inputStyle} value={form.chassi} onChange={set('chassi')} /></Campo>
-            <Campo rotulo="RENAVAM"><input className={inputCls} style={inputStyle} value={form.renavam} onChange={set('renavam')} /></Campo>
-            <Campo rotulo="Cor"><input className={inputCls} style={inputStyle} value={form.cor} onChange={set('cor')} /></Campo>
-            <Campo rotulo="Origem"><input className={inputCls} style={inputStyle} value={form.origem} onChange={set('origem')} placeholder="locadora / particular…" /></Campo>
-            <Campo rotulo="Combustível"><input className={inputCls} style={inputStyle} value={form.combustivel} onChange={set('combustivel')} /></Campo>
-            <Campo rotulo="Km"><input className={inputCls} style={inputStyle} value={form.quilometragem} onChange={set('quilometragem')} /></Campo>
-            <div className="col-span-full mt-[4px] text-[10.5px] font-bold uppercase tracking-[.04em]" style={{ color: 'var(--text-muted)' }}>Valores (cláusula 3) — o valor da parcela é SÓ o parcelamento (ex.: 942), sem seguro e taxa</div>
-            <Campo rotulo="Valor total (3.1) *"><input className={inputCls} style={inputStyle} value={form.valorTotal} onChange={set('valorTotal')} placeholder="0,00" /></Campo>
-            <Campo rotulo="Entrada no ato (3.2 a) *"><input className={inputCls} style={inputStyle} value={form.entradaValor} onChange={set('entradaValor')} placeholder="0,00" /></Campo>
-            <Campo rotulo="Nº de parcelas *"><input className={inputCls} style={inputStyle} value={form.parcQuantidade} onChange={set('parcQuantidade')} /></Campo>
-            <Campo rotulo="Valor da parcela *"><input className={inputCls} style={inputStyle} value={form.parcValor} onChange={set('parcValor')} placeholder="942,00" /></Campo>
-            <Campo rotulo="1ª parcela *"><input type="date" className={inputCls} style={inputStyle} value={form.parcPrimeiraEm} onChange={set('parcPrimeiraEm')} /></Campo>
-            <Campo rotulo="Total parcelado"><input className={inputCls} style={inputStyle} value={form.parcTotal} onChange={set('parcTotal')} placeholder="0,00" /></Campo>
-            <label className="col-span-2 flex items-center gap-[6px] self-end pb-[6px] text-[12px]" style={{ color: 'var(--text-body)' }}>
-              <input type="checkbox" checked={form.temIntermediarias} onChange={set('temIntermediarias')} /> tem parcelas intermediárias (entrada diluída, 3.2 c)
-            </label>
-            {/* Contrato cuja parcela já vem cheia (decisão 02/10): 997 = 942 + 50 + 5. */}
-            <label className="col-span-full flex items-center gap-[6px] text-[12px]" style={{ color: 'var(--text-secondary)' }}>
-              <input type="checkbox" checked={form.parcelaIncluiServicos} onChange={set('parcelaIncluiServicos')} /> o valor da parcela do contrato <b>já inclui</b> seguro e taxa (ex.: R$ 997,00) — o parcelamento passa a ser o valor menos os dois
-            </label>
-            {form.temIntermediarias && (
-              <>
-                <Campo rotulo="Qtde intermediárias"><input className={inputCls} style={inputStyle} value={form.interQuantidade} onChange={set('interQuantidade')} /></Campo>
-                <Campo rotulo="Valor de cada"><input className={inputCls} style={inputStyle} value={form.interValor} onChange={set('interValor')} placeholder="500,00" /></Campo>
-                <Campo rotulo="1ª intermediária"><input type="date" className={inputCls} style={inputStyle} value={form.interPrimeiraEm} onChange={set('interPrimeiraEm')} /></Campo>
-                <Campo rotulo="Total intermediárias"><input className={inputCls} style={inputStyle} value={form.interTotal} onChange={set('interTotal')} placeholder="0,00" /></Campo>
-              </>
+            }
+          >
+            {c.extracaoPdf && (
+              <div className="text-[11px]" style={{ color: c.extracaoPdf.cpfDiverge ? CASO_LEGADO_STATUS_COLORS.DESCARTADO.fg : 'var(--text-muted)' }}>
+                {c.extracaoPdf.erro ? `Leitura do PDF falhou: ${c.extracaoPdf.erro}` : c.extracaoPdf.modeloReconhecido ? `Modelo Mod06 reconhecido — ${c.extracaoPdf.extraidos.length} campo(s) lidos do PDF.` : 'PDF de outro modelo — termos preenchidos à mão.'}
+              </div>
             )}
-            <div className="col-span-full mt-[4px] text-[10.5px] font-bold uppercase tracking-[.04em]" style={{ color: 'var(--text-muted)' }}>Itens junto da parcela (§26.2) e encargos</div>
-            <Campo rotulo="Seguro / semana"><input className={inputCls} style={inputStyle} value={form.seguroSemanal} onChange={set('seguroSemanal')} /></Campo>
-            <Campo rotulo="Taxa mensagens / semana"><input className={inputCls} style={inputStyle} value={form.taxaSemanal} onChange={set('taxaSemanal')} /></Campo>
-            <Campo rotulo="Reajuste"><input className={inputCls} style={inputStyle} value={form.indiceReajuste} onChange={set('indiceReajuste')} placeholder="IPCA" /></Campo>
-            <Campo rotulo="Multa atraso %"><input className={inputCls} style={inputStyle} value={form.multaAtrasoPct} onChange={set('multaAtrasoPct')} placeholder="2" /></Campo>
-            <Campo rotulo="Juros % a.m."><input className={inputCls} style={inputStyle} value={form.jurosMensalPct} onChange={set('jurosMensalPct')} placeholder="1" /></Campo>
-            <Campo rotulo="Garantia (dias)"><input className={inputCls} style={inputStyle} value={form.garantiaDias} onChange={set('garantiaDias')} placeholder="90" /></Campo>
-            <div className="col-span-full"><Campo rotulo="Observações dos termos"><textarea className={inputCls} style={inputStyle} rows={2} value={form.observacoes} onChange={set('observacoes')} /></Campo></div>
-          </fieldset>
-          {editavel && (
-            <div className="mt-[10px] flex items-center gap-[10px]">
-              <button className={btn} style={btnPri} disabled={ocupado || !formSujo} onClick={salvarTermos}>Salvar termos</button>
-              {c.termosFaltantes.length > 0 && <span className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>faltam: {c.termosFaltantes.map((x) => CAMPO_ROTULO[x] ?? x).join(', ')}</span>}
-            </div>
-          )}
+            {c.contratoDeOutroCliente && (
+              <div className="mt-[8px] rounded-[10px] p-[10px] text-[12px]" style={{ background: CASO_LEGADO_STATUS_COLORS.DESCARTADO.bg, color: CASO_LEGADO_STATUS_COLORS.DESCARTADO.fg }}>
+                <div className="font-bold">Este contrato é de outro cliente</div>
+                <div className="mt-[2px]">
+                  O contrato é de <b>{c.contratoDeOutroCliente.nomeContrato ?? 'comprador sem nome'}</b> (CPF {cpfBR(c.contratoDeOutroCliente.cpfContrato)}), mas as cobranças deste caso são de <b>{c.nome}</b> (CPF {cpfBR(c.cpfCnpj)}) no Asaas. O caso não pode ser validado assim.
+                </div>
+                {c.contratoDeOutroCliente.casos.length === 0 && (
+                  <div className="mt-[6px]">Nenhum cliente lido do Asaas tem exatamente o CPF {cpfBR(c.contratoDeOutroCliente.cpfContrato)}. Confira o CPF no cadastro do Asaas e leia o Asaas de novo na fila — ou retire o contrato deste caso.</div>
+                )}
+                {c.contratoDeOutroCliente.casos.map((d) => (
+                  <div key={d.id} className="mt-[6px] flex flex-wrap items-center gap-[8px]">
+                    <span>Cliente do Asaas com este CPF: <Link to={`/migracao-legado/${d.id}`} className="font-bold underline">{d.nome}</Link> · {d.asaasCustomerId} · {d.cobrancasPagas} paga(s) de {d.totalCobrancas} cobrança(s)</span>
+                    {editavel && !d.temContrato && !d.fechado && (
+                      <Botao tamanho="sm" variante="primaria" disabled={ocupado}
+                        onClick={() => { if (window.confirm(`Mover o PDF e os termos para o caso de ${d.nome}? Este caso fica sem contrato.`)) void rodar(() => svc.moverContrato(id, d.id), `Contrato movido para o caso de ${d.nome}`); }}>
+                        Mover o contrato para este caso
+                      </Botao>
+                    )}
+                    {d.temContrato && <span>— já tem contrato anexado; abra e confira.</span>}
+                    {!d.temContrato && d.fechado && <span>— caso já validado ou migrado.</span>}
+                  </div>
+                ))}
+                {editavel && (
+                  <div className="mt-[8px]">
+                    <Botao tamanho="sm" variante="secundaria" disabled={ocupado}
+                      onClick={() => { if (window.confirm('Retirar o PDF e os termos deste caso? As cobranças lidas do Asaas ficam.')) void rodar(() => svc.retirarContrato(id), 'Contrato retirado deste caso'); }}>
+                      Retirar o contrato deste caso
+                    </Botao>
+                  </div>
+                )}
+              </div>
+            )}
+            <fieldset disabled={!editavel} className="mt-[10px] grid grid-cols-2 gap-[8px] sm:grid-cols-3 lg:grid-cols-4">
+              <Campo rotulo="Nº do contrato *"><input className={inputCls} style={inputStyle} value={form.numeroOrigem} onChange={set('numeroOrigem')} /></Campo>
+              <Campo rotulo="Assinatura *"><input type="date" className={inputCls} style={inputStyle} value={form.dataAssinatura} onChange={set('dataAssinatura')} /></Campo>
+              <Campo rotulo="Comprador"><input className={inputCls} style={inputStyle} value={form.compradorNome} onChange={set('compradorNome')} /></Campo>
+              <Campo rotulo="CPF do comprador *"><input className={inputCls} style={inputStyle} value={form.compradorCpf} onChange={set('compradorCpf')} /></Campo>
+              <Campo rotulo="Garantidor"><input className={inputCls} style={inputStyle} value={form.garantidorNome} onChange={set('garantidorNome')} placeholder="quando houver" /></Campo>
+              <Campo rotulo="CPF do garantidor"><input className={inputCls} style={inputStyle} value={form.garantidorCpf} onChange={set('garantidorCpf')} /></Campo>
+              <div className={`col-span-full mt-[4px] ${eyebrow}`} style={{ color: 'var(--text-label)' }}>Veículo (cláusula 2.1)</div>
+              <Campo rotulo="Marca"><input className={inputCls} style={inputStyle} value={form.marca} onChange={set('marca')} /></Campo>
+              <Campo rotulo="Modelo"><input className={inputCls} style={inputStyle} value={form.modelo} onChange={set('modelo')} /></Campo>
+              <Campo rotulo="Ano fab."><input className={inputCls} style={inputStyle} value={form.anoFabricacao} onChange={set('anoFabricacao')} /></Campo>
+              <Campo rotulo="Ano modelo"><input className={inputCls} style={inputStyle} value={form.anoModelo} onChange={set('anoModelo')} /></Campo>
+              <Campo rotulo="Placa *"><input className={inputCls} style={inputStyle} value={form.placa} onChange={set('placa')} /></Campo>
+              <Campo rotulo="Chassi *"><input className={inputCls} style={inputStyle} value={form.chassi} onChange={set('chassi')} /></Campo>
+              <Campo rotulo="RENAVAM"><input className={inputCls} style={inputStyle} value={form.renavam} onChange={set('renavam')} /></Campo>
+              <Campo rotulo="Cor"><input className={inputCls} style={inputStyle} value={form.cor} onChange={set('cor')} /></Campo>
+              <Campo rotulo="Origem"><input className={inputCls} style={inputStyle} value={form.origem} onChange={set('origem')} placeholder="locadora / particular…" /></Campo>
+              <Campo rotulo="Combustível"><input className={inputCls} style={inputStyle} value={form.combustivel} onChange={set('combustivel')} /></Campo>
+              <Campo rotulo="Km"><input className={inputCls} style={inputStyle} value={form.quilometragem} onChange={set('quilometragem')} /></Campo>
+              <div className={`col-span-full mt-[4px] ${eyebrow}`} style={{ color: 'var(--text-label)' }}>Valores (cláusula 3) — o valor da parcela é SÓ o parcelamento (ex.: 942), sem seguro e taxa</div>
+              <Campo rotulo="Valor total (3.1) *"><input className={inputCls} style={inputStyle} value={form.valorTotal} onChange={set('valorTotal')} placeholder="0,00" /></Campo>
+              <Campo rotulo="Entrada no ato (3.2 a) *"><input className={inputCls} style={inputStyle} value={form.entradaValor} onChange={set('entradaValor')} placeholder="0,00" /></Campo>
+              <Campo rotulo="Nº de parcelas *"><input className={inputCls} style={inputStyle} value={form.parcQuantidade} onChange={set('parcQuantidade')} /></Campo>
+              <Campo rotulo="Valor da parcela *"><input className={inputCls} style={inputStyle} value={form.parcValor} onChange={set('parcValor')} placeholder="942,00" /></Campo>
+              <Campo rotulo="1ª parcela *"><input type="date" className={inputCls} style={inputStyle} value={form.parcPrimeiraEm} onChange={set('parcPrimeiraEm')} /></Campo>
+              <Campo rotulo="Total parcelado"><input className={inputCls} style={inputStyle} value={form.parcTotal} onChange={set('parcTotal')} placeholder="0,00" /></Campo>
+              <label className="col-span-2 flex min-h-[30px] items-center gap-[6px] self-end pb-[6px] text-[12px]" style={{ color: 'var(--text-body)' }}>
+                <input type="checkbox" checked={form.temIntermediarias} onChange={set('temIntermediarias')} /> tem parcelas intermediárias (entrada diluída, 3.2 c)
+              </label>
+              {/* Contrato cuja parcela já vem cheia (decisão 02/10): 997 = 942 + 50 + 5. */}
+              <label className="col-span-full flex min-h-[30px] items-center gap-[6px] text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                <input type="checkbox" checked={form.parcelaIncluiServicos} onChange={set('parcelaIncluiServicos')} /> <span>o valor da parcela do contrato <b>já inclui</b> seguro e taxa (ex.: R$ 997,00) — o parcelamento passa a ser o valor menos os dois</span>
+              </label>
+              {form.temIntermediarias && (
+                <>
+                  <Campo rotulo="Qtde intermediárias"><input className={inputCls} style={inputStyle} value={form.interQuantidade} onChange={set('interQuantidade')} /></Campo>
+                  <Campo rotulo="Valor de cada"><input className={inputCls} style={inputStyle} value={form.interValor} onChange={set('interValor')} placeholder="500,00" /></Campo>
+                  <Campo rotulo="1ª intermediária"><input type="date" className={inputCls} style={inputStyle} value={form.interPrimeiraEm} onChange={set('interPrimeiraEm')} /></Campo>
+                  <Campo rotulo="Total intermediárias"><input className={inputCls} style={inputStyle} value={form.interTotal} onChange={set('interTotal')} placeholder="0,00" /></Campo>
+                </>
+              )}
+              <div className={`col-span-full mt-[4px] ${eyebrow}`} style={{ color: 'var(--text-label)' }}>Itens junto da parcela (§26.2) e encargos</div>
+              <Campo rotulo="Seguro / semana"><input className={inputCls} style={inputStyle} value={form.seguroSemanal} onChange={set('seguroSemanal')} /></Campo>
+              <Campo rotulo="Taxa mensagens / semana"><input className={inputCls} style={inputStyle} value={form.taxaSemanal} onChange={set('taxaSemanal')} /></Campo>
+              <Campo rotulo="Reajuste"><input className={inputCls} style={inputStyle} value={form.indiceReajuste} onChange={set('indiceReajuste')} placeholder="IPCA" /></Campo>
+              <Campo rotulo="Multa atraso %"><input className={inputCls} style={inputStyle} value={form.multaAtrasoPct} onChange={set('multaAtrasoPct')} placeholder="2" /></Campo>
+              <Campo rotulo="Juros % a.m."><input className={inputCls} style={inputStyle} value={form.jurosMensalPct} onChange={set('jurosMensalPct')} placeholder="1" /></Campo>
+              <Campo rotulo="Garantia (dias)"><input className={inputCls} style={inputStyle} value={form.garantiaDias} onChange={set('garantiaDias')} placeholder="90" /></Campo>
+              <div className="col-span-full"><Campo rotulo="Observações dos termos"><textarea className={inputCls} style={inputStyle} rows={2} value={form.observacoes} onChange={set('observacoes')} /></Campo></div>
+            </fieldset>
+            {editavel && (
+              <div className="mt-[10px] flex flex-wrap items-center gap-[10px]">
+                <Botao tamanho="sm" variante="primaria" disabled={ocupado || !formSujo} onClick={() => void salvarTermos()}>Salvar termos</Botao>
+                {c.termosFaltantes.length > 0 && <span className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>faltam: {c.termosFaltantes.map((x) => CAMPO_ROTULO[x] ?? x).join(', ')}</span>}
+              </div>
+            )}
+          </Secao>
         </div>
 
         {/* Asaas + resumo */}
         <div className="flex flex-col gap-[14px]">
-          <div className="rounded-[12px] p-[14px]" style={bloco}>
-            <div className={tituloBloco} style={{ color: 'var(--text-muted)' }}>Assinatura no Asaas (recorrência)</div>
+          <Bloco titulo="Assinatura no Asaas (recorrência)">
             {c.assinatura ? (
-              <div className="mt-[6px] text-[12.5px]" style={{ color: 'var(--text-body)' }}>
+              <div className="text-[12.5px]" style={{ color: 'var(--text-body)' }}>
                 <div><b>{formatCurrency(c.assinatura.valor ?? 0)}</b> {c.assinatura.ciclo === 'WEEKLY' ? 'semanal' : c.assinatura.ciclo} · {c.assinatura.status === 'ACTIVE' ? 'ativa' : (c.assinatura.status ?? '').toLowerCase()} · próxima {dataBR(c.assinatura.proximoVencimento)}</div>
                 <div className="mt-[3px] text-[11.5px]" style={{ color: 'var(--text-secondary)' }}>{c.assinatura.descricao ?? 'sem descrição'}</div>
               </div>
-            ) : <div className="mt-[6px] text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Sem assinatura — cobranças avulsas.</div>}
-            <div className="mt-[8px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+            ) : <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Sem assinatura — cobranças avulsas.</div>}
+            <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
               Parcela padrão cobrada: <b>{c.valorParcelaPadrao == null ? '—' : formatCurrency(c.valorParcelaPadrao)}</b> {c.modeloRotulo ? `· ${c.modeloRotulo}` : ''}
               {c.decomposicao && <> · proposta {formatCurrency(c.decomposicao.parcelamento)} + {formatCurrency(c.decomposicao.seguro)} + {formatCurrency(c.decomposicao.taxaMensagens)}</>}
             </div>
-          </div>
-          <div className="rounded-[12px] p-[14px]" style={bloco}>
-            <div className={tituloBloco} style={{ color: 'var(--text-muted)' }}>Conciliação — resumo</div>
+          </Bloco>
+          <Bloco titulo="Conciliação — resumo">
             {conc.incompleta ? (
-              <div className="mt-[6px] text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Preencha nº de parcelas, valor e 1ª parcela nos termos para o cronograma esperado nascer.</div>
+              <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Preencha nº de parcelas, valor e 1ª parcela nos termos para o cronograma esperado nascer.</div>
             ) : (
-              <div className="mt-[8px] grid grid-cols-2 gap-[8px] sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-[8px] sm:grid-cols-3">
                 <Metrica label="Parcelas pagas" valor={`${r.parcelasPagas} de ${r.parcelasEsperadas}`} />
                 <Metrica label="Pendentes / vencidas" valor={`${r.parcelasPendentes} / ${r.parcelasVencidas}`} alerta={r.parcelasVencidas > 0} />
                 <Metrica label="Futuras (não emitidas)" valor={r.parcelasFuturas} />
@@ -515,9 +701,9 @@ export function MigracaoLegadoCasoPage() {
             )}
             {/* Doc 02 §26.14: parcela N = N-ésima cobrança (sequência) ou cobrança na data do contrato. */}
             {!conc.incompleta && (
-              <div className="mt-[10px] flex flex-wrap items-center gap-[8px] text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+              <div className="flex flex-wrap items-center gap-[8px] text-[12px]" style={{ color: 'var(--text-secondary)' }}>
                 <span className="font-semibold">Como achar cada parcela:</span>
-                <select className="rounded-[6px] px-[6px] py-[3px] text-[12px]" style={inputStyle} disabled={!editavel || !!c.conciliacaoDeclarada} value={c.conciliacaoDeclarada ? 'DECLARADA' : c.modoConciliacao}
+                <select className={`${inputMini} max-w-full text-[12px]`} style={inputStyle} disabled={!editavel || !!c.conciliacaoDeclarada} value={c.conciliacaoDeclarada ? 'DECLARADA' : c.modoConciliacao}
                   onChange={(e) => rodar(() => svc.definirModoConciliacao(id, e.target.value as ModoConciliacao), 'Método de conciliação definido')}>
                   {c.conciliacaoDeclarada && <option value="DECLARADA">cronograma declarado (validado caso a caso)</option>}
                   <option value="SEQUENCIA">pela sequência das cobranças (semana pulada não consome parcela; recomendado)</option>
@@ -527,61 +713,59 @@ export function MigracaoLegadoCasoPage() {
             )}
             {/* Doc 02 §26.15 item 5 (20/10): não há mais escolha de modo — parcela, fatura e recebível vencem no dia da cobrança real. */}
             {!conc.incompleta && (
-              <div className="mt-[10px] text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+              <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
                 <span className="font-semibold">Vencimentos na migração:</span> parcela, fatura e recebível vencem no <b>mesmo dia</b> — o da cobrança real do Asaas; sem cobrança, a cadência continua a partir da última data real. A data do contrato fica só como 1ª parcela do contrato. A prévia da migração mostra parcela a parcela.
               </div>
             )}
-          </div>
-          <div className="rounded-[12px] p-[14px]" style={bloco}>
-            <div className={tituloBloco} style={{ color: 'var(--text-muted)' }}>Anotações do caso</div>
-            <textarea className={`${inputCls} mt-[6px]`} style={inputStyle} rows={3} value={obs} onChange={(e) => setObs(e.target.value)} onBlur={salvarObs} disabled={!podeOperar}
+          </Bloco>
+          <Bloco titulo="Anotações do caso">
+            <textarea className={inputCls} style={inputStyle} rows={3} value={obs} onChange={(e) => setObs(e.target.value)} onBlur={salvarObs} disabled={!podeOperar}
               placeholder="O que achou no PopHub, dúvidas, combinados com o cliente…" />
-          </div>
+          </Bloco>
         </div>
       </div>
 
       {/* §26.15: cronograma DECLARADO — validado caso a caso, fora das regras. */}
       {c.conciliacaoDeclarada && (
-        <div className="rounded-[12px] p-[14px]" style={{ background: CASO_LEGADO_STATUS_COLORS.VALIDADO.bg, border: `1px solid ${CASO_LEGADO_STATUS_COLORS.VALIDADO.fg}` }}>
+        <div className="rounded-card p-[14px]" style={{ background: CASO_LEGADO_STATUS_COLORS.VALIDADO.bg, border: `1px solid ${CASO_LEGADO_STATUS_COLORS.VALIDADO.fg}` }}>
           <div className="flex flex-wrap items-center justify-between gap-[8px]">
             <div className="text-[12.5px]" style={{ color: CASO_LEGADO_STATUS_COLORS.VALIDADO.fg }}>
               <b>Conciliação declarada</b> — cronograma validado caso a caso ({c.conciliacaoDeclarada.parcelas} parcelas), gravado em {c.conciliacaoDeclarada.em ? dataHoraBR(c.conciliacaoDeclarada.em) : '—'}{c.conciliacaoDeclarada.origem ? ` via ${c.conciliacaoDeclarada.origem}` : ''}. As regras de leitura e conciliação não valem neste caso; a migração usa o declarado.
               {c.conciliacaoDeclarada.observacao && <div className="mt-[3px] text-[12px]">{c.conciliacaoDeclarada.observacao}</div>}
             </div>
-            {editavel && <button className={btn} style={btnSec} disabled={ocupado} onClick={() => { if (window.confirm('Remover a conciliação declarada? O caso volta às regras da bancada.')) void rodar(() => svc.removerDeclaracao(id), 'Declaração removida'); }}>Remover declaração</button>}
+            {editavel && <Botao tamanho="sm" variante="secundaria" disabled={ocupado} onClick={() => { if (window.confirm('Remover a conciliação declarada? O caso volta às regras da bancada.')) void rodar(() => svc.removerDeclaracao(id), 'Declaração removida'); }}>Remover declaração</Botao>}
           </div>
         </div>
       )}
 
       {/* Acordos legados (doc 02 §26.14): o sistema agrupa as (k/n), soma e propõe o que quitam. */}
       {!conc.incompleta && conc.acordos.length > 0 && (
-        <div className="rounded-[12px] p-[14px]" style={bloco}>
-          <div className={tituloBloco} style={{ color: 'var(--text-muted)' }}>Acordos encontrados nas cobranças ({conc.acordos.length}) — acordo cobre parcela antiga vencida, nunca empurra o cronograma</div>
-          <ul className="mt-[8px] flex flex-col gap-[8px]">
+        <Bloco titulo="Acordos encontrados nas cobranças" tag={`${conc.acordos.length} · acordo cobre parcela antiga vencida, nunca empurra o cronograma`}>
+          <ul className="flex flex-col gap-[8px]">
             {conc.acordos.map((g) => (
-              <li key={g.id} className="rounded-[10px] p-[10px] text-[12px]" style={{ border: '1px solid var(--border)', background: g.confirmado ? CASO_LEGADO_STATUS_COLORS.MIGRADO.bg : CASO_LEGADO_STATUS_COLORS.EM_REVISAO.bg }}>
+              <li key={g.id} className="rounded-[10px] p-[10px] text-[12px]" style={{ border: '1px solid var(--border)', background: g.confirmado ? CASO_LEGADO_STATUS_COLORS.MIGRADO.bg : CASO_LEGADO_STATUS_COLORS.EM_REVISAO.bg, color: 'var(--text-primary)' }}>
                 <div className="flex flex-wrap items-center justify-between gap-[8px]">
                   <div>
                     <b>{g.rotulo}</b> · {g.parcelas.length} parcela(s) · total <b className="tabular-nums">{formatCurrency(g.total)}</b>
                     {g.concluido ? ' · todas pagas' : ` · pago ${formatCurrency(g.pago)} (em andamento)`}
                   </div>
                   {g.confirmado
-                    ? <span className="flex items-center gap-[8px]" style={{ color: CASO_LEGADO_STATUS_COLORS.MIGRADO.fg }}>
+                    ? <span className="flex flex-wrap items-center gap-[8px]" style={{ color: CASO_LEGADO_STATUS_COLORS.MIGRADO.fg }}>
                         <b>Confirmado: cobre {g.confirmado.quantidade} parcela(s){g.confirmado.chaves.length ? ` (${g.confirmado.chaves.map((k) => k.replace('parcela:', '')).join(', ')})` : ''}</b>
-                        {editavel && <button className="underline" onClick={() => rodar(() => svc.desfazerAcordo(id, g.id), 'Confirmação desfeita')}>desfazer</button>}
+                        {editavel && <button type="button" className={linkInline} onClick={() => rodar(() => svc.desfazerAcordo(id, g.id), 'Confirmação desfeita')}>desfazer</button>}
                       </span>
                     : editavel && (
                       <span className="flex flex-wrap items-center gap-[6px]">
                         <label className="flex items-center gap-[4px]">cobre
-                          <input type="number" min={1} className="w-[52px] rounded-[6px] px-[6px] py-[3px] text-[12px] tabular-nums" style={inputStyle} value={qtdAcordo[g.id] ?? g.proposta.quantidade} onChange={(e) => setQtdAcordo({ ...qtdAcordo, [g.id]: Math.max(1, Number(e.target.value) || 1) })} />
+                          <input type="number" min={1} className={`${inputMini} w-[52px] text-[12px] tabular-nums`} style={inputStyle} value={qtdAcordo[g.id] ?? g.proposta.quantidade} onChange={(e) => setQtdAcordo({ ...qtdAcordo, [g.id]: Math.max(1, Number(e.target.value) || 1) })} />
                           parcela(s)</label>
                         {conc.modo === 'DATA' && (
-                          <input className="w-[200px] rounded-[6px] px-[6px] py-[3px] text-[12px]" style={inputStyle} placeholder={g.proposta.chaves.map((k) => k.replace('parcela:', '')).join(', ') || 'nº das parcelas (ex.: 5, 6)'} value={chavesAcordo[g.id] ?? ''} onChange={(e) => setChavesAcordo({ ...chavesAcordo, [g.id]: e.target.value })} />
+                          <input className={`${inputMini} w-[200px] max-w-full text-[12px]`} style={inputStyle} placeholder={g.proposta.chaves.map((k) => k.replace('parcela:', '')).join(', ') || 'nº das parcelas (ex.: 5, 6)'} value={chavesAcordo[g.id] ?? ''} onChange={(e) => setChavesAcordo({ ...chavesAcordo, [g.id]: e.target.value })} />
                         )}
-                        <button className={btn} style={btnPri} disabled={ocupado}
+                        <Botao tamanho="sm" variante="primaria" disabled={ocupado}
                           onClick={() => rodar(() => svc.confirmarAcordo(id, g.id, { quantidade: qtdAcordo[g.id] ?? g.proposta.quantidade, chaves: conc.modo === 'DATA' ? ((chavesAcordo[g.id] ?? '').split(/[,\s]+/).filter(Boolean).map((n) => `parcela:${n}`)) : undefined }), 'Acordo confirmado')}>
                           Confirmar
-                        </button>
+                        </Botao>
                       </span>
                     )}
                 </div>
@@ -592,135 +776,99 @@ export function MigracaoLegadoCasoPage() {
               </li>
             ))}
           </ul>
-        </div>
+        </Bloco>
       )}
 
       {/* Conciliação */}
       {!conc.incompleta && (
-        <div className="rounded-[12px] p-[14px]" style={bloco}>
-          <div className="flex flex-wrap items-center justify-between gap-[8px]">
-            <div className={tituloBloco} style={{ color: 'var(--text-muted)' }}>Conciliação — cronograma esperado × cobranças reais ({conc.linhas.length} linhas)</div>
-            <label className="flex items-center gap-[6px] text-[11.5px]" style={{ color: 'var(--text-secondary)' }}>
-              <input type="checkbox" checked={soDivergencias} onChange={(e) => setSoDivergencias(e.target.checked)} /> só divergências
-            </label>
-          </div>
-          <div className="mt-[8px] max-h-[420px] overflow-auto rounded-[10px]" style={{ border: '1px solid var(--border)' }}>
-            <table className="w-full min-w-[900px] border-collapse">
-              <thead className="sticky top-0" style={{ background: 'var(--surface)' }}>
-                <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
-                  <th className={th}></th><th className={th}>Item</th><th className={th}>Esperado em</th><th className={`${th} text-right`}>Esperado</th>
-                  <th className={th}>Cobrado em</th><th className={`${th} text-right`}>Cobrado</th><th className={th}>Pago em</th><th className={`${th} text-right`}>Pago</th>
-                  <th className={`${th} text-right`}>Encargo</th><th className={th}>Situação</th><th className={th}>Divergência</th>
-                </tr>
-              </thead>
-              <tbody>
-                {linhas.map((l) => <LinhaConc key={l.chave} l={l} reconhecida={reconhecidas.get(l.chave) ?? null} editavel={!!editavel} nota={notaDiv[l.chave] ?? ''} setNota={(v) => setNotaDiv({ ...notaDiv, [l.chave]: v })}
-                  desfecho={desfechoDiv[l.chave] ?? ''} setDesfecho={(v) => setDesfechoDiv({ ...desfechoDiv, [l.chave]: v })} desfechos={c.desfechosDivergencia.filter((d) => d.valor !== 'COBRANCA_AVULSA')}
-                  reconhecer={() => rodar(() => svc.reconhecerDivergencia(id, l.chave, notaDiv[l.chave] ?? '', desfechoDiv[l.chave] ?? ''), 'Divergência reconhecida')}
-                  desfazer={() => rodar(() => svc.desfazerReconhecimento(id, l.chave), '')}
-                  vinculadas={[...(l.partes.length ? l.partes.map((x) => x.cobrancaId) : l.cobrancaId ? [l.cobrancaId] : [])].filter((cid) => vinculoPorCobranca.has(cid))}
-                  desvincular={(cid) => rodar(() => svc.desvincular(id, cid), 'Vínculo desfeito')} />)}
-                {linhas.length === 0 && <tr><td className={td} colSpan={11} style={{ color: 'var(--text-muted)' }}>Nenhuma linha{soDivergencias ? ' divergente' : ''}.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-          {conc.fora.length > 0 && (
-            <div className="mt-[10px]">
-              <div className="text-[11px] font-bold" style={{ color: 'var(--text-secondary)' }}>Cobranças fora do cronograma ({conc.fora.length}) — entrada, acordos, reembolsos e o que não casou com data nenhuma</div>
-              <ul className="mt-[4px] flex flex-col gap-[4px]">
-                {conc.fora.map((f) => {
-                  const chave = `cobranca:${f.cobrancaId}`;
-                  const rec = reconhecidas.get(chave);
-                  return (
-                    <li key={f.cobrancaId} className="flex flex-wrap items-center gap-[8px] text-[12px]" style={{ color: 'var(--text-body)' }}>
-                      <span className="tabular-nums">{dataBR(f.vencimento)}</span>
-                      <b className="tabular-nums">{formatCurrency(f.valorOriginal)}</b>
-                      <StatusBadge label={f.classe} colors={COBRANCA_LEGADA_COLORS} />
-                      <span style={{ color: 'var(--text-secondary)' }}>{cobrancaPorId.get(f.cobrancaId)?.tipoRotulo ?? f.tipo} — {f.motivo}</span>
-                      {f.descricao && <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>“{f.descricao}”</span>}
-                      {/* Vínculo manual (23/09): o operador aponta a cobrança para a linha que ela quita. */}
-                      {editavel && !rec && (
-                        <select className="rounded-[6px] px-[6px] py-[3px] text-[11px]" style={inputStyle} value="" onChange={(e) => { if (e.target.value) void rodar(() => svc.vincular(id, f.cobrancaId, e.target.value), 'Cobrança vinculada à linha'); }}>
-                          <option value="">→ vincular a…</option>
-                          {conc.linhas.filter((l) => l.situacao !== 'paga' && l.situacao !== 'paga_com_encargo').map((l) => (
-                            <option key={l.chave} value={l.chave}>{l.serie === 'entrada' ? 'Entrada' : l.serie === 'parcela' ? `Parcela ${l.numero}` : `Intermediária ${l.numero}`} · {dataBR(l.esperadoEm)} · {formatCurrency(l.esperadoValor)}</option>
-                          ))}
-                        </select>
-                      )}
-                      {f.divergencia && (rec
-                        ? <span className="text-[11px]" style={{ color: rec.desfecho ? CASO_LEGADO_STATUS_COLORS.MIGRADO.fg : SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>reconhecida{rec.desfecho ? ' · cobrança avulsa' : ' · sem desfecho, reconheça de novo'}: {rec.nota}{editavel && <button className="ml-[6px] underline" onClick={() => rodar(() => svc.desfazerReconhecimento(id, chave), '')}>desfazer</button>}</span>
-                        : editavel && <span className="flex items-center gap-[4px]"><input className="rounded-[6px] px-[6px] py-[3px] text-[11px]" style={inputStyle} placeholder="por quê?" value={notaDiv[chave] ?? ''} onChange={(e) => setNotaDiv({ ...notaDiv, [chave]: e.target.value })} /><button className="text-[11px] underline" disabled={!(notaDiv[chave] ?? '').trim()} onClick={() => rodar(() => svc.reconhecerDivergencia(id, chave, notaDiv[chave] ?? '', 'COBRANCA_AVULSA'), 'Divergência reconhecida')}>reconhecer como cobrança avulsa</button></span>)}
-                    </li>
-                  );
-                })}
-              </ul>
+        <div className="rounded-card p-[14px]" style={cartao}>
+          <Secao
+            titulo="Conciliação — cronograma esperado × cobranças reais"
+            tag={`${conc.linhas.length} linhas`}
+            acao={
+              <label className="flex min-h-[30px] items-center gap-[6px] text-[11.5px]" style={{ color: 'var(--text-secondary)' }}>
+                <input type="checkbox" checked={soDivergencias} onChange={(e) => setSoDivergencias(e.target.checked)} /> só divergências
+              </label>
+            }
+          >
+            <div className="max-h-[520px] overflow-auto">
+              <Tabela
+                colunas={colunasConc}
+                linhas={linhas}
+                chave={(l) => l.chave}
+                larguraMinima={900}
+                acoes={divergenciaDaLinha}
+                vazio={`Nenhuma linha${soDivergencias ? ' divergente' : ''}.`}
+              />
             </div>
-          )}
+            {conc.fora.length > 0 && (
+              <div className="mt-[10px]">
+                <div className={eyebrow} style={{ color: 'var(--text-label)' }}>Cobranças fora do cronograma ({conc.fora.length})</div>
+                <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>entrada, acordos, reembolsos e o que não casou com data nenhuma</div>
+                <ul className="mt-[4px] flex flex-col gap-[4px]">
+                  {conc.fora.map((f) => {
+                    const chave = `cobranca:${f.cobrancaId}`;
+                    const rec = reconhecidas.get(chave);
+                    return (
+                      <li key={f.cobrancaId} className="flex flex-wrap items-center gap-[8px] text-[12px]" style={{ color: 'var(--text-body)' }}>
+                        <span className="tabular-nums">{dataBR(f.vencimento)}</span>
+                        <b className="tabular-nums">{formatCurrency(f.valorOriginal)}</b>
+                        <StatusBadge label={f.classe} colors={COBRANCA_LEGADA_COLORS} />
+                        <span style={{ color: 'var(--text-secondary)' }}>{cobrancaPorId.get(f.cobrancaId)?.tipoRotulo ?? f.tipo} — {f.motivo}</span>
+                        {f.descricao && <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>“{f.descricao}”</span>}
+                        {/* Vínculo manual (23/09): o operador aponta a cobrança para a linha que ela quita. */}
+                        {editavel && !rec && (
+                          <select className={`${inputMini} max-w-full`} style={inputStyle} value="" onChange={(e) => { if (e.target.value) void rodar(() => svc.vincular(id, f.cobrancaId, e.target.value), 'Cobrança vinculada à linha'); }}>
+                            <option value="">→ vincular a…</option>
+                            {conc.linhas.filter((l) => l.situacao !== 'paga' && l.situacao !== 'paga_com_encargo').map((l) => (
+                              <option key={l.chave} value={l.chave}>{l.serie === 'entrada' ? 'Entrada' : l.serie === 'parcela' ? `Parcela ${l.numero}` : `Intermediária ${l.numero}`} · {dataBR(l.esperadoEm)} · {formatCurrency(l.esperadoValor)}</option>
+                            ))}
+                          </select>
+                        )}
+                        {f.divergencia && (rec
+                          ? <span className="text-[11px]" style={{ color: rec.desfecho ? CASO_LEGADO_STATUS_COLORS.MIGRADO.fg : SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>reconhecida{rec.desfecho ? ' · cobrança avulsa' : ' · sem desfecho, reconheça de novo'}: {rec.nota}{editavel && <button type="button" className={`ml-[6px] ${linkInline}`} onClick={() => rodar(() => svc.desfazerReconhecimento(id, chave), '')}>desfazer</button>}</span>
+                          : editavel && <span className="flex flex-wrap items-center gap-[4px]"><input className={`${inputMini} max-w-full`} style={inputStyle} placeholder="por quê?" value={notaDiv[chave] ?? ''} onChange={(e) => setNotaDiv({ ...notaDiv, [chave]: e.target.value })} /><Botao tamanho="sm" variante="fantasma" disabled={!(notaDiv[chave] ?? '').trim()} onClick={() => rodar(() => svc.reconhecerDivergencia(id, chave, notaDiv[chave] ?? '', 'COBRANCA_AVULSA'), 'Divergência reconhecida')}>reconhecer como cobrança avulsa</Botao></span>)}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </Secao>
         </div>
       )}
 
       {/* Cobranças */}
-      <div className="rounded-[12px] p-[14px]" style={bloco}>
-        <div className="flex flex-wrap items-center justify-between gap-[8px]">
-          <div className={tituloBloco} style={{ color: 'var(--text-muted)' }}>Cobranças no Asaas ({c.cobrancas.length}) — leitura da descrição: regra propõe, você confirma</div>
-          <div className="flex items-center gap-[10px]">
-            <label className="flex items-center gap-[6px] text-[11.5px]" style={{ color: 'var(--text-secondary)' }}>
-              <input type="checkbox" checked={soDuvidas} onChange={(e) => setSoDuvidas(e.target.checked)} /> só em dúvida ({c.cobrancas.filter((p) => p.duvida).length})
-            </label>
-            {editavel && <button className={btn} style={btnSec} disabled={ocupado} onClick={() => rodar(() => svc.reinterpretar(id), 'Regras reaplicadas')}>Reaplicar regras</button>}
-            {editavel && (
-              <button className={btn} style={btnSec} disabled={ocupado} title="Apaga leituras feitas à mão, vínculos manuais, reconhecimentos e confirmações de acordo; as regras releem tudo. Cobranças e termos ficam."
-                onClick={() => { if (window.confirm('Recomeçar a conciliação deste caso?\n\nSaem: leituras feitas à mão, vínculos manuais, divergências reconhecidas e acordos confirmados. As regras releem tudo e você decide de novo só o que sobrar.')) void rodar(async () => { const r = await svc.recomecarConciliacao(id); toast.info(`Limpos: ${r.leiturasManuais} leitura(s) manual(is), ${r.vinculos} vínculo(s), ${r.reconhecimentos} reconhecimento(s), ${r.acordos} acordo(s)`); }, 'Conciliação recomeçada'); }}>
-                Recomeçar a conciliação
-              </button>
-            )}
+      <div className="rounded-card p-[14px]" style={cartao}>
+        <Secao
+          titulo="Cobranças no Asaas"
+          tag={`${c.cobrancas.length} · leitura da descrição: regra propõe, você confirma`}
+          acao={
+            <div className="flex flex-wrap items-center gap-[8px]">
+              <label className="flex min-h-[30px] items-center gap-[6px] text-[11.5px]" style={{ color: 'var(--text-secondary)' }}>
+                <input type="checkbox" checked={soDuvidas} onChange={(e) => setSoDuvidas(e.target.checked)} /> só em dúvida ({c.cobrancas.filter((p) => p.duvida).length})
+              </label>
+              {editavel && <Botao tamanho="sm" variante="secundaria" disabled={ocupado} onClick={() => rodar(() => svc.reinterpretar(id), 'Regras reaplicadas')}>Reaplicar regras</Botao>}
+              {editavel && (
+                <Botao tamanho="sm" variante="secundaria" disabled={ocupado} title="Apaga leituras feitas à mão, vínculos manuais, reconhecimentos e confirmações de acordo; as regras releem tudo. Cobranças e termos ficam."
+                  onClick={() => { if (window.confirm('Recomeçar a conciliação deste caso?\n\nSaem: leituras feitas à mão, vínculos manuais, divergências reconhecidas e acordos confirmados. As regras releem tudo e você decide de novo só o que sobrar.')) void rodar(async () => { const r = await svc.recomecarConciliacao(id); toast.info(`Limpos: ${r.leiturasManuais} leitura(s) manual(is), ${r.vinculos} vínculo(s), ${r.reconhecimentos} reconhecimento(s), ${r.acordos} acordo(s)`); }, 'Conciliação recomeçada'); }}>
+                  Recomeçar a conciliação
+                </Botao>
+              )}
+            </div>
+          }
+        >
+          <div className="max-h-[620px] overflow-auto">
+            <Tabela
+              colunas={colunasCob}
+              linhas={cobrancas}
+              chave={(p) => p.id}
+              larguraMinima={1100}
+              acoes={temAcoesCobranca ? acoesCobranca : undefined}
+              vazio={`Nenhuma cobrança${soDuvidas ? ' em dúvida' : ''}.`}
+            />
           </div>
-        </div>
-        <div className="mt-[8px] max-h-[520px] overflow-auto rounded-[10px]" style={{ border: '1px solid var(--border)' }}>
-          <table className="w-full min-w-[1100px] border-collapse">
-            <thead className="sticky top-0" style={{ background: 'var(--surface)' }}>
-              <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
-                <th className={th}>Venc.</th><th className={`${th} text-right`}>Valor</th><th className={`${th} text-right`}>Encargo</th><th className={th}>Pago em</th><th className={th}>Situação</th>
-                <th className={th}>Tipo</th><th className={th}>Decomposição</th><th className={th}>Leitura</th><th className={th}>Descrição</th><th className={th}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {cobrancas.map((p) => (
-                <tr key={p.id} style={{ borderBottom: '1px solid var(--border)', opacity: p.deletada ? 0.5 : 1, background: p.duvida ? CASO_LEGADO_STATUS_COLORS.EM_REVISAO.bg : undefined }}>
-                  <td className={`${td} tabular-nums whitespace-nowrap`}>{dataBR(p.vencimento)}</td>
-                  <td className={`${td} text-right tabular-nums font-semibold`}>{formatCurrency(p.valorOriginal)}</td>
-                  <td className={`${td} text-right tabular-nums`} style={{ color: p.encargoPago ? SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg : 'var(--text-muted)' }}>{p.encargoPago ? formatCurrency(p.encargoPago) : '—'}</td>
-                  <td className={`${td} tabular-nums whitespace-nowrap`}>{dataBR(p.pagoEm)}</td>
-                  <td className={td}><StatusBadge label={p.classe} colors={COBRANCA_LEGADA_COLORS} /></td>
-                  <td className={td}>
-                    {editavel ? (
-                      <select className="rounded-[6px] px-[6px] py-[4px] text-[11.5px]" style={inputStyle} value={p.tipoInterpretado ?? ''} onChange={(e) => mudarTipo(p, e.target.value as TipoCobrancaLegada)} disabled={ocupado}>
-                        <option value="" disabled>—</option>
-                        {c.tiposCobranca.map((t) => <option key={t.valor} value={t.valor}>{t.rotulo}</option>)}
-                      </select>
-                    ) : <span>{p.tipoRotulo ?? '—'}</span>}
-                  </td>
-                  <td className={`${td} tabular-nums`} style={{ color: 'var(--text-secondary)' }}>
-                    {p.interpretacao ? <>{formatCurrency(p.interpretacao.parcelamento)}{p.interpretacao.seguro ? ` + seg ${formatCurrency(p.interpretacao.seguro)}` : ''}{p.interpretacao.taxa ? ` + taxa ${formatCurrency(p.interpretacao.taxa)}` : ''}{p.interpretacao.intermediaria ? ` + inter ${formatCurrency(p.interpretacao.intermediaria)}` : ''}{p.interpretacao.extra ? ` + ${p.interpretacao.extraRotulo ?? 'despesa'} ${formatCurrency(p.interpretacao.extra)}` : ''}{p.interpretacao.encargo ? ` + juros/multa ${formatCurrency(p.interpretacao.encargo)}` : ''}</> : '—'}
-                  </td>
-                  <td className={td}>
-                    {p.duvida && <span className="mr-[4px] rounded-full px-[6px] py-[1px] text-[10px] font-bold" style={{ background: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.fg, color: '#fff' }}>dúvida</span>}
-                    <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{p.interpretadoPor === 'operador' ? 'você' : p.interpretadoPor ?? '—'}{p.interpretacao?.motivo ? ` · ${p.interpretacao.motivo}` : ''}</span>
-                    {p.interpretacaoObs && <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{p.interpretacaoObs}</div>}
-                  </td>
-                  <td className={td} style={{ color: 'var(--text-body)' }}>{p.descricao ?? <span style={{ color: 'var(--text-muted)' }}>sem descrição</span>}</td>
-                  <td className={`${td} whitespace-nowrap`}>
-                    {editavel && p.duvida && p.interpretacao && <button className="text-[11px] underline" disabled={ocupado} onClick={() => confirmarProposta(p)}>confirmar</button>}
-                    {editavel && <button className="ml-[6px] text-[11px] underline" disabled={ocupado} onClick={() => setAjuste(p)}>ajustar</button>}
-                    {editavel && p.interpretadoPor === 'operador' && <button className="ml-[6px] text-[11px] underline" disabled={ocupado} onClick={() => rodar(() => svc.desfazerInterpretacao(id, p.id), '')}>desfazer</button>}
-                    {p.invoiceUrl && <a href={p.invoiceUrl} target="_blank" rel="noreferrer" className="ml-[6px] text-[11px] underline" style={{ color: 'var(--accent)' }}>boleto</a>}
-                  </td>
-                </tr>
-              ))}
-              {cobrancas.length === 0 && <tr><td className={td} colSpan={10} style={{ color: 'var(--text-muted)' }}>Nenhuma cobrança{soDuvidas ? ' em dúvida' : ''}.</td></tr>}
-            </tbody>
-          </table>
-        </div>
+        </Secao>
       </div>
 
       {ajuste && <AjusteModal p={ajuste} tipos={c.tiposCobranca} parcelaContrato={c.termos?.parcelas.valor ?? null} onClose={() => setAjuste(null)} salvar={(corpo) => rodar(() => svc.definirInterpretacao(id, ajuste.id, corpo), 'Leitura ajustada').then(() => setAjuste(null))} />}
@@ -730,68 +878,20 @@ export function MigracaoLegadoCasoPage() {
 
 function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
   return (
-    <label className="flex flex-col gap-[3px]">
-      <span className="text-[10.5px] font-semibold" style={{ color: 'var(--text-muted)' }}>{rotulo}</span>
+    <label className="flex min-w-0 flex-col gap-[3px]">
+      <span className="text-[10.5px] font-semibold" style={{ color: 'var(--text-label)' }}>{rotulo}</span>
       {children}
     </label>
   );
 }
 
-function LinhaConc({ l, reconhecida, editavel, nota, setNota, desfecho, setDesfecho, desfechos, reconhecer, desfazer, vinculadas, desvincular }: { l: LinhaConciliacao; reconhecida: DivergenciaReconhecida | null; editavel: boolean; nota: string; setNota: (v: string) => void; desfecho: DesfechoDivergencia | ''; setDesfecho: (v: DesfechoDivergencia | '') => void; desfechos: { valor: DesfechoDivergencia; rotulo: string }[]; reconhecer: () => void; desfazer: () => void; vinculadas: string[]; desvincular: (cobrancaId: string) => void }) {
-  const cor = CONCILIACAO_LINHA_COLORS[l.situacao];
-  const rotuloItem = l.serie === 'entrada' ? 'Entrada' : l.serie === 'parcela' ? `Parcela ${l.numero}` : `Intermediária ${l.numero}`;
+// Linha rótulo → conteúdo da prévia da migração (empilha no celular).
+function LinhaPrevia({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
   return (
-    <tr style={{ borderBottom: '1px solid var(--border)', background: l.divergencia && !reconhecida ? CASO_LEGADO_STATUS_COLORS.DESCARTADO.bg : undefined }}>
-      <td className={td} title={l.confianca === 'alta' ? 'Casou sem ressalva' : l.confianca === 'media' ? 'Conferir: casou com deslocamento, em partes, por vínculo ou por acordo' : 'Decidir: diverge ou não há cobrança'}>
-        <span className="inline-block h-[9px] w-[9px] rounded-full" style={{ background: CONFIANCA_LINHA_COLORS[l.confianca]?.fg }} />
-      </td>
-      <td className={`${td} font-semibold`}>{rotuloItem}</td>
-      <td className={`${td} tabular-nums`}>{dataBR(l.esperadoEm)}</td>
-      <td className={`${td} text-right tabular-nums`}>{formatCurrency(l.esperadoValor)}</td>
-      <td className={`${td} tabular-nums`}>
-        {dataBR(l.cobradoEm)}
-        {l.partes.length > 1 && <div className="text-[10.5px]" style={{ color: 'var(--text-muted)' }}>{l.partes.length} transações</div>}
-        {l.observacao && <div className="text-[10.5px]" style={{ color: CASO_LEGADO_STATUS_COLORS.EM_REVISAO.fg }}>{l.observacao}</div>}
-        {editavel && vinculadas.length > 0 && <div className="text-[10.5px]">{vinculadas.map((cid) => <button key={cid} className="mr-[6px] underline" style={{ color: 'var(--text-muted)' }} onClick={() => desvincular(cid)}>desvincular</button>)}</div>}
-      </td>
-      <td className={`${td} text-right tabular-nums`} style={{ color: l.situacao === 'valor_diverge' ? SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg : undefined }}>
-        {l.cobradoValor == null ? '—' : formatCurrency(l.cobradoValor)}
-        {/* Entrada em várias transações (23/09): mostra as partes somadas. */}
-        {l.partes.length > 1 && <div className="text-[10.5px] font-normal" style={{ color: 'var(--text-muted)' }}>{l.partes.map((x) => `${dataBR(x.vencimento)} ${formatCurrency(x.valor)}`).join(' + ')}</div>}
-        {/* Despesa repassada junto da parcela: explica o "cobrado" maior que o esperado. */}
-        {l.componentes && (l.componentes.extra > 0 || l.componentes.intermediaria > 0) && (
-          <div className="text-[10.5px] font-normal" style={{ color: 'var(--text-muted)' }}>
-            {l.componentes.intermediaria > 0 && `+ intermediária ${formatCurrency(l.componentes.intermediaria)} `}
-            {l.componentes.extra > 0 && `+ ${l.componentes.extraRotulo ?? 'despesa'} ${formatCurrency(l.componentes.extra)}`}
-          </div>
-        )}
-        {/* Parcela de acordo cobrada junto (§26.14): não é desta parcela — quita outra. */}
-        {l.componentes && l.componentes.acordo > 0 && (
-          <div className="text-[10.5px] font-normal" style={{ color: 'var(--text-muted)' }}>+ acordo {formatCurrency(l.componentes.acordo)} (quita outra parcela)</div>
-        )}
-      </td>
-      <td className={`${td} tabular-nums`}>{dataBR(l.pagoEm)}</td>
-      <td className={`${td} text-right tabular-nums`}>{l.pagoValor == null ? '—' : formatCurrency(l.pagoValor)}</td>
-      <td className={`${td} text-right tabular-nums`} style={{ color: l.encargo ? SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg : 'var(--text-muted)' }}>{l.encargo ? formatCurrency(l.encargo) : '—'}</td>
-      <td className={td}><span className="inline-flex items-center rounded-[6px] px-[7px] py-[2px] text-[10.5px] font-semibold" style={{ background: cor.bg, color: cor.fg }}>{SITUACAO_LINHA_ROTULO[l.situacao]}</span></td>
-      <td className={td}>
-        {!l.divergencia ? <span style={{ color: 'var(--text-muted)' }}>—</span> : reconhecida
-          ? <span className="text-[11px]" style={{ color: reconhecida.desfecho ? CASO_LEGADO_STATUS_COLORS.MIGRADO.fg : SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>
-              {reconhecida.desfecho ? `${desfechos.find((d) => d.valor === reconhecida.desfecho)?.rotulo ?? reconhecida.desfecho}: ` : 'reconhecida sem desfecho, reconheça de novo: '}{reconhecida.nota}
-              {editavel && <button className="ml-[6px] underline" onClick={desfazer}>desfazer</button>}
-            </span>
-          : editavel
-            ? <span className="flex flex-wrap items-center gap-[4px]">
-                <select className="rounded-[6px] px-[6px] py-[3px] text-[11px]" style={inputStyle} value={desfecho} onChange={(e) => setDesfecho(e.target.value as DesfechoDivergencia | '')}>
-                  <option value="">desfecho na migração…</option>
-                  {desfechos.map((d) => <option key={d.valor} value={d.valor}>{d.rotulo}</option>)}
-                </select>
-                <input className="w-[180px] rounded-[6px] px-[6px] py-[3px] text-[11px]" style={inputStyle} placeholder="por quê? (ex.: pago em dinheiro)" value={nota} onChange={(e) => setNota(e.target.value)} />
-                <button className="text-[11px] underline" disabled={!nota.trim() || !desfecho} onClick={reconhecer}>reconhecer</button>
-              </span>
-            : <span className="text-[11px]" style={{ color: SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg }}>sem reconhecimento</span>}
-      </td>
-    </tr>
+    <div className="grid grid-cols-1 gap-x-[10px] gap-y-[2px] py-[6px] sm:grid-cols-[150px_1fr]" style={{ borderTop: '1px solid var(--border-light)' }}>
+      <div className="text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={{ color: 'var(--text-label)' }}>{rotulo}</div>
+      <div className="min-w-0" style={{ color: 'var(--text-body)' }}>{children}</div>
+    </div>
   );
 }
 
@@ -814,13 +914,13 @@ function AjusteModal({ p, tipos, parcelaContrato, onClose, salvar }: { p: Cobran
       <div className="flex flex-col gap-[10px] text-[12.5px]" style={{ color: 'var(--text-body)' }}>
         <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>Descrição no Asaas: {p.descricao ?? '—'}</div>
         <Campo rotulo="Tipo"><select className={inputCls} style={inputStyle} value={tipo} onChange={(e) => setTipo(e.target.value as TipoCobrancaLegada)}>{tipos.map((x) => <option key={x.valor} value={x.valor}>{x.rotulo}</option>)}</select></Campo>
-        <div className="grid grid-cols-3 gap-[8px]">
+        <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-3">
           <Campo rotulo="Seguro"><input className={inputCls} style={inputStyle} value={seguro} onChange={(e) => setSeguro(e.target.value)} /></Campo>
           <Campo rotulo="Taxa"><input className={inputCls} style={inputStyle} value={taxa} onChange={(e) => setTaxa(e.target.value)} /></Campo>
           <Campo rotulo="Intermediária junto"><input className={inputCls} style={inputStyle} value={inter} onChange={(e) => setInter(e.target.value)} /></Campo>
         </div>
         {/* Despesa repassada junto da parcela (23/09): manutenção, IPVA… na mesma cobrança. */}
-        <div className="grid grid-cols-[1fr_2fr] gap-[8px]">
+        <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-[1fr_2fr]">
           <Campo rotulo="Despesa junto (R$)"><input className={inputCls} style={inputStyle} value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="0,00" /></Campo>
           <Campo rotulo="Qual despesa"><input className={inputCls} style={inputStyle} value={extraRotulo} onChange={(e) => setExtraRotulo(e.target.value)} placeholder="ex.: Manutenção periódica" /></Campo>
         </div>
@@ -828,16 +928,16 @@ function AjusteModal({ p, tipos, parcelaContrato, onClose, salvar }: { p: Cobran
         <div>Parcelamento (o resto): <b className="tabular-nums" style={{ color: parcelamento < 0 ? SITUACAO_LEGADO_COLORS.COM_VENCIDA.fg : 'var(--text-primary)' }}>{formatCurrency(parcelamento)}</b>
           {/* Caso real 23/09: o operador punha o resto em "juros" e a parcela ficava 940 em vez de 942. */}
           {tipo === 'parcela' && parcelaContrato != null && parcelamento !== parcelaContrato && parcelamento - parcelaContrato + j >= 0 && (
-            <button className="ml-[8px] text-[11px] underline" style={{ color: 'var(--accent)' }}
+            <button type="button" className="ml-[8px] text-[11px] underline" style={{ color: 'var(--accent)' }}
               onClick={() => setEncargo(reaisTxt(parcelamento - parcelaContrato + j))}>
               fechar com a parcela do contrato ({formatCurrency(parcelaContrato)}) e jogar a diferença em juros
             </button>
           )}
         </div>
         <Campo rotulo="Observação"><input className={inputCls} style={inputStyle} value={obs} onChange={(e) => setObs(e.target.value)} placeholder="ex.: seguro veio a mais nesta semana" /></Campo>
-        <div className="flex justify-end gap-[8px]">
-          <button className={btn} style={btnSec} onClick={onClose}>Cancelar</button>
-          <button className={btn} style={btnPri} disabled={parcelamento < 0} onClick={() => salvar({ tipo, parcelamento, seguro: s, taxa: t, intermediaria: n, extra: x, extraRotulo: extraRotulo || undefined, encargo: j, observacao: obs })}>Salvar leitura</button>
+        <div className="flex flex-wrap justify-end gap-[8px]">
+          <Botao variante="secundaria" onClick={onClose}>Cancelar</Botao>
+          <Botao variante="primaria" disabled={parcelamento < 0} onClick={() => salvar({ tipo, parcelamento, seguro: s, taxa: t, intermediaria: n, extra: x, extraRotulo: extraRotulo || undefined, encargo: j, observacao: obs })}>Salvar leitura</Botao>
         </div>
       </div>
     </Modal>

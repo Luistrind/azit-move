@@ -7,49 +7,43 @@ import {
   nomePapel,
 } from '../services/usuario.service';
 import { mensagemErro } from '../lib/permissoes';
+import { Botao } from '../components/Botao';
+import { Chips } from '../components/Chips';
+import { Secao } from '../components/Secao';
+import { Tabela, type Coluna } from '../components/Tabela';
 
 // Gestão de Usuários (doc 02 §16): criação de usuários internos, matriz papel × área
 // (o papel carrega as permissões do seu domínio) e exceções específicas por usuário.
+// Layout v2 (doc 03 §11): lista em <Tabela>, abas em <Chips>, botões em <Botao>.
 
-const inputCls = 'h-[32px] rounded-[8px] px-[10px] text-[12.5px]';
-const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)' } as const;
+const inputCls = 'h-[32px] rounded-[10px] px-[10px] text-[12.5px]';
+const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' } as const;
 const cardStyle = { background: 'var(--surface)', border: '1px solid var(--border)' } as const;
+const pilula = 'inline-flex items-center rounded-full px-[8px] py-[2px] text-[11px] font-bold';
 
 export function UsuariosPage() {
   const queryClient = useQueryClient();
   const [aba, setAba] = useState<'usuarios' | 'matriz'>('usuarios');
 
   return (
-    <div className="flex flex-col gap-[16px] p-[24px]">
+    <div className="flex flex-col gap-[16px]">
       <div>
-        <h1 className="font-display text-[20px] font-bold">Usuários e permissões</h1>
+        <h1 className="font-display text-[20px] font-bold" style={{ color: 'var(--text-primary)' }}>Usuários e permissões</h1>
         <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
           O papel do usuário carrega as áreas do sistema que ele acessa (matriz abaixo). Exceções por
           usuário concedem ou retiram áreas específicas sem mudar o papel. Toda alteração é auditada.
         </p>
       </div>
 
-      <div className="flex gap-[8px]">
-        {(
-          [
-            ['usuarios', 'Usuários'],
-            ['matriz', 'Matriz de permissões por papel'],
-          ] as const
-        ).map(([k, rotulo]) => (
-          <button
-            key={k}
-            onClick={() => setAba(k)}
-            className="h-[32px] rounded-[8px] px-[14px] text-[12.5px] font-semibold"
-            style={
-              aba === k
-                ? { background: 'var(--navy)', color: '#fff' }
-                : { background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-muted)' }
-            }
-          >
-            {rotulo}
-          </button>
-        ))}
-      </div>
+      <Chips
+        todos={null}
+        itens={[
+          { chave: 'usuarios', rotulo: 'Usuários' },
+          { chave: 'matriz', rotulo: 'Matriz de permissões por papel' },
+        ]}
+        valor={aba}
+        onChange={(k) => setAba((k as 'usuarios' | 'matriz') ?? 'usuarios')}
+      />
 
       {aba === 'usuarios' ? (
         <ListaUsuarios onMudou={() => queryClient.invalidateQueries({ queryKey: ['usuarios'] })} />
@@ -68,17 +62,62 @@ function ListaUsuarios({ onMudou }: { onMudou: () => void }) {
   const usuarios = useQuery({ queryKey: ['usuarios'], queryFn: () => usuarioService.listar() });
   const [criando, setCriando] = useState(false);
   const [abertoId, setAbertoId] = useState<string | null>(null);
+  const [ocupadoId, setOcupadoId] = useState<string | null>(null);
+
+  async function alternarAtivo(usuario: UsuarioInterno) {
+    setOcupadoId(usuario.id);
+    try {
+      await usuarioService.atualizar(usuario.id, { ativo: !usuario.ativo });
+      onMudou();
+    } catch (e) {
+      window.alert(mensagemErro(e));
+    } finally {
+      setOcupadoId(null);
+    }
+  }
+
+  const lista = usuarios.data ?? [];
+  const aberto = lista.find((u) => u.id === abertoId) ?? null;
+
+  const colunas: Coluna<UsuarioInterno>[] = [
+    { chave: 'nome', titulo: 'Nome', render: (u) => u.nome, celular: 'titulo' },
+    { chave: 'email', titulo: 'E-mail', render: (u) => u.email, celular: 'subtitulo' },
+    { chave: 'papeis', titulo: 'Papéis', render: (u) => u.papeis.map(nomePapel).join(', ') },
+    {
+      chave: 'areas',
+      titulo: 'Áreas com acesso',
+      render: (u) => (
+        <span className="whitespace-normal">
+          {u.areasEfetivas.length === 10 ? 'Todas as áreas' : `${u.areasEfetivas.length} de 10 áreas`}
+          {u.excecoes.length > 0 && (
+            <span className={`${pilula} ml-[6px]`} style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
+              {u.excecoes.length} exceção{u.excecoes.length > 1 ? 'es' : ''}
+            </span>
+          )}
+        </span>
+      ),
+    },
+    {
+      chave: 'situacao',
+      titulo: 'Situação',
+      celular: 'destaque',
+      render: (u) => (
+        <span className={pilula} style={u.ativo ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' } : { background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
+          {u.ativo ? 'Ativo' : 'Desativado'}
+        </span>
+      ),
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-[12px]">
-      <div>
-        <button
-          onClick={() => setCriando((v) => !v)}
-          className="h-[34px] rounded-[8px] px-[16px] text-[12.5px] font-semibold"
-          style={{ background: 'var(--navy)', color: '#fff' }}
-        >
+      <div className="flex flex-wrap items-center gap-[8px]">
+        <Botao variante={criando ? 'secundaria' : 'primaria'} onClick={() => setCriando((v) => !v)}>
           {criando ? 'Cancelar' : '+ Novo usuário'}
-        </button>
+        </Botao>
+        <span className="ml-auto text-[12px]" style={{ color: 'var(--text-muted)' }}>
+          {lista.length} usuário{lista.length === 1 ? '' : 's'}
+        </span>
       </div>
 
       {criando && (
@@ -90,35 +129,36 @@ function ListaUsuarios({ onMudou }: { onMudou: () => void }) {
         />
       )}
 
-      <div className="overflow-x-auto rounded-[14px] p-[16px]" style={cardStyle}>
-        {usuarios.isLoading || !usuarios.data ? (
-          <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
-        ) : (
-          <table className="w-full min-w-[720px] border-collapse text-[12.5px]">
-            <thead>
-              <tr className="text-left" style={{ color: 'var(--text-muted)' }}>
-                <th className="pb-[10px] font-semibold">Nome</th>
-                <th className="pb-[10px] font-semibold">E-mail</th>
-                <th className="pb-[10px] font-semibold">Papéis</th>
-                <th className="pb-[10px] font-semibold">Áreas com acesso</th>
-                <th className="pb-[10px] font-semibold">Situação</th>
-                <th className="pb-[10px]" />
-              </tr>
-            </thead>
-            <tbody>
-              {usuarios.data.map((u) => (
-                <LinhaUsuario
-                  key={u.id}
-                  usuario={u}
-                  aberto={abertoId === u.id}
-                  onAbrir={() => setAbertoId(abertoId === u.id ? null : u.id)}
-                  onMudou={onMudou}
-                />
-              ))}
-            </tbody>
-          </table>
+      <Tabela
+        colunas={colunas}
+        linhas={lista}
+        chave={(u) => u.id}
+        carregando={usuarios.isLoading || !usuarios.data}
+        larguraMinima={720}
+        vazio="Nenhum usuário interno cadastrado."
+        acoes={(u) => (
+          <>
+            <Botao tamanho="sm" variante={abertoId === u.id ? 'secundaria' : 'fantasma'} onClick={() => setAbertoId(abertoId === u.id ? null : u.id)}>
+              {abertoId === u.id ? 'Fechar' : 'Gerenciar'}
+            </Botao>
+            <Botao tamanho="sm" variante={u.ativo ? 'perigo' : 'secundaria'} onClick={() => void alternarAtivo(u)} disabled={ocupadoId === u.id}>
+              {u.ativo ? 'Desativar' : 'Reativar'}
+            </Botao>
+          </>
         )}
-      </div>
+      />
+
+      {aberto && (
+        <div className="rounded-card p-[16px]" style={cardStyle}>
+          <Secao
+            titulo={`Gerenciar — ${aberto.nome}`}
+            tag={aberto.email}
+            acao={<Botao tamanho="sm" variante="fantasma" onClick={() => setAbertoId(null)}>Fechar</Botao>}
+          >
+            <PainelUsuario key={aberto.id} usuario={aberto} onMudou={onMudou} />
+          </Secao>
+        </div>
+      )}
     </div>
   );
 }
@@ -149,104 +189,32 @@ function FormNovoUsuario({ onCriado }: { onCriado: () => void }) {
   }
 
   return (
-    <div className="flex flex-col gap-[12px] rounded-[14px] p-[16px]" style={cardStyle}>
-      <div className="text-[13px] font-bold">Novo usuário interno</div>
-      <div className="flex flex-wrap items-end gap-[10px]">
-        <Campo rotulo="Nome completo">
-          <input value={nome} onChange={(e) => setNome(e.target.value)} className={`${inputCls} w-[220px]`} style={inputStyle} />
-        </Campo>
-        <Campo rotulo="E-mail de acesso">
-          <input value={email} onChange={(e) => setEmail(e.target.value)} className={`${inputCls} w-[220px]`} style={inputStyle} />
-        </Campo>
-        <Campo rotulo="Senha inicial">
-          <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} className={`${inputCls} w-[160px]`} style={inputStyle} />
-        </Campo>
-      </div>
-      <SeletorPapeis valor={papeis} onChange={setPapeis} />
-      {erro && (
-        <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>
-      )}
-      <div>
-        <button
-          onClick={criar}
-          disabled={salvando}
-          className="h-[34px] rounded-[8px] px-[16px] text-[12.5px] font-semibold disabled:opacity-50"
-          style={{ background: 'var(--navy)', color: '#fff' }}
-        >
-          {salvando ? 'Criando…' : 'Criar usuário'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function LinhaUsuario({
-  usuario,
-  aberto,
-  onAbrir,
-  onMudou,
-}: {
-  usuario: UsuarioInterno;
-  aberto: boolean;
-  onAbrir: () => void;
-  onMudou: () => void;
-}) {
-  const [ocupado, setOcupado] = useState(false);
-
-  async function alternarAtivo() {
-    setOcupado(true);
-    try {
-      await usuarioService.atualizar(usuario.id, { ativo: !usuario.ativo });
-      onMudou();
-    } catch (e) {
-      window.alert(mensagemErro(e));
-    } finally {
-      setOcupado(false);
-    }
-  }
-
-  return (
-    <>
-      <tr style={{ borderTop: '1px solid var(--border-light)' }}>
-        <td className="py-[10px] font-semibold">{usuario.nome}</td>
-        <td className="py-[10px]">{usuario.email}</td>
-        <td className="py-[10px]">{usuario.papeis.map(nomePapel).join(', ')}</td>
-        <td className="py-[10px]">
-          {usuario.areasEfetivas.length === 10 ? 'Todas as áreas' : `${usuario.areasEfetivas.length} de 10 áreas`}
-          {usuario.excecoes.length > 0 && (
-            <span
-              className="ml-[6px] rounded-full px-[7px] py-[1px] text-[10.5px] font-bold"
-              style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}
-            >
-              {usuario.excecoes.length} exceção{usuario.excecoes.length > 1 ? 'es' : ''}
-            </span>
-          )}
-        </td>
-        <td className="py-[10px]">
-          <span
-            className="rounded-full px-[8px] py-[2px] text-[11px] font-bold"
-            style={usuario.ativo ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' } : { background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}
-          >
-            {usuario.ativo ? 'Ativo' : 'Desativado'}
-          </span>
-        </td>
-        <td className="py-[10px] text-right">
-          <div className="flex justify-end gap-[6px]">
-            <BotaoLeve onClick={onAbrir}>{aberto ? 'Fechar' : 'Gerenciar'}</BotaoLeve>
-            <BotaoLeve onClick={alternarAtivo} disabled={ocupado}>
-              {usuario.ativo ? 'Desativar' : 'Reativar'}
-            </BotaoLeve>
+    <div className="rounded-card p-[16px]" style={cardStyle}>
+      <Secao titulo="Novo usuário interno">
+        <div className="flex flex-col gap-[12px]">
+          <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-3">
+            <Campo rotulo="Nome completo">
+              <input value={nome} onChange={(e) => setNome(e.target.value)} className={`${inputCls} w-full`} style={inputStyle} />
+            </Campo>
+            <Campo rotulo="E-mail de acesso">
+              <input value={email} onChange={(e) => setEmail(e.target.value)} className={`${inputCls} w-full`} style={inputStyle} />
+            </Campo>
+            <Campo rotulo="Senha inicial">
+              <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} className={`${inputCls} w-full`} style={inputStyle} />
+            </Campo>
           </div>
-        </td>
-      </tr>
-      {aberto && (
-        <tr>
-          <td colSpan={6} className="pb-[14px]">
-            <PainelUsuario usuario={usuario} onMudou={onMudou} />
-          </td>
-        </tr>
-      )}
-    </>
+          <SeletorPapeis valor={papeis} onChange={setPapeis} />
+          {erro && (
+            <div className="rounded-[10px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>
+          )}
+          <div>
+            <Botao variante="primaria" onClick={() => void criar()} carregando={salvando}>
+              Criar usuário
+            </Botao>
+          </div>
+        </div>
+      </Secao>
+    </div>
   );
 }
 
@@ -308,24 +276,23 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
   const p = permissoes.data;
 
   return (
-    <div className="flex flex-col gap-[14px] rounded-[12px] p-[16px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+    <div className="flex flex-col gap-[14px] rounded-[12px] p-[14px]" style={{ background: 'var(--surface-muted)', border: '1px solid var(--border)' }}>
       <div className="flex flex-wrap items-end gap-[16px]">
         <div className="flex flex-col gap-[6px]">
           <SeletorPapeis valor={papeis} onChange={setPapeis} />
           <div>
-            <BotaoLeve onClick={salvarPapeis}>Salvar papéis</BotaoLeve>
+            <Botao tamanho="sm" variante="secundaria" onClick={() => void salvarPapeis()}>Salvar papéis</Botao>
           </div>
         </div>
-        <div className="flex items-end gap-[8px]">
+        <div className="flex flex-wrap items-end gap-[8px]">
           <Campo rotulo="Nova senha">
-            <input type="password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} className={`${inputCls} w-[160px]`} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
+            <input type="password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} className={`${inputCls} w-full sm:w-[160px]`} style={{ ...inputStyle, background: 'var(--surface)' }} />
           </Campo>
-          <BotaoLeve onClick={redefinirSenha}>Redefinir senha</BotaoLeve>
+          <Botao tamanho="sm" variante="secundaria" onClick={() => void redefinirSenha()}>Redefinir senha</Botao>
         </div>
       </div>
 
-      <div>
-        <div className="mb-[6px] text-[12px] font-bold">Acesso por área</div>
+      <Secao titulo="Acesso por área">
         <div className="mb-[8px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
           "Padrão do papel" segue a matriz de permissões. Conceder ou retirar cria uma exceção só para
           este usuário. O motivo abaixo é gravado junto com a exceção.
@@ -335,7 +302,7 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
           onChange={(e) => setMotivo(e.target.value)}
           placeholder="Motivo da exceção (opcional, recomendado)"
           className={`${inputCls} mb-[10px] w-full max-w-[420px]`}
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+          style={{ ...inputStyle, background: 'var(--surface)' }}
         />
         {!p ? (
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
@@ -348,11 +315,11 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
               return (
                 <div
                   key={area}
-                  className="flex items-center justify-between gap-[8px] rounded-[8px] px-[10px] py-[7px]"
+                  className="flex flex-wrap items-center justify-between gap-[8px] rounded-[10px] px-[10px] py-[7px]"
                   style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
                 >
-                  <div className="min-w-0">
-                    <div className="truncate text-[12.5px] font-semibold">{nomeArea(area)}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[12.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>{nomeArea(area)}</div>
                     <div className="text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
                       {excecao
                         ? excecao.concedida
@@ -366,17 +333,17 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
                   </div>
                   <div className="flex items-center gap-[6px]">
                     <span
-                      className="rounded-full px-[7px] py-[1px] text-[10.5px] font-bold"
+                      className={pilula}
                       style={efetiva ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' } : { background: 'var(--surface-muted)', color: 'var(--text-muted)' }}
                     >
                       {efetiva ? 'Acessa' : 'Não acessa'}
                     </span>
                     {excecao ? (
-                      <BotaoLeve onClick={() => definirExcecao(area, null)}>Voltar ao padrão</BotaoLeve>
+                      <Botao tamanho="sm" variante="secundaria" onClick={() => void definirExcecao(area, null)}>Voltar ao padrão</Botao>
                     ) : efetiva ? (
-                      <BotaoLeve onClick={() => definirExcecao(area, false)}>Retirar</BotaoLeve>
+                      <Botao tamanho="sm" variante="secundaria" onClick={() => void definirExcecao(area, false)}>Retirar</Botao>
                     ) : (
-                      <BotaoLeve onClick={() => definirExcecao(area, true)}>Conceder</BotaoLeve>
+                      <Botao tamanho="sm" variante="secundaria" onClick={() => void definirExcecao(area, true)}>Conceder</Botao>
                     )}
                   </div>
                 </div>
@@ -384,10 +351,10 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
             })}
           </div>
         )}
-      </div>
+      </Secao>
 
       {msg && (
-        <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}>{msg}</div>
+        <div className="rounded-[10px] p-[8px] text-[12px]" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}>{msg}</div>
       )}
     </div>
   );
@@ -418,48 +385,44 @@ function MatrizPermissoes() {
 
   const m = matriz.data;
 
+  // Uma coluna por papel: no celular, cada área vira um cartão com um checkbox por papel.
+  const colunas: Coluna<string>[] = [
+    { chave: 'area', titulo: 'Área do sistema', render: (area) => nomeArea(area), celular: 'titulo' },
+    ...(m?.papeis ?? []).map<Coluna<string>>((papel) => ({
+      chave: papel,
+      titulo: nomePapel(papel),
+      alinhar: 'center',
+      render: (area) => {
+        const celula = m?.celulas.find((c) => c.papel === papel && c.area === area);
+        const chave = `${papel}:${area}`;
+        return (
+          <input
+            type="checkbox"
+            aria-label={`${nomePapel(papel)} acessa ${nomeArea(area)}`}
+            disabled={salvando === chave}
+            checked={celula?.permitido ?? false}
+            onChange={(e) => void alternar(papel, area, e.target.checked)}
+            className="h-[16px] w-[16px] align-middle"
+          />
+        );
+      },
+    })),
+  ];
+
   return (
-    <div className="overflow-x-auto rounded-[14px] p-[16px]" style={cardStyle}>
-      <div className="mb-[10px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+    <div className="flex flex-col gap-[10px]">
+      <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
         Marque as áreas que cada papel acessa por padrão. A alteração vale para todos os usuários do
         papel, exceto onde houver exceção individual.
       </div>
-      {matriz.isLoading || !m ? (
-        <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
-      ) : (
-        <table className="w-full min-w-[680px] border-collapse text-[12.5px]">
-          <thead>
-            <tr style={{ color: 'var(--text-muted)' }}>
-              <th className="pb-[10px] text-left font-semibold">Área do sistema</th>
-              {m.papeis.map((papel) => (
-                <th key={papel} className="pb-[10px] text-center font-semibold">{nomePapel(papel)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {m.areas.map((area) => (
-              <tr key={area} style={{ borderTop: '1px solid var(--border-light)' }}>
-                <td className="py-[9px] font-semibold">{nomeArea(area)}</td>
-                {m.papeis.map((papel) => {
-                  const celula = m.celulas.find((c) => c.papel === papel && c.area === area);
-                  const chave = `${papel}:${area}`;
-                  return (
-                    <td key={papel} className="py-[9px] text-center">
-                      <input
-                        type="checkbox"
-                        disabled={salvando === chave}
-                        checked={celula?.permitido ?? false}
-                        onChange={(e) => alternar(papel, area, e.target.checked)}
-                        className="h-[15px] w-[15px]"
-                      />
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <Tabela
+        colunas={colunas}
+        linhas={m?.areas ?? []}
+        chave={(area) => area}
+        carregando={matriz.isLoading || !m}
+        larguraMinima={680}
+        vazio="Matriz de permissões vazia."
+      />
     </div>
   );
 }
@@ -486,10 +449,10 @@ const PAPEIS = ['ADMIN', 'DIRETOR', 'APROVADOR', 'OPERADOR', 'FINANCEIRO'];
 function SeletorPapeis({ valor, onChange }: { valor: string[]; onChange: (v: string[]) => void }) {
   return (
     <div>
-      <div className="mb-[4px] text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>Papéis</div>
+      <div className="mb-[4px] text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Papéis</div>
       <div className="flex flex-wrap gap-[10px]">
         {PAPEIS.map((papel) => (
-          <label key={papel} className="flex items-center gap-[5px] text-[12.5px]">
+          <label key={papel} className="flex min-h-[30px] items-center gap-[5px] text-[12.5px]" style={{ color: 'var(--text-primary)' }}>
             <input
               type="checkbox"
               checked={valor.includes(papel)}
@@ -507,30 +470,9 @@ function SeletorPapeis({ valor, onChange }: { valor: string[]; onChange: (v: str
 
 function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
   return (
-    <div>
-      <div className="mb-[4px] text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>{rotulo}</div>
+    <div className="min-w-0">
+      <div className="mb-[4px] text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>{rotulo}</div>
       {children}
     </div>
-  );
-}
-
-function BotaoLeve({
-  onClick,
-  disabled,
-  children,
-}: {
-  onClick: () => void;
-  disabled?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="h-[28px] whitespace-nowrap rounded-[7px] px-[10px] text-[11.5px] font-semibold disabled:opacity-50"
-      style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
-    >
-      {children}
-    </button>
   );
 }

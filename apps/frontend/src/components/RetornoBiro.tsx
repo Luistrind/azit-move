@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Botao } from './Botao';
 
 // Visualizador do retorno COMPLETO de uma consulta de birô.
 // Feedback 28/08 (exemplo: relatório do portal Quod): a tela organiza o retorno
@@ -178,16 +179,16 @@ function ehObjeto(v: unknown): v is Record<string, unknown> {
 
 function Tabela({ dados, nivel }: { dados: Record<string, unknown>; nivel: number }) {
   const entradas = Object.entries(dados).filter(([k]) => !ruido(k));
-  if (entradas.length === 0) return <div className="px-[8px] py-[4px] text-[12px] opacity-60">— vazio —</div>;
+  if (entradas.length === 0) return <div className="px-[8px] py-[4px] text-[12px]" style={{ color: 'var(--text-muted)' }}>— vazio —</div>;
   return (
-    <table className="w-full table-fixed border-collapse text-[12px]">
+    <table className="w-full table-fixed border-collapse text-[12px]" style={{ color: 'var(--text-primary)' }}>
       <tbody>
         {entradas.map(([k, v]) => (
           <tr key={k} style={{ borderTop: '1px solid var(--border-light)' }}>
             <td className="w-[34%] break-words px-[8px] py-[5px] align-top font-semibold" style={{ color: 'var(--text-label)' }}>
               {rotulo(k)}
             </td>
-            <td className="break-words px-[8px] py-[5px]">
+            <td className="break-words px-[8px] py-[5px]" style={{ color: 'var(--text-body)' }}>
               {ocultar(k) ? (
                 <span className="opacity-60">
                   {Array.isArray(v) ? `${v.length} movimentação(ões) — ocultadas` : 'ocultado'}
@@ -239,9 +240,10 @@ function Relatorio({ dados }: { dados: Record<string, unknown> }) {
   const blocos = entradas.filter(([, v]) => ehObjeto(v) || Array.isArray(v));
   return (
     <div className="flex flex-col gap-[14px]">
+      {/* Rótulos de seção no eyebrow do layout v2 (doc 03 §11.3). */}
       {escalares.length > 0 && (
         <section>
-          <div className="mb-[4px] font-display text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>Identificação</div>
+          <div className="mb-[6px] font-display text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-label)' }}>Identificação</div>
           <div className="rounded-[10px]" style={{ border: '1px solid var(--border)' }}>
             <Tabela dados={Object.fromEntries(escalares)} nivel={1} />
           </div>
@@ -249,7 +251,7 @@ function Relatorio({ dados }: { dados: Record<string, unknown> }) {
       )}
       {blocos.map(([k, v]) => (
         <section key={k}>
-          <div className="mb-[4px] font-display text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>{rotulo(k)}</div>
+          <div className="mb-[6px] font-display text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-label)' }}>{rotulo(k)}</div>
           <div className="rounded-[10px]" style={{ border: '1px solid var(--border)' }}>
             {ocultar(k) ? (
               <div className="px-[10px] py-[6px] text-[12px] opacity-60">{Array.isArray(v) ? `${v.length} movimentação(ões) — ocultadas` : 'ocultado'}</div>
@@ -259,7 +261,7 @@ function Relatorio({ dados }: { dados: Record<string, unknown> }) {
                 <div className="flex flex-col gap-[10px] p-[10px]">
                   {Object.entries(v).filter(([ik]) => !ruido(ik)).map(([ik, iv]) => (
                     <div key={ik}>
-                      <div className="mb-[3px] text-[12px] font-bold" style={{ color: 'var(--text-label)' }}>{rotulo(ik)}</div>
+                      <div className="mb-[3px] text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--text-label)' }}>{rotulo(ik)}</div>
                       <div className="rounded-[8px]" style={{ border: '1px solid var(--border-light)' }}>
                         {ocultar(ik)
                           ? <div className="px-[10px] py-[6px] text-[12px] opacity-60">{Array.isArray(iv) ? `${iv.length} item(ns) — ocultados` : 'ocultado'}</div>
@@ -286,30 +288,31 @@ export function BotaoVerRetorno({ titulo, resultado }: { titulo: string; resulta
   if (!resultado || Object.keys(resultado).length === 0) return null;
   return (
     <>
-      <button
-        className="ml-[6px] inline-flex items-center gap-[4px] rounded-[7px] px-[8px] py-[2px] text-[11.5px] font-semibold"
-        style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+      <Botao
+        tamanho="sm"
+        variante="secundaria"
+        className="ml-[6px]"
         title="Ver o retorno completo desta consulta"
         onClick={() => setAberto(true)}
       >
         👁 Ver retorno
-      </button>
+      </Botao>
       {aberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-[16px]" style={{ background: 'rgba(0,16,41,.55)' }}>
+        // Layout v2 (doc 03 §11): cabe no celular (100vw − 24 px), rolagem interna, só tokens.
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-[12px] sm:p-[16px]" style={{ background: 'rgba(0,16,41,.55)' }}>
           <div
-            className="flex h-[92vh] w-[min(1100px,95vw)] flex-col overflow-hidden rounded-[14px]"
+            role="dialog"
+            aria-modal="true"
+            aria-label={titulo}
+            className="flex h-[92vh] w-[1100px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-[16px]"
             style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between gap-[10px] px-[18px] py-[12px]" style={{ borderBottom: '1px solid var(--border)' }}>
-              <div className="font-display text-[14px] font-bold">{titulo}</div>
-              <button
-                onClick={() => setAberto(false)}
-                className="h-[32px] rounded-[8px] px-[12px] text-[13px] font-semibold"
-                style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}
-              >
+              <div className="min-w-0 truncate font-display text-[14px] font-bold" style={{ color: 'var(--text-primary)' }}>{titulo}</div>
+              <Botao tamanho="sm" variante="secundaria" onClick={() => setAberto(false)}>
                 Fechar ✕
-              </button>
+              </Botao>
             </div>
             <div className="flex-1 overflow-y-auto overflow-x-hidden px-[16px] py-[12px]">
               <Relatorio dados={resultado} />

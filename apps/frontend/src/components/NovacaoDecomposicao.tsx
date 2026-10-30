@@ -7,6 +7,7 @@ import { reaisParaCentavos } from '../lib/valor';
 import { mensagemErro } from '../lib/permissoes';
 import { toast } from './Toast';
 import { Modal } from './Modal';
+import { Botao } from './Botao';
 
 // ============================================================
 // NOVAÇÃO — F1 (doc docs/novacao-adaptacoes-azit-2026-09.md, A7 passos 1–2):
@@ -27,9 +28,9 @@ const PRODUTO_LABEL: Record<string, string> = {
 
 function LinhaValor({ label, valor, forte }: { label: string; valor: number; forte?: boolean }) {
   return (
-    <div className="flex items-center justify-between text-[12px]" style={forte ? { fontWeight: 700 } : undefined}>
+    <div className="flex items-center justify-between gap-[8px] text-[12px]" style={forte ? { fontWeight: 700 } : undefined}>
       <span style={{ color: forte ? 'var(--text-body)' : 'var(--text-muted)' }}>{label}</span>
-      <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(valor)}</span>
+      <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)' }}>{formatCurrency(valor)}</span>
     </div>
   );
 }
@@ -55,17 +56,20 @@ function TabelaMemoria({ componentes, rotuloGrupo }: { componentes: ComponenteDe
     grupos.set(chave, g);
   }
 
+  // Layout v2 (doc 03 §11): cabeçalho no eyebrow do sistema; a grade rola só dentro dela no celular.
   const th = { color: 'var(--text-label)' } as const;
+  const thCls = 'py-[3px] text-[10.5px] font-semibold uppercase tracking-[0.1em]';
   return (
     <div className="flex flex-col gap-[6px]">
-      <table className="w-full text-[11.5px]">
+      <div className="overflow-x-auto">
+      <table className="w-full min-w-[420px] text-[11.5px]" style={{ color: 'var(--text-primary)' }}>
         <thead>
           <tr style={th}>
-            <th className="py-[3px] text-left font-semibold">Grupo</th>
-            <th className="text-right font-semibold">Parcelas</th>
-            <th className="text-right font-semibold">Nominal</th>
-            <th className="text-right font-semibold">Ajuste</th>
-            <th className="text-right font-semibold">Valor</th>
+            <th className={`${thCls} text-left`}>Grupo</th>
+            <th className={`${thCls} text-right`}>Parcelas</th>
+            <th className={`${thCls} text-right`}>Nominal</th>
+            <th className={`${thCls} text-right`}>Ajuste</th>
+            <th className={`${thCls} text-right`}>Valor</th>
           </tr>
         </thead>
         <tbody>
@@ -82,19 +86,20 @@ function TabelaMemoria({ componentes, rotuloGrupo }: { componentes: ComponenteDe
           ))}
         </tbody>
       </table>
-      <button onClick={() => setDetalhe((v) => !v)} className="self-start text-[11.5px] font-semibold" style={{ color: 'var(--accent)' }}>
+      </div>
+      <Botao tamanho="sm" variante="fantasma" className="self-start" onClick={() => setDetalhe((v) => !v)}>
         {detalhe ? '▾ Ocultar parcela a parcela' : `▸ Ver parcela a parcela (${componentes.length})`}
-      </button>
+      </Botao>
       {detalhe && (
-        <div className="rounded-[8px]" style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--border)' }}>
-          <table className="w-full text-[11.5px]">
+        <div className="rounded-[10px]" style={{ maxHeight: 280, overflow: 'auto', border: '1px solid var(--border)' }}>
+          <table className="w-full min-w-[460px] text-[11.5px]" style={{ color: 'var(--text-primary)' }}>
             <thead>
               <tr style={th}>
-                <th className="py-[3px] pl-[8px] text-left font-semibold">Origem</th>
-                <th className="text-left font-semibold">Situação</th>
-                <th className="text-right font-semibold">Nominal</th>
-                <th className="text-right font-semibold">Ajuste</th>
-                <th className="pr-[8px] text-right font-semibold">Valor</th>
+                <th className={`${thCls} pl-[8px] text-left`}>Origem</th>
+                <th className={`${thCls} text-left`}>Situação</th>
+                <th className={`${thCls} text-right`}>Nominal</th>
+                <th className={`${thCls} text-right`}>Ajuste</th>
+                <th className={`${thCls} pr-[8px] text-right`}>Valor</th>
               </tr>
             </thead>
             <tbody>
@@ -135,8 +140,8 @@ export function BlocoDecomposicao({
     <>
       <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2">
         {/* Contrato 1 — parte do veículo */}
-        <div className="rounded-[12px] p-[14px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
-          <div className="mb-[8px] font-display text-[12.5px] font-bold">Contrato 1 — Novação do veículo</div>
+        <div className="rounded-[12px] p-[14px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+          <div className="mb-[8px] font-display text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-label)' }}>Contrato 1 — Novação do veículo</div>
           <div className="flex flex-col gap-[4px]">
             <LinhaValor label="Vencido (com multa e mora)" valor={parteVeiculo.vencido} />
             <LinhaValor label="Futuro a valor presente" valor={parteVeiculo.futuro} />
@@ -147,8 +152,8 @@ export function BlocoDecomposicao({
         </div>
 
         {/* Contrato 2 — demais produtos */}
-        <div className="rounded-[12px] p-[14px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
-          <div className="mb-[8px] font-display text-[12.5px] font-bold">Contrato 2 — Termo de Regularização de Débitos</div>
+        <div className="rounded-[12px] p-[14px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+          <div className="mb-[8px] font-display text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-label)' }}>Contrato 2 — Termo de Regularização de Débitos</div>
           {demaisProdutos.porProduto.length === 0 ? (
             <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nada além do veículo — a novação teria só o Contrato 1.</div>
           ) : (
@@ -163,7 +168,7 @@ export function BlocoDecomposicao({
         </div>
       </div>
 
-      <div className="flex items-center justify-between rounded-[10px] px-[14px] py-[10px]" style={{ background: 'var(--navy)', color: '#fff' }}>
+      <div className="flex flex-wrap items-center justify-between gap-[6px] rounded-[10px] px-[14px] py-[10px]" style={{ background: 'var(--navy)', color: '#fff' }}>
         <span className="text-[12.5px] font-semibold">{rotuloTotal ?? 'Saldo total a reorganizar'}</span>
         <span className="font-display text-[15px] font-bold" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(totalGeral)}</span>
       </div>
@@ -196,26 +201,22 @@ export function NovacaoDecomposicaoModal({ contaId, open, onClose }: { contaId: 
           <BlocoDecomposicao parteVeiculo={d.parteVeiculo} demaisProdutos={d.demaisProdutos} totalGeral={d.totalGeral} />
 
           {d.memoria.ignorados.length > 0 && (
-            <div className="rounded-[10px] px-[12px] py-[8px] text-[11.5px]" style={{ background: 'var(--warn-bg)', border: '1px solid #f0dfae', color: 'var(--warn-ink)' }}>
+            <div className="rounded-[10px] px-[12px] py-[8px] text-[11.5px]" style={{ background: 'var(--warn-bg)', border: '1px solid var(--border)', color: 'var(--warn-ink)' }}>
               {d.memoria.ignorados.length} contribuição(ões) futura(s) de seguro fora da novação — o contrato de proteção continua normalmente.
             </div>
           )}
 
           {/* Memória de cálculo — auditável, componente a componente */}
           <div>
-            <button
-              onClick={() => setMemoriaAberta((v) => !v)}
-              className="text-[12px] font-semibold"
-              style={{ color: 'var(--accent)' }}
-            >
+            <Botao tamanho="sm" variante="fantasma" onClick={() => setMemoriaAberta((v) => !v)}>
               {memoriaAberta ? '▾ Ocultar memória de cálculo' : '▸ Ver memória de cálculo'}
-            </button>
+            </Botao>
             {memoriaAberta && (
               <div className="mt-[8px] flex flex-col gap-[12px]">
                 <TabelaMemoria componentes={d.memoria.componentes} />
                 {d.memoria.acordos.filter((a) => a.saldoAberto > 0).map((a) => (
                   <div key={a.acordoId} className="rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)' }}>
-                    <div className="mb-[6px] text-[12px] font-semibold">
+                    <div className="mb-[6px] text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>
                       Acordo {a.acordoId.slice(-6)} · saldo em aberto {formatCurrency(a.saldoAberto)}
                       <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
                         {' '}— cobriu {formatCurrency(a.nominalCoberto)} + encargos {formatCurrency(a.encargosAcordo)} (divididos em partes iguais)
@@ -332,27 +333,23 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
 
   if (!aberto) {
     return (
-      <button
-        onClick={() => setAberto(true)}
-        className="h-[36px] rounded-[9px] text-[12.5px] font-semibold"
-        style={{ background: 'var(--accent)', color: '#fff' }}
-      >
+      <Botao variante="primaria" onClick={() => setAberto(true)}>
         Simular proposta de novação
-      </button>
+      </Botao>
     );
   }
 
   return (
     <div className="rounded-[12px] p-[14px]" style={{ border: '1px solid var(--border)' }}>
-      <div className="mb-[10px] font-display text-[12.5px] font-bold">Simulação da proposta</div>
+      <div className="mb-[10px] font-display text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-label)' }}>Simulação da proposta</div>
       <div className="flex flex-wrap items-end gap-[12px]">
         <label className="flex flex-col gap-[4px]">
           <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Prazo (meses)</span>
-          <input value={prazoMeses} onChange={(e) => setPrazoMeses(e.target.value)} className="h-[34px] w-[90px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+          <input value={prazoMeses} onChange={(e) => setPrazoMeses(e.target.value)} className="h-[34px] w-[90px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
         </label>
         <label className="flex flex-col gap-[4px]">
           <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Frequência</span>
-          <select value={frequencia} onChange={(e) => setFrequencia(e.target.value as typeof frequencia)} className="h-[34px] w-[110px] rounded-[8px] px-[8px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+          <select value={frequencia} onChange={(e) => setFrequencia(e.target.value as typeof frequencia)} className="h-[34px] w-[110px] rounded-[8px] px-[8px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
             {(['semanal', 'quinzenal', 'mensal'] as const).map((f) => (
               <option key={f} value={f}>{FREQ_LABEL[f]}{f === frequenciaHerdada ? ' (atual)' : ''}</option>
             ))}
@@ -360,19 +357,19 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
         </label>
         <label className="flex flex-col gap-[4px]">
           <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>1ª parcela</span>
-          <input type="date" value={primeiraParcela} onChange={(e) => setPrimeiraParcela(e.target.value)} title="Vazio = próximo ciclo da conta. Mensal: mesmo dia em cada mês; mês sem o dia cai no último dia." className="h-[34px] w-[150px] rounded-[8px] px-[8px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+          <input type="date" value={primeiraParcela} onChange={(e) => setPrimeiraParcela(e.target.value)} title="Vazio = próximo ciclo da conta. Mensal: mesmo dia em cada mês; mês sem o dia cai no último dia." className="h-[34px] w-[150px] rounded-[8px] px-[8px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
         </label>
         <label className="flex flex-col gap-[4px]">
           <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Recebimento inicial (R$) — opcional</span>
-          <input value={recebimento} onChange={(e) => setRecebimento(e.target.value)} placeholder="0,00" className="h-[34px] w-[130px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+          <input value={recebimento} onChange={(e) => setRecebimento(e.target.value)} placeholder="0,00" className="h-[34px] w-[130px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
         </label>
         <label className="flex flex-col gap-[4px]">
           <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Desconto (R$) — exige comitê</span>
-          <input value={desconto} onChange={(e) => setDesconto(e.target.value)} placeholder="0,00" className="h-[34px] w-[120px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+          <input value={desconto} onChange={(e) => setDesconto(e.target.value)} placeholder="0,00" className="h-[34px] w-[120px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
         </label>
         <label className="flex flex-col gap-[4px]">
           <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Trocar veículo (opcional) — estoque disponível</span>
-          <select value={trocaAtivoId} onChange={(e) => setTrocaAtivoId(e.target.value)} className="h-[34px] w-[280px] rounded-[8px] px-[8px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+          <select value={trocaAtivoId} onChange={(e) => setTrocaAtivoId(e.target.value)} className="h-[34px] w-full max-w-[280px] rounded-[10px] px-[8px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
             <option value="">Manter o veículo atual</option>
             {disponiveis.data?.map((a) => (
               <option key={a.id} value={a.id}>
@@ -383,17 +380,17 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
         </label>
         <label className="flex flex-col gap-[4px]">
           <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Acréscimo ao saldo (R$) — ex.: avaria do veículo devolvido</span>
-          <input value={acrescimo} onChange={(e) => setAcrescimo(e.target.value)} placeholder="0,00" className="h-[34px] w-[130px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+          <input value={acrescimo} onChange={(e) => setAcrescimo(e.target.value)} placeholder="0,00" className="h-[34px] w-[130px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
         </label>
         {reaisParaCentavos(acrescimo) > 0 && (
           <label className="flex flex-col gap-[4px]">
             <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Motivo do acréscimo (vai para o instrumento)</span>
-            <input value={acrescimoMotivo} onChange={(e) => setAcrescimoMotivo(e.target.value)} placeholder="ex.: reparo da avaria do HB20 — orçamento nº 123" maxLength={200} className="h-[34px] w-[320px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+            <input value={acrescimoMotivo} onChange={(e) => setAcrescimoMotivo(e.target.value)} placeholder="ex.: reparo da avaria do HB20 — orçamento nº 123" maxLength={200} className="h-[34px] w-full max-w-[320px] rounded-[10px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
           </label>
         )}
-        <button onClick={simular} disabled={ocupado || (reaisParaCentavos(acrescimo) > 0 && !acrescimoMotivo.trim())} className="h-[34px] rounded-[8px] px-[14px] text-[12.5px] font-semibold" style={{ background: 'var(--accent)', color: '#fff', opacity: ocupado ? 0.6 : 1 }}>
+        <Botao variante="primaria" onClick={() => void simular()} disabled={ocupado || (reaisParaCentavos(acrescimo) > 0 && !acrescimoMotivo.trim())}>
           {ocupado ? 'Calculando…' : 'Simular'}
-        </button>
+        </Botao>
       </div>
       {parcelasPrevistas > 0 && (
         <div className="mt-[6px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
@@ -404,12 +401,12 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
       {sim && (
         <div className="mt-[14px] flex flex-col gap-[12px]">
           {sim.excecoes.length > 0 && (
-            <div className="rounded-[10px] px-[12px] py-[8px] text-[11.5px]" style={{ background: 'var(--warn-bg)', border: '1px solid #f0dfae', color: 'var(--warn-ink)' }}>
+            <div className="rounded-[10px] px-[12px] py-[8px] text-[11.5px]" style={{ background: 'var(--warn-bg)', border: '1px solid var(--border)', color: 'var(--warn-ink)' }}>
               {sim.excecoes.map((e, i) => <div key={i}>⚠ {e}</div>)}
             </div>
           )}
 
-          <label className="flex items-start gap-[8px] rounded-[10px] px-[12px] py-[8px] text-[12px]" style={{ background: 'var(--warn-bg)', border: '1px solid #f0dfae', color: 'var(--warn-ink)' }}>
+          <label className="flex items-start gap-[8px] rounded-[10px] px-[12px] py-[8px] text-[12px]" style={{ background: 'var(--warn-bg)', border: '1px solid var(--border)', color: 'var(--warn-ink)' }}>
             <input type="checkbox" checked={contratoUnico} onChange={(e) => setContratoUnico(e.target.checked)} className="mt-[2px]" />
             <span>
               <b>Contrato único</b> (adaptação até o instrumento de novação ficar pronto): em vez de dois contratos, nasce <b>um contrato de Compra Parcelada</b> do veículo
@@ -425,13 +422,13 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
           </div>
 
           <div className="rounded-[10px] px-[14px] py-[10px]" style={{ background: 'var(--navy)', color: '#fff' }}>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-[6px]">
               <span className="text-[12.5px] font-semibold">Parcela única do relacionamento ({FREQ_LABEL[sim.frequencia].toLowerCase()})</span>
               <span className="font-display text-[15px] font-bold" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(sim.valorParcelaTotal ?? sim.valorParcela)}</span>
             </div>
             {/* F4 (A4.4): o valor apresentado é o valor cobrado — composição visível. */}
             {(sim.comissaoPorPeriodo > 0 || sim.protecaoPorPeriodo > 0) && (
-              <div className="mt-[4px] text-[11px]" style={{ color: 'rgba(255,255,255,0.75)' }}>
+              <div className="mt-[4px] text-[11px]" style={{ color: 'var(--navy-text-body)' }}>
                 {formatCurrency(sim.valorParcela)} financeira
                 {sim.comissaoPorPeriodo > 0 ? ` + ${formatCurrency(sim.comissaoPorPeriodo)} comissão recorrente` : ''}
                 {sim.protecaoPorPeriodo > 0 ? ` + ${formatCurrency(sim.protecaoPorPeriodo)} proteção veicular` : ''}
@@ -440,8 +437,8 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
           </div>
 
           <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2">
-            <div className="rounded-[12px] p-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
-              <div className="mb-[6px] text-[12px] font-bold">Cadeia do contrato do veículo</div>
+            <div className="rounded-[12px] p-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+              <div className="mb-[6px] font-display text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-label)' }}>Cadeia do contrato do veículo</div>
               {sim.troca && (
                 <div className="mb-[6px] rounded-[8px] px-[10px] py-[6px] text-[11.5px]" style={{ background: 'var(--info-bg)', color: 'var(--text-primary)' }}>
                   🔁 Troca: sai <b>{sim.troca.saiDescricao}</b> ({formatCurrency(sim.troca.saiValor)}) → entra <b>{sim.troca.entraDescricao}</b> ({formatCurrency(sim.troca.entraValor)})
@@ -466,9 +463,9 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
                 <LinhaValor label="Saldo a parcelar do veículo" valor={sim.saldoAParcelarVeiculo} forte />
               </div>
             </div>
-            <div className="rounded-[12px] p-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
-              <div className="mb-[6px] text-[12px] font-bold">Sequência das faturas</div>
-              <div className="flex flex-col gap-[4px] text-[12px]">
+            <div className="rounded-[12px] p-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+              <div className="mb-[6px] font-display text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-label)' }}>Sequência das faturas</div>
+              <div className="flex flex-col gap-[4px] text-[12px]" style={{ color: 'var(--text-primary)' }}>
                 {sim.contrato2.totalParcelas > 0 ? (
                   <>
                     {/* Termo menor que uma parcela: resolve-se INTEIRO na fatura
@@ -505,20 +502,19 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
               ✓ Proposta enviada para a Central de Aprovações — acompanhe em Aprovações e na tela de Acordos e novações.
             </div>
           ) : (
-            <div className="flex flex-wrap items-end gap-[10px] rounded-[12px] p-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
+            <div className="flex flex-wrap items-end gap-[10px] rounded-[12px] p-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
               <label className="flex min-w-[240px] flex-1 flex-col gap-[4px]">
                 <span className="text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Observação (opcional)</span>
-                <input value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Contexto para o comitê…" className="h-[34px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
+                <input value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Contexto para o comitê…" className="h-[34px] rounded-[8px] px-[10px] text-[12.5px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
               </label>
-              <button
-                onClick={enviarParaAprovacao}
+              <Botao
+                variante="primaria"
+                onClick={() => void enviarParaAprovacao()}
                 disabled={enviando || !sim.produtoAtivo}
                 title={sim.produtoAtivo ? undefined : 'Ative o produto Novação no Catálogo para contratar'}
-                className="h-[36px] rounded-[9px] px-[16px] text-[12.5px] font-semibold disabled:opacity-50"
-                style={{ background: 'var(--navy)', color: '#fff' }}
               >
                 {enviando ? 'Enviando…' : 'Enviar para aprovação'}
-              </button>
+              </Botao>
               {!sim.produtoAtivo && (
                 <div className="w-full text-[11.5px]" style={{ color: 'var(--warn-ink)' }}>
                   A contratação exige o produto Novação ATIVO no Catálogo — a simulação acima usa os parâmetros padrão.

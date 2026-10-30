@@ -18,7 +18,17 @@ import { reaisParaCentavos, numeroBR } from '../lib/valor';
 import { Metrica } from '../components/Metrica';
 import { BlocoAssinaturaDigital } from '../components/BlocoAssinaturaDigital';
 import { FERRAMENTAS_TESTE } from '../lib/ambiente';
+import { Tabela } from '../components/Tabela';
+import { Chips } from '../components/Chips';
+import { Botao } from '../components/Botao';
+import { Bloco } from '../components/Bloco';
+import { Secao } from '../components/Secao';
 
+// Layout v2 (doc 03 §11): header navy com Metrica escura, resumo em Bloco com
+// Leitura, abas em Chips, cronograma/extrato em Tabela responsiva (celular =
+// cartão por parcela), ações em Botao; só tokens.
+
+const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' } as const;
 
 function fmtData(iso: string): string {
   return iso.slice(0, 10).split('-').reverse().join('/');
@@ -194,9 +204,9 @@ export function ContratoDetalhePage() {
               {simQuitacao.liquidacaoTotal ? 'Liquidação TOTAL do contrato' : 'Antecipação parcial'} — {simQuitacao.parcelas.length} parcela(s).
             </div>
             <div className="rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)' }}>
-              <div className="flex justify-between"><span>Valor nominal</span><b>{formatCurrency(simQuitacao.valorNominalTotal)}</b></div>
-              <div className="flex justify-between"><span>Valor para quitar hoje</span><b>{formatCurrency(simQuitacao.valorQuitacao)}</b></div>
-              <div className="flex justify-between" style={{ color: 'var(--ok-fg)' }}><span>Desconto</span><b>{formatCurrency(simQuitacao.desconto)}</b></div>
+              <div className="flex justify-between"><span>Valor nominal</span><b className="tabular-nums">{formatCurrency(simQuitacao.valorNominalTotal)}</b></div>
+              <div className="flex justify-between"><span>Valor para quitar hoje</span><b className="tabular-nums">{formatCurrency(simQuitacao.valorQuitacao)}</b></div>
+              <div className="flex justify-between" style={{ color: 'var(--ok-fg)' }}><span>Desconto</span><b className="tabular-nums">{formatCurrency(simQuitacao.desconto)}</b></div>
             </div>
             {simQuitacao.fonte === 'catalogo' && (
               <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
@@ -206,16 +216,17 @@ export function ContratoDetalhePage() {
                   : '; na antecipação parcial a comissão recorrente e a proteção são cobradas integralmente.'}
               </div>
             )}
-            <div className="flex justify-end gap-[8px]">
-              <button className="rounded-[8px] border border-[var(--border)] px-[12px] py-[7px] text-[12px] font-bold" onClick={() => setSimQuitacao(null)}>Cancelar</button>
-              <button className="rounded-[8px] bg-[var(--navy)] px-[12px] py-[7px] text-[12px] font-bold text-white disabled:opacity-50" disabled={simulando} onClick={confirmarQuitacao}>
+            <div className="flex flex-wrap justify-end gap-[8px]">
+              <Botao variante="secundaria" tamanho="sm" onClick={() => setSimQuitacao(null)}>Cancelar</Botao>
+              <Botao variante="primaria" tamanho="sm" disabled={simulando} onClick={confirmarQuitacao}>
                 {simulando ? 'Quitando…' : 'Confirmar quitação'}
-              </button>
+              </Botao>
             </div>
           </div>
         </Modal>
       )}
       <button
+        type="button"
         onClick={() => navigate('/carteira')}
         className="self-start text-[12px] font-semibold"
         style={{ color: 'var(--text-body)' }}
@@ -223,23 +234,23 @@ export function ContratoDetalhePage() {
         ← Voltar para a Carteira
       </button>
 
-      {/* Entity header (escuro) — guia visual §5.10 */}
-      <div className="rounded-card p-[22px]" style={{ background: 'var(--navy)' }}>
+      {/* Entity header (escuro) — guia visual §5.10 / §11.3: navy é o único fundo com texto #fff */}
+      <div className="rounded-card p-[18px] sm:p-[22px]" style={{ background: 'var(--navy)' }}>
         {c ? (
           <>
-            <div className="flex items-start justify-between">
-              <div>
+            <div className="flex flex-wrap items-start justify-between gap-[10px]">
+              <div className="min-w-0">
                 <div className="text-[11px] font-semibold" style={{ color: 'var(--navy-text-meta)' }}>
                   {c.numero} · {c.ativo?.placa ?? 'sem placa'}
                 </div>
-                <div className="mt-[3px] font-display text-[23px] font-bold text-white">
+                <div className="mt-[3px] font-display text-[20px] font-bold sm:text-[23px]" style={{ color: '#fff' }}>
                   {c.titular.nome}
                 </div>
                 <div className="mt-[2px] text-[12px]" style={{ color: 'var(--navy-text-body)' }}>
                   {c.ativo ? rotuloAtivo(c.ativo) : 'Reembolso Parcelado'} · origem {fmtData(c.dataAssinatura)}
                 </div>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-[6px]">
+              <div className="flex flex-wrap items-center gap-[6px] sm:justify-end">
                 {/* Três camadas (doc 02 §5.2, 07/09): fase + situação calculada + selos. */}
                 <StatusBadge label={c.status} colors={CONTRATO_STATUS_COLORS} />
                 {c.situacaoFinanceira && (
@@ -249,17 +260,17 @@ export function ContratoDetalhePage() {
                   />
                 )}
                 {c.veiculoBloqueadoEm && (
-                  <span className="rounded-[20px] px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
+                  <span className="rounded-full px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
                     Veículo bloqueado
                   </span>
                 )}
                 {c.recuperacaoIniciadaEm && (
-                  <span className="rounded-[20px] px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: 'var(--purple-bg)', color: 'var(--purple-fg)' }}>
+                  <span className="rounded-full px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: 'var(--purple-bg)', color: 'var(--purple-fg)' }}>
                     Em recuperação
                   </span>
                 )}
                 {c.status === 'Encerrado' && c.motivoEncerramento && (
-                  <span className="rounded-[20px] px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>
+                  <span className="rounded-full px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>
                     {c.motivoEncerramento}
                   </span>
                 )}
@@ -270,41 +281,40 @@ export function ContratoDetalhePage() {
             {c.status === 'Encerrado' && c.motivoEncerramento === 'novacao' && c.novacaoOrigemId && (
               <div className="mt-[12px] text-[12px]" style={{ color: 'var(--navy-text-body)' }}>
                 Este contrato foi extinto por uma novação.{' '}
-                <button onClick={() => navigate(`/acordos?novacao=${c.novacaoOrigemId}`)} className="font-semibold underline" style={{ color: 'var(--accent)' }}>Ver a novação →</button>
+                <button type="button" onClick={() => navigate(`/acordos?novacao=${c.novacaoOrigemId}`)} className="font-semibold underline" style={{ color: 'var(--accent)' }}>Ver a novação →</button>
               </div>
             )}
             {/* Transferência da reserva de domínio (doc 02 §5.2): ação manual do
                 encerrado por quitação. */}
             {c.status === 'Encerrado' && c.motivoEncerramento === 'quitacao' && (
-              <div className="mt-[12px] flex items-center gap-[10px] text-[12px]" style={{ color: 'var(--navy-text-body)' }}>
+              <div className="mt-[12px] flex flex-wrap items-center gap-[10px] text-[12px]" style={{ color: 'var(--navy-text-body)' }}>
                 {c.transferenciaEfetivadaEm ? (
                   <span>✓ Transferência do veículo efetivada em {fmtData(c.transferenciaEfetivadaEm)}</span>
                 ) : (
                   <>
                     <span>Transferência da reserva de domínio pendente.</span>
-                    <button
-                      onClick={() => void registrarTransferencia()}
-                      className="rounded-[7px] px-[10px] py-[5px] text-[11.5px] font-semibold"
-                      style={{ background: 'var(--accent)', color: '#fff' }}
-                    >
+                    <Botao variante="primaria" tamanho="sm" onClick={() => void registrarTransferencia()}>
                       Registrar transferência efetivada
-                    </button>
+                    </Botao>
                   </>
                 )}
               </div>
             )}
-            <div className="mt-[20px] grid grid-cols-4 gap-[16px]">
+            <div className="mt-[20px] grid grid-cols-2 gap-[16px] lg:grid-cols-4">
               <Metrica tom="escuro" label="Saldo devedor" valor={formatCurrency(c.resumo.saldoDevedorAtual)} />
               <Metrica
+                tom="escuro"
                 label="Parcela"
                 valor={`${c.resumo.parcelasPagas}/${c.resumo.totalParcelas}`}
               />
               <Metrica
+                tom="escuro"
                 label="Próxima parcela"
                 valor={c.resumo.proximaParcela ? fmtData(c.resumo.proximaParcela.dataVencimento) : '—'}
                 destaque
               />
               <Metrica
+                tom="escuro"
                 label="Estrutura jurídica"
                 valor={c.ativo?.estruturaJuridica ?? '—'}
               />
@@ -320,116 +330,86 @@ export function ContratoDetalhePage() {
       {/* Termo do Reembolso Parcelado aguardando assinatura (doc 02 §18.5, 13/09):
           cronograma e pagamento ao fornecedor só nascem quando TODOS assinam. */}
       {c && c.status === 'Aguardando assinatura' && (
-        <div className="rounded-card flex flex-col gap-[8px] p-[16px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <div className="text-[13px] font-bold">Assinatura pendente</div>
-          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-            {c.ativo ? 'O contrato aguarda assinatura digital.' : 'O termo do Reembolso Parcelado aguarda assinatura — as parcelas só entram nas faturas e o pagamento ao fornecedor só é criado quando todos assinarem.'}
-          </div>
-          <BlocoAssinaturaDigital
-            contratoId={c.id}
-            ocupado={assinando}
-            run={runAssinatura}
-            titulo={c.ativo ? undefined : 'Termo do Reembolso Parcelado (ZapSign)'}
-          />
+        <div className="rounded-card p-[16px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <Secao titulo="Assinatura pendente">
+            <div className="mb-[8px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
+              {c.ativo ? 'O contrato aguarda assinatura digital.' : 'O termo do Reembolso Parcelado aguarda assinatura — as parcelas só entram nas faturas e o pagamento ao fornecedor só é criado quando todos assinarem.'}
+            </div>
+            <BlocoAssinaturaDigital
+              contratoId={c.id}
+              ocupado={assinando}
+              run={runAssinatura}
+              titulo={c.ativo ? undefined : 'Termo do Reembolso Parcelado (ZapSign)'}
+            />
+          </Secao>
         </div>
       )}
 
-      {/* Resumo financeiro + documento do contrato */}
+      {/* Resumo financeiro + documento do contrato — Bloco com a Leitura do Hub */}
       {c && (
-        <div className="rounded-card flex flex-wrap items-center justify-between gap-[12px] p-[16px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <div className="flex flex-wrap gap-[28px]">
-            <div>
-              <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>Valor do contrato</div>
-              <div className="mt-[3px] font-display text-[16px] font-bold tabular-nums">{formatCurrency(c.valorTotal)}</div>
-            </div>
-            <div>
-              <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>Valor pago</div>
-              <div className="mt-[3px] font-display text-[16px] font-bold tabular-nums" style={{ color: 'var(--ok-fg)' }}>{formatCurrency(c.resumo.valorPago)}</div>
-            </div>
+        <Bloco
+          titulo="Resumo financeiro"
+          acao={<Botao variante="secundaria" tamanho="sm" onClick={() => setDocOpen(true)}>Ver documento do contrato</Botao>}
+          leitura={
+            <>
+              Pagas <b>{c.resumo.parcelasPagas}</b> de <b>{c.resumo.totalParcelas}</b> parcelas · <b>{formatCurrency(c.resumo.saldoDevedorAtual)}</b> em aberto
+              {c.resumo.proximaParcela ? <> · próxima em <b>{fmtData(c.resumo.proximaParcela.dataVencimento)}</b></> : null}.
+            </>
+          }
+        >
+          <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-2 lg:grid-cols-4">
+            <Metrica tom="claro" label="Valor do contrato" valor={formatCurrency(c.valorTotal)} />
+            <Metrica tom="claro" label="Valor pago" valor={<span style={{ color: 'var(--ok-fg)' }}>{formatCurrency(c.resumo.valorPago)}</span>} />
             {(c.resumo.encargosPagos ?? 0) > 0 && (
-              <div title="Juros e multa de atraso pagos. Não abatem o saldo devedor.">
-                <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>Juros e multa pagos</div>
-                <div className="mt-[3px] font-display text-[16px] font-bold tabular-nums" style={{ color: 'var(--text-secondary)' }}>{formatCurrency(c.resumo.encargosPagos ?? 0)}</div>
-              </div>
+              <Metrica tom="claro" label="Juros e multa pagos" valor={formatCurrency(c.resumo.encargosPagos ?? 0)} detalhe="Não abatem o saldo devedor." />
             )}
-            <div>
-              <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>Em aberto</div>
-              <div className="mt-[3px] font-display text-[16px] font-bold tabular-nums">{formatCurrency(c.resumo.saldoDevedorAtual)}</div>
-            </div>
+            <Metrica tom="claro" label="Em aberto" valor={formatCurrency(c.resumo.saldoDevedorAtual)} />
           </div>
-          <button onClick={() => setDocOpen(true)} className="h-[34px] rounded-[8px] px-[14px] text-[12px] font-semibold" style={{ background: 'var(--navy)', color: '#fff' }}>Ver documento do contrato</button>
-        </div>
+        </Bloco>
       )}
 
-      {/* Tabs + ação dev de simular pagamento */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-[6px]">
-          {(['cronograma', 'extrato'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className="rounded-[8px] px-[14px] py-[7px] text-[12.5px] font-semibold capitalize"
-              style={{
-                background: tab === t ? 'var(--navy)' : 'var(--surface)',
-                color: tab === t ? '#fff' : 'var(--text-body)',
-                border: '1px solid var(--border)',
-              }}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-[8px]">
+      {/* Abas (chips) + ações do contrato (dev: simular pagamento) */}
+      <div className="flex flex-wrap items-center justify-between gap-[10px]">
+        <Chips
+          itens={[
+            { chave: 'cronograma', rotulo: 'Cronograma', contagem: cronograma.data?.length },
+            { chave: 'extrato', rotulo: 'Extrato', contagem: extrato.data?.length },
+          ]}
+          valor={tab}
+          onChange={(k) => setTab((k as 'cronograma' | 'extrato') ?? 'cronograma')}
+          todos={null}
+        />
+        <div className="flex flex-wrap gap-[8px]">
           {podeOperar && (
-            <button
-              onClick={quitar}
-              disabled={simulando}
-              className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
-              style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)', opacity: simulando ? 0.6 : 1 }}
-            >
+            <Botao variante="secundaria" tamanho="sm" onClick={quitar} disabled={simulando}>
               Quitação antecipada
-            </button>
+            </Botao>
           )}
           {podeOperar && (
-            <button
-              onClick={() => setSinistroAberto(true)}
-              disabled={simulando}
-              className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
-              style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)', opacity: simulando ? 0.6 : 1 }}
-            >
+            <Botao variante="secundaria" tamanho="sm" onClick={() => setSinistroAberto(true)} disabled={simulando}>
               Sinistro
-            </button>
+            </Botao>
           )}
           {podeReajustar && (
-            <button
-              onClick={() => setReajusteAberto(true)}
-              disabled={simulando}
-              className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
-              style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)', opacity: simulando ? 0.6 : 1 }}
-            >
+            <Botao variante="secundaria" tamanho="sm" onClick={() => setReajusteAberto(true)} disabled={simulando}>
               Reajuste IPCA
-            </button>
+            </Botao>
           )}
           {podeOperar && podeCancelar && (
-            <button
-              onClick={() => setCancelandoAberto(true)}
-              disabled={simulando}
-              className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
-              style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)', border: '1px solid #f2c6c2', opacity: simulando ? 0.6 : 1 }}
-            >
+            <Botao variante="perigo" tamanho="sm" onClick={() => setCancelandoAberto(true)} disabled={simulando}>
               Cancelar contrato
-            </button>
+            </Botao>
           )}
           {podeOperar && FERRAMENTAS_TESTE && (
-            <button
+            <Botao
+              variante="primaria"
+              tamanho="sm"
               onClick={simularPagamento}
-              disabled={simulando}
-              className="rounded-[8px] px-[14px] py-[7px] text-[12px] font-semibold"
-              style={{ background: 'var(--accent)', color: '#fff', opacity: simulando ? 0.6 : 1 }}
+              carregando={simulando}
               title="Dev: dispara a conciliação da próxima fatura via fila"
             >
-              {simulando ? '…' : 'Simular pagamento (dev)'}
-            </button>
+              Simular pagamento (dev)
+            </Botao>
           )}
         </div>
       </div>
@@ -440,11 +420,11 @@ export function ContratoDetalhePage() {
             <p>A indenização recebida amortiza o saldo devedor (a dívida não se extingue com o bem — Regra 3).</p>
             <label className="flex flex-col gap-[4px] text-[12px]">
               <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Valor da indenização (R$)</span>
-              <input value={valorSinistro} onChange={(e) => setValorSinistro(e.target.value)} className="h-[34px] rounded-[8px] px-[10px] text-right text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+              <input value={valorSinistro} onChange={(e) => setValorSinistro(e.target.value)} className="h-[34px] rounded-[10px] px-[10px] text-right text-[13px]" style={inputStyle} />
             </label>
-            <div className="flex justify-end gap-[8px]">
-              <button onClick={() => setSinistroAberto(false)} className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>Voltar</button>
-              <button onClick={() => void confirmarSinistro()} disabled={simulando} className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold" style={{ background: 'var(--navy)', color: '#fff', opacity: simulando ? 0.6 : 1 }}>Registrar sinistro</button>
+            <div className="flex flex-wrap justify-end gap-[8px]">
+              <Botao variante="secundaria" tamanho="sm" onClick={() => setSinistroAberto(false)}>Voltar</Botao>
+              <Botao variante="primaria" tamanho="sm" onClick={() => void confirmarSinistro()} disabled={simulando}>Registrar sinistro</Botao>
             </div>
           </div>
         </Modal>
@@ -456,11 +436,11 @@ export function ContratoDetalhePage() {
             <p>Propõe o reajuste das parcelas futuras pelo índice acumulado — a aplicação depende da Central de Aprovações.</p>
             <label className="flex flex-col gap-[4px] text-[12px]">
               <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Índice IPCA acumulado (%)</span>
-              <input value={indiceReajuste} onChange={(e) => setIndiceReajuste(e.target.value)} className="h-[34px] rounded-[8px] px-[10px] text-right text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+              <input value={indiceReajuste} onChange={(e) => setIndiceReajuste(e.target.value)} className="h-[34px] rounded-[10px] px-[10px] text-right text-[13px]" style={inputStyle} />
             </label>
-            <div className="flex justify-end gap-[8px]">
-              <button onClick={() => setReajusteAberto(false)} className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>Voltar</button>
-              <button onClick={() => void confirmarReajuste()} disabled={simulando} className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold" style={{ background: 'var(--navy)', color: '#fff', opacity: simulando ? 0.6 : 1 }}>Propor reajuste</button>
+            <div className="flex flex-wrap justify-end gap-[8px]">
+              <Botao variante="secundaria" tamanho="sm" onClick={() => setReajusteAberto(false)}>Voltar</Botao>
+              <Botao variante="primaria" tamanho="sm" onClick={() => void confirmarReajuste()} disabled={simulando}>Propor reajuste</Botao>
             </div>
           </div>
         </Modal>
@@ -475,101 +455,53 @@ export function ContratoDetalhePage() {
             </p>
             <label className="flex flex-col gap-[4px] text-[12px]">
               <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Motivo (opcional)</span>
-              <input value={motivoCancel} onChange={(e) => setMotivoCancel(e.target.value)} placeholder="ex: cliente desistiu / dados incorretos" className="h-[34px] rounded-[8px] px-[10px] text-[13px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
+              <input value={motivoCancel} onChange={(e) => setMotivoCancel(e.target.value)} placeholder="ex: cliente desistiu / dados incorretos" className="h-[34px] rounded-[10px] px-[10px] text-[13px]" style={inputStyle} />
             </label>
-            <div className="flex justify-end gap-[8px]">
-              <button onClick={() => setCancelandoAberto(false)} className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>Voltar</button>
-              <button onClick={() => void confirmarCancelamento()} disabled={simulando} className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold" style={{ background: 'var(--danger-fg)', color: '#fff', opacity: simulando ? 0.6 : 1 }}>Cancelar contrato</button>
+            <div className="flex flex-wrap justify-end gap-[8px]">
+              <Botao variante="secundaria" tamanho="sm" onClick={() => setCancelandoAberto(false)}>Voltar</Botao>
+              <Botao variante="perigo" tamanho="sm" onClick={() => void confirmarCancelamento()} disabled={simulando}>Cancelar contrato</Botao>
             </div>
           </div>
         </Modal>
       )}
 
       {tab === 'cronograma' && (
-        <div
-          className="rounded-card overflow-x-auto"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-        >
-          <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
-            <thead>
-              <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
-                <th className="px-[18px] py-[11px] text-left font-semibold">Parcela</th>
-                <th className="px-[18px] py-[11px] text-left font-semibold">Vencimento</th>
-                <th className="px-[18px] py-[11px] text-right font-semibold">Valor</th>
-                <th className="px-[18px] py-[11px] text-left font-semibold">Contrato</th>
-                <th className="px-[18px] py-[11px] text-left font-semibold">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cronograma.data?.map((p) => (
-                <tr key={p.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                  <td className="px-[18px] py-[11px] font-semibold tabular-nums" style={{ color: 'var(--text-primary)' }}>
-                    {p.display}
-                  </td>
-                  <td className="px-[18px] py-[11px] tabular-nums" style={{ color: 'var(--text-body)' }}>
-                    {fmtData(p.dataVencimento)}
-                  </td>
-                  <td className="px-[18px] py-[11px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>
-                    {formatCurrency(p.valorNominal)}
-                  </td>
-                  {/* Natureza do contrato/produto que origina a parcela */}
-                  <td className="px-[18px] py-[11px]" style={{ color: 'var(--text-body)' }}>
-                    {p.composicao ?? '—'}
-                  </td>
-                  <td className="px-[18px] py-[11px]">
-                    <StatusBadge label={p.status} colors={PARCELA_STATUS_COLORS} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Tabela
+          colunas={[
+            { chave: 'parcela', titulo: 'Parcela', celular: 'titulo', classe: 'tabular-nums', render: (p) => p.display },
+            { chave: 'vencimento', titulo: 'Vencimento', celular: 'subtitulo', classe: 'tabular-nums', render: (p) => fmtData(p.dataVencimento) },
+            { chave: 'valor', titulo: 'Valor', alinhar: 'right', celular: 'destaque', classe: 'tabular-nums', render: (p) => formatCurrency(p.valorNominal) },
+            // Natureza do contrato/produto que origina a parcela
+            { chave: 'contrato', titulo: 'Contrato', celular: 'campo', render: (p) => p.composicao ?? '—' },
+            { chave: 'status', titulo: 'Status', celular: 'campo', render: (p) => <StatusBadge label={p.status} colors={PARCELA_STATUS_COLORS} /> },
+          ]}
+          linhas={cronograma.data ?? []}
+          chave={(p) => p.id}
+          carregando={cronograma.isLoading}
+          vazio="Sem cronograma — nasce na ativação do contrato."
+        />
       )}
 
       {tab === 'extrato' && (
-        <div
-          className="rounded-card overflow-x-auto"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-        >
-          <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
-            <thead>
-              <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
-                <th className="px-[18px] py-[11px] text-left font-semibold">Evento</th>
-                <th className="px-[18px] py-[11px] text-left font-semibold">Data</th>
-                <th className="px-[18px] py-[11px] text-right font-semibold">Valor</th>
-                <th className="px-[18px] py-[11px] text-right font-semibold">Encargo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {extrato.data?.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-[18px] py-[20px] text-center" style={{ color: 'var(--text-muted)' }}>
-                    Nenhum pagamento conciliado ainda.
-                  </td>
-                </tr>
-              )}
-              {extrato.data?.map((e, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                  <td className="px-[18px] py-[11px]" style={{ color: 'var(--text-primary)' }}>
-                    {e.label}
-                  </td>
-                  <td className="px-[18px] py-[11px] tabular-nums" style={{ color: 'var(--text-body)' }}>
-                    {fmtData(e.data)}
-                  </td>
-                  <td className="px-[18px] py-[11px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>
-                    {e.valor ? formatCurrency(e.valor) : '—'}
-                  </td>
-                  <td
-                    className="px-[18px] py-[11px] text-right tabular-nums"
-                    style={{ color: e.encargo ? 'var(--warn-fg)' : 'var(--text-muted)' }}
-                  >
-                    {e.encargo ? formatCurrency(e.encargo) : '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Tabela
+          colunas={[
+            { chave: 'evento', titulo: 'Evento', celular: 'titulo', render: (e) => e.label },
+            { chave: 'data', titulo: 'Data', celular: 'subtitulo', classe: 'tabular-nums', render: (e) => fmtData(e.data) },
+            { chave: 'valor', titulo: 'Valor', alinhar: 'right', celular: 'destaque', classe: 'tabular-nums', render: (e) => (e.valor ? formatCurrency(e.valor) : '—') },
+            {
+              chave: 'encargo',
+              titulo: 'Encargo',
+              alinhar: 'right',
+              celular: 'campo',
+              classe: 'tabular-nums',
+              render: (e) => <span style={{ color: e.encargo ? 'var(--warn-fg)' : 'var(--text-muted)' }}>{e.encargo ? formatCurrency(e.encargo) : '—'}</span>,
+            },
+          ]}
+          linhas={(extrato.data ?? []).map((e, i) => ({ ...e, _chave: `${e.data}-${i}` }))}
+          chave={(e) => e._chave}
+          carregando={extrato.isLoading}
+          vazio="Nenhum pagamento conciliado ainda."
+        />
       )}
 
       {/* Documento do contrato (instrumento) — visualizar + baixar */}
@@ -579,12 +511,12 @@ export function ContratoDetalhePage() {
         ) : (
           <div className="flex flex-col gap-[12px]">
             {documento.data && !documento.data.disponivel && (
-              <div className="rounded-[8px] p-[10px] text-[11.5px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
+              <div className="rounded-[10px] p-[10px] text-[11.5px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
                 Instrumento não disponível (contrato migrado do legado).
               </div>
             )}
-            <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap rounded-[8px] p-[12px] text-[11.5px]" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>{documento.data?.texto}</pre>
-            <button onClick={baixarDocumento} disabled={!documento.data?.texto} className="h-[34px] self-start rounded-[8px] px-[14px] text-[12px] font-semibold" style={{ background: 'var(--accent)', color: '#fff' }}>Baixar (.txt)</button>
+            <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap rounded-[10px] p-[12px] text-[11.5px]" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>{documento.data?.texto}</pre>
+            <Botao variante="primaria" className="self-start" onClick={baixarDocumento} disabled={!documento.data?.texto}>Baixar (.txt)</Botao>
           </div>
         )}
       </Modal>

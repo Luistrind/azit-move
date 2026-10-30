@@ -58,18 +58,24 @@ export function Tabela<T>({
         {carregando ? mensagem('Carregando…') : null}
         {!carregando && linhas.length === 0 ? <div className="rounded-card" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>{mensagem(vazio)}</div> : null}
         {linhas.map((l) => {
-          const Tag = clicavel ? 'button' : 'div';
+          // Cartão clicável é <button> só quando não há botões de ação dentro
+          // (botão dentro de botão é DOM inválido); com ações, vira <div role=button>.
+          const comoBotao = clicavel && !acoes;
+          const Tag = comoBotao ? 'button' : 'div';
           return (
             <Tag
               key={chave(l)}
-              type={clicavel ? 'button' : undefined}
+              type={comoBotao ? 'button' : undefined}
+              role={clicavel && !comoBotao ? 'button' : undefined}
+              tabIndex={clicavel && !comoBotao ? 0 : undefined}
+              onKeyDown={clicavel && !comoBotao ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick!(l); } } : undefined}
               onClick={clicavel ? () => onClick!(l) : undefined}
-              className="w-full rounded-card p-[14px] text-left"
+              className={`w-full rounded-card p-[14px] text-left ${clicavel ? 'cursor-pointer' : ''}`}
               style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
             >
               <div className="flex items-start justify-between gap-[8px]">
                 <div className="min-w-0">
-                  {titulo ? <div className="truncate text-[13.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>{titulo.render(l)}</div> : null}
+                  {titulo ? <div className="break-words text-[13.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>{titulo.render(l)}</div> : null}
                   {subtitulo ? <div className="text-[11.5px]" style={{ color: 'var(--text-body)' }}>{subtitulo.render(l)}</div> : null}
                 </div>
                 {destaque ? <div className="flex-none text-right font-display text-[13px] font-semibold tabular-nums" style={{ color: 'var(--text-primary)' }}>{destaque.render(l)}</div> : null}
