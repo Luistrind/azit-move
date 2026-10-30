@@ -981,3 +981,55 @@ theme: {
 
 *Doc 3 — Guia Visual V3 · Azit Move · v2.0 · jun/2025*
 *Documentos relacionados: Doc 1 — Design Thinking V3 · Doc 2 — Spec de Domínio V3 · API Spec V1.1*
+
+---
+
+## 11. Layout v2 — padrão do sistema inteiro (decisão Luís, 2026-10-30)
+
+Nasceu na Carteira (doc 02 §27) e vale para TODAS as telas: "reaproveitar o layout é sempre
+importante para não termos padrões diferentes das mesmas coisas". Referência de design
+thinking: blocos com rótulo discreto, número em destaque, uma frase de leitura, link para
+explorar — não é questão de cor, é de layout e componentes.
+
+### 11.1 Princípios
+1. **Mobile first.** Tudo cabe em 390 px sem rolagem horizontal. Tabela vira cartões no celular
+   (`<Tabela>` faz isso sozinha); grades de 3–4 colunas empilham; botões têm ≥ 30 px de altura.
+2. **Tema é do usuário, não da tela.** Claro/escuro em `lib/tema.ts` (botão na Topbar). Nenhuma
+   cor literal (`#…`) em tela: só tokens (`--surface`, `--text-*`, `--border*`, estados
+   `--ok/--danger/--warn/--info/--violet/--purple` fg+bg, viz `--viz-*`). Cor de status vem de
+   `statusColors.ts` (Regra 9) — e lá também só tokens.
+3. **Todo dado é link.** Número que representa um conjunto (vencidas, em atraso, pendentes…)
+   abre o conjunto, de preferência filtrando a lista pela URL (`?situacao=`).
+4. **Pouco texto.** Nada de explicar o óbvio em legenda; a explicação, quando houver, é a
+   **Leitura do Hub**: uma frase em linguagem natural sobre os números, no rodapé do bloco.
+5. **Componente por props, nunca por caso de uso.** Página não escreve `<table>`, chip de filtro,
+   cartão de KPI ou botão estilizado à mão: usa o kit.
+
+### 11.2 Kit (apps/frontend/src/components)
+| Componente | Para quê | Observações |
+|---|---|---|
+| `Bloco` | cartão de painel: rótulo caixa-alta + conteúdo + `Leitura` + "Explorar →" | `tag` à direita do rótulo; `acao` substitui a tag (ex.: alternar gráfico/tabela) |
+| `CartaoIndicador` | indicador com fio de estado (good/bad/warn/neutro), clicável | `Metrica tom="kpi"` renderiza este |
+| `Metrica` | kpi (cartão), claro (bloco em ficha/modal), escuro (header navy) | `detalhe` e `onClick` novos |
+| `Secao` | rótulo caixa-alta + ação + conteúdo dentro de fichas/dossiês | mesmo eyebrow do Bloco |
+| `Tabela` | grade responsiva: desktop tabela, celular cartões | colunas com `celular: titulo/subtitulo/destaque/campo/omitir`; `acoes` por linha |
+| `Chips` | filtros em pílula (uma ativa ou "Todas"), com contagem | substitui `<select>` de status e botões de aba soltos |
+| `Botao` | primaria (acento) / secundaria / perigo / fantasma, sm/md | `carregando` desabilita e mostra … |
+| `SeletorPeriodo` | mês ‹ › + Mês/Semana/7 dias/De–até | `intervaloDoPeriodo`, `rotuloDoPeriodo` |
+| `GraficoBarrasEmpilhadas` | barras empilhadas SVG com tooltip, seleção e tabela | paleta validada (dataviz) |
+| `StatusBadge`, `Modal`, `Stepper`, `Trilha`, `Campo` | continuam | só tokens |
+
+### 11.3 Anatomia de uma tela
+- **Lista**: linha de controles (busca + `Chips` + ações à direita) → `Tabela` (clicável abre o
+  detalhe) — sem cartões de KPI soltos, a não ser que o número mereça (`Metrica tom="kpi"`).
+- **Painel** (Início, Carteira, Centro de custo): grade de 12 colunas de `Bloco`s, cada um com
+  um número-herói ou lista curta e uma `Leitura`.
+- **Ficha/detalhe**: header da entidade (navy) com `Metrica tom="escuro"` → `Secao`s em uma coluna
+  no celular e duas no desktop; ações em `Botao`.
+- Rótulos de seção: `font-display 11px 700 uppercase tracking .14em` em `--text-label`.
+- Raios: cartão 14–16 px, controle 10 px, pílula 999 px. Fio: 1 px `--border`.
+
+### 11.4 Migração (30/10)
+Carteira e Clientes da carteira já estão no padrão. As demais telas foram migradas em bloco antes
+do homolog v1.4: tabelas → `Tabela`, filtros → `Chips`, KPIs → `Metrica tom="kpi"`, seções →
+`Secao`/`Bloco`, botões → `Botao`, hex → tokens. Comportamento e dados não mudam.
