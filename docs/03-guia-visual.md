@@ -1017,6 +1017,7 @@ explorar — não é questão de cor, é de layout e componentes.
 | `Botao` | primaria (acento) / secundaria / perigo / fantasma, sm/md | `carregando` desabilita e mostra … |
 | `SeletorPeriodo` | mês ‹ › + Mês/Semana/7 dias/De–até | `intervaloDoPeriodo`, `rotuloDoPeriodo` |
 | `GraficoBarrasEmpilhadas` | barras empilhadas SVG com tooltip, seleção e tabela | paleta validada (dataviz) |
+| `ModalConfirmacao` | pergunta curta + Cancelar/verbo da ação (perigo por padrão) antes de ação que não se desfaz num clique | substitui `window.confirm`; 1º uso: Bloquear veículo (D+3) na Régua |
 | `StatusBadge`, `Modal`, `Stepper`, `Trilha`, `Campo` | continuam | só tokens |
 
 ### 11.3 Anatomia de uma tela

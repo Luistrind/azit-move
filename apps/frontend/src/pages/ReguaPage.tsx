@@ -5,6 +5,7 @@ import { formatCurrency, resolverEstagioRegua } from '@azit/utils';
 import { reguaService, type ReguaItem } from '../services/regua.service';
 import { operacoesService } from '../services/operacoes.service';
 import { Modal } from '../components/Modal';
+import { ModalConfirmacao } from '../components/ModalConfirmacao';
 import { RenegociacaoWizard } from '../components/RenegociacaoWizard';
 import { Botao } from '../components/Botao';
 import { CartaoIndicador, type TomIndicador } from '../components/CartaoIndicador';
@@ -41,7 +42,7 @@ const ESTAGIOS: { chave: string; rotulo: string; detalhe: string; tom: TomIndica
   { chave: 'd7mais', rotulo: 'Mais de 7 dias', detalhe: 'extrajudicial (D+10) · recuperação (D+12)', tom: 'neutro' },
 ];
 
-function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem; onAcao: (acao: 'bloquear' | 'desbloquear', id: string) => void; onAbrir: () => void; ocupado: boolean; podeOperar: boolean }) {
+function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem; onAcao: (acao: 'bloquear' | 'desbloquear', item: ReguaItem) => void; onAbrir: () => void; ocupado: boolean; podeOperar: boolean }) {
   const podeBloquear = podeOperar && !item.bloqueado && item.diasAtraso >= 3;
   return (
     <div
@@ -85,7 +86,7 @@ function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem;
           variante={item.bloqueado ? 'secundaria' : 'perigo'}
           tamanho="sm"
           className="mt-[10px] w-full"
-          onClick={(e) => { e.stopPropagation(); onAcao(item.bloqueado ? 'desbloquear' : 'bloquear', item.id); }}
+          onClick={(e) => { e.stopPropagation(); onAcao(item.bloqueado ? 'desbloquear' : 'bloquear', item); }}
           disabled={ocupado}
         >
           {item.bloqueado ? 'Desbloquear' : 'Bloquear veículo (D+3)'}
@@ -162,6 +163,8 @@ export function ReguaPage() {
   const [ocupado, setOcupado] = useState(false);
   const [caso, setCaso] = useState<ReguaItem | null>(null);
   const [renegociando, setRenegociando] = useState<ReguaItem | null>(null);
+  // Bloqueio pede confirmação (Regra 6: D+3 é absoluto e o desbloqueio é sempre manual).
+  const [bloqueando, setBloqueando] = useState<ReguaItem | null>(null);
   // Estágio selecionado nos cartões (null = quadro inteiro).
   const [estagio, setEstagio] = useState<string | null>(null);
   const pode = usePodeRole();
@@ -271,8 +274,8 @@ export function ReguaPage() {
                   </div>
                 )}
                 {cards.map((item) => (
-                  <Card key={item.id} item={item} ocupado={ocupado} podeOperar={podeOperar} onAbrir={() => setCaso(item)} onAcao={(acao, id) =>
-                    comRefetch(() => (acao === 'bloquear' ? reguaService.bloquear(id) : reguaService.desbloquear(id)))
+                  <Card key={item.id} item={item} ocupado={ocupado} podeOperar={podeOperar} onAbrir={() => setCaso(item)} onAcao={(acao, alvo) =>
+                    (acao === 'bloquear' ? setBloqueando(alvo) : void comRefetch(() => reguaService.desbloquear(alvo.id)))
                   } />
                 ))}
               </div>
@@ -286,6 +289,25 @@ export function ReguaPage() {
         )}
       </div>
 
+      <ModalConfirmacao
+        open={!!bloqueando}
+        titulo="Bloquear veículo"
+        confirmar="Bloquear veículo"
+        carregando={ocupado}
+        onCancelar={() => setBloqueando(null)}
+        onConfirmar={async () => {
+          if (!bloqueando) return;
+          await comRefetch(() => reguaService.bloquear(bloqueando.id));
+          setBloqueando(null);
+        }}
+      >
+        {bloqueando && (
+          <>
+            Tem certeza? O veículo <strong style={{ color: 'var(--text-primary)' }}>{bloqueando.ativo?.modelo ?? '—'} · {bloqueando.ativo?.placa ?? 'sem placa'}</strong> de{' '}
+            <strong style={{ color: 'var(--text-primary)' }}>{bloqueando.titular.nome}</strong> ({bloqueando.diasAtraso} dias de atraso) será bloqueado. O desbloqueio é sempre manual.
+          </>
+        )}
+      </ModalConfirmacao>
       {caso && (
         <CasoModal
           item={caso}
