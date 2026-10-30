@@ -18,6 +18,7 @@
 //     nunca de uma lista fixa — produto novo no Catálogo aparece sozinho.
 // ============================================================
 import { TipoContrato } from './tipo-contrato';
+import { diasCalendarioEntre, somarDiasISO } from './datas';
 
 export type EstadoFaturaVisao = 'recebida' | 'vencida' | 'a_vencer' | 'fora';
 
@@ -219,10 +220,6 @@ export function mesSeguinte(anoMes: string): string {
   return m === 12 ? `${a + 1}-01` : `${a}-${String(m + 1).padStart(2, '0')}`;
 }
 
-function somarDias(iso: string, dias: number): string {
-  return new Date(Date.parse(`${iso}T00:00:00Z`) + dias * 86_400_000).toISOString().slice(0, 10);
-}
-
 // Comparação "mesmo trecho": o período em curso é cortado em `hoje`, e o
 // anterior tem o MESMO tamanho, começando no mesmo ponto do mês anterior
 // (1–29/out × 1–29/set) ou imediatamente antes (semana × semana anterior).
@@ -235,13 +232,13 @@ export function periodoAnteriorMesmoTrecho(
   if (periodo.de > hoje) return null;
   const ate = periodo.ate < hoje ? periodo.ate : hoje;
   const atual = { de: periodo.de, ate };
-  const tamanho = Math.round((Date.parse(`${ate}T00:00:00Z`) - Date.parse(`${periodo.de}T00:00:00Z`)) / 86_400_000);
+  const tamanho = diasCalendarioEntre(periodo.de, ate);
   if (anoMes) {
     const antMes = periodoDoMes(mesAnterior(anoMes));
-    const fimAnt = somarDias(antMes.de, tamanho);
+    const fimAnt = somarDiasISO(antMes.de, tamanho);
     return { atual, anterior: { de: antMes.de, ate: fimAnt < antMes.ate ? fimAnt : antMes.ate } };
   }
-  const total = Math.round((Date.parse(`${periodo.ate}T00:00:00Z`) - Date.parse(`${periodo.de}T00:00:00Z`)) / 86_400_000) + 1;
-  const deAnt = somarDias(periodo.de, -total);
-  return { atual, anterior: { de: deAnt, ate: somarDias(deAnt, tamanho) } };
+  const total = diasCalendarioEntre(periodo.de, periodo.ate) + 1;
+  const deAnt = somarDiasISO(periodo.de, -total);
+  return { atual, anterior: { de: deAnt, ate: somarDiasISO(deAnt, tamanho) } };
 }

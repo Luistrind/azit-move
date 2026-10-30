@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  diasCalendarioEntre,
   formatCurrency,
   mesAnterior,
   mesSeguinte,
@@ -154,7 +155,7 @@ export function CarteiraPage() {
                     </button>
                   </div>
                   {(listaToda ? clientes.data ?? [] : (clientes.data ?? []).slice(0, 8)).map((c) => {
-                    const dias = Math.max(0, Math.round((Date.parse(`${hoje}T00:00:00Z`) - Date.parse(`${c.maisAntiga}T00:00:00Z`)) / 86_400_000));
+                    const dias = Math.max(0, diasCalendarioEntre(c.maisAntiga, hoje));
                     const tomDias = dias >= 30 ? 'bad' : dias >= 3 ? 'warn' : 'neutro';
                     return (
                       <div key={c.contaId} className="grid grid-cols-[1fr_auto] items-center gap-x-[12px] py-[8px] text-[12.5px]" style={{ borderBottom: '1px solid var(--border-light)' }}>

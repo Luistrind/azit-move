@@ -1,4 +1,4 @@
-import { mesAnterior, mesSeguinte, periodoDoMes, somarDiasISO, type Periodo } from '@azit/utils';
+import { diaSemanaISO, mesAnterior, mesSeguinte, periodoDoMes, somarDiasISO, type Periodo } from '@azit/utils';
 
 // Seletor de período GENÉRICO (doc 02 §27.4): navegador de mês ‹ › + modos
 // (mês, semana, 7 dias, de–até). Controlado: o pai guarda `PeriodoSelecionado`
@@ -21,7 +21,7 @@ const MODOS: { modo: ModoPeriodo; rotulo: string }[] = [
 
 // Semana de segunda a domingo que contém `hoje`.
 function semanaDe(hoje: string): Periodo {
-  const dow = (new Date(`${hoje}T00:00:00Z`).getUTCDay() + 6) % 7;
+  const dow = (diaSemanaISO(hoje) + 6) % 7;
   const de = somarDiasISO(hoje, -dow);
   return { de, ate: somarDiasISO(de, 6) };
 }
