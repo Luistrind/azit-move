@@ -91,7 +91,7 @@ describe('agregarVisaoCarteira — teto = recebidas + vencidas + a vencer', () =
     expect(cp.recebido).toBe(94200 * 2 + 142000);
     const rp = v.porProduto.find((p) => p.chave === 'reembolso_parcelado')!;
     expect(rp).toMatchObject({ teto: 28330, recebido: 28330, rotulo: 'Reembolso Parcelado' });
-    // encargo: fatura C → item 3.973 = excedente 3.973 (conta UMA vez); fatura A em atraso → excedente 2.027 sem item
+    // encargo = excedente pago (padrão do sistema): fatura C 174.303 − 170.330 = 3.973 (o item ENCARGO do legado é só a linha disso); fatura A em atraso 2.027
     expect(v.encargosRecebidos).toBe(3973 + 2027);
   });
 

@@ -62,7 +62,7 @@ export function DocumentoViewer({ doc, onClose }: { doc: { nome: string; url: st
         <div className="flex items-center justify-between px-[16px] py-[12px]" style={{ borderBottom: '1px solid var(--border)' }}>
           <span className="truncate text-[13px] font-bold">{doc.nome}</span>
           <div className="flex items-center gap-[12px]">
-            <a href={doc.url} download={doc.nome} className="text-[12.5px] font-semibold" style={{ color: 'var(--navy)' }}>
+            <a href={doc.url} download={doc.nome} className="text-[12.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>
               Baixar
             </a>
             <button onClick={onClose} className="text-[18px] leading-none" style={{ color: 'var(--text-muted)' }} aria-label="Fechar">×</button>
@@ -70,7 +70,7 @@ export function DocumentoViewer({ doc, onClose }: { doc: { nome: string; url: st
         </div>
         <div className="flex min-h-[300px] flex-1 items-center justify-center overflow-auto p-[12px]" style={{ background: 'var(--surface-input)' }}>
           {ehImagem && <img src={doc.url} alt={doc.nome} className="max-h-[78vh] max-w-full rounded-[8px]" />}
-          {ehPdf && <iframe src={doc.url} title={doc.nome} className="h-[78vh] w-full rounded-[8px]" style={{ border: 'none', background: '#fff' }} />}
+          {ehPdf && <iframe src={doc.url} title={doc.nome} className="h-[78vh] w-full rounded-[8px]" style={{ border: 'none', background: 'var(--surface)' }} />}
           {!ehImagem && !ehPdf && (
             <div className="p-[24px] text-center text-[13px]" style={{ color: 'var(--text-muted)' }}>
               Este formato não tem visualização — use o botão Baixar acima.

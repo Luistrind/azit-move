@@ -34,6 +34,6 @@ import { EfetivarAcordoProcessor } from './efetivar-acordo.processor';
     ReajusteService,
     EfetivarAcordoProcessor,
   ],
-  exports: [RenegociacaoService],
+  exports: [RenegociacaoService, QuitacaoService],
 })
 export class OperacoesModule {}

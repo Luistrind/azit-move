@@ -2596,9 +2596,10 @@ A linha de produto **nasce do item da fatura**, nunca de uma lista fixa na tela 
   senão o tipo do contrato (`classificarContrato`, §5.2): veículo → **Compra Parcelada**,
   reembolso → **Reembolso Parcelado**, crédito → **Crédito avulso**, Termo de novação;
   intermediária tem linha própria; item sem parcela (legado) → a descrição decide;
-- `ENCARGO` → **fora do teto** (receita de atraso). Encargo recebido por fatura = maior entre o
-  item ENCARGO e o excedente pago (`valorPago − valorTotal`), nunca a soma — no legado o item
-  É o excedente.
+- `ENCARGO` → **fora do teto** (receita de atraso). Encargo recebido = **excedente pago**
+  (`valorPago − valorTotal`), que é o padrão do sistema: a conciliação nativa não cria item de
+  encargo, só registra o pago maior; o item ENCARGO do legado é a mesma coisa escrita como
+  linha (informativo, não somado). Decisão Luís 30/10: "como está o padrão atual".
 
 Cada linha mostra recebido, teto e % do teto; no mês, também o recebido do mês anterior.
 
@@ -2640,3 +2641,21 @@ funcionam no telefone).
 `GET /contas/carteira/visao?de&ate`, `GET /contas/carteira/visao/mensal?de=YYYY-MM&ate=YYYY-MM`,
 `GET /contas/carteira/visao/clientes?de&ate&estado=recebidas|vencidas|a_vencer` — todos sobre a
 mesma agregação (`agregarVisaoCarteira`). Detalhe em `api-spec.md` §4.8.
+
+### 27.8 Clientes da carteira — a grade continua (decisão Luís, 30/10)
+
+A visão por período NÃO substitui a grade titular-cêntrica (posição consolidada por conta):
+ela vira tela própria do módulo Carteira, `/carteira/clientes`, para onde apontam os cartões da
+visão geral ("Abrir na Carteira" → `?situacao=em_atraso`). Mudanças na grade:
+
+- os indicadores de cobrança saíram (vivem na visão geral);
+- **Valor sob gestão passa a VALOR PRESENTE**: antes era a soma nominal das parcelas em aberto;
+  agora é a soma, contrato a contrato, do mesmo cálculo da quitação antecipada (§7.4, liquidação
+  total — `QuitacaoService.simular`), com o nominal ao lado como referência. Uma conta só
+  (Regra 16): a Carteira não refaz VP;
+- indicadores restantes: contratos ativos, em atraso (valor e contas), bloqueadas — clicáveis,
+  filtram a grade;
+- busca por nome/CPF; no celular a grade vira cartões.
+
+API: `GET /contas/carteira/resumo` → `{ contas, contasEmAtraso, contasBloqueadas, contratosAtivos,
+valorSobGestaoPresente, valorSobGestaoNominal, valorEmAtraso }` (centavos).

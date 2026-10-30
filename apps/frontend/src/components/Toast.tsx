@@ -27,9 +27,9 @@ export const toast = {
 };
 
 const CORES: Record<TipoToast, { bg: string; fg: string; icone: string }> = {
-  sucesso: { bg: '#e8f7ef', fg: '#1f9d5b', icone: '✓' },
-  erro: { bg: '#fdeceb', fg: '#c0392b', icone: '✕' },
-  info: { bg: '#eaf1fb', fg: 'var(--navy)', icone: 'ℹ' },
+  sucesso: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)', icone: '✓' },
+  erro: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)', icone: '✕' },
+  info: { bg: 'var(--info-bg)', fg: 'var(--navy)', icone: 'ℹ' },
 };
 
 export function Toaster() {

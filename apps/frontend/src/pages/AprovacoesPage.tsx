@@ -49,7 +49,7 @@ export function AprovacoesPage() {
 
   const chip = (on: boolean) =>
     on
-      ? { background: 'var(--surface-input)', color: 'var(--navy)', border: '1px solid var(--navy)' }
+      ? { background: 'var(--surface-input)', color: 'var(--text-primary)', border: '1px solid var(--navy)' }
       : { background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)' };
 
   return (

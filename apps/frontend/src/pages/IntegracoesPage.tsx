@@ -22,7 +22,7 @@ function Ambiente({ valor, onChange }: { valor: string; onChange: (v: string) =>
         <button key={a} onClick={() => onChange(a)}
           className="rounded-[8px] px-[12px] py-[6px] text-[12px] font-semibold"
           style={valor === a
-            ? { background: a === 'producao' ? '#1f9d5b' : 'var(--navy)', color: '#fff' }
+            ? { background: a === 'producao' ? 'var(--ok-fg)' : 'var(--navy)', color: '#fff' }
             : { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-body)' }}>
           {a === 'producao' ? 'Produção' : 'Sandbox'}
         </button>
@@ -105,10 +105,10 @@ export function IntegracoesPage() {
   const chip = (fonte: string, simulado: boolean, ambiente: string) => (
     <span className="flex gap-[6px]">
       <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold"
-        style={ambiente === 'producao' ? { background: '#eafaf1', color: '#1f9d5b' } : { background: '#fef6e9', color: '#c98a0a' }}>
+        style={ambiente === 'producao' ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' } : { background: 'var(--warn-bg)', color: 'var(--warn-fg)' }}>
         {ambiente === 'producao' ? 'PRODUÇÃO' : 'SANDBOX'}
       </span>
-      {simulado && <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={{ background: '#eef4ff', color: '#2456c7' }}>SIMULADO — sem credencial</span>}
+      {simulado && <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}>SIMULADO — sem credencial</span>}
       <span className="rounded-full px-[10px] py-[2px] text-[11px]" style={{ background: 'var(--surface-input)', color: 'var(--text-muted)' }}>
         {fonte === 'banco' ? 'cadastrada no sistema' : 'herdada do servidor'}
       </span>
@@ -150,7 +150,7 @@ export function IntegracoesPage() {
           <button className={btnP} style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} disabled={ocupado} onClick={() => void testar()}>
             Testar conexão
           </button>
-          {teste && <span className="text-[12px]" style={{ color: teste.startsWith('✓') ? '#1f9d5b' : '#c0392b' }}>{teste}</span>}
+          {teste && <span className="text-[12px]" style={{ color: teste.startsWith('✓') ? 'var(--ok-fg)' : 'var(--danger-fg)' }}>{teste}</span>}
         </div>
       </div>
 

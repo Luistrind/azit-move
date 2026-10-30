@@ -128,7 +128,7 @@ export function TitularPage() {
                   </div>
                 ) : (
                   <div className="flex flex-col gap-[12px]">
-                    <div className="rounded-[8px] p-[10px] text-[11.5px]" style={{ background: '#fef6e9', color: '#8a5a0a' }}>
+                    <div className="rounded-[8px] p-[10px] text-[11.5px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
                       Editar altera apenas o <b>cadastro vivo</b> (usado daqui pra frente). Contratos já assinados são imutáveis — seus dados ficam congelados no snapshot da formalização e <b>não</b> mudam.
                     </div>
                     <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-3">

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   diasCalendarioEntre,
   formatCurrency,
@@ -13,19 +13,18 @@ import {
   type VisaoCarteira,
   type VisaoMensal,
 } from '@azit/utils';
-import { contaService } from '../services/conta.service';
 import { carteiraVisaoService, type EstadoVisao } from '../services/carteira-visao.service';
 import { Bloco } from '../components/Bloco';
 import { CartaoIndicador } from '../components/CartaoIndicador';
 import { SeletorPeriodo, intervaloDoPeriodo, rotuloDoPeriodo, type PeriodoSelecionado } from '../components/SeletorPeriodo';
 import { GraficoBarrasEmpilhadas, type CategoriaEmpilhada } from '../components/GraficoBarrasEmpilhadas';
-import { CONTA_SITUACAO_COLORS, CONTA_SITUACAO_LABEL, PRODUTO_SLOT_COLORS, VISAO_ESTADO_COLORS, VIZ_NEUTRAL } from '../config/statusColors';
+import { PRODUTO_SLOT_COLORS, VISAO_ESTADO_COLORS, VIZ_NEUTRAL } from '../config/statusColors';
 import { hojeBrasilISO } from '../lib/datas';
 
 // Carteira (doc 02 §27, 30/10/2026): visão por período de vencimento — teto,
 // recebidas, vencidas, a vencer — com cartões que abrem a lista de clientes,
 // comparação com o mesmo trecho do mês anterior, por produto, o que vem aí e
-// mês a mês. Abaixo, a posição consolidada por titular (filtrável pela URL).
+// mês a mês. A grade de clientes é tela própria: /carteira/clientes.
 // Nenhum número é calculado aqui: tudo vem de `agregarVisaoCarteira` via API.
 
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -42,7 +41,6 @@ const compacto = (c: number) => {
 const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 
-const SITUACOES_FILTRO = ['em_dia', 'em_atraso', 'em_acordo', 'bloqueada'] as const;
 
 export function CarteiraPage() {
   const navigate = useNavigate();
@@ -51,8 +49,6 @@ export function CarteiraPage() {
   const [sel, setSel] = useState<PeriodoSelecionado>({ modo: 'mes', anoMes: mesHoje });
   const [lista, setLista] = useState<EstadoVisao | null>(null);
   const [listaToda, setListaToda] = useState(false);
-  const [params, setParams] = useSearchParams();
-  const filtroSituacao = params.get('situacao');
 
   const periodo = intervaloDoPeriodo(sel, hoje);
   const rotulo = rotuloDoPeriodo(sel, hoje);
@@ -77,7 +73,6 @@ export function CarteiraPage() {
   const proxMes = useMemo(() => periodoDoMes(mesSeguinte(sel.anoMes)), [sel.anoMes]);
   const seguinte = useQuery({ queryKey: ['carteira-visao', proxMes.de, proxMes.ate], queryFn: () => carteiraVisaoService.periodo(proxMes.de, proxMes.ate) });
   const clientes = useQuery({ queryKey: ['carteira-visao-clientes', periodo.de, periodo.ate, lista], queryFn: () => carteiraVisaoService.clientes(periodo.de, periodo.ate, lista!), enabled: !!lista });
-  const carteira = useQuery({ queryKey: ['carteira-contas'], queryFn: () => contaService.carteira() });
 
   const v = visao.data;
   const mesesAnteriores = useMemo(() => {
@@ -87,10 +82,8 @@ export function CarteiraPage() {
   const anteriorMes: VisaoMensal | undefined = sel.modo === 'mes' ? mesesAnteriores.get(mesAnterior(sel.anoMes)) : undefined;
 
   const abrirLista = (estado: EstadoVisao) => { setLista((l) => (l === estado ? null : estado)); setListaToda(false); };
-  const abrirNaCarteira = (situacao: string) => {
-    setParams({ situacao });
-    document.getElementById('carteira-contas')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
+  // 'Abrir na Carteira': a grade de clientes é tela própria do módulo (doc 02 §27.8).
+  const abrirNaCarteira = (situacao: string) => navigate(situacao ? `/carteira/clientes?situacao=${situacao}` : '/carteira/clientes');
 
   // ---------- Leituras do Hub ----------
   const leituraA = (x: VisaoCarteira) => {
@@ -102,8 +95,6 @@ export function CarteiraPage() {
     return <><b>{pct(x.recebidas.valor, t)}% do teto já entrou.</b> Se tudo que falta vencer entrar, fecha em {compacto(proj)} ({pct(proj, t)}%). O que falta para o teto são os {compacto(x.vencidas.valor)} vencidos de {plural(x.vencidas.clientes, 'cliente', 'clientes')}.</>;
   };
 
-  const listaContas = (carteira.data ?? []).filter((c) => !filtroSituacao || c.situacao === filtroSituacao);
-  const situacaoDe = (chave: string) => ({ ...(CONTA_SITUACAO_COLORS[chave] ?? CONTA_SITUACAO_COLORS.em_dia), rotulo: CONTA_SITUACAO_LABEL[chave] ?? chave });
 
   return (
     <div className="flex flex-col gap-[14px]">
@@ -350,89 +341,6 @@ export function CarteiraPage() {
         </Bloco>
       </div>
 
-      {/* Posição consolidada por titular (filtrável pela URL: ?situacao=em_atraso) */}
-      <div id="carteira-contas" className="flex flex-col gap-[10px]">
-        <div className="flex flex-wrap items-center gap-[6px]">
-          <span className="mr-[4px] font-display text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--text-label)' }}>Contas</span>
-          {[null, ...SITUACOES_FILTRO].map((s) => {
-            const on = (filtroSituacao ?? null) === s;
-            return (
-              <button
-                key={s ?? 'todas'}
-                type="button"
-                onClick={() => (s ? setParams({ situacao: s }) : setParams({}))}
-                className="min-h-[30px] rounded-full border px-[11px] text-[12px]"
-                style={on ? { background: 'var(--text-primary)', color: 'var(--surface)', borderColor: 'var(--text-primary)', fontWeight: 600 } : { color: 'var(--text-body)', borderColor: 'var(--border)' }}
-              >
-                {s ? CONTA_SITUACAO_LABEL[s] ?? s : 'Todas'}
-              </button>
-            );
-          })}
-          <span className="ml-auto text-[12px]" style={{ color: 'var(--text-muted)' }}>{listaContas.length} conta{listaContas.length === 1 ? '' : 's'}</span>
-        </div>
-
-        {/* Mobile: cartões */}
-        <div className="flex flex-col gap-[8px] md:hidden">
-          {listaContas.map((c) => {
-            const s = situacaoDe(c.situacao);
-            return (
-              <button key={c.contaId} type="button" onClick={() => navigate(`/titulares/${c.titularId}`)} className="rounded-card p-[14px] text-left" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                <div className="flex items-start justify-between gap-[8px]">
-                  <div className="min-w-0">
-                    <div className="truncate text-[13.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>{c.titular}</div>
-                    <div className="text-[11.5px] tabular-nums" style={{ color: 'var(--text-body)' }}>{c.cpfCnpj} · {c.contratosAtivos} contrato{c.contratosAtivos === 1 ? '' : 's'}</div>
-                  </div>
-                  <span className="flex-none rounded-[6px] px-[8px] py-[3px] text-[11px] font-bold" style={{ background: s.bg, color: s.fg }}>{s.rotulo}</span>
-                </div>
-                <div className="mt-[8px] grid grid-cols-2 gap-[8px] text-[12px]">
-                  <div><div style={{ color: 'var(--text-label)' }}>Saldo devedor</div><div className="font-display font-semibold tabular-nums" style={{ color: 'var(--text-primary)' }}>{formatCurrency(c.saldoDevedor)}</div></div>
-                  <div><div style={{ color: 'var(--text-label)' }}>Em atraso</div><div className="font-display font-semibold tabular-nums" style={{ color: c.valorEmAtraso > 0 ? VISAO_ESTADO_COLORS.vencidas.fg : 'var(--text-primary)' }}>{c.valorEmAtraso > 0 ? `${formatCurrency(c.valorEmAtraso)} · ${c.faturasVencidas} fat.` : '—'}</div></div>
-                </div>
-              </button>
-            );
-          })}
-          {!carteira.isLoading && listaContas.length === 0 ? <div className="py-[18px] text-center text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Nenhuma conta nesta situação.</div> : null}
-        </div>
-
-        {/* Desktop: tabela */}
-        <div className="hidden overflow-x-auto rounded-card md:block" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
-            <thead>
-              <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
-                <th className="px-[18px] py-[12px] text-left font-semibold">Titular</th>
-                <th className="px-[18px] py-[12px] text-left font-semibold">CPF/CNPJ</th>
-                <th className="px-[18px] py-[12px] text-center font-semibold">Contratos</th>
-                <th className="px-[18px] py-[12px] text-right font-semibold">Saldo devedor</th>
-                <th className="px-[18px] py-[12px] text-right font-semibold">Em atraso</th>
-                <th className="px-[18px] py-[12px] text-center font-semibold">Faturas vencidas</th>
-                <th className="px-[18px] py-[12px] text-left font-semibold">Situação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {carteira.isLoading && (
-                <tr><td colSpan={7} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>Carregando…</td></tr>
-              )}
-              {!carteira.isLoading && listaContas.length === 0 && (
-                <tr><td colSpan={7} className="px-[18px] py-[24px] text-center" style={{ color: 'var(--text-muted)' }}>{filtroSituacao ? 'Nenhuma conta nesta situação.' : 'Nenhum titular com contratos na carteira.'}</td></tr>
-              )}
-              {listaContas.map((c) => {
-                const s = situacaoDe(c.situacao);
-                return (
-                  <tr key={c.contaId} onClick={() => navigate(`/titulares/${c.titularId}`)} className="cursor-pointer transition-colors hover:bg-[var(--surface-muted)]" style={{ borderBottom: '1px solid var(--border-light)' }}>
-                    <td className="px-[18px] py-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>{c.titular}</td>
-                    <td className="px-[18px] py-[13px] tabular-nums" style={{ color: 'var(--text-body)' }}>{c.cpfCnpj}</td>
-                    <td className="px-[18px] py-[13px] text-center tabular-nums" style={{ color: 'var(--text-body)' }}>{c.contratosAtivos}</td>
-                    <td className="px-[18px] py-[13px] text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>{formatCurrency(c.saldoDevedor)}</td>
-                    <td className="px-[18px] py-[13px] text-right tabular-nums" style={{ color: c.valorEmAtraso > 0 ? VISAO_ESTADO_COLORS.vencidas.fg : 'var(--text-body)' }}>{c.valorEmAtraso > 0 ? formatCurrency(c.valorEmAtraso) : '—'}</td>
-                    <td className="px-[18px] py-[13px] text-center tabular-nums" style={{ color: c.faturasVencidas > 0 ? VISAO_ESTADO_COLORS.vencidas.fg : 'var(--text-body)' }}>{c.faturasVencidas || '—'}</td>
-                    <td className="px-[18px] py-[13px]"><span className="rounded-[6px] px-[8px] py-[3px] text-[11px] font-bold" style={{ background: s.bg, color: s.fg }}>{s.rotulo}</span></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 }

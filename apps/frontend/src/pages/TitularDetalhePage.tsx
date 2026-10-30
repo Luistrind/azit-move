@@ -299,9 +299,9 @@ export function TitularDetalhePage() {
 
       {/* Banner de bloqueio (D+3 — desbloqueio sempre manual, Doc 2 Regra 6) */}
       {contratosCredito.some((c) => c.status.toLowerCase() === 'bloqueado') && (
-        <div className="flex flex-wrap items-center gap-[10px] rounded-[12px] px-[16px] py-[12px]" style={{ background: '#fdeceb', border: '1px solid #f5c6c3' }}>
+        <div className="flex flex-wrap items-center gap-[10px] rounded-[12px] px-[16px] py-[12px]" style={{ background: 'var(--danger-bg)', border: '1px solid #f5c6c3' }}>
           <span className="text-[16px]">🔒</span>
-          <div className="flex-1 text-[12.5px]" style={{ color: '#c0392b' }}>
+          <div className="flex-1 text-[12.5px]" style={{ color: 'var(--danger-fg)' }}>
             <b>Conta bloqueada</b> — bloqueio D+3 por inadimplência. O desbloqueio é sempre manual.
           </div>
           {pode(ROLE_OPERACAO) &&
@@ -313,7 +313,7 @@ export function TitularDetalhePage() {
                   disabled={desbloqueando}
                   onClick={() => desbloquear(c.id)}
                   className="h-[30px] rounded-[8px] px-[12px] text-[12px] font-semibold disabled:opacity-50"
-                  style={{ background: '#c0392b', color: '#fff' }}
+                  style={{ background: 'var(--danger-fg)', color: '#fff' }}
                 >
                   Desbloquear {c.numero}
                 </button>
@@ -346,7 +346,7 @@ export function TitularDetalhePage() {
               {documentos.map((d) => (
                 <div key={d.id} className="flex items-center justify-between rounded-[8px] px-[10px] py-[7px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
                   <span>{DOC_LABEL[d.tipo] ?? d.tipo} <span style={{ color: 'var(--text-muted)' }}>· {fmtData(d.dataAnexo)}</span></span>
-                  <span className="flex items-center gap-[10px]"><button onClick={() => void viewer.abrir(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--accent)' }}>Visualizar</button><button onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--navy)' }}>Baixar</button></span>
+                  <span className="flex items-center gap-[10px]"><button onClick={() => void viewer.abrir(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--accent)' }}>Visualizar</button><button onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--text-primary)' }}>Baixar</button></span>
                 </div>
               ))}
             </div>
@@ -364,7 +364,7 @@ export function TitularDetalhePage() {
                   <b>{c.tipo === 'CAMADA1' ? 'Camada 1 (dados cadastrais)' : c.tipo === 'SCORE_QUOD' ? 'Score Quod' : 'Restritivos Quod'}</b>
                   {' · '}{c.fornecedor} · {fmtData(String(c.dataConsulta))}
                   {c.situacao === 'FALHA'
-                    ? <span style={{ color: '#c0392b' }}> · falhou{c.motivoFalha ? ` (${c.motivoFalha})` : ''}</span>
+                    ? <span style={{ color: 'var(--danger-fg)' }}> · falhou{c.motivoFalha ? ` (${c.motivoFalha})` : ''}</span>
                     : null}
                   <BotaoVerRetorno
                     titulo={`Retorno do birô — ${c.tipo === 'CAMADA1' ? 'Camada 1' : c.tipo === 'SCORE_QUOD' ? 'Score Quod' : 'Restritivos Quod'} · ${fmtData(String(c.dataConsulta))}`}
@@ -391,7 +391,7 @@ export function TitularDetalhePage() {
           {/* O detalhe de acordos e novações vive em UMA tela (Renegociações,
               21/10) — a ficha leva até lá filtrada por este titular. */}
           {(rf.quantidadeAcordos > 0 || rf.quantidadeNovacoes > 0) && (
-            <button onClick={() => navigate(`/acordos?titular=${id}`)} className="mt-[10px] text-[12px] font-semibold" style={{ color: 'var(--navy)' }}>
+            <button onClick={() => navigate(`/acordos?titular=${id}`)} className="mt-[10px] text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>
               Ver {rf.quantidadeAcordos > 0 ? `${rf.quantidadeAcordos} acordo(s)` : ''}{rf.quantidadeAcordos > 0 && rf.quantidadeNovacoes > 0 ? ' e ' : ''}{rf.quantidadeNovacoes > 0 ? `${rf.quantidadeNovacoes} novação(ões)` : ''} desta conta em Renegociações →
             </button>
           )}
@@ -441,17 +441,17 @@ export function TitularDetalhePage() {
               return (
                 <div key={l.id} className="flex items-center justify-between py-[8px] text-[12.5px]" style={{ borderBottom: '1px solid var(--border-light)' }}>
                   <span>
-                    <span className="mr-[8px] rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={pendente ? { background: '#fff4e0', color: '#a86a12' } : { background: '#e8f7ef', color: '#1f9d5b' }}>
+                    <span className="mr-[8px] rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={pendente ? { background: 'var(--warn-bg)', color: 'var(--warn-fg)' } : { background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>
                       {l.tipo === 'entrada_contrato' ? 'Entrada de contrato' : 'Entrada de acordo'}
                     </span>
                     {pendente && (
-                      <span className="mr-[8px] rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: '#fdeceb', color: '#c0392b' }}>
+                      <span className="mr-[8px] rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
                         Aguardando pagamento{l.dataLimite ? ` · até ${fmtData(l.dataLimite)}` : ''}
                       </span>
                     )}
                     <span style={{ color: 'var(--text-body)' }}>{l.descricao}</span>
                     {l.acordoId && (
-                      <button onClick={() => navigate(`/acordos?acordo=${l.acordoId}`)} className="ml-[8px] text-[11.5px] font-semibold" style={{ color: 'var(--navy)' }}>ver o acordo →</button>
+                      <button onClick={() => navigate(`/acordos?acordo=${l.acordoId}`)} className="ml-[8px] text-[11.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>ver o acordo →</button>
                     )}
                     {!pendente && <span style={{ color: 'var(--text-muted)' }}> · pago em {fmtData(l.dataPagamento ?? '')}</span>}
                   </span>
@@ -504,18 +504,18 @@ export function TitularDetalhePage() {
             </thead>
             <tbody>
               {faturas.data!.data.map((f) => {
-                const s = SITUACAO[f.situacao] ?? { bg: '#eef2f7', fg: '#5b6b7f', label: f.situacao };
+                const s = SITUACAO[f.situacao] ?? { bg: 'var(--surface-muted)', fg: 'var(--text-body)', label: f.situacao };
                 // Visibilidade da renegociação (30/08): a última parcela do acordo
                 // pode cair como resíduo numa fatura menor — o selo aponta onde o
                 // acordo está, e o detalhe discrimina cada item.
                 const temAcordo = f.itens.some((it) => it.descricao.startsWith('Renegociação'));
                 return (
                   <tr key={f.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                    <td className="py-[9px] font-semibold">#{f.numero}{temAcordo && <span className="ml-[6px] rounded-[6px] px-[6px] py-[1px] text-[10.5px] font-semibold" style={{ background: '#eef4ff', color: '#2456c7' }}>inclui acordo</span>}</td>
+                    <td className="py-[9px] font-semibold">#{f.numero}{temAcordo && <span className="ml-[6px] rounded-[6px] px-[6px] py-[1px] text-[10.5px] font-semibold" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}>inclui acordo</span>}</td>
                     <td className="py-[9px]" style={{ color: 'var(--text-body)' }}>{fmtData(f.dataVencimento)}</td>
                     <td className="py-[9px] text-right tabular-nums">{formatCurrency(f.valorTotal)}</td>
                     <td className="py-[9px]"><span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: s.bg, color: s.fg }}>{s.label}</span></td>
-                    <td className="py-[9px] text-right"><button onClick={() => setFaturaSel(f.id)} className="text-[12px] font-semibold" style={{ color: 'var(--navy)' }}>Detalhe</button></td>
+                    <td className="py-[9px] text-right"><button onClick={() => setFaturaSel(f.id)} className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Detalhe</button></td>
                   </tr>
                 );
               })}
@@ -581,11 +581,11 @@ export function TitularDetalhePage() {
                       </button>
                     )}
                     {!paga && (
-                      <button disabled={ocupado} onClick={() => atrasarFatura(fd.id)} className="h-[34px] rounded-[8px] px-[14px] text-[12px] font-semibold disabled:opacity-50" style={{ background: '#fdeceb', color: '#c0392b' }}>
+                      <button disabled={ocupado} onClick={() => atrasarFatura(fd.id)} className="h-[34px] rounded-[8px] px-[14px] text-[12px] font-semibold disabled:opacity-50" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
                         + 1 dia de atraso
                       </button>
                     )}
-                    {paga && <span className="text-[12px] font-semibold" style={{ color: '#1f9d5b' }}>✓ Fatura paga</span>}
+                    {paga && <span className="text-[12px] font-semibold" style={{ color: 'var(--ok-fg)' }}>✓ Fatura paga</span>}
                   </div>
                 </div>
               );
@@ -624,7 +624,7 @@ export function TitularDetalhePage() {
               </button>
             ))}
             {!produtos.isLoading && produtosCredito.length === 0 && (
-              <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: '#fff7e6', color: '#8a5a00' }}>
+              <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
                 Nenhum produto de contratação avulsa ativo no Catálogo.
               </div>
             )}
@@ -715,13 +715,13 @@ export function TitularDetalhePage() {
                 </div>
               )}
               {previa.data.excedeLimite && (
-                <div className="rounded-[8px] p-[6px] text-[11.5px] font-semibold" style={{ background: '#fdecec', color: '#a12622' }}>
+                <div className="rounded-[8px] p-[6px] text-[11.5px] font-semibold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
                   A parcela ultrapassa 30% da parcela do contrato principal — aumente o prazo ou reduza o valor.
                 </div>
               )}
             </div>
           ) : previa.error ? (
-            <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: '#fdecec', color: '#a12622' }}>
+            <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
               {mensagemErro(previa.error)}
             </div>
           ) : (
@@ -775,18 +775,18 @@ function BlocoReemissao({ fd, ocupado, emitir }: { fd: FaturaDetalhe; ocupado: b
   const [comEncargo, setComEncargo] = useState(fd.encargoAtual > 0);
   const total = fd.valorTotal + (comEncargo ? fd.encargoAtual : 0);
   return (
-    <div className="flex flex-col gap-[8px] rounded-[10px] p-[12px]" style={{ background: '#fdf3e7', border: '1px solid #e8c9a0' }}>
-      <div className="text-[12px] font-bold" style={{ color: '#8a5a13' }}>Sem cobrança no Asaas</div>
-      <div className="text-[12px]" style={{ color: '#6b5230' }}>
+    <div className="flex flex-col gap-[8px] rounded-[10px] p-[12px]" style={{ background: 'var(--warn-bg)', border: '1px solid #e8c9a0' }}>
+      <div className="text-[12px] font-bold" style={{ color: 'var(--warn-ink)' }}>Sem cobrança no Asaas</div>
+      <div className="text-[12px]" style={{ color: 'var(--warn-ink)' }}>
         A cobrança automática desta fatura falhou. Emita por aqui — o boleto sai vinculado à fatura e o pagamento concilia sozinho.
       </div>
       <div className="flex flex-wrap items-end gap-[10px]">
-        <label className="flex flex-col gap-[3px] text-[11px] font-semibold" style={{ color: '#6b5230' }}>
+        <label className="flex flex-col gap-[3px] text-[11px] font-semibold" style={{ color: 'var(--warn-ink)' }}>
           Vencimento da cobrança
-          <input type="date" value={venc} min={hojeBrasilISO()} onChange={(e) => setVenc(e.target.value)} className="rounded-[8px] border px-[8px] py-[6px] text-[12px]" style={{ borderColor: '#e8c9a0', background: 'var(--surface)' }} />
+          <input type="date" value={venc} min={hojeBrasilISO()} onChange={(e) => setVenc(e.target.value)} className="rounded-[8px] border px-[8px] py-[6px] text-[12px]" style={{ borderColor: 'var(--warn-bg)', background: 'var(--surface)' }} />
         </label>
         {fd.encargoAtual > 0 && (
-          <label className="flex items-center gap-[6px] pb-[8px] text-[12px]" style={{ color: '#6b5230' }}>
+          <label className="flex items-center gap-[6px] pb-[8px] text-[12px]" style={{ color: 'var(--warn-ink)' }}>
             <input type="checkbox" checked={comEncargo} onChange={(e) => setComEncargo(e.target.checked)} />
             Incluir encargo de atraso até hoje ({formatCurrency(fd.encargoAtual)})
           </label>

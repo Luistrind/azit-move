@@ -180,7 +180,7 @@ export function PessoasPage() {
                     <button
                       onClick={() => remover(p.id)}
                       className="rounded-[7px] px-[10px] py-[6px] text-[11.5px] font-semibold"
-                      style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: '#a12622' }}
+                      style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--danger-fg)' }}
                     >
                       Remover classificação
                     </button>

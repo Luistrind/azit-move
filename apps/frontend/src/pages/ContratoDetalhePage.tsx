@@ -196,7 +196,7 @@ export function ContratoDetalhePage() {
             <div className="rounded-[10px] p-[10px]" style={{ background: 'var(--surface-input)' }}>
               <div className="flex justify-between"><span>Valor nominal</span><b>{formatCurrency(simQuitacao.valorNominalTotal)}</b></div>
               <div className="flex justify-between"><span>Valor para quitar hoje</span><b>{formatCurrency(simQuitacao.valorQuitacao)}</b></div>
-              <div className="flex justify-between" style={{ color: '#1c7a3d' }}><span>Desconto</span><b>{formatCurrency(simQuitacao.desconto)}</b></div>
+              <div className="flex justify-between" style={{ color: 'var(--ok-fg)' }}><span>Desconto</span><b>{formatCurrency(simQuitacao.desconto)}</b></div>
             </div>
             {simQuitacao.fonte === 'catalogo' && (
               <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
@@ -249,17 +249,17 @@ export function ContratoDetalhePage() {
                   />
                 )}
                 {c.veiculoBloqueadoEm && (
-                  <span className="rounded-[20px] px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: '#fdeceb', color: '#e0413c' }}>
+                  <span className="rounded-[20px] px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
                     Veículo bloqueado
                   </span>
                 )}
                 {c.recuperacaoIniciadaEm && (
-                  <span className="rounded-[20px] px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: '#f3eafb', color: '#9a3bd1' }}>
+                  <span className="rounded-[20px] px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: 'var(--purple-bg)', color: 'var(--purple-fg)' }}>
                     Em recuperação
                   </span>
                 )}
                 {c.status === 'Encerrado' && c.motivoEncerramento && (
-                  <span className="rounded-[20px] px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: '#f1f4f8', color: '#5b6b7f' }}>
+                  <span className="rounded-[20px] px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>
                     {c.motivoEncerramento}
                   </span>
                 )}
@@ -344,7 +344,7 @@ export function ContratoDetalhePage() {
             </div>
             <div>
               <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>Valor pago</div>
-              <div className="mt-[3px] font-display text-[16px] font-bold tabular-nums" style={{ color: '#1f9d5b' }}>{formatCurrency(c.resumo.valorPago)}</div>
+              <div className="mt-[3px] font-display text-[16px] font-bold tabular-nums" style={{ color: 'var(--ok-fg)' }}>{formatCurrency(c.resumo.valorPago)}</div>
             </div>
             {(c.resumo.encargosPagos ?? 0) > 0 && (
               <div title="Juros e multa de atraso pagos. Não abatem o saldo devedor.">
@@ -415,7 +415,7 @@ export function ContratoDetalhePage() {
               onClick={() => setCancelandoAberto(true)}
               disabled={simulando}
               className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold"
-              style={{ background: '#fdeceb', color: '#c0392b', border: '1px solid #f2c6c2', opacity: simulando ? 0.6 : 1 }}
+              style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)', border: '1px solid #f2c6c2', opacity: simulando ? 0.6 : 1 }}
             >
               Cancelar contrato
             </button>
@@ -479,7 +479,7 @@ export function ContratoDetalhePage() {
             </label>
             <div className="flex justify-end gap-[8px]">
               <button onClick={() => setCancelandoAberto(false)} className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>Voltar</button>
-              <button onClick={() => void confirmarCancelamento()} disabled={simulando} className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold" style={{ background: '#c0392b', color: '#fff', opacity: simulando ? 0.6 : 1 }}>Cancelar contrato</button>
+              <button onClick={() => void confirmarCancelamento()} disabled={simulando} className="rounded-[8px] px-[12px] py-[7px] text-[12px] font-semibold" style={{ background: 'var(--danger-fg)', color: '#fff', opacity: simulando ? 0.6 : 1 }}>Cancelar contrato</button>
             </div>
           </div>
         </Modal>
@@ -561,7 +561,7 @@ export function ContratoDetalhePage() {
                   </td>
                   <td
                     className="px-[18px] py-[11px] text-right tabular-nums"
-                    style={{ color: e.encargo ? '#c98a0a' : 'var(--text-muted)' }}
+                    style={{ color: e.encargo ? 'var(--warn-fg)' : 'var(--text-muted)' }}
                   >
                     {e.encargo ? formatCurrency(e.encargo) : '—'}
                   </td>
@@ -579,7 +579,7 @@ export function ContratoDetalhePage() {
         ) : (
           <div className="flex flex-col gap-[12px]">
             {documento.data && !documento.data.disponivel && (
-              <div className="rounded-[8px] p-[10px] text-[11.5px]" style={{ background: '#fef6e9', color: '#8a5a0a' }}>
+              <div className="rounded-[8px] p-[10px] text-[11.5px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
                 Instrumento não disponível (contrato migrado do legado).
               </div>
             )}

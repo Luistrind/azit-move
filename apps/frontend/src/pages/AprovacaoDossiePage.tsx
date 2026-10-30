@@ -257,7 +257,7 @@ function DossieAcordo({ a, d, conta, onContrato }: { a: AprovacaoDossie; d: Acor
       </Bloco>
       <HistoricoRecuperacao a={a} conta={conta} rotuloComprometimento="Comprometimento com o acordo" />
       <Bloco titulo="Na tela de Renegociações">
-        <Link to={`/acordos?acordo=${d.id}`} className="text-[12px] font-semibold" style={{ color: 'var(--navy)' }}>Ver o acordo completo (cotas, entrada, trilha da operação) →</Link>
+        <Link to={`/acordos?acordo=${d.id}`} className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Ver o acordo completo (cotas, entrada, trilha da operação) →</Link>
       </Bloco>
     </>
   );
@@ -325,7 +325,7 @@ function DossieNovacao({ a, d, conta, onContrato }: { a: AprovacaoDossie; d: Nov
         </Bloco>
       )}
       <Bloco titulo="Na tela de Renegociações">
-        <Link to={`/acordos?novacao=${d.id}`} className="text-[12px] font-semibold" style={{ color: 'var(--navy)' }}>Ver a novação completa (origens, contratos, assinatura, trilha) →</Link>
+        <Link to={`/acordos?novacao=${d.id}`} className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Ver a novação completa (origens, contratos, assinatura, trilha) →</Link>
       </Bloco>
     </>
   );
@@ -350,7 +350,7 @@ function HistoricoRecuperacao({ a, conta, rotuloComprometimento }: { a: Aprovaca
               <ul className="mt-[2px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
                 {conta.acordos.map((x) => (
                   <li key={x.id}>
-                    <Link to={`/acordos?acordo=${x.id}`} style={{ color: 'var(--navy)' }}>{mesAnoBR(x.criadoEm)} · {x.plano}</Link> · {ACORDO_STATUS_TEXTO[x.status] ?? x.status}{x.cotas ? ` · ${x.cotasPagas} de ${x.cotas} cotas pagas` : ''}
+                    <Link to={`/acordos?acordo=${x.id}`} style={{ color: 'var(--text-primary)' }}>{mesAnoBR(x.criadoEm)} · {x.plano}</Link> · {ACORDO_STATUS_TEXTO[x.status] ?? x.status}{x.cotas ? ` · ${x.cotasPagas} de ${x.cotas} cotas pagas` : ''}
                   </li>
                 ))}
               </ul>
@@ -377,7 +377,7 @@ function HistoricoRecuperacao({ a, conta, rotuloComprometimento }: { a: Aprovaca
               {conta.contratos.map((c) => (
                 <li key={c.id}>
                   <b className="tabular-nums">{c.parcelasPagas} de {c.numeroParcelas}</b>{' '}
-                  <Link to={`/contratos/${c.id}`} className="text-[11.5px]" style={{ color: 'var(--navy)' }}>{c.numero}{c.placa ? ` (${c.placa})` : ''}</Link>
+                  <Link to={`/contratos/${c.id}`} className="text-[11.5px]" style={{ color: 'var(--text-primary)' }}>{c.numero}{c.placa ? ` (${c.placa})` : ''}</Link>
                   {c.recuperacaoIniciadaEm && <span className="text-[11.5px]" style={{ color: TOM_DOSSIE_FG.alerta }}> · retomada iniciada</span>}
                 </li>
               ))}
@@ -395,7 +395,7 @@ function HistoricoRecuperacao({ a, conta, rotuloComprometimento }: { a: Aprovaca
         <Campo label="Cliente desde" valor={mesAnoBR(conta.clienteDesde)} />
       </div>
       {a.titular && (
-        <Link to={`/titulares/${a.titular.id}`} className="mt-[10px] inline-block text-[12px] font-semibold" style={{ color: 'var(--navy)' }}>Abrir ficha do titular →</Link>
+        <Link to={`/titulares/${a.titular.id}`} className="mt-[10px] inline-block text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Abrir ficha do titular →</Link>
       )}
     </Bloco>
   );
@@ -445,7 +445,7 @@ function DossieAnaliseCadastro({ a, d }: { a: AprovacaoDossie; d: DossieAnalise 
             {abertas.length} pendência(s) aberta(s): {abertas.map((p) => p.descricao).join(' · ')}
           </div>
         )}
-        <Link to={`/analises/${c.analiseId}`} className="mt-[10px] inline-block text-[12px] font-semibold" style={{ color: 'var(--navy)' }}>Abrir o dossiê completo da análise (consultas, documentos, relatório) →</Link>
+        <Link to={`/analises/${c.analiseId}`} className="mt-[10px] inline-block text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Abrir o dossiê completo da análise (consultas, documentos, relatório) →</Link>
       </Bloco>
     </>
   );
@@ -587,7 +587,7 @@ function PainelDecisao({ a }: { a: AprovacaoDossie }) {
         {aviso(<><b>{a.complementoAberto.pedidoPor}</b> pediu complemento em {quando(a.complementoAberto.pedidoEm)}:<div className="mt-[4px] whitespace-pre-wrap">“{a.complementoAberto.pergunta}”</div></>)}
         <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>Aprovar e recomendar ficam parados até a sua resposta.</div>
         {area('Sua resposta para quem perguntou')}
-        <button disabled={ocupado || texto.trim().length < 2} onClick={() => void responder()} className={btn} style={{ background: 'var(--accent)', color: 'var(--navy)' }}>Enviar resposta</button>
+        <button disabled={ocupado || texto.trim().length < 2} onClick={() => void responder()} className={btn} style={{ background: 'var(--accent)', color: 'var(--text-primary)' }}>Enviar resposta</button>
       </div>
     );
   } else if (vez === VezAprovacao.AGUARDANDO_COMPLEMENTO && a.complementoAberto) {
@@ -611,7 +611,7 @@ function PainelDecisao({ a }: { a: AprovacaoDossie }) {
       <div className="flex flex-col gap-[8px]">
         {area('Parecer (obrigatório para reprovar ou pedir complemento)')}
         {podeAprovar ? (
-          <button disabled={ocupado} onClick={() => void decidir('aprovar')} className={btn} style={{ background: 'var(--accent)', color: 'var(--navy)' }}>Aprovar</button>
+          <button disabled={ocupado} onClick={() => void decidir('aprovar')} className={btn} style={{ background: 'var(--accent)', color: 'var(--text-primary)' }}>Aprovar</button>
         ) : (
           <button disabled={ocupado} onClick={() => void decidir('recomendar')} className={btn} style={{ background: 'var(--navy)', color: '#fff' }}>Recomendar ↑ (acima da minha alçada)</button>
         )}

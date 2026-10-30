@@ -62,7 +62,7 @@ export function CatalogoPage() {
                   <span className="font-display text-[15px] font-bold">{p.nome}</span>
                   <ChipCiclo status={p.status} />
                   {p.contratacaoAvulsa && (
-                    <span className="rounded-full px-[8px] py-[2px] text-[10.5px] font-bold" style={{ background: '#eef4ff', color: '#2a5aa8' }}
+                    <span className="rounded-full px-[8px] py-[2px] text-[10.5px] font-bold" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}
                       title='Aparece em "+ Contratar crédito" para cliente ativo (doc 02 §17)'>
                       Contratação avulsa
                     </span>
@@ -297,7 +297,7 @@ function TabelaParametros({
                   <td className="px-[12px] py-[7px]">
                     <span
                       className="rounded-full px-[8px] py-[1px] text-[10.5px] font-bold"
-                      style={origem(chave) === 'variante' ? { background: '#eef4ff', color: '#1c4587' } : { background: '#f2f3f5', color: '#5a6472' }}
+                      style={origem(chave) === 'variante' ? { background: 'var(--info-bg)', color: 'var(--info-fg)' } : { background: 'var(--surface-muted)', color: 'var(--text-body)' }}
                     >
                       {origem(chave) === 'variante' ? 'Sobrescrito na variante' : 'Herdado do produto'}
                     </span>
@@ -372,7 +372,7 @@ function EditorVersao({
             placeholder="ex.: reajuste da comissão recorrente aprovado na diretoria de agosto"
           />
         </label>
-        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: '#fdecec', color: '#a12622' }}>{erro}</div>}
+        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>}
         <div className="flex justify-end gap-[8px]">
           <button className={btnS} onClick={fechar}>Cancelar</button>
           <button className={btnP} onClick={salvar}>Criar nova versão</button>

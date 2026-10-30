@@ -62,7 +62,7 @@ export function BlocoAssinaturaDigital({ contratoId, ocupado, run, titulo }: {
         </span>
         {a.existe && (
           <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold"
-            style={a.status === 'assinado' ? { background: '#eafaf1', color: '#1f9d5b' } : a.status === 'recusado' ? { background: '#fdecec', color: '#a12622' } : { background: '#fff3d6', color: '#8a5a00' }}>
+            style={a.status === 'assinado' ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' } : a.status === 'recusado' ? { background: 'var(--danger-bg)', color: 'var(--danger-fg)' } : { background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
             {ROTULO_STATUS[a.status ?? ''] ?? a.status}
           </span>
         )}
@@ -83,7 +83,7 @@ export function BlocoAssinaturaDigital({ contratoId, ocupado, run, titulo }: {
       ) : (
         <div className="flex flex-col gap-[8px]">
           {a.motivoRecusa && (
-            <div className="rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: '#fdecec', color: '#a12622' }}>
+            <div className="rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
               Motivo da recusa: {a.motivoRecusa}
             </div>
           )}
@@ -91,10 +91,10 @@ export function BlocoAssinaturaDigital({ contratoId, ocupado, run, titulo }: {
             <div key={s.papel + s.nome} className="flex flex-wrap items-center gap-[8px] rounded-[8px] px-[10px] py-[7px] text-[12px]" style={{ background: 'var(--surface)', border: '1px solid var(--border-light)' }}>
               <span className="min-w-[220px] font-semibold">{s.nome} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>· {PAPEL_ASSINATURA[s.papel] ?? s.papel}</span></span>
               {s.assinouEm ? (
-                <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={{ background: '#eafaf1', color: '#1f9d5b' }}>✓ Assinou em {instanteBR(s.assinouEm)}</span>
+                <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>✓ Assinou em {instanteBR(s.assinouEm)}</span>
               ) : (
                 <>
-                  <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={{ background: s.visualizouEm ? '#fff3d6' : '#eef2f7', color: s.visualizouEm ? '#8a5a00' : '#5b6b7f' }}>
+                  <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={{ background: s.visualizouEm ? 'var(--warn-bg)' : 'var(--surface-muted)', color: s.visualizouEm ? 'var(--warn-ink)' : 'var(--text-body)' }}>
                     {s.visualizouEm ? 'Visualizou — não assinou' : 'Aguardando'}
                   </span>
                   <button onClick={() => { void navigator.clipboard.writeText(s.signUrl); toast.sucesso('Link de assinatura copiado.'); }}
@@ -126,7 +126,7 @@ export function BlocoAssinaturaDigital({ contratoId, ocupado, run, titulo }: {
             {FERRAMENTAS_TESTE && a.status !== 'assinado' && (
               <button disabled={ocupado}
                 onClick={() => run(async () => { await originacaoService.simularAssinaturaDigital(contratoId); await recarregar(); })}
-                className="h-[30px] rounded-[8px] px-[12px] text-[11.5px] font-semibold" style={{ background: 'var(--accent)', color: 'var(--navy)' }}>
+                className="h-[30px] rounded-[8px] px-[12px] text-[11.5px] font-semibold" style={{ background: 'var(--accent)', color: 'var(--text-primary)' }}>
                 Simular todos assinando (dev)
               </button>
             )}

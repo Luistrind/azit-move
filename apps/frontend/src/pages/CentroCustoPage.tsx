@@ -19,7 +19,7 @@ const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(
 
 function Resultado({ valor }: { valor: number }) {
   return (
-    <span className="font-bold tabular-nums" style={{ color: valor >= 0 ? '#1f9d5b' : '#c0392b' }}>
+    <span className="font-bold tabular-nums" style={{ color: valor >= 0 ? 'var(--ok-fg)' : 'var(--danger-fg)' }}>
       {valor >= 0 ? '+' : '−'}{formatCurrency(Math.abs(valor))}
     </span>
   );
@@ -216,7 +216,7 @@ export function CentroCustoPage() {
                   <span><b>{TIPO_LABEL[l.tipo] ?? l.tipo}</b> · {l.descricao} <span style={{ color: 'var(--text-muted)' }}>· {dataMistaBR(l.data)}</span></span>
                   <span className="flex items-center gap-[8px]">
                     <span className="tabular-nums font-semibold">{formatCurrency(l.valor)}</span>
-                    <button onClick={() => remover(l.id)} className="text-[13px]" style={{ color: '#c0392b' }} title="Remover">×</button>
+                    <button onClick={() => remover(l.id)} className="text-[13px]" style={{ color: 'var(--danger-fg)' }} title="Remover">×</button>
                   </span>
                 </div>
               ))}

@@ -104,3 +104,25 @@ body {
   --viz-good-soft: rgba(46, 158, 91, 0.16); --viz-warn-soft: rgba(201, 150, 15, 0.16); --viz-bad-soft: rgba(229, 72, 77, 0.16);
   --viz-p1: #3987e5; --viz-p2: #d95926; --viz-p3: #199e70; --viz-p4: #c98500; --viz-p5: #d55181; --viz-p6: #9085e9;
 }
+
+/* Cores SEMÂNTICAS de estado (selos, alertas, destaques) — uma paleta por tema.
+   Antes eram hex fixos espalhados pelas telas (e em statusColors.ts); agora
+   toda cor de estado é um destes tokens, nos dois temas (doc 02 §27.6). */
+:root {
+  --ok-fg: #1f9d5b; --ok-bg: #eafaf1;
+  --danger-fg: #e0413c; --danger-bg: #fdeceb;
+  --warn-fg: #c98a0a; --warn-bg: #fef6e9;
+  --warn-ink: #8a5a00; /* âmbar escuro para texto corrido sobre fundo claro */
+  --info-fg: #2456c7; --info-bg: #eef4ff;
+  --violet-fg: #6b4fd6; --violet-bg: #efeaff;
+  --purple-fg: #9a3bd1; --purple-bg: #f3eafb;
+}
+:root[data-theme='dark'] {
+  --ok-fg: #4cc07e; --ok-bg: rgba(46, 158, 91, 0.18);
+  --danger-fg: #f27c78; --danger-bg: rgba(229, 72, 77, 0.18);
+  --warn-fg: #e3b341; --warn-bg: rgba(201, 150, 15, 0.18);
+  --warn-ink: #e3b341;
+  --info-fg: #7fb0f5; --info-bg: rgba(57, 135, 229, 0.2);
+  --violet-fg: #b3a7f5; --violet-bg: rgba(144, 133, 233, 0.2);
+  --purple-fg: #cf9df0; --purple-bg: rgba(154, 59, 209, 0.22);
+}

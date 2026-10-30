@@ -42,6 +42,7 @@ const GRUPOS_NAV: GrupoNav[] = [
     titulo: 'Carteira e cobrança',
     itens: [
       { to: '/carteira', label: 'Carteira' },
+      { to: '/carteira/clientes', label: 'Clientes da carteira' },
       { to: '/regua', label: 'Régua de cobrança' },
       { to: '/acordos', label: 'Renegociações' },
       { to: '/migracao-legado', label: 'Migração do legado' },
@@ -213,7 +214,7 @@ export function Sidebar() {
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={item.to === '/'}
+                end={item.to === '/' || item.to === '/carteira'}
                 className="flex items-center gap-[11px] rounded-[9px] px-[11px] py-[9px] text-[13px] transition-colors"
                 style={({ isActive }) =>
                   isActive
@@ -225,7 +226,7 @@ export function Sidebar() {
                 {item.to === '/aprovacoes' && pendentes > 0 && (
                   <span
                     className="rounded-full px-[7px] py-[1px] text-[10.5px] font-bold"
-                    style={{ background: 'var(--accent)', color: 'var(--navy)' }}
+                    style={{ background: 'var(--accent)', color: 'var(--text-primary)' }}
                   >
                     {pendentes}
                   </span>
@@ -247,7 +248,7 @@ export function Sidebar() {
           className="flex h-[30px] w-[30px] items-center justify-center rounded-full text-[12px] font-bold"
           style={{
             background: 'linear-gradient(135deg, #FA8E0D, #d97206)',
-            color: 'var(--navy)',
+            color: 'var(--text-primary)',
           }}
         >
           {iniciais(usuario?.nome ?? 'Azit')}

@@ -65,7 +65,7 @@ export function AlcadasPage() {
       </div>
 
       {!podeEditar && (
-        <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: '#fff7e6', color: '#8a5a00' }}>
+        <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
           Você tem acesso somente leitura. Edição restrita a ADMIN/DIRETOR.
         </div>
       )}

@@ -56,9 +56,9 @@ export function SimulacoesPage() {
                 <td className="px-[18px] py-[12px]">
                   <span className="rounded-[6px] px-[8px] py-[3px] text-[11px] font-bold"
                     style={s.status === 'expirada'
-                      ? { background: '#fdeceb', color: '#c0392b' }
+                      ? { background: 'var(--danger-bg)', color: 'var(--danger-fg)' }
                       : s.status === 'convertida'
-                        ? { background: '#eafaf1', color: '#1f9d5b' }
+                        ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' }
                         : { background: 'var(--surface-input)', color: 'var(--text-body)' }}>
                     {s.status}
                   </span>
@@ -67,7 +67,7 @@ export function SimulacoesPage() {
                   {s.propostaStatus
                     ? <StatusBadge label={LABEL_STATUS[s.propostaStatus] ?? s.propostaStatus} colors={PROPOSTA_STATUS_COLORS} />
                     : podeContinuar
-                      ? <span className="text-[11px] font-semibold" style={{ color: 'var(--navy)' }}>Continuar →</span>
+                      ? <span className="text-[11px] font-semibold" style={{ color: 'var(--text-primary)' }}>Continuar →</span>
                       : <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>—</span>}
                 </td>
               </tr>

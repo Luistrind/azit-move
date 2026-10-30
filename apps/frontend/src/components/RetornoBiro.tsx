@@ -241,7 +241,7 @@ function Relatorio({ dados }: { dados: Record<string, unknown> }) {
     <div className="flex flex-col gap-[14px]">
       {escalares.length > 0 && (
         <section>
-          <div className="mb-[4px] font-display text-[13px] font-bold" style={{ color: 'var(--navy)' }}>Identificação</div>
+          <div className="mb-[4px] font-display text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>Identificação</div>
           <div className="rounded-[10px]" style={{ border: '1px solid var(--border)' }}>
             <Tabela dados={Object.fromEntries(escalares)} nivel={1} />
           </div>
@@ -249,7 +249,7 @@ function Relatorio({ dados }: { dados: Record<string, unknown> }) {
       )}
       {blocos.map(([k, v]) => (
         <section key={k}>
-          <div className="mb-[4px] font-display text-[13px] font-bold" style={{ color: 'var(--navy)' }}>{rotulo(k)}</div>
+          <div className="mb-[4px] font-display text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>{rotulo(k)}</div>
           <div className="rounded-[10px]" style={{ border: '1px solid var(--border)' }}>
             {ocultar(k) ? (
               <div className="px-[10px] py-[6px] text-[12px] opacity-60">{Array.isArray(v) ? `${v.length} movimentação(ões) — ocultadas` : 'ocultado'}</div>
@@ -288,7 +288,7 @@ export function BotaoVerRetorno({ titulo, resultado }: { titulo: string; resulta
     <>
       <button
         className="ml-[6px] inline-flex items-center gap-[4px] rounded-[7px] px-[8px] py-[2px] text-[11.5px] font-semibold"
-        style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--navy)' }}
+        style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
         title="Ver o retorno completo desta consulta"
         onClick={() => setAberto(true)}
       >

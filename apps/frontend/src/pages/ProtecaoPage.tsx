@@ -110,12 +110,12 @@ export function ProtecaoPage() {
         >
           {ocupado ? 'Calculando…' : 'Calcular contribuição'}
         </button>
-        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: '#fdecec', color: '#a12622' }}>{erro}</div>}
+        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>}
       </div>
 
       {resultado && (
         <div className="flex flex-col gap-[8px] rounded-[14px] p-[16px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <div className="font-display text-[26px] font-extrabold" style={{ color: 'var(--navy)' }}>
+          <div className="font-display text-[26px] font-extrabold" style={{ color: 'var(--text-primary)' }}>
             {reais(resultado.contribuicaoPeriodo)}
             <span className="ml-[6px] text-[14px] font-semibold" style={{ color: 'var(--text-muted)' }}>
               {FREQUENCIAS.find((f) => f.v === frequencia)?.por}
@@ -126,7 +126,7 @@ export function ProtecaoPage() {
             vigência {resultado.vigenciaMeses} meses{resultado.cobertura ? ` · cobertura: ${resultado.cobertura}` : ''}
           </div>
           {!resultado.comercializavel && (
-            <div className="rounded-[8px] p-[8px] text-[12px] font-semibold" style={{ background: '#fff3d6', color: '#8a5a00' }}>
+            <div className="rounded-[8px] p-[8px] text-[12px] font-semibold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
               Produto em {resultado.statusProduto === 'RASCUNHO' ? 'rascunho' : resultado.statusProduto.toLowerCase()} —
               {' '}{resultado.statusValores ?? 'valores em homologação'}. Simulação para estudo, sem comercialização.
             </div>

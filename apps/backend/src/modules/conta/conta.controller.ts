@@ -47,6 +47,13 @@ export class ContaController {
     return this.contaService.carteira();
   }
 
+  // Resumo da grade de clientes (doc 02 §27.8): valor sob gestão nominal e a
+  // valor presente (a mesma conta da quitação antecipada, contrato a contrato).
+  @Get('carteira/resumo')
+  resumo() {
+    return this.contaService.resumoCarteira();
+  }
+
   // Visão da carteira por período (doc 02 §27): teto, recebidas, vencidas, a
   // vencer, por produto — uma agregação para todos os cartões da tela.
   @Get('carteira/visao')

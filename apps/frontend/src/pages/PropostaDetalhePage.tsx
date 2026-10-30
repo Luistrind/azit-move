@@ -27,9 +27,9 @@ const DOC_LABEL: Record<string, string> = {
 const MOTIVOS_REPROVACAO = ['Renda insuficiente', 'Score de crédito baixo', 'Histórico de crédito negativo', 'Restrição cadastral', 'Documentação inconsistente', 'Outro motivo'];
 const MOTIVOS_RESSALVA = ['Idade incompatível', 'Renda insuficiente', 'Score de crédito baixo', 'Histórico de crédito negativo', 'Documentação pendente', 'Restrição cadastral', 'Tempo de emprego insuficiente', 'Outro motivo'];
 const PARECER_CARDS = [
-  { v: 'aprovado', titulo: 'Aprovado', sub: 'Todos os critérios atendidos', icone: '✓', cor: '#1f9d5b', bg: '#eafaf1' },
-  { v: 'aprovado_com_ressalvas', titulo: 'Aprovado com Ressalvas', sub: 'Requer garantidor ou condições', icone: '⚠', cor: '#c98a0a', bg: '#fef6e9' },
-  { v: 'reprovado', titulo: 'Reprovado', sub: 'Não atende aos critérios', icone: '✕', cor: '#e0413c', bg: '#fdeceb' },
+  { v: 'aprovado', titulo: 'Aprovado', sub: 'Todos os critérios atendidos', icone: '✓', cor: 'var(--ok-fg)', bg: 'var(--ok-bg)' },
+  { v: 'aprovado_com_ressalvas', titulo: 'Aprovado com Ressalvas', sub: 'Requer garantidor ou condições', icone: '⚠', cor: 'var(--warn-fg)', bg: 'var(--warn-bg)' },
+  { v: 'reprovado', titulo: 'Reprovado', sub: 'Não atende aos critérios', icone: '✕', cor: 'var(--danger-fg)', bg: 'var(--danger-bg)' },
 ] as const;
 const STEPS = [
   { key: 'proposta', label: 'Proposta' },
@@ -216,7 +216,7 @@ export function PropostaDetalhePage() {
                     <span title={DOC_LABEL[d.tipo] ?? d.tipo}>{d.arquivoRef}</span>
                     <button onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="text-[11px] font-semibold" style={{ color: 'var(--accent)' }}>baixar</button>
                     {podeAnexarExtra && (
-                      <button onClick={() => { if (window.confirm('Remover este documento?')) void run(() => originacaoService.removerDocumento(p.id, d.id)); }} className="text-[11px] font-semibold" style={{ color: '#c0392b' }}>remover</button>
+                      <button onClick={() => { if (window.confirm('Remover este documento?')) void run(() => originacaoService.removerDocumento(p.id, d.id)); }} className="text-[11px] font-semibold" style={{ color: 'var(--danger-fg)' }}>remover</button>
                     )}
                   </div>
                 ))}
@@ -243,10 +243,10 @@ export function PropostaDetalhePage() {
               </div>
               {p.itens.map((it) => (
                 <div key={it.id} className="flex items-center gap-[10px] text-[12.5px]">
-                  <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: it.apartado ? '#f3eafb' : 'var(--surface-input)', color: it.apartado ? '#9a3bd1' : 'var(--text-body)' }}>{it.apartado ? 'Apartado' : it.natureza}</span>
+                  <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: it.apartado ? 'var(--purple-bg)' : 'var(--surface-input)', color: it.apartado ? 'var(--purple-fg)' : 'var(--text-body)' }}>{it.apartado ? 'Apartado' : it.natureza}</span>
                   <span>{it.nome} — {formatCurrency(it.valor)}{it.periodicidade ? `/${it.periodicidade}` : ''}</span>
                   {podeOperar && p.status !== 'convertida' && (
-                    <button disabled={ocupado} onClick={() => run(() => originacaoService.removerProduto(id, it.id))} className="text-[11px]" style={{ color: '#e0413c' }}>remover</button>
+                    <button disabled={ocupado} onClick={() => run(() => originacaoService.removerProduto(id, it.id))} className="text-[11px]" style={{ color: 'var(--danger-fg)' }}>remover</button>
                   )}
                 </div>
               ))}
@@ -281,8 +281,8 @@ export function PropostaDetalhePage() {
                     const ok = !!doc;
                     return (
                       <div key={tipo} className="flex items-center gap-[6px] rounded-[8px] px-[10px] py-[6px] text-[12px]"
-                        style={{ background: ok ? '#eafaf1' : 'var(--surface-input)', border: `1px solid ${ok ? '#1f9d5b33' : 'var(--border)'}` }}>
-                        <span style={{ color: ok ? '#1f9d5b' : 'var(--text-muted)' }}>{ok ? '✓' : '○'}</span>
+                        style={{ background: ok ? 'var(--ok-bg)' : 'var(--surface-input)', border: `1px solid ${ok ? '#1f9d5b33' : 'var(--border)'}` }}>
+                        <span style={{ color: ok ? 'var(--ok-fg)' : 'var(--text-muted)' }}>{ok ? '✓' : '○'}</span>
                         <span>{DOC_LABEL[tipo] ?? tipo}</span>
                         {ok ? (
                           <button onClick={() => originacaoService.baixarDocumento(doc!.id, doc!.arquivoRef)}
@@ -302,8 +302,8 @@ export function PropostaDetalhePage() {
               </div>
             ))}
             {p.documentosCompletos
-              ? <div className="text-[12px]" style={{ color: '#1f9d5b' }}>✓ Documentos obrigatórios completos — pode avançar para a análise.</div>
-              : <div className="text-[12px]" style={{ color: '#c98a0a' }}>Anexe todos os documentos obrigatórios para liberar a análise.</div>}
+              ? <div className="text-[12px]" style={{ color: 'var(--ok-fg)' }}>✓ Documentos obrigatórios completos — pode avançar para a análise.</div>
+              : <div className="text-[12px]" style={{ color: 'var(--warn-fg)' }}>Anexe todos os documentos obrigatórios para liberar a análise.</div>}
 
           </div>
 
@@ -339,8 +339,8 @@ export function PropostaDetalhePage() {
 
             {/* Garantidor — só quando a análise exige */}
             {precisaGarantidor && (
-              <div className="mt-[12px] rounded-[8px] p-[12px]" style={{ background: '#fef6e9' }}>
-                <div className="mb-[8px] text-[12px] font-semibold" style={{ color: '#8a5a0a' }}>A análise exige garantidor. Adicione para poder formalizar.</div>
+              <div className="mt-[12px] rounded-[8px] p-[12px]" style={{ background: 'var(--warn-bg)' }}>
+                <div className="mb-[8px] text-[12px] font-semibold" style={{ color: 'var(--warn-ink)' }}>A análise exige garantidor. Adicione para poder formalizar.</div>
                 {podeOperar && (
                   <div className="flex flex-wrap items-end gap-[10px]">
                     <input value={garNome} onChange={(e) => setGarNome(e.target.value)} placeholder="Nome garantidor" className={`${inputCls} w-[180px]`} style={inputStyle} />
@@ -372,10 +372,10 @@ export function PropostaDetalhePage() {
 
       {/* Condição fora do parâmetro (decisão 03/08): banner + solicitação de alçada */}
       {p.foraParametro && (
-        <div className="mb-[10px] flex flex-wrap items-center justify-between gap-[8px] rounded-[12px] p-[14px]" style={{ background: '#fff3d6', border: '2px solid #d9a62e' }}>
+        <div className="mb-[10px] flex flex-wrap items-center justify-between gap-[8px] rounded-[12px] p-[14px]" style={{ background: 'var(--warn-bg)', border: '2px solid #d9a62e' }}>
           <div>
-            <div className="font-display text-[13px] font-bold" style={{ color: '#8a5a00' }}>Condição comercial fora do parâmetro</div>
-            <div className="text-[12px]" style={{ color: '#8a5a00' }}>
+            <div className="font-display text-[13px] font-bold" style={{ color: 'var(--warn-ink)' }}>Condição comercial fora do parâmetro</div>
+            <div className="text-[12px]" style={{ color: 'var(--warn-ink)' }}>
               {p.aprovacaoForaParametro === 'aprovada'
                 ? 'Aprovada pela alçada superior — a formalização está liberada.'
                 : p.aprovacaoForaParametro === 'pendente'
@@ -388,7 +388,7 @@ export function PropostaDetalhePage() {
           {(!p.aprovacaoForaParametro || p.aprovacaoForaParametro === 'reprovada') && (
             <button
               className="h-[36px] rounded-[8px] px-[16px] text-[12px] font-bold"
-              style={{ background: '#8a5a00', color: '#fff' }}
+              style={{ background: 'var(--warn-ink)', color: '#fff' }}
               disabled={ocupado}
               onClick={() => run(() => originacaoService.solicitarAprovacaoForaParametro(id))}
             >
@@ -455,11 +455,11 @@ export function PropostaDetalhePage() {
                   <div key={d.id} className="flex items-center justify-between rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
                     <span>{d.arquivoRef}</span>
                     <span className="flex items-center gap-[10px]">
-                    <button onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--navy)' }}>baixar</button>
+                    <button onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--text-primary)' }}>baixar</button>
                     {podeParecer && ['pendente', 'em_analise'].includes(p.status) && (
                       <button
                         onClick={() => { if (window.confirm('Remover este anexo?')) void run(() => originacaoService.removerDocumento(p.id, d.id)); }}
-                        className="font-semibold" style={{ color: '#c0392b' }}
+                        className="font-semibold" style={{ color: 'var(--danger-fg)' }}
                       >remover</button>
                     )}
                     </span>
@@ -481,7 +481,7 @@ export function PropostaDetalhePage() {
                     <div className="flex items-center gap-[10px] rounded-[10px] p-[12px]" style={{ background: c?.bg, border: `2px solid ${c?.cor}` }}>
                       <span className="text-[16px]" style={{ color: c?.cor }}>{c?.icone}</span>
                       <b>{c?.titulo ?? p.parecer!.resultado}</b>
-                      {p.parecer!.exigeGarantidor && <span className="text-[11.5px]" style={{ color: '#8a5a0a' }}>· exige garantidor</span>}
+                      {p.parecer!.exigeGarantidor && <span className="text-[11.5px]" style={{ color: 'var(--warn-ink)' }}>· exige garantidor</span>}
                     </div>
                   );
                 })()}
@@ -516,7 +516,7 @@ export function PropostaDetalhePage() {
 
                 {/* Painel condicional: reprovação */}
                 {resultado === 'reprovado' && (
-                  <div className="flex flex-col gap-[8px] rounded-[10px] p-[14px]" style={{ background: '#fdeceb', border: '1px solid #f5c6c3' }}>
+                  <div className="flex flex-col gap-[8px] rounded-[10px] p-[14px]" style={{ background: 'var(--danger-bg)', border: '1px solid #f5c6c3' }}>
                     <Lbl>Motivo da Reprovação *</Lbl>
                     <select value={motivo} onChange={(e) => setMotivo(e.target.value)} className={`${inputCls} w-full max-w-[380px]`} style={inputStyle}>
                       <option value="">Selecione o motivo</option>
@@ -527,9 +527,9 @@ export function PropostaDetalhePage() {
 
                 {/* Painel condicional: ressalvas (todas exigem garantidor) */}
                 {resultado === 'aprovado_com_ressalvas' && (
-                  <div className="flex flex-col gap-[8px] rounded-[10px] p-[14px]" style={{ background: '#fef6e9', border: '1px solid #f2dcb3' }}>
+                  <div className="flex flex-col gap-[8px] rounded-[10px] p-[14px]" style={{ background: 'var(--warn-bg)', border: '1px solid #f2dcb3' }}>
                     <Lbl>Motivos da Ressalva *</Lbl>
-                    <div className="text-[11.5px]" style={{ color: '#8a5a0a' }}>Todos os motivos requerem garantidor.</div>
+                    <div className="text-[11.5px]" style={{ color: 'var(--warn-ink)' }}>Todos os motivos requerem garantidor.</div>
                     <div className="grid grid-cols-1 gap-[6px] sm:grid-cols-2">
                       {MOTIVOS_RESSALVA.map((m) => (
                         <label key={m} className="flex items-center gap-[8px] text-[12.5px]">
@@ -585,7 +585,7 @@ export function PropostaDetalhePage() {
             <div className="col-span-2"><Lbl>Papéis</Lbl><div>{p.papeis.map((v) => `${PAPEL_LABEL[v.papel]}: ${v.titular.nome}`).join(' · ')}</div></div>
             <div className="col-span-2"><Lbl>Parecer</Lbl><div>{p.parecer ? `${p.parecer.resultado}${p.parecer.exigeGarantidor ? ' (exige garantidor)' : ''}` : '—'}</div></div>
           </div>
-          {precisaGarantidor && <div className="mt-[10px] text-[12px]" style={{ color: '#c98a0a' }}>Pendente: adicione o garantidor exigido (passo Principal) para concluir.</div>}
+          {precisaGarantidor && <div className="mt-[10px] text-[12px]" style={{ color: 'var(--warn-fg)' }}>Pendente: adicione o garantidor exigido (passo Principal) para concluir.</div>}
         </div>
       )}
 
@@ -626,10 +626,10 @@ export function PropostaDetalhePage() {
                     {pacote.data.contratos.map((c) => (
                       <div key={c.id} className="flex flex-wrap items-center gap-[10px] border-b pb-[8px]" style={{ borderColor: 'var(--border-light)' }}>
                         <span className="min-w-[220px] text-[12px] font-semibold">{c.descricao}{c.ancora ? '' : ' · contrato apartado'} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({c.numero})</span></span>
-                        <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={c.assinadoTitular ? { background: '#eafaf1', color: '#1f9d5b' } : { background: '#eef2f7', color: '#5b6b7f' }}>
+                        <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={c.assinadoTitular ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' } : { background: 'var(--surface-muted)', color: 'var(--text-body)' }}>
                           {c.assinadoTitular ? '✓ Cliente assinou' : 'Cliente pendente'}
                         </span>
-                        <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={c.assinadoAzit ? { background: '#eafaf1', color: '#1f9d5b' } : { background: '#eef2f7', color: '#5b6b7f' }}>
+                        <span className="rounded-full px-[10px] py-[2px] text-[11px] font-bold" style={c.assinadoAzit ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' } : { background: 'var(--surface-muted)', color: 'var(--text-body)' }}>
                           {c.assinadoAzit ? '✓ Azit assinou' : 'Azit pendente'}
                         </span>
                         <button onClick={() => void verContrato(c.id)} className="h-[28px] rounded-[8px] px-[10px] text-[11.5px] font-semibold" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
@@ -658,7 +658,7 @@ export function PropostaDetalhePage() {
                           : 'Ativar contrato (sem entrada — dia zero imediato)'}
                       </button>
                     ) : (
-                      <div className="mt-[12px] rounded-[8px] p-[10px] text-[12px] font-semibold" style={{ background: '#fef6e9', color: '#8a5a0a' }}>
+                      <div className="mt-[12px] rounded-[8px] p-[10px] text-[12px] font-semibold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
                         Cobrança da entrada emitida ({formatCurrency(pacote.data.entradaAVista)}). O cronograma do pacote nasce quando a entrada for paga.
                         {FERRAMENTAS_TESTE && (
                           <button disabled={ocupado} onClick={() => run(() => originacaoService.simularPagamentoAtivacao(pacote.data!.ancoraId!))}
@@ -673,7 +673,7 @@ export function PropostaDetalhePage() {
               {/* Pacote ativo → cronograma gerado */}
               {pacote.data.cronogramaGerado && (
                 <div className="flex items-center gap-[10px]">
-                  <span className="text-[12px] font-semibold" style={{ color: '#1f9d5b' }}>✓ Pacote ativo — {pacote.data.contratos.length} contrato(s), entrada paga e cronogramas gerados.</span>
+                  <span className="text-[12px] font-semibold" style={{ color: 'var(--ok-fg)' }}>✓ Pacote ativo — {pacote.data.contratos.length} contrato(s), entrada paga e cronogramas gerados.</span>
                   <button onClick={() => navigate(`/contratos/${p.contratoGeradoId}`)}
                     className="h-[32px] rounded-[8px] px-[14px] text-[12px] font-semibold" style={btn('var(--navy)')}>Abrir contrato</button>
                 </div>

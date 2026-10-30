@@ -217,7 +217,7 @@ export function OcorrenciasPage() {
               {detalhe.orgao && <span>Órgão: <b>{detalhe.orgao}</b></span>}
               {detalhe.prazoIndicacao && <span>Indicação até: <b className="tabular-nums">{dataBR(detalhe.prazoIndicacao)}</b></span>}
               {detalhe.contrato && (
-                <span>Cliente: <Link to={`/contratos/${detalhe.contrato.id}`} className="font-bold hover:underline" style={{ color: 'var(--navy)' }}>{detalhe.contrato.titular.nome}</Link></span>
+                <span>Cliente: <Link to={`/contratos/${detalhe.contrato.id}`} className="font-bold hover:underline" style={{ color: 'var(--text-primary)' }}>{detalhe.contrato.titular.nome}</Link></span>
               )}
             </div>
             {detalhe.descricao && <div style={{ color: 'var(--text-muted)' }}>{detalhe.descricao}</div>}

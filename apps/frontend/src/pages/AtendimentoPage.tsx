@@ -493,7 +493,7 @@ export function AtendimentoPage() {
       )}
 
       {erro && (
-        <div className="rounded-[12px] p-[12px] text-[14px]" style={{ background: '#fdecec', color: '#a12622' }}>
+        <div className="rounded-[12px] p-[12px] text-[14px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
           {erro}
         </div>
       )}
@@ -541,7 +541,7 @@ export function AtendimentoPage() {
           </div>
 
           {rpComNovo && (
-            <div className="rounded-[12px] p-[12px] text-[13.5px]" style={{ background: '#fff3d6', color: '#8a5a00' }}>
+            <div className="rounded-[12px] p-[12px] text-[13.5px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
               O reembolso parcelado é exclusivo para quem já é cliente ativo — selecione
               "Já é cliente" e busque o cadastro.
             </div>
@@ -703,7 +703,7 @@ export function AtendimentoPage() {
                 onClick={() => simularCom({ valorAvista: dinheiroParaCentavos(valorManualTexto) })}
                 disabled={ocupado || dinheiroParaCentavos(valorManualTexto) <= 0}
                 className="h-[50px] rounded-[12px] text-[15px] font-bold disabled:opacity-40"
-                style={{ background: 'var(--surface-input)', border: '1.5px solid var(--accent)', color: 'var(--navy)' }}
+                style={{ background: 'var(--surface-input)', border: '1.5px solid var(--accent)', color: 'var(--text-primary)' }}
               >
                 {ocupado ? 'Calculando…' : 'Simular com esse valor'}
               </button>
@@ -797,7 +797,7 @@ export function AtendimentoPage() {
               onClick={simularPersonalizada}
               disabled={ocupado}
               className="h-[50px] rounded-[12px] text-[15px] font-bold disabled:opacity-40"
-              style={{ background: 'var(--surface-input)', border: '1.5px solid var(--accent)', color: 'var(--navy)' }}
+              style={{ background: 'var(--surface-input)', border: '1.5px solid var(--accent)', color: 'var(--text-primary)' }}
             >
               {ocupado ? 'Calculando…' : 'Calcular parcela'}
             </button>
@@ -807,7 +807,7 @@ export function AtendimentoPage() {
           <button
             onClick={abrirApresentacao}
             className="h-[54px] rounded-[12px] text-[16px] font-bold"
-            style={{ background: 'var(--accent)', color: 'var(--navy)' }}
+            style={{ background: 'var(--accent)', color: 'var(--text-primary)' }}
           >
             Apresentar ao cliente
           </button>
@@ -939,11 +939,11 @@ export function AtendimentoPage() {
               <div className="flex items-center justify-between">
                 <span className="text-[15px] font-bold">Proteção Veicular {o.nome}</span>
                 {o.atual && (
-                  <span className="rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: 'var(--accent)', color: 'var(--navy)' }}>Escolhida</span>
+                  <span className="rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: 'var(--accent)', color: 'var(--text-primary)' }}>Escolhida</span>
                 )}
               </div>
               {o.cobertura && <div className="mt-[2px] text-[13px]" style={{ color: 'var(--text-muted)' }}>{o.cobertura}</div>}
-              <div className="mt-[6px] text-[14.5px] font-semibold" style={{ color: 'var(--navy)' }}>
+              <div className="mt-[6px] text-[14.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>
                 {o.adicionalPorPeriodo === 0
                   ? 'Já incluída na parcela'
                   : `+ ${reais(o.adicionalPorPeriodo)} ${porPeriodo((simulacao?.ofertas.find((x) => x.selecionada)?.frequencia) ?? 'semanal')} → parcela ${reais(o.parcelaResultante)}`}
@@ -964,9 +964,9 @@ export function AtendimentoPage() {
             {proposta.documentos.some((d) => d.tipo === 'cnh') ? (
               <div className="flex flex-col gap-[4px]">
                 {proposta.documentos.filter((d) => d.tipo === 'cnh').map((d) => (
-                  <div key={d.id} className="flex items-center justify-between text-[13.5px]" style={{ color: '#1c7a3d' }}>
+                  <div key={d.id} className="flex items-center justify-between text-[13.5px]" style={{ color: 'var(--ok-fg)' }}>
                     <span>✓ Anexada: {d.arquivoRef}</span>
-                    <button onClick={() => void removerDoc(d.id)} disabled={docBusy} className="text-[12px] font-semibold" style={{ color: '#c0392b' }}>remover</button>
+                    <button onClick={() => void removerDoc(d.id)} disabled={docBusy} className="text-[12px] font-semibold" style={{ color: 'var(--danger-fg)' }}>remover</button>
                   </div>
                 ))}
               </div>
@@ -988,7 +988,7 @@ export function AtendimentoPage() {
             {proposta.documentos.filter((d) => d.tipo !== 'cnh').map((d) => (
               <div key={d.id} className="mb-[4px] flex items-center justify-between text-[13px]" style={{ color: 'var(--text-muted)' }}>
                 <span>✓ {d.arquivoRef}</span>
-                <button onClick={() => void removerDoc(d.id)} disabled={docBusy} className="text-[12px] font-semibold" style={{ color: '#c0392b' }}>remover</button>
+                <button onClick={() => void removerDoc(d.id)} disabled={docBusy} className="text-[12px] font-semibold" style={{ color: 'var(--danger-fg)' }}>remover</button>
               </div>
             ))}
             <input
@@ -998,7 +998,7 @@ export function AtendimentoPage() {
               className={`${inputCls} mb-[8px]`}
               style={{ background: 'var(--surface-input)', border: '1.5px solid var(--border)' }}
             />
-            <label className="block h-[46px] cursor-pointer rounded-[10px] text-center text-[14px] font-semibold leading-[46px]" style={{ background: 'var(--surface-input)', border: '1.5px solid var(--accent)', color: 'var(--navy)', opacity: docBusy ? 0.6 : 1 }}>
+            <label className="block h-[46px] cursor-pointer rounded-[10px] text-center text-[14px] font-semibold leading-[46px]" style={{ background: 'var(--surface-input)', border: '1.5px solid var(--accent)', color: 'var(--text-primary)', opacity: docBusy ? 0.6 : 1 }}>
               {docBusy ? 'Anexando…' : '+ Anexar documentos (vários de uma vez)'}
               <input type="file" accept="image/*,.pdf" multiple className="hidden" disabled={docBusy}
                 onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) void anexarVarios('outro', fs, descComplementar); e.target.value = ''; }} />
@@ -1155,26 +1155,26 @@ function CartaoOferta({
         <span className="text-[13px] font-semibold" style={{ color: 'var(--text-muted)' }}>{titulo}</span>
         <span className="flex gap-[6px]">
           {oferta.foraParametro && (
-            <span className="rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: '#fff3d6', color: '#8a5a00' }} title={oferta.foraParametroMotivo ?? ''}>
+            <span className="rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }} title={oferta.foraParametroMotivo ?? ''}>
               Fora do parâmetro
             </span>
           )}
           {oferta.selecionada && (
-            <span className="rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: 'var(--accent)', color: 'var(--navy)' }}>
+            <span className="rounded-full px-[10px] py-[2px] text-[11.5px] font-bold" style={{ background: 'var(--accent)', color: 'var(--text-primary)' }}>
               Escolhida
             </span>
           )}
         </span>
       </div>
       <div className="mt-[2px] flex items-end justify-between gap-[10px]">
-        <div className="font-display text-[30px] font-extrabold leading-none" style={{ color: 'var(--navy)' }}>
+        <div className="font-display text-[30px] font-extrabold leading-none" style={{ color: 'var(--text-primary)' }}>
           {reais(oferta.valorParcela)}
           <span className="ml-[6px] text-[14px] font-semibold" style={{ color: 'var(--text-muted)' }}>
             {porPeriodo(oferta.frequencia)}
           </span>
         </div>
         <div className="text-right text-[13.5px]" style={{ color: 'var(--text-muted)' }}>
-          <div>Entrada de <b style={{ color: 'var(--navy)' }}>{reais(oferta.valorEntrada)}</b>{oferta.entradaParcelada ? ' (parcelada)' : ''}</div>
+          <div>Entrada de <b style={{ color: 'var(--text-primary)' }}>{reais(oferta.valorEntrada)}</b>{oferta.entradaParcelada ? ' (parcelada)' : ''}</div>
           {oferta.prazoMeses != null && <div>Contrato de {oferta.prazoMeses} meses</div>}
         </div>
       </div>

@@ -27,12 +27,12 @@ interface NotificacaoItem {
 // Tipo → ícone e cor (doc 02 §16.1): o dropdown é escaneável por natureza do
 // evento — aprovação, dinheiro, assinatura, cobrança, falha.
 const TIPO_NOTIF: Record<string, { icone: string; bg: string; fg: string }> = {
-  aprovacao: { icone: '✔', bg: '#eef4ff', fg: '#2456c7' },
-  dinheiro: { icone: '$', bg: '#eafaf1', fg: '#1f9d5b' },
-  assinatura: { icone: '✍', bg: '#efeaff', fg: '#6b4fd6' },
-  cobranca: { icone: '!', bg: '#fef6e9', fg: '#c98a0a' },
-  falha: { icone: '×', bg: '#fdeceb', fg: '#e0413c' },
-  info: { icone: 'i', bg: '#f1f4f8', fg: '#8694a4' },
+  aprovacao: { icone: '✔', bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  dinheiro: { icone: '$', bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  assinatura: { icone: '✍', bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' },
+  cobranca: { icone: '!', bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  falha: { icone: '×', bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  info: { icone: 'i', bg: 'var(--surface-input)', fg: 'var(--text-label)' },
 };
 
 export function Topbar({ title, subtitle, onMenu }: TopbarProps) {
@@ -77,9 +77,9 @@ export function Topbar({ title, subtitle, onMenu }: TopbarProps) {
         aria-label="Abrir menu"
       >
         <span className="flex flex-col gap-[4px]">
-          <span className="h-[2px] w-[16px] rounded" style={{ background: 'var(--navy)' }} />
-          <span className="h-[2px] w-[16px] rounded" style={{ background: 'var(--navy)' }} />
-          <span className="h-[2px] w-[16px] rounded" style={{ background: 'var(--navy)' }} />
+          <span className="h-[2px] w-[16px] rounded" style={{ background: 'var(--text-primary)' }} />
+          <span className="h-[2px] w-[16px] rounded" style={{ background: 'var(--text-primary)' }} />
+          <span className="h-[2px] w-[16px] rounded" style={{ background: 'var(--text-primary)' }} />
         </span>
       </button>
       <div className="min-w-0 leading-tight">
@@ -114,7 +114,7 @@ export function Topbar({ title, subtitle, onMenu }: TopbarProps) {
         {naoLidas > 0 && (
           <span
             className="absolute -right-[5px] -top-[5px] flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-[4px] text-[10.5px] font-bold"
-            style={{ background: '#e0413c', color: '#fff', border: '1.5px solid #fff' }}
+            style={{ background: 'var(--danger-fg)', color: '#fff', border: '1.5px solid var(--surface)' }}
           >
             {naoLidas > 9 ? '9+' : naoLidas}
           </span>
@@ -131,7 +131,7 @@ export function Topbar({ title, subtitle, onMenu }: TopbarProps) {
             <div className="flex items-center justify-between px-[14px] py-[10px]" style={{ borderBottom: '1px solid var(--border-light)' }}>
               <span className="text-[13px] font-bold">Notificações</span>
               {naoLidas > 0 && (
-                <button onClick={marcarTodas} className="text-[12px] font-semibold" style={{ color: 'var(--navy)' }}>
+                <button onClick={marcarTodas} className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>
                   Marcar todas como lidas
                 </button>
               )}

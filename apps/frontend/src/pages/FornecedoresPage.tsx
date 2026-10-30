@@ -70,7 +70,7 @@ export function FornecedoresPage() {
                   {rotuloStatus(f.status)}
                 </span>
                 {f.alertaProximoPagamento && (
-                  <span className="ml-[6px] rounded-full px-[8px] py-[1px] text-[10.5px] font-bold" style={{ background: '#fff3d6', color: '#8a5a00' }}>
+                  <span className="ml-[6px] rounded-full px-[8px] py-[1px] text-[10.5px] font-bold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
                     Conferir no próximo pagamento (alteração bancária)
                   </span>
                 )}
@@ -152,7 +152,7 @@ function ModalFornecedor({ fechar, onCriou }: { fechar: () => void; onCriou: () 
           <label className="text-[12px] font-semibold">Chave Pix
             <input className={inputCls} style={inputStyle} value={f.chavePix} onChange={set('chavePix')} /></label>
         </div>
-        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: '#fdecec', color: '#a12622' }}>{erro}</div>}
+        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>}
         <div className="flex justify-end gap-[8px]">
           <button className={btnS} onClick={fechar}>Cancelar</button>
           <button className={btnP} disabled={ocupado || somenteDigitos(f.cpfCnpj).length < 11 || f.nome.trim().length < 2} onClick={criar}>
@@ -185,7 +185,7 @@ function ModalAlteracaoBancaria({ fornecedor, fechar, onCriou }: { fornecedor: F
   return (
     <Modal open onClose={fechar} title={`Alterar dados bancários — ${fornecedor.nome}`}>
       <div className="flex flex-col gap-[8px]">
-        <div className="rounded-[8px] p-[8px] text-[12px] font-semibold" style={{ background: '#fff3d6', color: '#8a5a00' }}>
+        <div className="rounded-[8px] p-[8px] text-[12px] font-semibold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
           Troca de conta é o momento de maior risco de fraude: a versão anterior fica preservada, a nova só vale
           com aprovação do Diretor, e o primeiro pagamento seguinte é sinalizado para conferência.
         </div>
@@ -201,7 +201,7 @@ function ModalAlteracaoBancaria({ fornecedor, fechar, onCriou }: { fornecedor: F
         </div>
         <label className="text-[12px] font-semibold">Motivo da alteração (obrigatório — vai para a auditoria)
           <input className={inputCls} style={inputStyle} value={f.motivo} onChange={set('motivo')} /></label>
-        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: '#fdecec', color: '#a12622' }}>{erro}</div>}
+        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>}
         <div className="flex justify-end gap-[8px]">
           <button className={btnS} onClick={fechar}>Cancelar</button>
           <button className={btnP} disabled={ocupado || f.motivo.trim().length < 3} onClick={salvar}>Criar nova versão</button>

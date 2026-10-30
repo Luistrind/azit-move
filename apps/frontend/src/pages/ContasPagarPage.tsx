@@ -38,7 +38,7 @@ function dataBR(iso: string | null): string {
 }
 
 function Chip({ status, deLote }: { status: string; deLote?: boolean }) {
-  const c = CONTAS_PAGAR_STATUS_COLORS[status] ?? { bg: '#f1f4f8', fg: '#8694a4' };
+  const c = CONTAS_PAGAR_STATUS_COLORS[status] ?? { bg: 'var(--surface-input)', fg: 'var(--text-label)' };
   const rotulo = deLote ? (ROTULO_STATUS_LOTE[status] ?? rotuloStatus(status)) : rotuloStatus(status);
   return (
     <span className="whitespace-nowrap rounded-full px-[9px] py-[2px] text-[11px] font-bold" style={{ background: c.bg, color: c.fg }}>
@@ -202,9 +202,9 @@ function ListaTitulos({ titulos, carregando, onMudou }: { titulos: TituloPagarAp
               <div className="flex flex-wrap items-center gap-[8px]">
                 <span className="font-display text-[14px] font-bold">{t.descricao}</span>
                 <Chip status={t.status} />
-                {t.urgente && <span className="rounded-full px-[8px] py-[1px] text-[10.5px] font-bold" style={{ background: '#fdecec', color: '#a12622' }}>Urgente</span>}
+                {t.urgente && <span className="rounded-full px-[8px] py-[1px] text-[10.5px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>Urgente</span>}
                 {t.fornecedor.alertaProximoPagamento && (
-                  <span className="rounded-full px-[8px] py-[1px] text-[10.5px] font-bold" style={{ background: '#fff3d6', color: '#8a5a00' }} title="Primeiro pagamento após alteração bancária — confira os dados">
+                  <span className="rounded-full px-[8px] py-[1px] text-[10.5px] font-bold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }} title="Primeiro pagamento após alteração bancária — confira os dados">
                     Alteração bancária recente
                   </span>
                 )}
@@ -212,7 +212,7 @@ function ListaTitulos({ titulos, carregando, onMudou }: { titulos: TituloPagarAp
                   <button
                     onClick={() => navigate(`/titulares/${t.origemReembolso!.titularId}`)}
                     className="rounded-full px-[8px] py-[1px] text-[10.5px] font-bold"
-                    style={{ background: '#eef4ff', color: '#2456c7' }}
+                    style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}
                     title={`Desembolso do Reembolso Parcelado — contrato ${t.origemReembolso.contratoNumero}. Clique para abrir a ficha do cliente.`}
                   >
                     Reembolso · {t.origemReembolso.titularNome} ↗
@@ -225,8 +225,8 @@ function ListaTitulos({ titulos, carregando, onMudou }: { titulos: TituloPagarAp
                 {' '}vence {dataBR(t.vencimento)}{t.dataProgramada ? ` · programado ${dataBR(t.dataProgramada)}` : ''}
                 {t.documentos.length > 0 && ` · ${t.documentos.length} documento(s)`}
               </div>
-              {t.motivoDevolucao && <div className="mt-[4px] text-[12px]" style={{ color: '#8a5a00' }}>Devolvido: {t.motivoDevolucao}</div>}
-              {t.motivoBloqueio && <div className="mt-[4px] text-[12px]" style={{ color: '#a12622' }}>Bloqueado: {t.motivoBloqueio}</div>}
+              {t.motivoDevolucao && <div className="mt-[4px] text-[12px]" style={{ color: 'var(--warn-ink)' }}>Devolvido: {t.motivoDevolucao}</div>}
+              {t.motivoBloqueio && <div className="mt-[4px] text-[12px]" style={{ color: 'var(--danger-fg)' }}>Bloqueado: {t.motivoBloqueio}</div>}
               {t.pagamentos.map((p) => (
                 <div key={p.id} className="mt-[4px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
                   Pago em {dataBR(p.dataEfetiva)} — {reais(p.valorEfetivo)}{p.identificador ? ` · id ${p.identificador}` : ''} · comprovante: {p.comprovanteNome ?? '—'}
@@ -235,7 +235,7 @@ function ListaTitulos({ titulos, carregando, onMudou }: { titulos: TituloPagarAp
               ))}
             </div>
             <div className="text-right">
-              <div className="font-display text-[18px] font-extrabold" style={{ color: 'var(--navy)' }}>{reais(t.valor)}</div>
+              <div className="font-display text-[18px] font-extrabold" style={{ color: 'var(--text-primary)' }}>{reais(t.valor)}</div>
               <div className="mt-[6px] flex flex-wrap justify-end gap-[6px]">
                 {['SOLICITADO', 'EM_VALIDACAO'].includes(t.status) && (
                   <>
@@ -457,7 +457,7 @@ function SeletorFornecedor({ fornecedorId, onChange, rotulo }: { fornecedorId: s
             <label className="text-[11.5px] font-semibold">Chave PIX
               <input className={inputCls} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} value={nf.chavePix} onChange={(e) => setNf({ ...nf, chavePix: e.target.value })} placeholder="CPF/CNPJ, e-mail, telefone ou aleatória" /></label>
           </div>
-          {erro && <div className="mt-[6px] text-[12px]" style={{ color: '#a12622' }}>{erro}</div>}
+          {erro && <div className="mt-[6px] text-[12px]" style={{ color: 'var(--danger-fg)' }}>{erro}</div>}
           <div className="mt-[8px] flex items-center justify-between gap-[8px]">
             <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>CPF/CNPJ repetido é recusado — o sistema aponta o cadastro que já existe.</span>
             <button type="button" className={btnP} disabled={salvando || nf.nome.trim().length < 2 || nf.cpfCnpj.replace(/\D/g, '').length < 11} onClick={cadastrar}>{salvando ? 'Salvando…' : 'Salvar e selecionar'}</button>
@@ -531,11 +531,11 @@ function ModalNovaDespesa({ config, fechar, onCriou }: { config: ConfiguracaoFin
         </div>
         <SeletorCategoria config={config} naturezaId={f.naturezaId} onChange={(id) => setF({ ...f, naturezaId: id })} />
         {natureza?.exigeAtivo && (
-          <label className="text-[12px] font-semibold" style={{ color: '#8a5a00' }}>Veículo/ativo (obrigatório nesta categoria) — informe o código do ativo
+          <label className="text-[12px] font-semibold" style={{ color: 'var(--warn-ink)' }}>Veículo/ativo (obrigatório nesta categoria) — informe o código do ativo
             <input className={inputCls} style={inputStyle} value={f.ativoId} onChange={set('ativoId')} placeholder="código do ativo (da tela Estoque de ativos)" /></label>
         )}
         {natureza?.exigeJustificativa && (
-          <label className="text-[12px] font-semibold" style={{ color: '#8a5a00' }}>Justificativa (categoria excepcional)
+          <label className="text-[12px] font-semibold" style={{ color: 'var(--warn-ink)' }}>Justificativa (categoria excepcional)
             <input className={inputCls} style={inputStyle} value={f.justificativaNatureza} onChange={set('justificativaNatureza')} /></label>
         )}
         <label className="text-[12px] font-semibold">Centro de custo (opcional — área responsável)
@@ -556,7 +556,7 @@ function ModalNovaDespesa({ config, fechar, onCriou }: { config: ConfiguracaoFin
         {f.urgente && (
           <input className={inputCls} style={inputStyle} value={f.justificativaUrgencia} onChange={set('justificativaUrgencia')} placeholder="Justificativa objetiva da urgência" />
         )}
-        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: '#fdecec', color: '#a12622' }}>{erro}</div>}
+        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>}
         <div className="flex justify-end gap-[8px]">
           <button className={btnS} onClick={fechar}>Cancelar</button>
           <button className={btnP} disabled={ocupado || !f.fornecedorId || !f.naturezaId || !f.descricao.trim() || dinheiroParaCentavos(f.valor) <= 0 || !f.vencimento}
@@ -611,7 +611,7 @@ function ListaOrcamentos({ orcamentos, carregando, config, onMudou }: { orcament
                     Selecionar e submeter à alçada
                   </button>
                 )}
-                {p.selecionado && <div className="mt-[4px] text-[11px] font-bold" style={{ color: 'var(--navy)' }}>Proposta escolhida{p.motivoSelecao ? ` — ${p.motivoSelecao}` : ''}</div>}
+                {p.selecionado && <div className="mt-[4px] text-[11px] font-bold" style={{ color: 'var(--text-primary)' }}>Proposta escolhida{p.motivoSelecao ? ` — ${p.motivoSelecao}` : ''}</div>}
               </div>
             ))}
           </div>
@@ -690,14 +690,14 @@ function ModalNovoOrcamento({ config, fechar, onCriou }: { config: ConfiguracaoF
         <div className="text-[12px] font-bold">Propostas</div>
         {propostas.map((p, i) => (
           <div key={i} className="grid grid-cols-2 gap-[6px] rounded-[10px] p-[8px]" style={{ background: 'var(--surface-input)' }}>
-            <input className={inputCls} style={{ background: '#fff', border: '1px solid var(--border)' }} placeholder="Fornecedor" value={p.nomeFornecedor} onChange={(e) => setPropostas(propostas.map((x, j) => (j === i ? { ...x, nomeFornecedor: e.target.value } : x)))} />
-            <input className={inputCls} style={{ background: '#fff', border: '1px solid var(--border)' }} placeholder="Valor (R$)" inputMode="numeric" value={p.valor} onChange={(e) => setPropostas(propostas.map((x, j) => (j === i ? { ...x, valor: mascararDinheiro(e.target.value) } : x)))} />
-            <input className={inputCls} style={{ background: '#fff', border: '1px solid var(--border)' }} placeholder="Prazo" value={p.prazo} onChange={(e) => setPropostas(propostas.map((x, j) => (j === i ? { ...x, prazo: e.target.value } : x)))} />
-            <input className={inputCls} style={{ background: '#fff', border: '1px solid var(--border)' }} placeholder="Condição de pagamento" value={p.condicao} onChange={(e) => setPropostas(propostas.map((x, j) => (j === i ? { ...x, condicao: e.target.value } : x)))} />
+            <input className={inputCls} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} placeholder="Fornecedor" value={p.nomeFornecedor} onChange={(e) => setPropostas(propostas.map((x, j) => (j === i ? { ...x, nomeFornecedor: e.target.value } : x)))} />
+            <input className={inputCls} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} placeholder="Valor (R$)" inputMode="numeric" value={p.valor} onChange={(e) => setPropostas(propostas.map((x, j) => (j === i ? { ...x, valor: mascararDinheiro(e.target.value) } : x)))} />
+            <input className={inputCls} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} placeholder="Prazo" value={p.prazo} onChange={(e) => setPropostas(propostas.map((x, j) => (j === i ? { ...x, prazo: e.target.value } : x)))} />
+            <input className={inputCls} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} placeholder="Condição de pagamento" value={p.condicao} onChange={(e) => setPropostas(propostas.map((x, j) => (j === i ? { ...x, condicao: e.target.value } : x)))} />
           </div>
         ))}
         <button className={btnS} onClick={() => setPropostas([...propostas, { nomeFornecedor: '', valor: '', prazo: '', condicao: '' }])}>+ Adicionar proposta</button>
-        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: '#fdecec', color: '#a12622' }}>{erro}</div>}
+        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>}
         <div className="flex justify-end gap-[8px]">
           <button className={btnS} onClick={fechar}>Cancelar</button>
           <button className={btnP} disabled={ocupado || !f.descricao.trim()} onClick={criar}>Criar solicitação</button>
@@ -728,7 +728,7 @@ function ListaLotes({ lotes, carregando, onMudou }: { lotes: LotePagamentoApi[];
             <div>
               <span className="font-display text-[14px] font-bold">{l.entidade}</span>
               <span className="ml-[8px]"><Chip status={l.status} deLote /></span>
-              {l.urgente && <span className="ml-[6px] rounded-full px-[8px] py-[1px] text-[10.5px] font-bold" style={{ background: '#fdecec', color: '#a12622' }}>Urgente</span>}
+              {l.urgente && <span className="ml-[6px] rounded-full px-[8px] py-[1px] text-[10.5px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>Urgente</span>}
               <div className="mt-[2px] text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
                 {l.conta} · programado {dataBR(l.dataProgramada)} · versão {l.versao} · {l.totalItens} título(s) · {reais(l.totalValor)}
                 {l.enviadoEm && ` · enviado ${dataBR(l.enviadoEm)}`}
@@ -757,7 +757,7 @@ function ListaLotes({ lotes, carregando, onMudou }: { lotes: LotePagamentoApi[];
           <div className="mt-[8px] flex flex-col gap-[4px]">
             {l.titulos.map((t) => (
               <div key={t.id} className="flex items-center justify-between rounded-[8px] px-[10px] py-[6px] text-[12.5px]" style={{ background: 'var(--surface-input)' }}>
-                <span>{t.fornecedor} — {t.descricao}{t.alertaBancario && <b style={{ color: '#8a5a00' }}> · conferir dados bancários (alteração recente)</b>}</span>
+                <span>{t.fornecedor} — {t.descricao}{t.alertaBancario && <b style={{ color: 'var(--warn-ink)' }}> · conferir dados bancários (alteração recente)</b>}</span>
                 <span className="flex items-center gap-[8px]"><Chip status={t.status} /><b>{reais(t.valor)}</b></span>
               </div>
             ))}
@@ -818,7 +818,7 @@ function ModalNovoLote({ config, titulos, fechar, onCriou }: { config: Configura
           <span>Total do lote ({selecionados.length} título(s))</span>
           <b>{reais(total)}</b>
         </div>
-        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: '#fdecec', color: '#a12622' }}>{erro}</div>}
+        {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>}
         <div className="flex justify-end gap-[8px]">
           <button className={btnS} onClick={fechar}>Cancelar</button>
           <button className={btnP} disabled={ocupado || !contaId || selecionados.length === 0} onClick={criar}>Formar lote e pedir liberação</button>

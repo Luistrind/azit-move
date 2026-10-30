@@ -214,11 +214,11 @@ export function SimuladorConfigPage() {
                     {podeEditar ? (
                       <button onClick={() => alternarOferta(o.id, !o.ativa)}
                         className="rounded-[7px] px-[10px] py-[4px] text-[11.5px] font-semibold"
-                        style={o.vigente ? { background: '#eafaf1', color: '#1f9d5b' } : { background: 'var(--surface-input)', color: 'var(--text-muted)' }}>
+                        style={o.vigente ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' } : { background: 'var(--surface-input)', color: 'var(--text-muted)' }}>
                         {o.vigente ? 'Vigente — desativar' : o.ativa ? 'Fora de vigência' : 'Inativa — ativar'}
                       </button>
                     ) : (
-                      <span className="text-[11.5px] font-semibold" style={{ color: o.vigente ? '#1f9d5b' : 'var(--text-muted)' }}>{o.vigente ? 'Vigente' : 'Inativa'}</span>
+                      <span className="text-[11.5px] font-semibold" style={{ color: o.vigente ? 'var(--ok-fg)' : 'var(--text-muted)' }}>{o.vigente ? 'Vigente' : 'Inativa'}</span>
                     )}
                   </td>
                 </tr>

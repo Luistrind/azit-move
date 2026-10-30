@@ -206,7 +206,7 @@ export function AtivoPage() {
                   <option key={e.id} value={e.id}>{e.nome}</option>
                 ))}
               </select>
-              <Link to="/estruturas" className="text-[10.5px] font-semibold" style={{ color: 'var(--navy)' }}>Cadastrar/gerenciar estruturas →</Link>
+              <Link to="/estruturas" className="text-[10.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>Cadastrar/gerenciar estruturas →</Link>
             </label>
             <label className="flex flex-col gap-[4px]"><Lbl>Marca</Lbl><input value={form.marca} onChange={set('marca')} className={inputCls} style={inStyle} /></label>
             <label className="flex flex-col gap-[4px]"><Lbl>Modelo</Lbl><input value={form.modelo} onChange={set('modelo')} className={inputCls} style={inStyle} /></label>
@@ -243,7 +243,7 @@ export function AtivoPage() {
                   <option key={o.id} value={o.id}>{o.nome} · {formatCurrency(o.valorParcela)}/{o.frequencia}</option>
                 ))}
               </select>
-              <Link to="/configuracoes/simulador" className="text-[10.5px] font-semibold" style={{ color: 'var(--navy)' }}>Cadastrar/gerenciar ofertas fixas →</Link>
+              <Link to="/configuracoes/simulador" className="text-[10.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>Cadastrar/gerenciar ofertas fixas →</Link>
             </label>
             {editId && (
               <label className="flex flex-col gap-[4px]"><Lbl>Status</Lbl>
@@ -276,8 +276,8 @@ export function AtivoPage() {
                     <div key={d.id} className="flex items-center justify-between rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)' }}>
                       <span><b>{DOC_TIPOS.find((t) => t.v === d.tipo)?.l ?? d.tipo}</b> · {d.nome} <span style={{ color: 'var(--text-muted)' }}>· {instanteBR(d.anexadoEm)}</span></span>
                       <span className="flex items-center gap-[10px]">
-                        <button onClick={() => ativoService.baixarDocumento(d.id, d.nome).catch((e) => toast.erro(mensagemErro(e)))} className="font-semibold" style={{ color: 'var(--navy)' }}>Baixar</button>
-                        <button onClick={() => removerDoc(d.id)} className="text-[13px]" style={{ color: '#c0392b' }} title="Remover">×</button>
+                        <button onClick={() => ativoService.baixarDocumento(d.id, d.nome).catch((e) => toast.erro(mensagemErro(e)))} className="font-semibold" style={{ color: 'var(--text-primary)' }}>Baixar</button>
+                        <button onClick={() => removerDoc(d.id)} className="text-[13px]" style={{ color: 'var(--danger-fg)' }} title="Remover">×</button>
                       </span>
                     </div>
                   ))}
@@ -323,7 +323,7 @@ export function AtivoPage() {
                 <td className="px-[18px] py-[12px]" style={{ color: 'var(--text-body)' }}>{a.placa ?? '—'}</td>
                 <td className="px-[18px] py-[12px]" style={{ color: 'var(--text-body)' }}>
                   {a.estruturaJuridica?.nome ?? (
-                    <span className="rounded-full px-[8px] py-[2px] text-[11px] font-bold" style={{ background: '#fff3d6', color: '#8a5a00' }}>
+                    <span className="rounded-full px-[8px] py-[2px] text-[11px] font-bold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
                       Sem estrutura — vincular
                     </span>
                   )}
@@ -332,7 +332,7 @@ export function AtivoPage() {
                 <td className="px-[18px] py-[12px]"><StatusBadge label={STATUS_LABEL[a.status] ?? a.status} colors={ATIVO_STATUS_COLORS} /></td>
                 <td className="px-[18px] py-[12px]" style={{ color: 'var(--text-body)' }}>
                   {a.cliente ? (
-                    <Link to={`/contratos/${a.cliente.contratoId}`} onClick={(e) => e.stopPropagation()} className="hover:underline" style={{ color: 'var(--navy)' }}>
+                    <Link to={`/contratos/${a.cliente.contratoId}`} onClick={(e) => e.stopPropagation()} className="hover:underline" style={{ color: 'var(--text-primary)' }}>
                       {a.cliente.nome}
                       <span className="block text-[11px]" style={{ color: 'var(--text-muted)' }}>{a.cliente.contratoNumero}</span>
                     </Link>

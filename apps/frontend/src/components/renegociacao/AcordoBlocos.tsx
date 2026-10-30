@@ -55,7 +55,7 @@ export function CoberturaAcordo({ d, onContrato, compacto = false }: { d: Acordo
     <Secao
       titulo={titulo}
       acao={compacto ? (
-        <button onClick={() => setAberto((x) => !x)} className="text-[11.5px] font-semibold" style={{ color: 'var(--navy)' }}>
+        <button onClick={() => setAberto((x) => !x)} className="text-[11.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>
           {aberto ? 'ver só o resumo por fatura' : 'ver parcelas e itens de cada fatura'}
         </button>
       ) : null}
@@ -112,7 +112,7 @@ export function CoberturaAcordo({ d, onContrato, compacto = false }: { d: Acordo
                   <tr key={p.parcelaId} style={{ borderTop: '1px solid var(--border)' }}>
                     <td className="py-[5px] pr-[8px] font-semibold">Parcela {p.display}</td>
                     <td className="py-[5px] pr-[8px]" style={{ color: 'var(--text-body)' }}>
-                      <button onClick={() => onContrato(p.contratoId)} className="font-semibold" style={{ color: 'var(--navy)' }}>{p.contratoNumero}</button> · {p.produto}
+                      <button onClick={() => onContrato(p.contratoId)} className="font-semibold" style={{ color: 'var(--text-primary)' }}>{p.contratoNumero}</button> · {p.produto}
                     </td>
                     <td className="py-[5px] pr-[8px] tabular-nums" style={{ color: 'var(--text-muted)' }}>venc. {dataBR(p.dataVencimento)} · {p.diasAtrasoNaDataBase} dia(s){p.encargoMoraNaDataBase > 0 ? ` · mora ${formatCurrency(p.encargoMoraNaDataBase)}` : ''}</td>
                     <td className="py-[5px] pr-[8px]"><StatusBadge label={p.status} colors={PARCELA_STATUS_COLORS} /></td>
@@ -218,7 +218,7 @@ export function AceiteWhatsapp({ d, destaque = false }: { d: AcordoDetalhe; dest
       )}
       {ac.mensagemEnviada && (
         <div className="mt-[4px]">
-          <button onClick={() => setVerMensagem((x) => !x)} className="text-[11.5px] font-semibold" style={{ color: 'var(--navy)' }}>
+          <button onClick={() => setVerMensagem((x) => !x)} className="text-[11.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>
             {verMensagem ? 'ocultar a mensagem enviada' : 'ver a mensagem enviada ao cliente'}
           </button>
           {verMensagem && (
@@ -278,7 +278,7 @@ export function CotasAcordo({ d, onContrato }: { d: AcordoDetalhe; onContrato: (
                 {d.cotas.map((c) => (
                   <tr key={c.parcelaId} style={{ borderBottom: '1px solid var(--border-light)' }}>
                     <td className="py-[6px] pr-[10px] font-semibold tabular-nums">{c.display}</td>
-                    <td className="py-[6px] pr-[10px]"><button onClick={() => onContrato(c.contratoId)} className="font-semibold" style={{ color: 'var(--navy)' }}>{c.contratoNumero}</button></td>
+                    <td className="py-[6px] pr-[10px]"><button onClick={() => onContrato(c.contratoId)} className="font-semibold" style={{ color: 'var(--text-primary)' }}>{c.contratoNumero}</button></td>
                     <td className="py-[6px] pr-[10px] tabular-nums">{dataBR(c.dataVencimento)}</td>
                     <td className="py-[6px] pl-[10px] text-right tabular-nums">{formatCurrency(c.valorNominal)}</td>
                     <td className="py-[6px] pl-[10px]" style={{ color: 'var(--text-body)' }}>{c.fatura ? `#${c.fatura.numero} · ${dataBR(c.fatura.dataVencimento)}` : <span style={{ color: 'var(--text-muted)' }}>ainda sem fatura</span>}</td>
@@ -312,7 +312,7 @@ export function LegadoAcordo({ d }: { d: AcordoDetalhe }) {
     <Secao titulo="Importado do legado (Asaas)">
       <div className="text-[12px]" style={{ color: 'var(--text-body)' }}>
         Declarado na migração: parcelas {d.legado.parcelasCobertasDeclaradas.join(', ')} cobertas · cotas de {dataBR(d.legado.primeiraCotaEm)} a {dataBR(d.legado.ultimaCotaEm)}.{' '}
-        <button onClick={() => navigate(`/migracao-legado/${d.legado!.casoId}`)} className="font-semibold" style={{ color: 'var(--navy)' }}>Abrir o caso de migração →</button>
+        <button onClick={() => navigate(`/migracao-legado/${d.legado!.casoId}`)} className="font-semibold" style={{ color: 'var(--text-primary)' }}>Abrir o caso de migração →</button>
       </div>
       {d.observacao && <div className="mt-[4px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>{d.observacao}</div>}
     </Secao>

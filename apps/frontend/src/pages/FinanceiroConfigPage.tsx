@@ -149,7 +149,7 @@ export function FinanceiroConfigPage() {
               );
             })}
             {c.naturezas.some((n) => !n.grupoId) && (
-              <div className="mb-[8px] text-[12px]" style={{ color: '#8a5a00' }}>
+              <div className="mb-[8px] text-[12px]" style={{ color: 'var(--warn-ink)' }}>
                 Sem grupo: {c.naturezas.filter((n) => !n.grupoId).map((n) => `${n.codigo} ${n.nome}`).join(', ')} — defina o grupo ao criar; categorias sem grupo não aparecem no título.
               </div>
             )}

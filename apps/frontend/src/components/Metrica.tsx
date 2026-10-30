@@ -39,7 +39,7 @@ export function Metrica({
         <div className="text-[11px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>
           {label}
         </div>
-        <div className="mt-[6px] font-display text-[22px] font-bold tabular-nums" style={{ color: alerta ? '#e0413c' : 'var(--text-primary)' }}>
+        <div className="mt-[6px] font-display text-[22px] font-bold tabular-nums" style={{ color: alerta ? 'var(--danger-fg)' : 'var(--text-primary)' }}>
           {valor}
         </div>
       </div>
@@ -48,7 +48,7 @@ export function Metrica({
   return (
     <div className="rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)' }}>
       <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em]" style={{ color: 'var(--text-label)' }}>{label}</div>
-      <div className="mt-[4px] font-display text-[17px] font-bold tabular-nums" style={{ color: alerta ? '#e0413c' : 'var(--text-primary)' }}>
+      <div className="mt-[4px] font-display text-[17px] font-bold tabular-nums" style={{ color: alerta ? 'var(--danger-fg)' : 'var(--text-primary)' }}>
         {valor}
       </div>
     </div>

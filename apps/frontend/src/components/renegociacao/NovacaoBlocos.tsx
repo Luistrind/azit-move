@@ -59,13 +59,13 @@ export function OrigensNovacao({ d, onContrato }: { d: NovacaoDetalhe; onContrat
             <tbody>
               {d.origens.map((o) => (
                 <tr key={o.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                  <td className="py-[6px] pr-[10px]"><button onClick={() => onContrato(o.id)} className="font-semibold" style={{ color: 'var(--navy)' }}>{o.numero}</button></td>
+                  <td className="py-[6px] pr-[10px]"><button onClick={() => onContrato(o.id)} className="font-semibold" style={{ color: 'var(--text-primary)' }}>{o.numero}</button></td>
                   <td className="py-[6px] pr-[10px]">{o.descricao}{o.placa ? ` · ${o.placa}` : ''}</td>
                   <td className="py-[6px] pl-[10px] text-right tabular-nums">{o.parcelasNovadas}</td>
                   <td className="py-[6px] pl-[10px] text-right tabular-nums">{formatCurrency(o.valorNominalNovado)}</td>
                   <td className="py-[6px] pl-[10px]">
                     {o.acordosNovados.length === 0 ? <span style={{ color: 'var(--text-muted)' }}>—</span> : o.acordosNovados.map((a) => (
-                      <button key={a.id} onClick={() => navigate(`/acordos?acordo=${a.id}`)} className="mr-[8px] font-semibold" style={{ color: 'var(--navy)' }}>acordo {a.plano} →</button>
+                      <button key={a.id} onClick={() => navigate(`/acordos?acordo=${a.id}`)} className="mr-[8px] font-semibold" style={{ color: 'var(--text-primary)' }}>acordo {a.plano} →</button>
                     ))}
                   </td>
                   <td className="py-[6px] tabular-nums">{o.encerradoEm ? fmtDataHora(o.encerradoEm) : '—'}</td>
@@ -154,7 +154,7 @@ function CartaoContratoNovo({ c, unico, onContrato }: { c: ContratoNovacao; unic
     <div className="rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)' }}>
       <div className="flex flex-wrap items-center gap-[8px]">
         <span className="text-[11px] font-bold uppercase tracking-[.04em]" style={{ color: 'var(--text-label)' }}>{unico ? 'Contrato único' : c.papel === 'termo' ? 'Contrato 2 — Termo' : 'Contrato 1 — Veículo'}</span>
-        <button onClick={() => onContrato(c.id)} className="text-[13px] font-bold" style={{ color: 'var(--navy)' }}>{c.numero} →</button>
+        <button onClick={() => onContrato(c.id)} className="text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>{c.numero} →</button>
         <StatusBadge label={statusLabel} colors={CONTRATO_STATUS_COLORS} />
       </div>
       <div className="mt-[4px] text-[12px]" style={{ color: 'var(--text-body)' }}>{c.descricao}{c.placa ? ` · ${c.placa}` : ''}</div>

@@ -91,7 +91,7 @@ export function LoginPage() {
           {erro && (
             <div
               className="rounded-[8px] px-[12px] py-[8px] text-[12px] font-semibold"
-              style={{ background: '#fdeceb', color: '#e0413c' }}
+              style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}
             >
               {erro}
             </div>
@@ -101,7 +101,7 @@ export function LoginPage() {
             type="submit"
             disabled={carregando}
             className="mt-[4px] rounded-[10px] py-[11px] text-[13px] font-bold transition-opacity disabled:opacity-60"
-            style={{ background: 'var(--accent)', color: 'var(--navy)' }}
+            style={{ background: 'var(--accent)', color: 'var(--text-primary)' }}
           >
             {carregando ? 'Entrando…' : 'Entrar'}
           </button>

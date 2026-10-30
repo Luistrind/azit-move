@@ -3,6 +3,7 @@ import { Shell } from './components/layout/Shell';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginPage } from './pages/auth/LoginPage';
 import { CarteiraPage } from './pages/CarteiraPage';
+import { CarteiraClientesPage } from './pages/CarteiraClientesPage';
 import { InicioPage } from './pages/InicioPage';
 import { AnalisesPage } from './pages/AnalisesPage';
 import { PessoasPage } from './pages/PessoasPage';
@@ -57,6 +58,10 @@ export const router = createBrowserRouter([
       {
         path: 'carteira',
         element: <CarteiraPage />,
+      },
+      {
+        path: 'carteira/clientes',
+        element: <CarteiraClientesPage />,
       },
       {
         path: 'analises',

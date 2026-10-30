@@ -132,7 +132,7 @@ export function InicioPage() {
                   style={
                     bloco.quantidade > 0
                       ? { background: 'var(--navy)', color: '#fff' }
-                      : { background: '#e5f5ec', color: '#1c7c4c' }
+                      : { background: 'var(--ok-bg)', color: 'var(--ok-fg)' }
                   }
                 >
                   {bloco.quantidade}

@@ -53,7 +53,7 @@ function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem;
         {item.bloqueado && (
           <span
             className="rounded-[20px] px-[9px] py-[3px] text-[10.5px] font-bold"
-            style={{ background: '#fdeceb', color: '#e0413c' }}
+            style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}
           >
             Bloqueado
           </span>
@@ -73,7 +73,7 @@ function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem;
           disabled={ocupado}
           className="mt-[10px] w-full rounded-[7px] py-[6px] text-[11.5px] font-semibold"
           style={{
-            background: item.bloqueado ? 'var(--surface-input)' : '#e0413c',
+            background: item.bloqueado ? 'var(--surface-input)' : 'var(--danger-fg)',
             color: item.bloqueado ? 'var(--text-body)' : '#fff',
             opacity: ocupado ? 0.6 : 1,
           }}
@@ -99,15 +99,15 @@ function CasoModal({ item, onClose, onRenegociar }: { item: ReguaItem; onClose: 
     <Modal open onClose={onClose} title={`Caso de cobrança — ${item.titular.nome}`}>
       <div className="flex flex-col gap-[10px]">
         <div className="flex flex-wrap items-center gap-[8px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
-          <span className="rounded-full px-[10px] py-[2px] font-bold" style={{ background: '#fdeceb', color: '#c0392b' }}>{item.estagio} · {item.diasAtraso} dia(s) de atraso</span>
+          <span className="rounded-full px-[10px] py-[2px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{item.estagio} · {item.diasAtraso} dia(s) de atraso</span>
           <span>{item.ativo?.modelo ?? '—'} · {item.ativo?.placa ?? 'sem placa'} · contrato {item.numero}</span>
-          {item.bloqueado && <span className="rounded-full px-[10px] py-[2px] font-bold" style={{ background: '#fdeceb', color: '#e0413c' }}>Veículo bloqueado</span>}
+          {item.bloqueado && <span className="rounded-full px-[10px] py-[2px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>Veículo bloqueado</span>}
         </div>
 
         {eleg.isLoading ? (
           <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Carregando faturas vencidas…</div>
         ) : faturas.length === 0 ? (
-          <div className="rounded-[10px] p-[12px] text-[12.5px]" style={{ background: '#e8f7ef', color: '#1f9d5b' }}>
+          <div className="rounded-[10px] p-[12px] text-[12.5px]" style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>
             Sem faturas vencidas fora de acordo — o atraso pode já estar coberto por uma renegociação.
           </div>
         ) : (
@@ -126,7 +126,7 @@ function CasoModal({ item, onClose, onRenegociar }: { item: ReguaItem; onClose: 
                 </div>
               ))}
             </div>
-            <div className="flex items-center justify-between rounded-[10px] px-[12px] py-[8px] text-[13px] font-bold" style={{ background: '#fdeceb', color: '#c0392b' }}>
+            <div className="flex items-center justify-between rounded-[10px] px-[12px] py-[8px] text-[13px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
               <span>Total corrigido ({faturas.length} fatura(s))</span>
               <span className="tabular-nums">{formatCurrency(eleg.data?.valorTotal ?? 0)}</span>
             </div>
@@ -197,7 +197,7 @@ export function ReguaPage() {
         {COLUNAS_DIAS.map((col) => {
           const cards = itens.filter((i) => col.corresponde(i.diasAtraso));
           const estagioCor = resolverEstagioRegua(DIA_COR[col.chave]);
-          const cor = (estagioCor && REGUA_STAGE_COLORS[estagioCor]) || '#8694a4';
+          const cor = (estagioCor && REGUA_STAGE_COLORS[estagioCor]) || 'var(--text-label)';
           return (
             <div
               key={col.chave}

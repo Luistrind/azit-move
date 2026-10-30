@@ -181,19 +181,19 @@ export function RenegociacaoWizard({
               {eleg.isLoading ? (
                 <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Levantando o atraso…</div>
               ) : !eleg.data || eleg.data.valorTotal <= 0 ? (
-                <div className="rounded-[10px] p-[14px] text-[13px]" style={{ background: '#e8f7ef', color: '#1f9d5b' }}>
+                <div className="rounded-[10px] p-[14px] text-[13px]" style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>
                   Este titular não tem parcelas em atraso — nada a renegociar. 🎉
                 </div>
               ) : (
                 <>
                   {/* Máx 2 acordos em aberto por conta (doc 02 §7.7, 09/09) — alerta a partir do 1º. */}
                   {(eleg.data.acordosAbertos ?? 0) >= 2 ? (
-                    <div className="rounded-[10px] p-[12px] text-[12.5px] font-semibold" style={{ background: '#fdecec', color: '#a12622' }}>
+                    <div className="rounded-[10px] p-[12px] text-[12.5px] font-semibold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
                       ⛔ Este cliente já possui {eleg.data.acordosAbertos} acordos em aberto cobrindo faturas — o limite são 2.
                       Regularize (ou cancele) um acordo antes de propor outro.
                     </div>
                   ) : (eleg.data.acordosAbertos ?? 0) >= 1 ? (
-                    <div className="rounded-[10px] p-[12px] text-[12.5px] font-semibold" style={{ background: '#fff7e6', color: '#8a5a00' }}>
+                    <div className="rounded-[10px] p-[12px] text-[12.5px] font-semibold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
                       ⚠ Este cliente já possui {eleg.data.acordosAbertos} acordo em aberto cobrindo faturas — este será o 2º
                       (e último permitido).
                     </div>
@@ -264,7 +264,7 @@ export function RenegociacaoWizard({
                       })}
                     </div>
                   )}
-                  <div className="flex items-center justify-between rounded-[10px] px-[12px] py-[10px] text-[13px] font-bold" style={{ background: '#fdeceb', color: '#c0392b' }}>
+                  <div className="flex items-center justify-between rounded-[10px] px-[12px] py-[10px] text-[13px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
                     <span>Total selecionado ({selecionadas.length} fatura(s){vincendasSel.length > 0 ? `, ${vincendasSel.length} a vencer` : ''})</span>
                     <span className="tabular-nums">{formatCurrency(total)}</span>
                   </div>
@@ -274,7 +274,7 @@ export function RenegociacaoWizard({
                     </div>
                   )}
                   {!justificativasOk && (
-                    <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: '#fff7e6', color: '#8a5a00' }}>
+                    <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
                       Preencha a justificativa das faturas excluídas para avançar.
                     </div>
                   )}
@@ -320,11 +320,11 @@ export function RenegociacaoWizard({
                 {p && <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Total a pagar (entrada + parcelas)</span><span className="font-bold tabular-nums">{formatCurrency(p.totalAPagar)}</span></div>}
               </div>
               {durante && (
-                <div className="flex flex-col gap-[6px] rounded-[10px] p-[12px] text-[12.5px]" style={{ background: '#e9f6ef', border: '1px solid #bfe3cf' }}>
+                <div className="flex flex-col gap-[6px] rounded-[10px] p-[12px] text-[12.5px]" style={{ background: 'var(--ok-bg)', border: '1px solid #bfe3cf' }}>
                   <div className="text-[13px] font-bold">Parcela do cliente durante o acordo</div>
                   <div className="flex justify-between"><span style={{ color: 'var(--text-label)' }}>Parcelas futuras</span><span className="font-bold tabular-nums">{formatCurrency(durante.valorParcela)}</span></div>
                   <div className="flex justify-between"><span style={{ color: 'var(--text-label)' }}>+ Acordo</span><span className="font-bold tabular-nums">{formatCurrency(durante.valorCota)}</span></div>
-                  <div className="flex items-baseline justify-between border-t pt-[6px]" style={{ borderColor: '#bfe3cf' }}>
+                  <div className="flex items-baseline justify-between border-t pt-[6px]" style={{ borderColor: 'var(--ok-bg)' }}>
                     <span className="font-bold">= Total, por {nParcelas} {rotuloPeriodo}</span>
                     <span className="rounded-[5px] px-[6px] text-[15px] font-bold tabular-nums" style={{ background: 'var(--accent)', color: '#fff' }}>{formatCurrency(durante.valorTotal)}</span>
                   </div>
@@ -339,12 +339,12 @@ export function RenegociacaoWizard({
                 </div>
               )}
               {(p?.excecoes ?? []).map((e) => (
-                <div key={e} className="rounded-[10px] p-[10px] text-[12px]" style={{ background: '#fff7e6', color: '#8a5a00' }}>
+                <div key={e} className="rounded-[10px] p-[10px] text-[12px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
                   ⚠ Exceção (vai destacada para a alçada): {e}
                 </div>
               ))}
               {entradaCent >= total && total > 0 && (
-                <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: '#fff7e6', color: '#8a5a00' }}>
+                <div className="rounded-[10px] p-[10px] text-[12px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
                   A entrada cobre o total em atraso — nesse caso, quite as faturas em vez de renegociar.
                 </div>
               )}
@@ -361,21 +361,21 @@ export function RenegociacaoWizard({
                   <div className="flex justify-between"><span>Total renegociado (com mora)</span><b className="tabular-nums">{formatCurrency(total)}</b></div>
                   <div className="flex justify-between"><span>Entrada (aceite do cliente)</span><b className="tabular-nums">{formatCurrency(entradaCent)}</b></div>
                   <div className="flex justify-between"><span>Plano novo</span><b className="tabular-nums">{nParcelas}× {formatCurrency(valorParcela)} ({p?.periodicidade ?? 'semanal'} · herdada)</b></div>
-                  {durante && <div className="flex justify-between" style={{ color: '#1f7a4c' }}><span className="font-semibold">Parcela durante o acordo</span><b className="tabular-nums">{nParcelas}× {formatCurrency(durante.valorTotal)} ({periodoDurante})</b></div>}
+                  {durante && <div className="flex justify-between" style={{ color: 'var(--ok-fg)' }}><span className="font-semibold">Parcela durante o acordo</span><b className="tabular-nums">{nParcelas}× {formatCurrency(durante.valorTotal)} ({periodoDurante})</b></div>}
                   <div className="flex justify-between"><span>Entrada paga até</span><b>{dataEntrada.split('-').reverse().join('/')}</b></div>
                   {p?.motor === 'catalogo' && <div className="flex justify-between"><span>TP + TR (motor do Catálogo)</span><b className="tabular-nums">{formatCurrency(p.taxaInicial)} + {((p.encargoMensal ?? 0) * 100).toFixed(2)}% a.m.</b></div>}
                 </div>
               </div>
               {/* De acordo do cliente via WhatsApp (doc 02 §7.7, 09/09) — substitui o termo */}
-              <div className="flex flex-col gap-[8px] rounded-[10px] p-[14px]" style={{ background: '#e9f6ef', border: '1px solid #bfe3cf' }}>
+              <div className="flex flex-col gap-[8px] rounded-[10px] p-[14px]" style={{ background: 'var(--ok-bg)', border: '1px solid #bfe3cf' }}>
                 <div className="flex items-center justify-between gap-[8px]">
-                  <span className="text-[12.5px] font-bold" style={{ color: '#1f7a4c' }}>De acordo do cliente (WhatsApp)</span>
-                  <button onClick={() => void copiarMensagem()} className="rounded-[7px] px-[10px] py-[5px] text-[11.5px] font-semibold" style={{ background: '#1f9d5b', color: '#fff' }}>
+                  <span className="text-[12.5px] font-bold" style={{ color: 'var(--ok-fg)' }}>De acordo do cliente (WhatsApp)</span>
+                  <button onClick={() => void copiarMensagem()} className="rounded-[7px] px-[10px] py-[5px] text-[11.5px] font-semibold" style={{ background: 'var(--ok-fg)', color: '#fff' }}>
                     {copiado ? '✓ Copiada' : 'Copiar mensagem'}
                   </button>
                 </div>
                 <pre className="whitespace-pre-wrap rounded-[8px] p-[10px] font-sans text-[12px] leading-[1.5]" style={{ background: 'var(--surface)', color: 'var(--text-body)', border: '1px solid var(--border)' }}>{mensagemWhatsApp()}</pre>
-                <label className="flex cursor-pointer items-start gap-[8px] text-[12.5px] font-semibold" style={{ color: '#1f7a4c' }}>
+                <label className="flex cursor-pointer items-start gap-[8px] text-[12.5px] font-semibold" style={{ color: 'var(--ok-fg)' }}>
                   <input type="checkbox" checked={aceite} onChange={(e) => setAceite(e.target.checked)} className="mt-[2px]" />
                   O cliente respondeu o "de acordo" no WhatsApp com estas condições
                 </label>

@@ -66,9 +66,9 @@ export function AnalisesPage() {
                       style={
                         FINAIS.includes(a.status)
                           ? a.status === 'LIBERADO_PARA_FORMALIZACAO'
-                            ? { background: '#e5f5ec', color: '#1c7c4c' }
-                            : { background: '#fdecec', color: '#a12622' }
-                          : { background: '#eef4ff', color: '#1c4587' }
+                            ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' }
+                            : { background: 'var(--danger-bg)', color: 'var(--danger-fg)' }
+                          : { background: 'var(--info-bg)', color: 'var(--info-fg)' }
                       }
                     >
                       {rotuloStatus(a.status)}

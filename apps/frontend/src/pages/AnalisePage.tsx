@@ -240,12 +240,12 @@ export function AnalisePage() {
           </div>
         )}
         {d.resumoIa?.status === 'nao_configurado' && (
-          <div className="rounded-[8px] px-[12px] py-[8px] text-[12px]" style={{ background: '#fff8e6', border: '1px solid #f0dfae', color: '#8a6d1a' }}>
+          <div className="rounded-[8px] px-[12px] py-[8px] text-[12px]" style={{ background: 'var(--warn-bg)', border: '1px solid #f0dfae', color: 'var(--warn-ink)' }}>
             O assistente ainda não está configurado neste ambiente ({d.resumoIa.erro}).
           </div>
         )}
         {d.resumoIa?.status === 'falha' && (
-          <div className="rounded-[8px] px-[12px] py-[8px] text-[12px]" style={{ background: '#fdeceb', border: '1px solid #f5c6c3', color: '#c0392b' }}>
+          <div className="rounded-[8px] px-[12px] py-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', border: '1px solid #f5c6c3', color: 'var(--danger-fg)' }}>
             A geração falhou: {d.resumoIa.erro} — use "Gerar resumo" para tentar de novo.
           </div>
         )}
@@ -269,7 +269,7 @@ export function AnalisePage() {
               className="flex items-center gap-[6px] rounded-full px-[12px] py-[6px] text-[12px] font-semibold"
               style={
                 i < etapaAtual
-                  ? { background: '#e5f5ec', color: '#1c7c4c' }
+                  ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' }
                   : i === etapaAtual && !final
                     ? { background: 'var(--navy)', color: '#fff' }
                     : { background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-muted)' }
@@ -287,8 +287,8 @@ export function AnalisePage() {
         className="flex flex-wrap items-center justify-between gap-[10px] rounded-[12px] p-[14px]"
         style={
           d.status === 'NAO_APROVADO' || d.status === 'PROPOSTA_ENCERRADA'
-            ? { background: '#fdecec', border: '1px solid #f2c4c2' }
-            : { background: '#eef4ff', border: '1px solid #c9dbf5' }
+            ? { background: 'var(--danger-bg)', border: '1px solid #f2c4c2' }
+            : { background: 'var(--info-bg)', border: '1px solid #c9dbf5' }
         }
       >
         <div className="text-[13px]">
@@ -326,7 +326,7 @@ export function AnalisePage() {
                 </button>
                 <button
                   className="font-semibold"
-                  style={{ color: 'var(--navy)' }}
+                  style={{ color: 'var(--text-primary)' }}
                   onClick={() => void originacaoService.baixarDocumento(doc.id, doc.nome)}
                 >
                   Baixar
@@ -334,7 +334,7 @@ export function AnalisePage() {
                 {!final && (
                   <button
                     className="font-semibold"
-                    style={{ color: '#c0392b' }}
+                    style={{ color: 'var(--danger-fg)' }}
                     disabled={ocupado}
                     onClick={() => {
                       if (!window.confirm(`Remover o documento "${doc.nome}"? Use para trocar um anexo enviado por engano.`)) return;
@@ -402,10 +402,10 @@ export function AnalisePage() {
             return (
               <div key={c.id} className="border-t border-[var(--border)] py-[6px] text-[12px]">
                 <b>{TIPO_CONSULTA_LABEL[c.tipo] ?? c.tipo}</b> · {c.fornecedor} {c.protocolo && `· ${c.protocolo}`} · {instanteBR(c.dataConsulta)} ·
-                {c.situacao === 'FALHA' ? <span style={{ color: '#b03030' }}> falhou ({c.motivoFalha}) · tentativa {c.tentativas}</span> : c.valida ? ' válida' : <span style={{ color: '#b07000' }}> vencida (mais de 30 dias)</span>}
+                {c.situacao === 'FALHA' ? <span style={{ color: 'var(--danger-fg)' }}> falhou ({c.motivoFalha}) · tentativa {c.tentativas}</span> : c.valida ? ' válida' : <span style={{ color: 'var(--warn-fg)' }}> vencida (mais de 30 dias)</span>}
                 {c.resultado && ` · ${resumoResultado(c.resultado)}`}
                 {semDados && (
-                  <span className="ml-[6px] rounded-full px-[8px] py-[1px] text-[11px] font-bold" style={{ background: '#fdecec', color: '#a12622' }}>
+                  <span className="ml-[6px] rounded-full px-[8px] py-[1px] text-[11px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
                     sem valores — não conta para a política, registre de novo
                   </span>
                 )}
@@ -414,18 +414,18 @@ export function AnalisePage() {
                   resultado={c.resultado}
                 />
                 {typeof r.statusApi === 'string' && r.statusApi && (
-                  <div className="mt-[3px] rounded-[8px] px-[8px] py-[4px] text-[11.5px]" style={{ background: '#eef2f7', color: '#3d4a5c' }}>
+                  <div className="mt-[3px] rounded-[8px] px-[8px] py-[4px] text-[11.5px]" style={{ background: 'var(--surface-muted)', color: 'var(--text-body)' }}>
                     <b>Mensagem da API do birô:</b> {r.statusApi}
                   </div>
                 )}
                 {/* Camada 1 (decisão 08/08 Q3): motivos internos e alertas SEMPRE visíveis ao analista */}
                 {motivos.length > 0 && (
-                  <div className="mt-[3px] rounded-[8px] px-[8px] py-[4px]" style={{ background: '#fdecec', color: '#a12622' }}>
+                  <div className="mt-[3px] rounded-[8px] px-[8px] py-[4px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
                     <b>Eliminatórios (internos — não mostrados ao operador/cliente):</b> {motivos.join(' · ')}
                   </div>
                 )}
                 {alertas.length > 0 && (
-                  <div className="mt-[3px] rounded-[8px] px-[8px] py-[4px]" style={{ background: '#fff3d6', color: '#8a5a00' }}>
+                  <div className="mt-[3px] rounded-[8px] px-[8px] py-[4px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
                     <b>Alertas:</b> {alertas.join(' · ')}
                   </div>
                 )}
@@ -481,7 +481,7 @@ export function AnalisePage() {
         </div>
         {d.pacoteMinimo.map((x, i) => (
           <div key={i} className="text-[12px]">
-            <span style={{ color: x.ok ? '#1c7a3d' : '#b03030' }}>{x.ok ? '✓' : '✗'}</span> {x.item}
+            <span style={{ color: x.ok ? 'var(--ok-fg)' : 'var(--danger-fg)' }}>{x.ok ? '✓' : '✗'}</span> {x.item}
             {!x.ok && DICA_PACOTE[x.item] && (
               <span className="ml-[6px] text-[11px]" style={{ color: 'var(--text-muted)' }}>→ {DICA_PACOTE[x.item]}</span>
             )}
@@ -569,7 +569,7 @@ function Participante({ d, p, ocupado, acao, final }: { d: DossieAnalise; p: Par
     <div className={card}>
       <div className="mb-[8px] flex flex-wrap items-center justify-between gap-[6px]">
         <div className="font-display text-[13px] font-bold">
-          {p.nome} · {PAPEL[p.papel] ?? p.papel} {condutor && <span style={{ color: '#1c7a3d' }}>· condutor principal</span>}
+          {p.nome} · {PAPEL[p.papel] ?? p.papel} {condutor && <span style={{ color: 'var(--ok-fg)' }}>· condutor principal</span>}
         </div>
         {!final && (
           <div className="flex flex-wrap gap-[6px]">
@@ -643,7 +643,7 @@ function Participante({ d, p, ocupado, acao, final }: { d: DossieAnalise; p: Par
 function Origem({ texto, vazio }: { texto: string | null | undefined; vazio: string | null }) {
   if (texto) {
     const pelaMaquina = /pela consulta|pela IA|anexada/i.test(texto);
-    return <span className="text-[11px] font-normal" style={{ color: pelaMaquina ? '#1c7a3d' : 'var(--text-muted)' }}>{pelaMaquina ? '⚙ ' : '✎ '}{texto}</span>;
+    return <span className="text-[11px] font-normal" style={{ color: pelaMaquina ? 'var(--ok-fg)' : 'var(--text-muted)' }}>{pelaMaquina ? '⚙ ' : '✎ '}{texto}</span>;
   }
   if (vazio) return <span className="text-[11px] font-normal" style={{ color: 'var(--text-muted)' }}>{vazio}</span>;
   return null;
@@ -676,7 +676,7 @@ function GatilhosAlcada({ d, ocupado, acao, bloqueado }: { d: DossieAnalise; ocu
             Processo judicial relevante ativo <span style={{ color: 'var(--text-muted)' }}>· eleva ao COCAD (COC-06)</span>
           </label>
           {p.processosSugestao && (
-            <div className="rounded-[8px] px-[8px] py-[5px] text-[11.5px]" style={p.processosSugestao.sugerir ? { background: '#fff3d6', color: '#8a5a00' } : { background: 'var(--surface)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+            <div className="rounded-[8px] px-[8px] py-[5px] text-[11.5px]" style={p.processosSugestao.sugerir ? { background: 'var(--warn-bg)', color: 'var(--warn-ink)' } : { background: 'var(--surface)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
               <b>Consulta de processos ({instanteBR(p.processosSugestao.consultaEm)}):</b> {p.processosSugestao.motivo}.
               {p.processosSugestao.sugerir && p.processosSugestao.processos.slice(0, 3).map((pr, i) => (
                 <div key={i}>• {pr.numero ?? 'sem número'} · {pr.assunto}{pr.status ? ` · ${pr.status}` : ''}{pr.poloPassivo === true ? ' · cliente no polo passivo' : ''}</div>
@@ -763,7 +763,7 @@ function Decisao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean; aca
       {emParecer && (
         <div className="flex flex-col gap-[8px]">
           {codigosCocad.length > 0 && !temComplemento && (
-            <div className="rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: '#fff3d6', color: '#8a5a00' }}>
+            <div className="rounded-[8px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
               Critérios {codigosCocad.join(', ')} <b>recomendam</b> o Comitê — a decisão de encaminhar é sua: submeta ao COCAD ou aprove na sua alçada com justificativa (fica na trilha e na auditoria).
             </div>
           )}

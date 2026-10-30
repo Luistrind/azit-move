@@ -8,18 +8,18 @@ export type StatusColor = {
 };
 
 export const PARCELA_STATUS_COLORS: Record<string, StatusColor> = {
-  'Em aberto': { bg: '#f1f4f8', fg: '#8694a4' },
-  'Vence hoje': { bg: '#fef6e9', fg: '#c98a0a' },
-  Vencida: { bg: '#fef6e9', fg: '#c98a0a' },
-  Paga: { bg: '#eafaf1', fg: '#1f9d5b' },
-  'Paga em atraso': { bg: '#eafaf1', fg: '#1f9d5b' },
-  'Paga antecipada': { bg: '#eafaf1', fg: '#1f9d5b' },
-  Renegociada: { bg: '#efeaff', fg: '#6b4fd6' },
-  Novada: { bg: '#efeaff', fg: '#6b4fd6' }, // obrigação extinta por novação (F2, 14/09)
-  'Em acordo': { bg: '#eef4ff', fg: '#2456c7' }, // parcela coberta (Vocabulário 07/09)
-  Cancelada: { bg: '#fdeceb', fg: '#e0413c' },
-  Estornada: { bg: '#fdeceb', fg: '#e0413c' },
-  Suspensa: { bg: '#f1f4f8', fg: '#9aa7b5' },
+  'Em aberto': { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
+  'Vence hoje': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  Vencida: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  Paga: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  'Paga em atraso': { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  'Paga antecipada': { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  Renegociada: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' },
+  Novada: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' }, // obrigação extinta por novação (F2, 14/09)
+  'Em acordo': { bg: 'var(--info-bg)', fg: 'var(--info-fg)' }, // parcela coberta (Vocabulário 07/09)
+  Cancelada: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  Estornada: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  Suspensa: { bg: 'var(--surface-input)', fg: 'var(--text-muted)' },
 };
 
 // (FATURA_STATUS_COLORS por rótulo foi absorvido por FATURA_SITUACAO_COLORS
@@ -29,20 +29,20 @@ export const PARCELA_STATUS_COLORS: Record<string, StatusColor> = {
 // status é só a fase; a condição financeira usa SITUACAO_CONTRATO_COLORS e as
 // intervenções (bloqueio/recuperação) viram selos próprios.
 export const CONTRATO_STATUS_COLORS: Record<string, StatusColor> = {
-  Rascunho: { bg: '#f1f4f8', fg: '#8694a4' },
-  'Aguardando assinatura': { bg: '#f1f4f8', fg: '#8694a4' },
-  'Aguardando pagamento inicial': { bg: '#fef6e9', fg: '#c98a0a' },
-  'Aguardando entrega do veículo': { bg: '#fef6e9', fg: '#c98a0a' },
-  Ativo: { bg: '#eafaf1', fg: '#1f9d5b' },
-  Encerrado: { bg: '#f1f4f8', fg: '#5b6b7f' },
+  Rascunho: { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
+  'Aguardando assinatura': { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
+  'Aguardando pagamento inicial': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  'Aguardando entrega do veículo': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  Ativo: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  Encerrado: { bg: 'var(--surface-input)', fg: 'var(--text-body)' },
 };
 
 // Situação financeira do contrato — CALCULADA (Regra 7), chaves em lower_snake
 // como o backend envia.
 export const SITUACAO_CONTRATO_COLORS: Record<string, StatusColor> = {
-  em_dia: { bg: '#eafaf1', fg: '#1f9d5b' },
-  em_atraso: { bg: '#fdeceb', fg: '#e0413c' },
-  em_acordo: { bg: '#eef4ff', fg: '#2456c7' },
+  em_dia: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  em_atraso: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  em_acordo: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
 };
 export const SITUACAO_CONTRATO_LABEL: Record<string, string> = {
   em_dia: 'Em dia',
@@ -53,52 +53,52 @@ export const SITUACAO_CONTRATO_LABEL: Record<string, string> = {
 // Chaves = rótulos exibidos (A2, 04/09): antes as chaves não batiam com os
 // labels da tela e todo badge de acordo caía no fallback cinza.
 export const ACORDO_STATUS_COLORS: Record<string, StatusColor> = {
-  'Aguardando aprovação': { bg: '#f1f4f8', fg: '#8694a4' },
-  'Aguardando entrada': { bg: '#fef6e9', fg: '#c98a0a' },
-  Ativo: { bg: '#eafaf1', fg: '#1f9d5b' },
-  Cumprido: { bg: '#eafaf1', fg: '#1f9d5b' },
-  Novado: { bg: '#efeaff', fg: '#6b4fd6' },
-  Cancelado: { bg: '#fdeceb', fg: '#e0413c' },
-  Expirado: { bg: '#fdeceb', fg: '#e0413c' },
+  'Aguardando aprovação': { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
+  'Aguardando entrada': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  Ativo: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  Cumprido: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  Novado: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' },
+  Cancelado: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  Expirado: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
 };
 
 // Novação é mecanismo DISTINTO do acordo (Regra 5) — mapa próprio.
 export const NOVACAO_STATUS_COLORS: Record<string, StatusColor> = {
-  'Aguardando aprovação': { bg: '#f1f4f8', fg: '#8694a4' },
-  'Aguardando assinatura': { bg: '#f1f4f8', fg: '#8694a4' },
-  'Aguardando recebimento': { bg: '#fef6e9', fg: '#c98a0a' },
-  Ativa: { bg: '#eafaf1', fg: '#1f9d5b' },
-  Cancelada: { bg: '#fdeceb', fg: '#e0413c' },
-  Expirada: { bg: '#fdeceb', fg: '#e0413c' },
+  'Aguardando aprovação': { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
+  'Aguardando assinatura': { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
+  'Aguardando recebimento': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  Ativa: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  Cancelada: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  Expirada: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
 };
 
 // Status de Ativo (estoque, Bloco 7) — Doc 2 §4.4.
 export const ATIVO_STATUS_COLORS: Record<string, StatusColor> = {
-  Disponível: { bg: '#eafaf1', fg: '#1f9d5b' },
-  'Em contrato': { bg: '#eef1f5', fg: '#5b6b7f' },
-  Transferido: { bg: '#eafaf1', fg: '#1f9d5b' }, // Vocabulário 07/09: era Quitado
-  Recuperado: { bg: '#f3eafb', fg: '#9a3bd1' },
-  Sinistrado: { bg: '#fdeceb', fg: '#e0413c' },
+  Disponível: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  'Em contrato': { bg: 'var(--surface-muted)', fg: 'var(--text-body)' },
+  Transferido: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' }, // Vocabulário 07/09: era Quitado
+  Recuperado: { bg: 'var(--purple-bg)', fg: 'var(--purple-fg)' },
+  Sinistrado: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
 };
 
 // Status de Proposta (funil de originação, Bloco 7) — Doc 2 §4-A.4.
 export const PROPOSTA_STATUS_COLORS: Record<string, StatusColor> = {
-  Pendente: { bg: '#f1f4f8', fg: '#8694a4' },
-  'Em análise': { bg: '#fef6e9', fg: '#c98a0a' },
-  Aprovada: { bg: '#eafaf1', fg: '#1f9d5b' },
-  Reprovada: { bg: '#fdeceb', fg: '#e0413c' },
-  'Em formalização': { bg: '#eaf2fe', fg: '#2f6fde' },
-  Convertida: { bg: '#ede9fb', fg: '#6b4fd6' },
-  Cancelada: { bg: '#f1f4f8', fg: '#5b6b7f' },
+  Pendente: { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
+  'Em análise': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  Aprovada: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  Reprovada: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  'Em formalização': { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  Convertida: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' },
+  Cancelada: { bg: 'var(--surface-input)', fg: 'var(--text-body)' },
 };
 
 // Estágios da régua de cobrança — Doc 3 §4.5. NÃO são status de entidade.
 export const REGUA_STAGE_COLORS: Record<string, string> = {
-  'D+1': '#e8920c',
-  'D+2': '#e07a0c',
-  'D+3': '#e0413c',
-  'D+10': '#9a3bd1',
-  'D+12': '#5b6b7f',
+  'D+1': 'var(--warn-fg)',
+  'D+2': 'var(--warn-fg)',
+  'D+3': 'var(--danger-fg)',
+  'D+10': 'var(--purple-fg)',
+  'D+12': 'var(--text-body)',
 };
 
 // ============================================================
@@ -111,13 +111,13 @@ export const REGUA_STAGE_COLORS: Record<string, string> = {
 // Situação da FATURA calculada em runtime (Regra 7) — chaves lower_snake como o
 // backend envia. Vencida é VERMELHA (padrão de atraso de todo o sistema).
 export const FATURA_SITUACAO_COLORS: Record<string, StatusColor> = {
-  em_aberto: { bg: '#f1f4f8', fg: '#8694a4' },
-  vence_hoje: { bg: '#fef6e9', fg: '#c98a0a' },
-  vencida: { bg: '#fdeceb', fg: '#e0413c' },
-  paga: { bg: '#eafaf1', fg: '#1f9d5b' },
-  paga_em_atraso: { bg: '#eafaf1', fg: '#1f9d5b' },
-  renegociada: { bg: '#efeaff', fg: '#6b4fd6' },
-  novada: { bg: '#efeaff', fg: '#6b4fd6' },
+  em_aberto: { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
+  vence_hoje: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  vencida: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  paga: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  paga_em_atraso: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  renegociada: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' },
+  novada: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' },
 };
 export const FATURA_SITUACAO_LABEL: Record<string, string> = {
   em_aberto: 'Em aberto',
@@ -131,50 +131,50 @@ export const FATURA_SITUACAO_LABEL: Record<string, string> = {
 
 // Contas a Pagar (RF-15/18) — chaves = valores do enum StatusTituloPagar.
 export const CONTAS_PAGAR_STATUS_COLORS: Record<string, StatusColor> = {
-  SOLICITADO: { bg: '#eef4ff', fg: '#2456c7' },
-  EM_VALIDACAO: { bg: '#eef4ff', fg: '#2456c7' },
-  DEVOLVIDO: { bg: '#fef6e9', fg: '#c98a0a' },
-  AGUARDANDO_APROVACAO: { bg: '#fef6e9', fg: '#c98a0a' },
-  APROVADO: { bg: '#eafaf1', fg: '#1f9d5b' },
-  PROGRAMADO: { bg: '#eafaf1', fg: '#1f9d5b' },
-  ENVIADO_BPO: { bg: '#eef4ff', fg: '#2456c7' },
-  AGUARDANDO_CORA: { bg: '#fef6e9', fg: '#c98a0a' },
-  PAGO: { bg: '#eafaf1', fg: '#1f9d5b' },
-  CONCILIADO: { bg: '#eafaf1', fg: '#1f9d5b' },
-  CANCELADO: { bg: '#fdeceb', fg: '#e0413c' },
-  BLOQUEADO: { bg: '#fdeceb', fg: '#e0413c' },
+  SOLICITADO: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  EM_VALIDACAO: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  DEVOLVIDO: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  AGUARDANDO_APROVACAO: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  APROVADO: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  PROGRAMADO: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  ENVIADO_BPO: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  AGUARDANDO_CORA: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  PAGO: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  CONCILIADO: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  CANCELADO: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  BLOQUEADO: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
   // Status de LOTE de pagamento (auditoria 15/09, Bloco D — o ciclo do lote
   // ficava monocromático no cinza default).
-  EM_PREPARACAO: { bg: '#eef4ff', fg: '#2456c7' },
-  CADASTRADO_CORA: { bg: '#eef4ff', fg: '#2456c7' },
-  AGUARDANDO_APROVACAO_BANCO: { bg: '#fef6e9', fg: '#c98a0a' },
-  APROVADO_BANCO: { bg: '#eafaf1', fg: '#1f9d5b' },
-  PARCIALMENTE_PAGO: { bg: '#fef6e9', fg: '#c98a0a' },
+  EM_PREPARACAO: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  CADASTRADO_CORA: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  AGUARDANDO_APROVACAO_BANCO: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  APROVADO_BANCO: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  PARCIALMENTE_PAGO: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
 };
 
 // Fornecedores (RF-16).
 export const FORNECEDOR_STATUS_COLORS: Record<string, StatusColor> = {
-  ATIVO: { bg: '#eafaf1', fg: '#1f9d5b' },
-  AGUARDANDO_APROVACAO: { bg: '#fef6e9', fg: '#c98a0a' },
-  EM_CADASTRO: { bg: '#f1f4f8', fg: '#8694a4' },
-  BLOQUEADO: { bg: '#fdeceb', fg: '#e0413c' },
-  INATIVO: { bg: '#f1f4f8', fg: '#8694a4' },
+  ATIVO: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  AGUARDANDO_APROVACAO: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  EM_CADASTRO: { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
+  BLOQUEADO: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  INATIVO: { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
 };
 
 // Ciclo de vida do produto do Catálogo (doc 02 §17).
 export const CATALOGO_CICLO_COLORS: Record<string, StatusColor> = {
-  RASCUNHO: { bg: '#f1f4f8', fg: '#8694a4' },
-  ATIVO: { bg: '#eafaf1', fg: '#1f9d5b' },
-  SUSPENSO: { bg: '#fef6e9', fg: '#c98a0a' },
-  ENCERRADO: { bg: '#fdeceb', fg: '#e0413c' },
+  RASCUNHO: { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
+  ATIVO: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  SUSPENSO: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  ENCERRADO: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
 };
 
 // Situação da CONTA na carteira (calculada) — em acordo = atraso coberto (07/09).
 export const CONTA_SITUACAO_COLORS: Record<string, StatusColor> = {
-  em_dia: { bg: '#eafaf1', fg: '#1f9d5b' },
-  em_atraso: { bg: '#fdeceb', fg: '#e0413c' },
-  em_acordo: { bg: '#eef4ff', fg: '#2456c7' },
-  bloqueada: { bg: '#fdeceb', fg: '#e0413c' },
+  em_dia: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  em_atraso: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  em_acordo: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  bloqueada: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
 };
 export const CONTA_SITUACAO_LABEL: Record<string, string> = {
   em_dia: 'Em dia',
@@ -185,65 +185,65 @@ export const CONTA_SITUACAO_LABEL: Record<string, string> = {
 
 // Situação da análise (alçada do analista / complemento / COCAD) — cor de texto.
 export const ANALISE_SITUACAO_FG: Record<string, string> = {
-  alcada: '#1f9d5b',
-  complemento: '#c98a0a',
-  cocad: '#e0413c',
+  alcada: 'var(--ok-fg)',
+  complemento: 'var(--warn-fg)',
+  cocad: 'var(--danger-fg)',
 };
 
 // Desfecho da ocorrência (multa, IPVA, licenciamento) — doc 02 §25.3.
 export const OCORRENCIA_STATUS_COLORS: Record<string, StatusColor> = {
-  REGISTRADA: { bg: '#fef6e9', fg: '#c98a0a' },
-  EM_RECURSO: { bg: '#f3eafb', fg: '#9a3bd1' },
-  AGUARDANDO_COMPROVANTE: { bg: '#eef4ff', fg: '#2456c7' },
-  REPASSADA: { bg: '#eafaf1', fg: '#1f9d5b' },
-  ASSUMIDA_AZIT: { bg: '#eef1f5', fg: '#5b6b7f' },
-  QUITADA: { bg: '#eafaf1', fg: '#1f9d5b' },
-  CANCELADA: { bg: '#fdeceb', fg: '#e0413c' },
+  REGISTRADA: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  EM_RECURSO: { bg: 'var(--purple-bg)', fg: 'var(--purple-fg)' },
+  AGUARDANDO_COMPROVANTE: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  REPASSADA: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  ASSUMIDA_AZIT: { bg: 'var(--surface-muted)', fg: 'var(--text-body)' },
+  QUITADA: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  CANCELADA: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
 };
 
 export const RESPONSAVEL_OCORRENCIA_COLORS: Record<string, StatusColor> = {
-  CLIENTE: { bg: '#eef4ff', fg: '#2456c7' },
-  AZIT: { bg: '#fdeceb', fg: '#e0413c' },
+  CLIENTE: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  AZIT: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
 };
 
 // Migração do legado (doc 02 §26): estado do caso e situação no Asaas.
 export const CASO_LEGADO_STATUS_COLORS: Record<string, StatusColor> = {
-  COLETADO: { bg: '#eef1f5', fg: '#5b6b7f' },
-  EM_REVISAO: { bg: '#fef6e9', fg: '#c98a0a' },
-  VALIDADO: { bg: '#eef4ff', fg: '#2456c7' },
-  MIGRADO: { bg: '#eafaf1', fg: '#1f9d5b' },
-  DESCARTADO: { bg: '#fdeceb', fg: '#e0413c' },
+  COLETADO: { bg: 'var(--surface-muted)', fg: 'var(--text-body)' },
+  EM_REVISAO: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  VALIDADO: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  MIGRADO: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  DESCARTADO: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
 };
 export const SITUACAO_LEGADO_COLORS: Record<string, StatusColor> = {
-  SEM_VENCIDA: { bg: '#eafaf1', fg: '#1f9d5b' },
-  COM_VENCIDA: { bg: '#fdeceb', fg: '#e0413c' },
-  SEM_MOVIMENTO: { bg: '#eef1f5', fg: '#5b6b7f' },
+  SEM_VENCIDA: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  COM_VENCIDA: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  SEM_MOVIMENTO: { bg: 'var(--surface-muted)', fg: 'var(--text-body)' },
 };
 // Classe da cobrança lida do Asaas (paga / pendente / vencida / outra).
 export const COBRANCA_LEGADA_COLORS: Record<string, StatusColor> = {
-  paga: { bg: '#eafaf1', fg: '#1f9d5b' },
-  pendente: { bg: '#eef4ff', fg: '#2456c7' },
-  vencida: { bg: '#fdeceb', fg: '#e0413c' },
-  outra: { bg: '#eef1f5', fg: '#5b6b7f' },
+  paga: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  pendente: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  vencida: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  outra: { bg: 'var(--surface-muted)', fg: 'var(--text-body)' },
 };
 
 // Linha da conciliação do legado (doc 02 §26.7): esperado × cobrado × pago.
 export const CONCILIACAO_LINHA_COLORS: Record<string, StatusColor> = {
-  paga: { bg: '#eafaf1', fg: '#1f9d5b' },
-  paga_com_encargo: { bg: '#fef6e9', fg: '#c98a0a' },
-  paga_por_acordo: { bg: '#eafaf1', fg: '#1f9d5b' },
-  em_acordo: { bg: '#eef4ff', fg: '#2456c7' },
-  pendente: { bg: '#eef4ff', fg: '#2456c7' },
-  vencida: { bg: '#fdeceb', fg: '#e0413c' },
-  nao_cobrada: { bg: '#fdeceb', fg: '#e0413c' },
-  futura: { bg: '#eef1f5', fg: '#5b6b7f' },
-  valor_diverge: { bg: '#f3eafb', fg: '#9a3bd1' },
+  paga: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  paga_com_encargo: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  paga_por_acordo: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  em_acordo: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  pendente: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  vencida: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  nao_cobrada: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  futura: { bg: 'var(--surface-muted)', fg: 'var(--text-body)' },
+  valor_diverge: { bg: 'var(--purple-bg)', fg: 'var(--purple-fg)' },
 };
 // Confiança da linha (doc 02 §26.14): alta = nada a fazer; média = conferir; baixa = decidir.
 export const CONFIANCA_LINHA_COLORS: Record<string, StatusColor> = {
-  alta: { bg: '#eafaf1', fg: '#1f9d5b' },
-  media: { bg: '#fef6e9', fg: '#c98a0a' },
-  baixa: { bg: '#fdeceb', fg: '#e0413c' },
+  alta: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  media: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  baixa: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
 };
 
 // Central de Aprovações (doc 02 §7.9-A — lista e dossiê, 21/10/2026). Chaves =
@@ -255,10 +255,10 @@ export const APROVACAO_STATUS_LABEL: Record<string, string> = {
   CANCELADA: 'Cancelada',
 };
 export const APROVACAO_STATUS_COLORS: Record<string, StatusColor> = {
-  Pendente: { bg: '#fef6e9', fg: '#c98a0a' },
-  Aprovada: { bg: '#eafaf1', fg: '#1f9d5b' },
-  Reprovada: { bg: '#fdeceb', fg: '#e0413c' },
-  Cancelada: { bg: '#f1f4f8', fg: '#8694a4' },
+  Pendente: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  Aprovada: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  Reprovada: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  Cancelada: { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
 };
 
 // De quem é a vez (VezAprovacao — calculada pelo backend para quem olha).
@@ -271,30 +271,30 @@ export const VEZ_APROVACAO_LABEL: Record<string, string> = {
   voce_decidiu: 'Você já decidiu',
 };
 export const VEZ_APROVACAO_COLORS: Record<string, StatusColor> = {
-  'Sua vez': { bg: '#fef6e9', fg: '#c98a0a' },
-  'Responder complemento': { bg: '#fef6e9', fg: '#c98a0a' },
-  'Acima da sua alçada': { bg: '#f1f4f8', fg: '#5b6b7f' },
-  'Aguardando complemento': { bg: '#eef4ff', fg: '#2456c7' },
-  'Você solicitou': { bg: '#f1f4f8', fg: '#5b6b7f' },
-  'Você já decidiu': { bg: '#f1f4f8', fg: '#5b6b7f' },
+  'Sua vez': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  'Responder complemento': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  'Acima da sua alçada': { bg: 'var(--surface-input)', fg: 'var(--text-body)' },
+  'Aguardando complemento': { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  'Você solicitou': { bg: 'var(--surface-input)', fg: 'var(--text-body)' },
+  'Você já decidiu': { bg: 'var(--surface-input)', fg: 'var(--text-body)' },
 };
 
 // Marcador da trilha da solicitação (decisões + complemento) — cor de texto.
 export const TRILHA_APROVACAO_FG: Record<string, string> = {
   SOLICITADA: 'var(--navy)',
-  APROVADA: '#1f9d5b',
-  RECOMENDADA: '#c98a0a',
-  REPROVADA: '#e0413c',
-  COMPLEMENTO_PEDIDO: '#2456c7',
-  COMPLEMENTO_RESPONDIDO: '#5b6b7f',
+  APROVADA: 'var(--ok-fg)',
+  RECOMENDADA: 'var(--warn-fg)',
+  REPROVADA: 'var(--danger-fg)',
+  COMPLEMENTO_PEDIDO: 'var(--info-fg)',
+  COMPLEMENTO_RESPONDIDO: 'var(--text-body)',
 };
 
 // Tom de um valor no dossiê (atraso, comprometimento acima da política,
 // espera acima de 2 dias…) — cor de texto.
 export const TOM_DOSSIE_FG: Record<string, string> = {
-  alerta: '#e0413c',
-  atencao: '#c98a0a',
-  ok: '#1f9d5b',
+  alerta: 'var(--danger-fg)',
+  atencao: 'var(--warn-fg)',
+  ok: 'var(--ok-fg)',
 };
 
 // Situação da ENTRADA do acordo e do RECEBIMENTO INICIAL da novação (calculadas
@@ -302,17 +302,17 @@ export const TOM_DOSSIE_FG: Record<string, string> = {
 // tela de Renegociações quando os blocos viraram componentes (21/10).
 export const ENTRADA_ACORDO_FG: Record<string, string> = {
   sem_entrada: 'var(--text-muted)',
-  paga: '#1f9d5b',
-  aguardando: '#c98a0a',
+  paga: 'var(--ok-fg)',
+  aguardando: 'var(--warn-fg)',
   aguardando_aprovacao: 'var(--text-muted)',
-  expirada: '#e0413c',
-  nao_paga: '#e0413c',
+  expirada: 'var(--danger-fg)',
+  nao_paga: 'var(--danger-fg)',
 };
 export const RECEBIMENTO_NOVACAO_FG: Record<string, string> = {
   sem_recebimento: 'var(--text-muted)',
-  pago: '#1f9d5b',
-  aguardando: '#c98a0a',
-  expirado: '#e0413c',
+  pago: 'var(--ok-fg)',
+  aguardando: 'var(--warn-fg)',
+  expirado: 'var(--danger-fg)',
   pendente: 'var(--text-muted)',
 };
 

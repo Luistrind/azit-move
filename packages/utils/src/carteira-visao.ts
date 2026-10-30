@@ -59,7 +59,7 @@ export interface VisaoCarteira {
   vencidas: ResumoEstado;
   aVencer: ResumoEstado;
   porProduto: ProdutoVisao[]; // ordenado por teto desc; encargos NÃO entram aqui
-  encargosRecebidos: number; // centavos: itens ENCARGO pagos + excedente pago sobre o total
+  encargosRecebidos: number; // centavos: excedente pago sobre o valorTotal das faturas recebidas
 }
 
 export interface VisaoMensal extends VisaoCarteira {
@@ -145,15 +145,14 @@ export function agregarVisaoCarteira(faturas: FaturaVisao[], hoje: string): Visa
     if (estado === 'fora') continue;
     const alvo = estado === 'recebida' ? rec : estado === 'vencida' ? venc : aven;
     for (const r of [teto, alvo]) { r.valor += f.valorTotal; r.faturas += 1; r.contas.add(f.contaId); }
-    // Encargo recebido: o item ENCARGO fica FORA do valorTotal (legado grava o
-    // excedente pago como item) — por fatura vale o MAIOR entre o item e o
-    // excedente (pago − total), nunca a soma dos dois.
-    let encargoItens = 0;
+    // Encargo recebido = o que entrou ALÉM do valor da fatura (padrão do sistema,
+    // decisão Luís 30/10): na conciliação nativa o atraso não vira item, só
+    // `valorPago` maior que `valorTotal`; o item ENCARGO do legado é o mesmo
+    // excedente escrito como linha — informativo, fora do teto, não somado.
     if (estado === 'recebida') {
       const pago = f.valorPago ?? f.valorTotal;
       valorPago += pago;
-      for (const it of f.itens) if (chaveProdutoItemFatura(it).foraDoTeto) encargoItens += it.valor;
-      encargosRecebidos += Math.max(encargoItens, pago - f.valorTotal, 0);
+      encargosRecebidos += Math.max(0, pago - f.valorTotal);
     }
     for (const it of f.itens) {
       const p = chaveProdutoItemFatura(it);

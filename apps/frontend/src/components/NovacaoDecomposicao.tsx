@@ -74,7 +74,7 @@ function TabelaMemoria({ componentes, rotuloGrupo }: { componentes: ComponenteDe
               <td className="py-[4px] pr-[8px]">{g.rotulo}</td>
               <td className="text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>{g.qtde}</td>
               <td className="text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(g.nominal)}</td>
-              <td className="text-right" style={{ fontVariantNumeric: 'tabular-nums', color: g.ajuste >= 0 ? '#c0392b' : '#1e8e5a' }}>
+              <td className="text-right" style={{ fontVariantNumeric: 'tabular-nums', color: g.ajuste >= 0 ? 'var(--danger-fg)' : 'var(--ok-fg)' }}>
                 {g.ajuste >= 0 ? '+' : ''}{formatCurrency(g.ajuste)}
               </td>
               <td className="text-right font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(g.valor)}</td>
@@ -103,7 +103,7 @@ function TabelaMemoria({ componentes, rotuloGrupo }: { componentes: ComponenteDe
                   <td className="py-[4px] pl-[8px] pr-[8px]">{c.origem}</td>
                   <td>{c.situacao === 'vencido' ? `vencida há ${c.dias}d` : `vence em ${c.dias}d`}</td>
                   <td className="text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(c.valorNominal)}</td>
-                  <td className="text-right" style={{ fontVariantNumeric: 'tabular-nums', color: c.ajuste >= 0 ? '#c0392b' : '#1e8e5a' }}>
+                  <td className="text-right" style={{ fontVariantNumeric: 'tabular-nums', color: c.ajuste >= 0 ? 'var(--danger-fg)' : 'var(--ok-fg)' }}>
                     {c.ajuste >= 0 ? '+' : ''}{formatCurrency(c.ajuste)}
                   </td>
                   <td className="pr-[8px] text-right font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(c.valor)}</td>
@@ -183,7 +183,7 @@ export function NovacaoDecomposicaoModal({ contaId, open, onClose }: { contaId: 
   return (
     <Modal open={open} onClose={onClose} largura={720} title="Novação — decomposição do saldo por produto">
       {dec.isLoading && <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Levantando o saldo da conta…</div>}
-      {dec.isError && <div className="text-[12px]" style={{ color: '#c0392b' }}>Não foi possível levantar o saldo — tente de novo.</div>}
+      {dec.isError && <div className="text-[12px]" style={{ color: 'var(--danger-fg)' }}>Não foi possível levantar o saldo — tente de novo.</div>}
       {d && (
         <div className="flex flex-col gap-[14px]">
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
@@ -196,7 +196,7 @@ export function NovacaoDecomposicaoModal({ contaId, open, onClose }: { contaId: 
           <BlocoDecomposicao parteVeiculo={d.parteVeiculo} demaisProdutos={d.demaisProdutos} totalGeral={d.totalGeral} />
 
           {d.memoria.ignorados.length > 0 && (
-            <div className="rounded-[10px] px-[12px] py-[8px] text-[11.5px]" style={{ background: '#fff8e6', border: '1px solid #f0dfae', color: '#8a6d1a' }}>
+            <div className="rounded-[10px] px-[12px] py-[8px] text-[11.5px]" style={{ background: 'var(--warn-bg)', border: '1px solid #f0dfae', color: 'var(--warn-ink)' }}>
               {d.memoria.ignorados.length} contribuição(ões) futura(s) de seguro fora da novação — o contrato de proteção continua normalmente.
             </div>
           )}
@@ -404,12 +404,12 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
       {sim && (
         <div className="mt-[14px] flex flex-col gap-[12px]">
           {sim.excecoes.length > 0 && (
-            <div className="rounded-[10px] px-[12px] py-[8px] text-[11.5px]" style={{ background: '#fff8e6', border: '1px solid #f0dfae', color: '#8a6d1a' }}>
+            <div className="rounded-[10px] px-[12px] py-[8px] text-[11.5px]" style={{ background: 'var(--warn-bg)', border: '1px solid #f0dfae', color: 'var(--warn-ink)' }}>
               {sim.excecoes.map((e, i) => <div key={i}>⚠ {e}</div>)}
             </div>
           )}
 
-          <label className="flex items-start gap-[8px] rounded-[10px] px-[12px] py-[8px] text-[12px]" style={{ background: '#fff8e6', border: '1px solid #f0dfae', color: '#8a6d1a' }}>
+          <label className="flex items-start gap-[8px] rounded-[10px] px-[12px] py-[8px] text-[12px]" style={{ background: 'var(--warn-bg)', border: '1px solid #f0dfae', color: 'var(--warn-ink)' }}>
             <input type="checkbox" checked={contratoUnico} onChange={(e) => setContratoUnico(e.target.checked)} className="mt-[2px]" />
             <span>
               <b>Contrato único</b> (adaptação até o instrumento de novação ficar pronto): em vez de dois contratos, nasce <b>um contrato de Compra Parcelada</b> do veículo
@@ -443,7 +443,7 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
             <div className="rounded-[12px] p-[12px]" style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }}>
               <div className="mb-[6px] text-[12px] font-bold">Cadeia do contrato do veículo</div>
               {sim.troca && (
-                <div className="mb-[6px] rounded-[8px] px-[10px] py-[6px] text-[11.5px]" style={{ background: '#eaf1fb', color: 'var(--navy)' }}>
+                <div className="mb-[6px] rounded-[8px] px-[10px] py-[6px] text-[11.5px]" style={{ background: 'var(--info-bg)', color: 'var(--text-primary)' }}>
                   🔁 Troca: sai <b>{sim.troca.saiDescricao}</b> ({formatCurrency(sim.troca.saiValor)}) → entra <b>{sim.troca.entraDescricao}</b> ({formatCurrency(sim.troca.entraValor)})
                 </div>
               )}
@@ -501,7 +501,7 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
 
           {/* Proposta formal (F2): números do servidor congelados no snapshot. */}
           {enviada ? (
-            <div className="rounded-[10px] px-[14px] py-[10px] text-[12.5px] font-semibold" style={{ background: '#eafaf1', color: '#1f9d5b' }}>
+            <div className="rounded-[10px] px-[14px] py-[10px] text-[12.5px] font-semibold" style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>
               ✓ Proposta enviada para a Central de Aprovações — acompanhe em Aprovações e na tela de Acordos e novações.
             </div>
           ) : (
@@ -520,7 +520,7 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
                 {enviando ? 'Enviando…' : 'Enviar para aprovação'}
               </button>
               {!sim.produtoAtivo && (
-                <div className="w-full text-[11.5px]" style={{ color: '#8a6d1a' }}>
+                <div className="w-full text-[11.5px]" style={{ color: 'var(--warn-ink)' }}>
                   A contratação exige o produto Novação ATIVO no Catálogo — a simulação acima usa os parâmetros padrão.
                 </div>
               )}

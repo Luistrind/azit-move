@@ -164,7 +164,7 @@ function FormNovoUsuario({ onCriado }: { onCriado: () => void }) {
       </div>
       <SeletorPapeis valor={papeis} onChange={setPapeis} />
       {erro && (
-        <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: '#fdecec', color: '#a12622' }}>{erro}</div>
+        <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>
       )}
       <div>
         <button
@@ -216,7 +216,7 @@ function LinhaUsuario({
           {usuario.excecoes.length > 0 && (
             <span
               className="ml-[6px] rounded-full px-[7px] py-[1px] text-[10.5px] font-bold"
-              style={{ background: '#fff3d6', color: '#8a5a00' }}
+              style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}
             >
               {usuario.excecoes.length} exceção{usuario.excecoes.length > 1 ? 'es' : ''}
             </span>
@@ -225,7 +225,7 @@ function LinhaUsuario({
         <td className="py-[10px]">
           <span
             className="rounded-full px-[8px] py-[2px] text-[11px] font-bold"
-            style={usuario.ativo ? { background: '#e5f5ec', color: '#1c7c4c' } : { background: '#fdecec', color: '#a12622' }}
+            style={usuario.ativo ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' } : { background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}
           >
             {usuario.ativo ? 'Ativo' : 'Desativado'}
           </span>
@@ -318,7 +318,7 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
         </div>
         <div className="flex items-end gap-[8px]">
           <Campo rotulo="Nova senha">
-            <input type="password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} className={`${inputCls} w-[160px]`} style={{ background: '#fff', border: '1px solid var(--border)' }} />
+            <input type="password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} className={`${inputCls} w-[160px]`} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
           </Campo>
           <BotaoLeve onClick={redefinirSenha}>Redefinir senha</BotaoLeve>
         </div>
@@ -335,7 +335,7 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
           onChange={(e) => setMotivo(e.target.value)}
           placeholder="Motivo da exceção (opcional, recomendado)"
           className={`${inputCls} mb-[10px] w-full max-w-[420px]`}
-          style={{ background: '#fff', border: '1px solid var(--border)' }}
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
         />
         {!p ? (
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
@@ -349,7 +349,7 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
                 <div
                   key={area}
                   className="flex items-center justify-between gap-[8px] rounded-[8px] px-[10px] py-[7px]"
-                  style={{ background: '#fff', border: '1px solid var(--border)' }}
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
                 >
                   <div className="min-w-0">
                     <div className="truncate text-[12.5px] font-semibold">{nomeArea(area)}</div>
@@ -367,7 +367,7 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
                   <div className="flex items-center gap-[6px]">
                     <span
                       className="rounded-full px-[7px] py-[1px] text-[10.5px] font-bold"
-                      style={efetiva ? { background: '#e5f5ec', color: '#1c7c4c' } : { background: '#f2f3f5', color: 'var(--text-muted)' }}
+                      style={efetiva ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' } : { background: 'var(--surface-muted)', color: 'var(--text-muted)' }}
                     >
                       {efetiva ? 'Acessa' : 'Não acessa'}
                     </span>
@@ -387,7 +387,7 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
       </div>
 
       {msg && (
-        <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: '#eef4ff', color: '#1c4587' }}>{msg}</div>
+        <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}>{msg}</div>
       )}
     </div>
   );
@@ -528,7 +528,7 @@ function BotaoLeve({
       onClick={onClick}
       disabled={disabled}
       className="h-[28px] whitespace-nowrap rounded-[7px] px-[10px] text-[11.5px] font-semibold disabled:opacity-50"
-      style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--navy)' }}
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
     >
       {children}
     </button>

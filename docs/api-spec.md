@@ -1219,3 +1219,7 @@ data-calendário no fuso do negócio.
 (vencidas por valor desc; demais por nome).
 
 Valores em centavos. 400 `validacao` para datas fora de `YYYY-MM-DD`/`YYYY-MM` ou `de > ate`.
+
+`GET /api/v1/contas/carteira/resumo` (doc 02 §27.8) →
+`{ "contas": 62, "contasEmAtraso": 29, "contasBloqueadas": 2, "contratosAtivos": 66, "valorSobGestaoPresente": 0, "valorSobGestaoNominal": 0, "valorEmAtraso": 0 }`
+— valor sob gestão a valor presente = soma de `QuitacaoService.simular(contrato).valorQuitacao` dos contratos ATIVO.

@@ -15,7 +15,8 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
   '/contas-a-pagar': { title: 'Contas a pagar', subtitle: 'Financeiro administrativo — do pedido ao extrato' },
   '/fornecedores-financeiro': { title: 'Fornecedores', subtitle: 'Cadastro mestre com dados bancários versionados' },
   '/financeiro-configuracao': { title: 'Configuração do financeiro', subtitle: 'Entidades, contas, naturezas e centros de custo' },
-  '/carteira': { title: 'Carteira', subtitle: 'Cobranças por período, produtos e posição por titular' },
+  '/carteira': { title: 'Carteira', subtitle: 'Cobranças por período, produtos e o que vem aí' },
+  '/carteira/clientes': { title: 'Clientes da carteira', subtitle: 'Posição consolidada por titular e valor sob gestão' },
   '/analises': { title: 'Análises de cadastro', subtitle: 'Fila de análises em andamento' },
   '/pessoas': { title: 'Pessoas', subtitle: 'Investidores, fornecedores e parceiros' },
   '/estruturas': { title: 'Estruturas jurídicas', subtitle: 'Capital por rodada de captação' },
@@ -85,7 +86,7 @@ export function Shell() {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Homologação (17/09): faixa fixa para ninguém confundir com a produção. */}
         {AMBIENTE === 'homologacao' && (
-          <div className="flex-none px-[14px] py-[5px] text-center text-[11.5px] font-bold uppercase tracking-[0.08em]" style={{ background: '#c0392b', color: '#fff' }}>
+          <div className="flex-none px-[14px] py-[5px] text-center text-[11.5px] font-bold uppercase tracking-[0.08em]" style={{ background: 'var(--danger-fg)', color: '#fff' }}>
             Ambiente de homologação — dados de teste, nada aqui é real
           </div>
         )}

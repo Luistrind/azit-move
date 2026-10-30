@@ -130,7 +130,7 @@ function FormNovaEstrutura({ onCriada }: { onCriada: () => void }) {
           Criar estrutura
         </button>
       </div>
-      {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: '#fdecec', color: '#a12622' }}>{erro}</div>}
+      {erro && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>}
     </div>
   );
 }
@@ -298,7 +298,7 @@ function PainelEstrutura({ estrutura, onMudou }: { estrutura: EstruturaJuridica;
                     <button
                       onClick={() => desvincular(i.titularId, i.nome)}
                       className="rounded-[7px] px-[8px] py-[4px] text-[11px] font-semibold"
-                      style={{ background: '#fff', border: '1px solid var(--border)', color: '#a12622' }}
+                      style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--danger-fg)' }}
                     >
                       Remover
                     </button>
@@ -310,10 +310,10 @@ function PainelEstrutura({ estrutura, onMudou }: { estrutura: EstruturaJuridica;
         )}
         <div className="flex flex-wrap items-end gap-[8px]">
           <Campo rotulo="Buscar titular para vincular (mínimo 3 letras)">
-            <input value={buscaInvestidor} onChange={(e) => setBuscaInvestidor(e.target.value)} className={`${inputCls} w-[240px]`} style={{ background: '#fff', border: '1px solid var(--border)' }} />
+            <input value={buscaInvestidor} onChange={(e) => setBuscaInvestidor(e.target.value)} className={`${inputCls} w-[240px]`} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
           </Campo>
           <Campo rotulo="Valor do aporte (R$)">
-            <input value={valorAporte} onChange={(e) => setValorAporte(e.target.value)} placeholder="0,00" className={`${inputCls} w-[130px] text-right`} style={{ background: '#fff', border: '1px solid var(--border)' }} />
+            <input value={valorAporte} onChange={(e) => setValorAporte(e.target.value)} placeholder="0,00" className={`${inputCls} w-[130px] text-right`} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
           </Campo>
         </div>
         {buscaInvestidor.trim().length >= 3 && (
@@ -323,7 +323,7 @@ function PainelEstrutura({ estrutura, onMudou }: { estrutura: EstruturaJuridica;
                 key={t.id}
                 onClick={() => vincular(t.id)}
                 className="flex items-center justify-between rounded-[8px] px-[10px] py-[6px] text-left text-[12px]"
-                style={{ background: '#fff', border: '1px solid var(--border)' }}
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
               >
                 <span className="font-semibold">{t.nome}</span>
                 <span style={{ color: 'var(--text-muted)' }}>{t.cpfCnpj}</span>
@@ -332,7 +332,7 @@ function PainelEstrutura({ estrutura, onMudou }: { estrutura: EstruturaJuridica;
           </div>
         )}
         {novoAberto ? (
-          <div className="mt-[8px] flex flex-wrap items-end gap-[8px] rounded-[10px] p-[10px]" style={{ background: '#fff', border: '1px dashed var(--border)' }}>
+          <div className="mt-[8px] flex flex-wrap items-end gap-[8px] rounded-[10px] p-[10px]" style={{ background: 'var(--surface)', border: '1px dashed var(--border)' }}>
             <Campo rotulo="Nome completo da pessoa investidora">
               <input value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className={`${inputCls} w-[220px]`} style={{ background: 'var(--surface-input)', border: '1px solid var(--border)' }} />
             </Campo>
@@ -350,7 +350,7 @@ function PainelEstrutura({ estrutura, onMudou }: { estrutura: EstruturaJuridica;
             >
               {criando ? 'Cadastrando…' : 'Cadastrar e vincular'}
             </button>
-            <button onClick={() => setNovoAberto(false)} className="rounded-[8px] px-[10px] py-[7px] text-[12px] font-semibold" style={{ background: '#fff', border: '1px solid var(--border)' }}>
+            <button onClick={() => setNovoAberto(false)} className="rounded-[8px] px-[10px] py-[7px] text-[12px] font-semibold" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
               Cancelar
             </button>
           </div>
@@ -358,7 +358,7 @@ function PainelEstrutura({ estrutura, onMudou }: { estrutura: EstruturaJuridica;
           <button
             onClick={() => setNovoAberto(true)}
             className="mt-[8px] rounded-[8px] px-[10px] py-[6px] text-[12px] font-semibold"
-            style={{ background: '#fff', border: '1px dashed var(--border)', color: 'var(--text-muted)' }}
+            style={{ background: 'var(--surface)', border: '1px dashed var(--border)', color: 'var(--text-muted)' }}
           >
             + Cadastrar pessoa investidora nova
           </button>
@@ -373,14 +373,14 @@ function PainelEstrutura({ estrutura, onMudou }: { estrutura: EstruturaJuridica;
         ) : (
           <div className="mb-[8px] flex flex-wrap gap-[6px]">
             {estrutura.ativos.map((a) => (
-              <span key={a.ativoId} className="rounded-full px-[10px] py-[3px] text-[11.5px] font-semibold" style={{ background: '#fff', border: '1px solid var(--border)' }}>
+              <span key={a.ativoId} className="rounded-full px-[10px] py-[3px] text-[11.5px] font-semibold" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                 {a.descricao}{a.placa ? ` · ${a.placa}` : ''}
               </span>
             ))}
           </div>
         )}
         <Campo rotulo="Buscar ativo pela placa (mínimo 3 caracteres) — o vínculo marca esta estrutura como DONA do ativo">
-          <input value={buscaAtivo} onChange={(e) => setBuscaAtivo(e.target.value.toUpperCase())} className={`${inputCls} w-[200px]`} style={{ background: '#fff', border: '1px solid var(--border)' }} />
+          <input value={buscaAtivo} onChange={(e) => setBuscaAtivo(e.target.value.toUpperCase())} className={`${inputCls} w-[200px]`} style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
         </Campo>
         {buscaAtivo.trim().length >= 3 && (
           <div className="mt-[6px] flex flex-col gap-[4px]">
@@ -389,7 +389,7 @@ function PainelEstrutura({ estrutura, onMudou }: { estrutura: EstruturaJuridica;
                 key={a.id}
                 onClick={() => vincularAtivo(a.id)}
                 className="flex items-center justify-between rounded-[8px] px-[10px] py-[6px] text-left text-[12px]"
-                style={{ background: '#fff', border: '1px solid var(--border)' }}
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
               >
                 <span className="font-semibold">{(a as { descricao?: string }).descricao ?? a.id}</span>
                 <span style={{ color: 'var(--text-muted)' }}>{(a as { placa?: string }).placa ?? ''}</span>
@@ -399,7 +399,7 @@ function PainelEstrutura({ estrutura, onMudou }: { estrutura: EstruturaJuridica;
         )}
       </div>
 
-      {msg && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: '#fff7e6', color: '#8a5a00' }}>{msg}</div>}
+      {msg && <div className="rounded-[8px] p-[8px] text-[12px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>{msg}</div>}
     </div>
   );
 }

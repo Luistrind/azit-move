@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { inicioHojeBrasilUTC } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
+import { QuitacaoService } from '../operacoes/quitacao.service';
 import { CriarContaDto } from './dto/criar-conta.dto';
 import { AtualizarContaDto } from './dto/atualizar-conta.dto';
 import { ContaApi, contaParaApi, mapearStatusConta } from './conta.mapper';
@@ -15,7 +16,10 @@ import { ContaApi, contaParaApi, mapearStatusConta } from './conta.mapper';
 
 @Injectable()
 export class ContaService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly quitacao: QuitacaoService,
+  ) {}
 
   private cent(v: unknown): number {
     return Math.round(Number(v?.toString() ?? '0') * 100);
@@ -91,6 +95,36 @@ export class ContaService {
         };
       })
       .filter((c) => c.contratosTotal > 0);
+  }
+
+
+  // Resumo da grade de clientes (doc 02 §27.8, decisão Luís 30/10): "valor sob
+  // gestão" deixa de ser a soma nominal das parcelas em aberto e passa a ser o
+  // VALOR PRESENTE — a mesma conta da quitação antecipada (QuitacaoService.simular,
+  // liquidação total), contrato a contrato, somada. O nominal vem junto como
+  // referência. Só contratos ATIVO entram (fase vigente, §5.2).
+  async resumoCarteira() {
+    const posicoes = await this.carteira();
+    const contratos = await this.prisma.db.contratoCredito.findMany({
+      where: { status: 'ATIVO', conta: { titular: { deletedAt: null } } },
+      select: { id: true },
+    });
+    let valorPresente = 0;
+    let valorNominal = 0;
+    for (const c of contratos) {
+      const sim = await this.quitacao.simular(c.id);
+      valorPresente += sim.valorQuitacao;
+      valorNominal += sim.valorNominalTotal;
+    }
+    return {
+      contas: posicoes.length,
+      contasEmAtraso: posicoes.filter((p) => p.valorEmAtraso > 0).length,
+      contasBloqueadas: posicoes.filter((p) => p.bloqueada).length,
+      contratosAtivos: contratos.length,
+      valorSobGestaoPresente: valorPresente,
+      valorSobGestaoNominal: valorNominal,
+      valorEmAtraso: posicoes.reduce((t, p) => t + p.valorEmAtraso, 0),
+    };
   }
 
   async criar(dto: CriarContaDto): Promise<ContaApi> {
