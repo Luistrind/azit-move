@@ -2566,24 +2566,35 @@ os 4 cartões de KPI da tela Carteira (carteira sob gestão / contratos ativos /
 recebido na semana) e absorve a intenção da branch `feat/carteira-kpis-por-conta` (não mergeada).
 
 ### 27.1 O que é
+Uma leitura da carteira por período, com um teto: *o que entra se todo mundo pagar*. O operador
+escolhe o período (mês, semana, últimos 7 dias, de–até; navega mês a mês) e vê:
 
-Uma leitura da carteira **por período de vencimento**, com um teto: *o que entra se todo mundo
-pagar*. O operador escolhe o período (mês, semana, últimos 7 dias, de–até; navega mês a mês) e vê:
+| Cartão | Base | Definição | Valor |
+|---|---|---|---|
+| **Teto** | vencimento | faturas cujo vencimento cai no período, exceto RENEGOCIADA/NOVADA (substituídas) | soma de `valorTotal` |
+| **Recebido** | **data de pagamento (caixa)** | tudo que entrou na conta no período: faturas PAGA/PAGA_EM_ATRASO pagas no período, de **qualquer vencimento**, + entradas de contrato e de acordo (`LancamentoConta`) | `valorPago` das faturas + valor das entradas |
+| **Vencidas** | vencimento | ABERTA/FECHADA com vencimento < hoje (fuso Brasil) | `valorTotal` |
+| **A vencer** | vencimento | ABERTA/FECHADA com vencimento ≥ hoje (inclui "vence hoje") | `valorTotal` |
 
-| Cartão | Definição | Valor |
-|---|---|---|
-| **Teto** | faturas cujo vencimento cai no período, exceto RENEGOCIADA/NOVADA (substituídas) | soma de `valorTotal` |
-| **Recebidas** | PAGA ou PAGA_EM_ATRASO | `valorTotal` (fecha com o teto); `valorPago` vai à parte |
-| **Vencidas** | ABERTA/FECHADA com vencimento < hoje (fuso Brasil) | `valorTotal` |
-| **A vencer** | ABERTA/FECHADA com vencimento ≥ hoje (inclui "vence hoje") | `valorTotal` |
+Cada cartão traz **valor, faturas e clientes** (contas distintas). Internamente a agregação ainda
+produz **Pagas** = faturas do período já pagas (`valorTotal`), para a barra e as projeções: Pagas +
+Vencidas + A vencer = Teto, sempre. "Vencida"/"a vencer" são runtime (Regra 7) — nada disso é
+gravado.
 
-Cada cartão traz **valor, faturas e clientes** (contas distintas). Recebidas + Vencidas + A vencer
-= Teto, sempre. "Vencida"/"a vencer" são runtime (Regra 7) — nada disso é gravado.
+**Por que Recebido é caixa e o resto é vencimento** (decisão Luís, 30/10, depois de comparar a tela
+com o painel do Asaas): "quero saber de fato quanto recebi esse mês, não se a fatura paga era do mês
+anterior; isso só importa para quanto tenho a receber no mês e quanto tenho vencido". O teto só
+existe por vencimento — é o denominador do que falta; o dinheiro é o que entrou. A primeira versão
+(30/10, manhã) tinha Recebidas por vencimento e foi revisada no mesmo dia. O Recebido se decompõe
+em **faturas do período**, **faturas de outros vencimentos** (atrasadas de antes, antecipadas) e
+**entradas**; **encargos recebidos** = excedente pago sobre o `valorTotal` das faturas do caixa.
 
-**Por que por vencimento e não por data de pagamento** (dúvida do Luís sobre os dois modos do
-Asaas): o teto só existe por vencimento — é o denominador. O dinheiro que entra no caixa fora do
-mês (atrasadas de meses anteriores) é informação financeira, não operacional; ficou fora da tela
-(decisão 30/10: "Caixa é redundante com Recebido").
+Conferência com o Asaas em 30/10 (outubro, por data de crédito): Asaas R$ 217.188,95 em 215
+cobranças × sistema R$ 212.662,67 em 198 recebimentos. Diferença explicada: cliente de aluguel
+(fora do sistema), Vinicius André (a migrar), entradas parceladas pagas por terceiros (não
+modeladas), Pix direto na chave transformado em cobrança avulsa pelo Asaas, dois ex-clientes; e,
+no outro sentido, valores *declarados* na migração do legado maiores que o recebido real (Leonardo
+Rosa, Genival Silva, Peterson, Genival Oliveira, Edvan).
 
 ### 27.2 Por produto — nada chumbado
 
@@ -2601,13 +2612,15 @@ A linha de produto **nasce do item da fatura**, nunca de uma lista fixa na tela 
   encargo, só registra o pago maior; o item ENCARGO do legado é a mesma coisa escrita como
   linha (informativo, não somado). Decisão Luís 30/10: "como está o padrão atual".
 
-Cada linha mostra recebido, teto e % do teto; no mês, também o recebido do mês anterior.
+Cada linha mostra **recebido (caixa)**, **teto** e a barra de **% do teto já pago** (faturas do
+período pagas ÷ teto); no mês, também o recebido do mês anterior. Entradas de contrato e de acordo
+são linhas próprias, **sem teto** (não são cronograma), no fim da lista.
 
 ### 27.3 Mês a mês, comparação e projeção
 
 - **Mês a mês**: a mesma agregação por mês de vencimento (18 meses); no hover, recebido por
   produto; clique seleciona o mês. Meses futuros = o que já está contratado.
-- **Comparado com o mês anterior, mesmo trecho** (§27.4): teto, recebido e vencido de 1–29/out
+- **Comparado com o mês anterior, mesmo trecho** (§27.4): teto, recebido (caixa) e vencido de 1–29/out
   × 1–29/set. **Vencido só compara entre períodos fechados**: um mês já fechado teve mais tempo
   de cobrança, a comparação enganaria — a tela marca "n/c".
 - **O que vem aí**: próximos 7 dias a vencer; mês seguinte já contratado; fim do período se tudo
@@ -2622,7 +2635,8 @@ Função única: `periodoAnteriorMesmoTrecho` (@azit/utils).
 
 ### 27.5 Todo dado é link
 
-Clicar em Recebidas/Vencidas/A vencer abre a lista de clientes daquele estado no período
+Clicar em Recebido/Vencidas/A vencer abre a lista de clientes daquele conjunto no período
+(Recebido: quem pagou no período, com recebimentos e último pagamento)
 (valor, faturas, vencimento mais antigo, bloqueio), cada um ligando à ficha do titular, e um
 "Abrir na Carteira" que filtra a lista de contas pela URL (`/carteira?situacao=…`). Regra
 geral do sistema (feedback 30/10): número que representa um conjunto abre o conjunto.

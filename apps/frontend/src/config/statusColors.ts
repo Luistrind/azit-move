@@ -322,7 +322,7 @@ export const RECEBIMENTO_NOVACAO_FG: Record<string, string> = {
 // novo recebe a próxima cor sem mexer aqui. Paleta validada (dataviz: CVD ≥ 8,
 // contraste ≥ 3:1 nos dois temas); valores por tema via tokens --viz-*.
 export const VISAO_ESTADO_COLORS: Record<'recebidas' | 'vencidas' | 'a_vencer', { fg: string; soft: string; rotulo: string }> = {
-  recebidas: { fg: 'var(--viz-good)', soft: 'var(--viz-good-soft)', rotulo: 'Recebidas' },
+  recebidas: { fg: 'var(--viz-good)', soft: 'var(--viz-good-soft)', rotulo: 'Recebido' }, // caixa do período (doc 02 §27.1)
   vencidas: { fg: 'var(--viz-bad)', soft: 'var(--viz-bad-soft)', rotulo: 'Vencidas' },
   a_vencer: { fg: 'var(--viz-warn)', soft: 'var(--viz-warn-soft)', rotulo: 'A vencer' },
 };

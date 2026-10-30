@@ -21,8 +21,9 @@ import { GraficoBarrasEmpilhadas, type CategoriaEmpilhada } from '../components/
 import { PRODUTO_SLOT_COLORS, VISAO_ESTADO_COLORS, VIZ_NEUTRAL } from '../config/statusColors';
 import { hojeBrasilISO } from '../lib/datas';
 
-// Carteira (doc 02 §27, 30/10/2026): visão por período de vencimento — teto,
-// recebidas, vencidas, a vencer — com cartões que abrem a lista de clientes,
+// Carteira (doc 02 §27, 30/10/2026): teto, vencidas e a vencer por VENCIMENTO;
+// Recebido é CAIXA — tudo que entrou no período pela data do pagamento (faturas
+// de qualquer vencimento + entradas). Cartões abrem a lista de clientes;
 // comparação com o mesmo trecho do mês anterior, por produto, o que vem aí e
 // mês a mês. A grade de clientes é tela própria: /carteira/clientes.
 // Nenhum número é calculado aqui: tudo vem de `agregarVisaoCarteira` via API.
@@ -90,9 +91,15 @@ export function CarteiraPage() {
     const t = x.teto.valor;
     if (!t) return 'Nenhuma fatura vence neste período.';
     if (futuro) return <><b>{compacto(t)} já contratados</b> com {plural(x.teto.clientes, 'cliente', 'clientes')}.</>;
-    if (!aberto) return <><b>{pct(x.recebidas.valor, t)}% do teto entrou</b>; {compacto(x.vencidas.valor)} ficaram vencidos com {plural(x.vencidas.clientes, 'cliente', 'clientes')}.</>;
-    const proj = x.recebidas.valor + x.aVencer.valor;
-    return <><b>{pct(x.recebidas.valor, t)}% do teto já entrou.</b> Se tudo que falta vencer entrar, fecha em {compacto(proj)} ({pct(proj, t)}%). O que falta para o teto são os {compacto(x.vencidas.valor)} vencidos de {plural(x.vencidas.clientes, 'cliente', 'clientes')}.</>;
+    const r = x.recebido;
+    const origem = [
+      r.faturasDoPeriodo ? `${compacto(r.faturasDoPeriodo)} das faturas do período (${pct(x.pagas.valor, t)}% do teto)` : null,
+      r.faturasDeOutrosPeriodos ? `${compacto(r.faturasDeOutrosPeriodos)} de outros vencimentos` : null,
+      r.entradas ? `${compacto(r.entradas)} de entradas` : null,
+    ].filter(Boolean).join(', ');
+    if (!aberto) return <><b>{compacto(r.valor)} entraram</b>{origem ? `: ${origem}` : ''}. {compacto(x.vencidas.valor)} ficaram vencidos com {plural(x.vencidas.clientes, 'cliente', 'clientes')}.</>;
+    const proj = x.pagas.valor + x.aVencer.valor;
+    return <><b>{compacto(r.valor)} entraram</b>{origem ? `: ${origem}` : ''}. Se tudo que falta vencer entrar, as faturas do período fecham em {compacto(proj)} ({pct(proj, t)}% do teto). Faltam os {compacto(x.vencidas.valor)} vencidos de {plural(x.vencidas.clientes, 'cliente', 'clientes')}.</>;
   };
 
 
@@ -113,22 +120,31 @@ export function CarteiraPage() {
                 {plural(v.teto.faturas, 'fatura', 'faturas')} · {plural(v.teto.clientes, 'cliente', 'clientes')}
               </div>
               <div className="flex h-[12px] gap-[2px] overflow-hidden rounded-[6px]" style={{ background: 'var(--surface-muted)' }} aria-hidden>
+                {/* A barra é o progresso do TETO (por vencimento): faturas do período pagas / vencidas / a vencer. */}
                 {(['recebidas', 'vencidas', 'a_vencer'] as const).map((e) => {
-                  const val = e === 'a_vencer' ? v.aVencer.valor : v[e].valor;
+                  const val = e === 'a_vencer' ? v.aVencer.valor : e === 'recebidas' ? v.pagas.valor : v.vencidas.valor;
                   return val > 0 && v.teto.valor > 0 ? <span key={e} style={{ width: `${(100 * val) / v.teto.valor}%`, background: VISAO_ESTADO_COLORS[e].fg }} /> : null;
                 })}
               </div>
               <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-3">
-                {(['recebidas', 'vencidas', 'a_vencer'] as const).map((e) => {
-                  const r = e === 'a_vencer' ? v.aVencer : v[e];
-                  const tom = e === 'recebidas' ? 'good' : e === 'vencidas' ? 'bad' : 'warn';
+                {/* Recebido = CAIXA do período (qualquer vencimento + entradas); vencidas e a vencer = por vencimento. */}
+                <CartaoIndicador
+                  rotulo={VISAO_ESTADO_COLORS.recebidas.rotulo}
+                  valor={formatCurrency(v.recebido.valor)}
+                  detalhe={`${plural(v.recebido.clientes, 'cliente', 'clientes')} · ${plural(v.recebido.recebimentos, 'recebimento', 'recebimentos')} · faturas do período ${pct(v.pagas.valor, v.teto.valor)}%`}
+                  tom="good"
+                  ativo={lista === 'recebidas'}
+                  onClick={() => abrirLista('recebidas')}
+                />
+                {(['vencidas', 'a_vencer'] as const).map((e) => {
+                  const r = e === 'a_vencer' ? v.aVencer : v.vencidas;
                   return (
                     <CartaoIndicador
                       key={e}
                       rotulo={VISAO_ESTADO_COLORS[e].rotulo}
                       valor={formatCurrency(r.valor)}
-                      detalhe={`${pct(r.valor, v.teto.valor)}% · ${plural(r.clientes, 'cliente', 'clientes')} · ${plural(r.faturas, 'fatura', 'faturas')}`}
-                      tom={tom}
+                      detalhe={`${pct(r.valor, v.teto.valor)}% do teto · ${plural(r.clientes, 'cliente', 'clientes')} · ${plural(r.faturas, 'fatura', 'faturas')}`}
+                      tom={e === 'vencidas' ? 'bad' : 'warn'}
                       ativo={lista === e}
                       onClick={() => abrirLista(e)}
                     />
@@ -153,7 +169,9 @@ export function CarteiraPage() {
                         <div className="min-w-0">
                           <Link to={`/titulares/${c.titularId}`} className="block truncate font-semibold" style={{ color: 'var(--text-primary)' }}>{c.titular}</Link>
                           <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                            {c.faturas} fatura{c.faturas > 1 ? 's' : ''} · {lista === 'vencidas' ? 'mais antiga' : 'vencimento'} {ddmm(c.maisAntiga)}
+                            {lista === 'recebidas'
+                              ? `${plural(c.faturas, 'recebimento', 'recebimentos')} · último pagamento ${ddmm(c.ultimoPagamento ?? c.maisAntiga)}`
+                              : `${plural(c.faturas, 'fatura', 'faturas')} · ${lista === 'vencidas' ? 'mais antiga' : 'vencimento'} ${ddmm(c.maisAntiga)}`}
                             {lista === 'vencidas' ? (
                               <span className="ml-[6px] rounded-full px-[7px] py-[1px] text-[10.5px] font-semibold" style={{ background: tomDias === 'neutro' ? 'var(--surface-muted)' : VISAO_ESTADO_COLORS[tomDias === 'bad' ? 'vencidas' : 'a_vencer'].soft, color: tomDias === 'neutro' ? 'var(--text-body)' : VISAO_ESTADO_COLORS[tomDias === 'bad' ? 'vencidas' : 'a_vencer'].fg }}>
                                 {dias}d
@@ -188,7 +206,7 @@ export function CarteiraPage() {
             if (!trecho) return 'Quando o período começar, a comparação usa o mesmo trecho do mês anterior.';
             const a = atual.data, b = anterior.data;
             if (!a || !b) return 'Carregando…';
-            const dr = variacaoPct(a.recebidas.valor, b.recebidas.valor), dt = variacaoPct(a.teto.valor, b.teto.valor), dv = variacaoPct(a.vencidas.valor, b.vencidas.valor);
+            const dr = variacaoPct(a.recebido.valor, b.recebido.valor), dt = variacaoPct(a.teto.valor, b.teto.valor), dv = variacaoPct(a.vencidas.valor, b.vencidas.valor);
             const sinal = (d: number | null) => (d === null ? '—' : `${d >= 0 ? '+' : ''}${d}%`);
             return <>Recebido <b>{sinal(dr)}</b> com teto {sinal(dt)}. {aberto ? 'Vencido não compara: o período anterior teve mais tempo de cobrança.' : `Vencido ${sinal(dv)}.`}</>;
           })()}
@@ -199,7 +217,7 @@ export function CarteiraPage() {
             <div className="flex flex-col">
               {([
                 ['Teto', atual.data.teto.valor, anterior.data.teto.valor, false, false],
-                ['Recebido', atual.data.recebidas.valor, anterior.data.recebidas.valor, false, false],
+                ['Recebido', atual.data.recebido.valor, anterior.data.recebido.valor, false, false],
                 ['Vencido', atual.data.vencidas.valor, anterior.data.vencidas.valor, true, aberto],
               ] as [string, number, number, boolean, boolean][]).map(([k, a, b, inverso, nc]) => {
                 const d = nc ? null : variacaoPct(a, b);
@@ -259,13 +277,18 @@ export function CarteiraPage() {
                       {semCentavos(p.recebido)}
                       {ant ? <small className="block text-[10.5px] font-normal" style={{ color: 'var(--text-muted)' }}>{MESC[Number(mesAnterior(sel.anoMes).slice(5, 7)) - 1]} {semCentavos(ant.recebido)}</small> : null}
                     </span>
-                    <span className="hidden text-right font-display font-semibold tabular-nums sm:block" style={{ color: 'var(--text-primary)' }}>{semCentavos(p.teto)}</span>
-                    <span className="col-span-2 flex items-center gap-[6px] text-[11.5px] sm:col-span-1" style={{ color: 'var(--text-body)' }}>
-                      <i className="block h-[6px] flex-1 overflow-hidden rounded-[3px]" style={{ background: 'var(--surface-muted)' }}>
-                        <b className="block h-full" style={{ width: `${pct(p.recebido, p.teto)}%`, background: VISAO_ESTADO_COLORS.recebidas.fg }} />
-                      </i>
-                      {pct(p.recebido, p.teto)}%<span className="sm:hidden"> de {semCentavos(p.teto)}</span>
-                    </span>
+                    <span className="hidden text-right font-display font-semibold tabular-nums sm:block" style={{ color: p.teto ? 'var(--text-primary)' : 'var(--text-muted)' }}>{p.teto ? semCentavos(p.teto) : '—'}</span>
+                    {/* Barra = faturas do período pagas / teto (progresso do mês); o Recebido ao lado é caixa. */}
+                    {p.teto ? (
+                      <span className="col-span-2 flex items-center gap-[6px] text-[11.5px] sm:col-span-1" style={{ color: 'var(--text-body)' }}>
+                        <i className="block h-[6px] flex-1 overflow-hidden rounded-[3px]" style={{ background: 'var(--surface-muted)' }}>
+                          <b className="block h-full" style={{ width: `${Math.min(100, pct(p.pagoDoPeriodo, p.teto))}%`, background: VISAO_ESTADO_COLORS.recebidas.fg }} />
+                        </i>
+                        {pct(p.pagoDoPeriodo, p.teto)}%<span className="sm:hidden"> de {semCentavos(p.teto)}</span>
+                      </span>
+                    ) : (
+                      <span className="col-span-2 text-[11px] sm:col-span-1" style={{ color: 'var(--text-muted)' }}>sem teto</span>
+                    )}
                   </div>
                 );
               })}
@@ -292,8 +315,8 @@ export function CarteiraPage() {
           leitura={(() => {
             if (!v) return 'Carregando…';
             if (aberto) {
-              const otim = v.recebidas.valor + v.aVencer.valor;
-              return <>Fecha entre <b>{compacto(v.recebidas.valor)} e {compacto(otim)}</b>. O teto só volta com os {compacto(v.vencidas.valor)} vencidos.</>;
+              const otim = v.pagas.valor + v.aVencer.valor;
+              return <>As faturas do período fecham entre <b>{compacto(v.pagas.valor)} e {compacto(otim)}</b>. O teto só volta com os {compacto(v.vencidas.valor)} vencidos.</>;
             }
             const s = seguinte.data;
             return s ? <>{mesNome(proxMes.de.slice(0, 7)).replace(/^./, (c) => c.toUpperCase())}: <b>{compacto(s.teto.valor)} já contratados</b> para {plural(s.teto.clientes, 'cliente', 'clientes')}.</> : '—';
@@ -316,8 +339,8 @@ export function CarteiraPage() {
           {v && aberto ? (
             <div className="flex flex-col">
               {[
-                ['Se tudo que falta vencer entrar', v.recebidas.valor + v.aVencer.valor],
-                ['Se nada mais entrar', v.recebidas.valor],
+                ['Se tudo que falta vencer entrar', v.pagas.valor + v.aVencer.valor],
+                ['Se nada mais entrar', v.pagas.valor],
               ].map(([k, val]) => (
                 <div key={String(k)} className="grid grid-cols-[1fr_auto] items-center gap-x-[10px] py-[8px] text-[13px]" style={{ borderBottom: '1px solid var(--border-light)' }}>
                   <span style={{ color: 'var(--text-body)' }}>{k}</span>
@@ -355,7 +378,7 @@ function MesAMes({ janela, dados, mesHoje, selecionado, onSelecionar }: {
   onSelecionar: (anoMes: string) => void;
 }) {
   const series = [
-    { chave: 'recebidas', rotulo: 'Recebido', cor: VISAO_ESTADO_COLORS.recebidas.fg },
+    { chave: 'recebidas', rotulo: 'Pago do mês', cor: VISAO_ESTADO_COLORS.recebidas.fg },
     { chave: 'vencidas', rotulo: 'Vencido', cor: VISAO_ESTADO_COLORS.vencidas.fg },
     { chave: 'a_vencer', rotulo: 'A vencer', cor: VISAO_ESTADO_COLORS.a_vencer.fg },
   ];
@@ -366,7 +389,7 @@ function MesAMes({ janela, dados, mesHoje, selecionado, onSelecionar }: {
       chave: m,
       rotulo: MESC[mm - 1],
       rotuloLinha2: mm === 1 || i === 0 ? m.slice(0, 4) : undefined,
-      valores: { recebidas: d?.recebidas.valor ?? 0, vencidas: d?.vencidas.valor ?? 0, a_vencer: d?.aVencer.valor ?? 0 },
+      valores: { recebidas: d?.pagas.valor ?? 0, vencidas: d?.vencidas.valor ?? 0, a_vencer: d?.aVencer.valor ?? 0 },
       tracejado: m > mesHoje,
       destaque: m === selecionado,
     };
@@ -375,7 +398,7 @@ function MesAMes({ janela, dados, mesHoje, selecionado, onSelecionar }: {
     <table className="w-full border-collapse text-[12px]">
       <thead>
         <tr style={{ color: 'var(--text-muted)' }}>
-          {['Mês', 'Teto', 'Recebido', '%', 'Vencido', 'A vencer', 'Clientes', 'Faturas'].map((h) => (
+          {['Mês', 'Teto', 'Pago do mês', '%', 'Vencido', 'A vencer', 'Recebido (caixa)', 'Clientes', 'Faturas'].map((h) => (
             <th key={h} className="whitespace-nowrap px-[6px] py-[6px] text-right text-[10.5px] font-medium uppercase tracking-[0.08em] first:text-left" style={{ borderBottom: '1px solid var(--border-light)' }}>{h}</th>
           ))}
         </tr>
@@ -386,7 +409,7 @@ function MesAMes({ janela, dados, mesHoje, selecionado, onSelecionar }: {
           if (!d) return null;
           return (
             <tr key={m}>
-              {[mesCurto(m), semCentavos(d.teto.valor), semCentavos(d.recebidas.valor), `${pct(d.recebidas.valor, d.teto.valor)}%`, semCentavos(d.vencidas.valor), semCentavos(d.aVencer.valor), d.teto.clientes, d.teto.faturas].map((cel, i) => (
+              {[mesCurto(m), semCentavos(d.teto.valor), semCentavos(d.pagas.valor), `${pct(d.pagas.valor, d.teto.valor)}%`, semCentavos(d.vencidas.valor), semCentavos(d.aVencer.valor), semCentavos(d.recebido.valor), d.teto.clientes, d.teto.faturas].map((cel, i) => (
                 <td key={i} className="whitespace-nowrap px-[6px] py-[6px] text-right tabular-nums first:text-left" style={{ borderBottom: '1px solid var(--border-light)', color: 'var(--text-primary)' }}>{cel}</td>
               ))}
             </tr>
@@ -413,9 +436,10 @@ function MesAMes({ janela, dados, mesHoje, selecionado, onSelecionar }: {
           <div className="flex flex-col gap-[2px]">
             <b className="font-display" style={{ color: 'var(--text-primary)' }}>{mesNome(c.chave)} {c.chave.slice(0, 4)}{c.tracejado ? ' · contratado' : ''}</b>
             {linha('Teto', semCentavos(d.teto.valor))}
-            {linha('Recebido', `${semCentavos(d.recebidas.valor)} · ${pct(d.recebidas.valor, d.teto.valor)}%`)}
+            {linha('Pago do mês', `${semCentavos(d.pagas.valor)} · ${pct(d.pagas.valor, d.teto.valor)}%`)}
             {linha('Vencido', semCentavos(d.vencidas.valor))}
             {linha('A vencer', semCentavos(d.aVencer.valor))}
+            {linha('Recebido (caixa)', semCentavos(d.recebido.valor))}
             {linha('Clientes · faturas', `${d.teto.clientes} · ${d.teto.faturas}`)}
             {d.porProduto.some((p) => p.recebido > 0) ? <div className="my-[4px]" style={{ borderTop: '1px solid var(--border-light)' }} /> : null}
             {d.porProduto.filter((p) => p.recebido > 0).map((p, i) => (

@@ -1190,7 +1190,9 @@ O título lista `natureza.grupo { codigo, nome }` e `centro` pode ser `null`.
 
 ### 4.8-A Visão da carteira por período (doc 02 §27, 30/10/2026)
 
-Todas as rotas abaixo usam a MESMA agregação (`agregarVisaoCarteira`, @azit/utils). Datas são
+Todas as rotas abaixo usam a MESMA agregação (`agregarVisaoCarteira`, @azit/utils). `teto`/`pagas`/
+`vencidas`/`aVencer` são por VENCIMENTO; `recebido` é CAIXA (data de pagamento: faturas de qualquer
+vencimento + entradas de contrato/acordo). Datas são
 data-calendário no fuso do negócio.
 
 `GET /api/v1/contas/carteira/visao?de=2026-10-01&ate=2026-10-31`
@@ -1200,12 +1202,14 @@ data-calendário no fuso do negócio.
   "periodo": { "de": "2026-10-01", "ate": "2026-10-31" },
   "hoje": "2026-10-29",
   "teto":      { "valor": 24585433, "faturas": 235, "clientes": 61 },
-  "recebidas": { "valor": 16585231, "faturas": 166, "clientes": 55, "valorPago": 16693479 },
+  "pagas":     { "valor": 16585231, "faturas": 166, "clientes": 55, "valorPago": 16693479 },
   "vencidas":  { "valor": 6572729,  "faturas": 56,  "clientes": 29 },
   "aVencer":   { "valor": 1427473,  "faturas": 13,  "clientes": 13 },
+  "recebido":  { "valor": 21266267, "recebimentos": 198, "clientes": 59, "faturasDoPeriodo": 16693479, "faturasDeOutrosPeriodos": 3774788, "entradas": 798000, "encargos": 108248 },
   "porProduto": [
-    { "chave": "compra_parcelada", "rotulo": "Compra Parcelada", "teto": 21583496, "recebido": 14928673 },
-    { "chave": "protecao_veicular", "rotulo": "Proteção veicular", "teto": 1194804, "recebido": 832078 }
+    { "chave": "compra_parcelada", "rotulo": "Compra Parcelada", "teto": 21583496, "pagoDoPeriodo": 14928673, "recebido": 18301122 },
+    { "chave": "protecao_veicular", "rotulo": "Proteção veicular", "teto": 1194804, "pagoDoPeriodo": 832078, "recebido": 1020400 },
+    { "chave": "entrada_contrato", "rotulo": "Entrada de contrato", "teto": 0, "pagoDoPeriodo": 0, "recebido": 798000 }
   ],
   "encargosRecebidos": 108248
 }
@@ -1215,8 +1219,10 @@ data-calendário no fuso do negócio.
 (meses sem fatura não vêm).
 
 `GET /api/v1/contas/carteira/visao/clientes?de&ate&estado=recebidas|vencidas|a_vencer` →
-`[{ "contaId", "titularId", "titular", "valor", "faturas", "maisAntiga": "2026-10-13", "bloqueada": false }]`
-(vencidas por valor desc; demais por nome).
+`[{ "contaId", "titularId", "titular", "valor", "faturas", "maisAntiga": "2026-10-13", "ultimoPagamento?": "2026-10-27", "bloqueada": false }]`
+(vencidas por valor desc; demais por nome). `recebidas` lista quem PAGOU no período (caixa): `valor` =
+o que entrou, `faturas` = recebimentos (faturas + entradas), `maisAntiga` = primeiro pagamento,
+`ultimoPagamento` = último.
 
 Valores em centavos. 400 `validacao` para datas fora de `YYYY-MM-DD`/`YYYY-MM` ou `de > ate`.
 

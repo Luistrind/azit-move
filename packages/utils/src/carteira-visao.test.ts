@@ -6,6 +6,7 @@ import {
   estadoFaturaVisao,
   variacaoPct,
   FaturaVisao,
+  RecebimentoVisao,
 } from './carteira-visao';
 
 const HOJE = '2026-10-29';
@@ -57,7 +58,7 @@ describe('chaveProdutoItemFatura — a linha nasce do item, não de lista fixa',
   });
 });
 
-describe('agregarVisaoCarteira — teto = recebidas + vencidas + a vencer', () => {
+describe('agregarVisaoCarteira — teto = pagas + vencidas + a vencer (por vencimento)', () => {
   const faturas: FaturaVisao[] = [
     fat({ contaId: 'A', status: 'PAGA', vencimento: '2026-10-05', valorPago: 99700 }),
     fat({ contaId: 'A', status: 'PAGA_EM_ATRASO', vencimento: '2026-10-12', valorPago: 101727 }), // 2.027 de encargo pago por fora
@@ -77,41 +78,81 @@ describe('agregarVisaoCarteira — teto = recebidas + vencidas + a vencer', () =
 
   it('soma valores, faturas e clientes distintos por estado; renegociada não entra', () => {
     expect(v.teto).toEqual({ valor: 99700 * 4 + 170330, faturas: 5, clientes: 3 });
-    expect(v.recebidas).toEqual({ valor: 99700 * 2 + 170330, faturas: 3, clientes: 2, valorPago: 99700 + 101727 + 174303 });
+    expect(v.pagas).toEqual({ valor: 99700 * 2 + 170330, faturas: 3, clientes: 2, valorPago: 99700 + 101727 + 174303 });
     expect(v.vencidas).toEqual({ valor: 99700, faturas: 1, clientes: 1 });
     expect(v.aVencer).toEqual({ valor: 99700, faturas: 1, clientes: 1 });
-    expect(v.recebidas.valor + v.vencidas.valor + v.aVencer.valor).toBe(v.teto.valor);
+    expect(v.pagas.valor + v.vencidas.valor + v.aVencer.valor).toBe(v.teto.valor);
   });
 
-  it('por produto: uma linha por chave, teto e recebido; encargos à parte (item pago + excedente)', () => {
+  it('por produto: uma linha por chave, teto e pago do período; sem caixa, recebido é zero', () => {
     const chaves = v.porProduto.map((p) => p.chave);
     expect(chaves).toEqual(['compra_parcelada', 'reembolso_parcelado', 'protecao_veicular', 'taxa_de_boleto_e_pix']);
     const cp = v.porProduto.find((p) => p.chave === 'compra_parcelada')!;
     expect(cp.teto).toBe(94200 * 4 + 142000);
-    expect(cp.recebido).toBe(94200 * 2 + 142000);
+    expect(cp.pagoDoPeriodo).toBe(94200 * 2 + 142000);
+    expect(cp.recebido).toBe(0);
     const rp = v.porProduto.find((p) => p.chave === 'reembolso_parcelado')!;
-    expect(rp).toMatchObject({ teto: 28330, recebido: 28330, rotulo: 'Reembolso Parcelado' });
-    // encargo = excedente pago (padrão do sistema): fatura C 174.303 − 170.330 = 3.973 (o item ENCARGO do legado é só a linha disso); fatura A em atraso 2.027
-    expect(v.encargosRecebidos).toBe(3973 + 2027);
+    expect(rp).toMatchObject({ teto: 28330, pagoDoPeriodo: 28330, rotulo: 'Reembolso Parcelado' });
+    expect(v.recebido.valor).toBe(0);
+    expect(v.encargosRecebidos).toBe(0);
+  });
+
+  it('recebido é CAIXA: faturas pagas no período de qualquer vencimento + entradas; encargo = excedente pago', () => {
+    const periodo = { de: '2026-10-01', ate: '2026-10-31' };
+    const recebimentos: RecebimentoVisao[] = [
+      // fatura do período, paga em dia
+      { contaId: 'A', origem: 'fatura', dataPagamento: '2026-10-05', valor: 99700, vencimento: '2026-10-05', valorTotal: 99700, itens: fat({ contaId: 'A', status: 'PAGA', vencimento: '2026-10-05' }).itens },
+      // fatura de SETEMBRO paga em outubro, com 2.027 de encargo
+      { contaId: 'A', origem: 'fatura', dataPagamento: '2026-10-12', valor: 101727, vencimento: '2026-09-28', valorTotal: 99700, itens: fat({ contaId: 'A', status: 'PAGA_EM_ATRASO', vencimento: '2026-09-28' }).itens },
+      // entradas avulsas
+      { contaId: 'D', origem: 'entrada_contrato', dataPagamento: '2026-10-08', valor: 399000 },
+      { contaId: 'B', origem: 'entrada_acordo', dataPagamento: '2026-10-30', valor: 86108 },
+    ];
+    const c = agregarVisaoCarteira(faturas, HOJE, { recebimentos, periodo });
+    expect(c.recebido).toEqual({
+      valor: 99700 + 101727 + 399000 + 86108,
+      recebimentos: 4,
+      clientes: 3,
+      faturasDoPeriodo: 99700,
+      faturasDeOutrosPeriodos: 101727,
+      entradas: 399000 + 86108,
+      encargos: 2027,
+    });
+    expect(c.encargosRecebidos).toBe(2027);
+    // por vencimento não muda com o caixa
+    expect(c.pagas.valor + c.vencidas.valor + c.aVencer.valor).toBe(c.teto.valor);
+    // por produto: recebido (caixa) soma os itens das DUAS faturas pagas; entradas são linhas sem teto, no fim
+    const cp = c.porProduto.find((p) => p.chave === 'compra_parcelada')!;
+    expect(cp.recebido).toBe(94200 * 2);
+    expect(cp.pagoDoPeriodo).toBe(94200 * 2 + 142000);
+    const ult = c.porProduto.slice(-2).map((p) => [p.chave, p.teto, p.recebido]);
+    expect(ult).toEqual([['entrada_contrato', 0, 399000], ['entrada_acordo', 0, 86108]]);
   });
 
   it('período vazio devolve zeros, não erro', () => {
     const z = agregarVisaoCarteira([], HOJE);
     expect(z.teto).toEqual({ valor: 0, faturas: 0, clientes: 0 });
+    expect(z.recebido.valor).toBe(0);
     expect(z.porProduto).toEqual([]);
   });
 });
 
-describe('agregarVisaoMensal — uma agregação por mês de vencimento, em ordem', () => {
+describe('agregarVisaoMensal — faturas pelo mês de vencimento, recebimentos pelo mês de pagamento', () => {
   it('separa por YYYY-MM e mantém o mesmo cálculo', () => {
     const m = agregarVisaoMensal([
       fat({ contaId: 'A', status: 'PAGA', vencimento: '2026-09-28' }),
       fat({ contaId: 'A', status: 'ABERTA', vencimento: '2026-11-02' }),
       fat({ contaId: 'B', status: 'PAGA', vencimento: '2026-09-07' }),
-    ], HOJE);
-    expect(m.map((x) => x.mes)).toEqual(['2026-09', '2026-11']);
+    ], HOJE, [
+      // a fatura de 28/09 só entrou no caixa em outubro: setembro tem teto, outubro tem caixa
+      { contaId: 'A', origem: 'fatura', dataPagamento: '2026-10-02', valor: 99700, vencimento: '2026-09-28', valorTotal: 99700 },
+    ]);
+    expect(m.map((x) => x.mes)).toEqual(['2026-09', '2026-10', '2026-11']);
     expect(m[0].teto).toEqual({ valor: 199400, faturas: 2, clientes: 2 });
-    expect(m[1].aVencer.faturas).toBe(1);
+    expect(m[0].recebido.valor).toBe(0);
+    expect(m[1].teto.valor).toBe(0);
+    expect(m[1].recebido).toMatchObject({ valor: 99700, faturasDeOutrosPeriodos: 99700, faturasDoPeriodo: 0 });
+    expect(m[2].aVencer.faturas).toBe(1);
   });
 });
 

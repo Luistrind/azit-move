@@ -2,6 +2,7 @@ import { api } from '../lib/api';
 import type { VisaoCarteira, VisaoMensal } from '@azit/utils';
 
 // Visão da carteira por período (doc 02 §27) — três rotas, uma agregação.
+// Teto/pagas/vencidas/a vencer por VENCIMENTO; `recebido` é CAIXA (data de pagamento).
 export interface VisaoPeriodo extends VisaoCarteira {
   periodo: { de: string; ate: string };
   hoje: string;
@@ -12,8 +13,9 @@ export interface ClienteVisao {
   titularId: string;
   titular: string;
   valor: number; // centavos
-  faturas: number;
-  maisAntiga: string; // YYYY-MM-DD
+  faturas: number; // recebidas: recebimentos (faturas + entradas)
+  maisAntiga: string; // YYYY-MM-DD (recebidas: primeiro pagamento)
+  ultimoPagamento?: string; // YYYY-MM-DD — só em recebidas
   bloqueada: boolean;
 }
 
