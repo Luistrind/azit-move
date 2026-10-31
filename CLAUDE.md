@@ -23,7 +23,7 @@ Nunca contrarie sem validação humana explícita:
 3. **A dívida independe do ativo.** Sinistro/furto não extingue obrigação. Parcela não é apagada.
 4. **Webhook nunca é síncrono.** Responde 202 e enfileira via BullMQ.
 5. **Acordo ≠ Novação.** O *Acordo* (recuperação branda) dilui parcelas em atraso sem liquidar o contrato: as parcelas cobertas recebem vínculo de acordo (NÃO o status RENEGOCIADA como marca), e um ItemContratado de origem ACORDO nasce com as parcelas novas. A *Novação* (radical) liquida o contrato inteiro (LIQUIDADO_POR_NOVACAO) e cria um novo. São mecanismos distintos — nunca confundir.
-6. **D+3 bloqueio é absoluto.** Sem exceção. Desbloqueio sempre manual.
+6. **Bloqueio do veículo só a partir da raia "Vencida até 14 dias" (8 dias de atraso), constante única  em ; desbloqueio sempre manual.** (Decisão Luís 2026-10-31; até então o gatilho era D+3.) Sem exceção abaixo do limiar.
 7. **Status calculados não são gravados.** Em aberto/Vence hoje/Vencida são runtime. Só estados reais vão ao banco.
 8. **Titular é o cadastro único.** Cliente e investidor são papéis derivados do que a conta possui — não entidades nem tipos de login.
 9. **Sem cor ou status hardcoded.** Cor vem de `statusColors.ts`, status dos enums de `@azit/types`.
@@ -33,6 +33,7 @@ Nunca contrarie sem validação humana explícita:
 13. **Originação é nativa, em telas.** O dado nasce na tela (Lead → Simulação → Proposta → Análise → Formalização → Ativação), não via API do PopHub (absorvido). Só Asaas e (futuramente) assinatura digital vêm de fora.
 14. **Investidor não vê dados pessoais do cliente.** A visão do investidor é financeira e anonimizada (LGPD + proteção do negócio) — a projeção de dados exclui campos pessoais do cliente na origem.
 15. **Fuso do Brasil, nunca UTC.** Toda data e todo "hoje" do sistema (vencimentos, D-5, D+3, dia da migração, chaves de job diárias) vêm do fuso America/Sao_Paulo, pelos helpers de `packages/utils/src/datas.ts` (`dataHojeBrasil` e afins). Proibido derivar dia de `new Date().toISOString()`, `split('T')[0]` ou aritmética em UTC. Ao tocar um arquivo, corrigir as ocorrências que encontrar (decisão Luís, reafirmada 2026-10-20 após o caso Rafael).
+16. **Uma conta, uma função.** Toda fórmula de negócio (valor presente, encargo de atraso, PMT/Price, fator de prazo semanal/quinzenal, dias entre datas) existe UMA vez, em `packages/utils`, e é chamada de lá por backend e frontend. Proibido reescrever a conta no serviço ou na tela, mesmo "só para exibir"; constante de negócio (ex.: fator de prazo 4,3452) tem uma única fonte. Ao encontrar duplicata, consolidar antes de seguir (decisão Luís, 2026-10-20).
 
 ## Como conduzir
 
