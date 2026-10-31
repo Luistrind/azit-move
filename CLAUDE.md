@@ -23,7 +23,7 @@ Nunca contrarie sem validação humana explícita:
 3. **A dívida independe do ativo.** Sinistro/furto não extingue obrigação. Parcela não é apagada.
 4. **Webhook nunca é síncrono.** Responde 202 e enfileira via BullMQ.
 5. **Acordo ≠ Novação.** O *Acordo* (recuperação branda) dilui parcelas em atraso sem liquidar o contrato: as parcelas cobertas recebem vínculo de acordo (NÃO o status RENEGOCIADA como marca), e um ItemContratado de origem ACORDO nasce com as parcelas novas. A *Novação* (radical) liquida o contrato inteiro (LIQUIDADO_POR_NOVACAO) e cria um novo. São mecanismos distintos — nunca confundir.
-6. **Bloqueio do veículo só a partir da raia "Vencida até 14 dias" (8 dias de atraso), constante única  em ; desbloqueio sempre manual.** (Decisão Luís 2026-10-31; até então o gatilho era D+3.) Sem exceção abaixo do limiar.
+6. **Bloqueio do veículo só a partir da raia "Vencida até 14 dias" (8 dias de atraso), constante única `DIAS_BLOQUEIO_DISPONIVEL` em `packages/utils`; desbloqueio sempre manual.** (Decisão Luís 2026-10-31; até então o gatilho era D+3.) Sem exceção abaixo do limiar.
 7. **Status calculados não são gravados.** Em aberto/Vence hoje/Vencida são runtime. Só estados reais vão ao banco.
 8. **Titular é o cadastro único.** Cliente e investidor são papéis derivados do que a conta possui — não entidades nem tipos de login.
 9. **Sem cor ou status hardcoded.** Cor vem de `statusColors.ts`, status dos enums de `@azit/types`.
