@@ -226,6 +226,7 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
   });
   const queryClient = useQueryClient();
   const [papeis, setPapeis] = useState<string[]>(usuario.papeis);
+  const [nome, setNome] = useState(usuario.nome);
   const [novaSenha, setNovaSenha] = useState('');
   const [motivo, setMotivo] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
@@ -233,6 +234,22 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
   async function recarregar() {
     await queryClient.invalidateQueries({ queryKey: ['usuario-permissoes', usuario.id] });
     onMudou();
+  }
+
+  // Nome: o PATCH /usuarios/:id sempre aceitou `nome`, mas a tela não tinha o campo
+  // (Luís, 31/10: "preciso alterar nome dos usuários e não consigo, mesmo sendo admin").
+  async function salvarNome() {
+    setMsg(null);
+    const limpo = nome.trim();
+    if (limpo.length < 3) return setMsg('Informe o nome completo.');
+    if (limpo === usuario.nome) return setMsg('O nome não mudou.');
+    try {
+      await usuarioService.atualizar(usuario.id, { nome: limpo });
+      setMsg('Nome atualizado.');
+      await recarregar();
+    } catch (e) {
+      setMsg(mensagemErro(e));
+    }
   }
 
   async function salvarPapeis() {
@@ -277,6 +294,12 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
 
   return (
     <div className="flex flex-col gap-[14px] rounded-[12px] p-[14px]" style={{ background: 'var(--surface-muted)', border: '1px solid var(--border)' }}>
+      <div className="flex flex-wrap items-end gap-[8px]">
+        <Campo rotulo="Nome">
+          <input value={nome} onChange={(e) => setNome(e.target.value)} className={`${inputCls} w-full sm:w-[260px]`} style={{ ...inputStyle, background: 'var(--surface)' }} />
+        </Campo>
+        <Botao tamanho="sm" variante="secundaria" onClick={() => void salvarNome()} disabled={nome.trim() === usuario.nome}>Salvar nome</Botao>
+      </div>
       <div className="flex flex-wrap items-end gap-[16px]">
         <div className="flex flex-col gap-[6px]">
           <SeletorPapeis valor={papeis} onChange={setPapeis} />
