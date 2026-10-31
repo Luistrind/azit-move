@@ -450,6 +450,12 @@ export class LegadoMigracaoService {
                 valorPago: paga ? reais(pp.valor) : null,
                 status: paga ? (f.status === 'PAGA_EM_ATRASO' ? 'PAGA_EM_ATRASO' : 'PAGA') : null,
                 faturaId: fatura.id,
+                // Cota do RP na fatura coberta pelo acordo recebe o MESMO vínculo da
+                // parcela do veículo: o valor coberto (esperadoValor) já inclui a cota.
+                // Sem isso ela ficava "Vencida" solta e puxava a régua para D+12 com
+                // meses de atraso fantasma (Saulo 202506-48-RP2 e Ingrid 202510001-RP3,
+                // produção 31/10).
+                acordoId: f.status === 'RENEGOCIADA' ? acordoId : null,
               },
               select: { id: true },
             });
