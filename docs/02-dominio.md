@@ -912,7 +912,7 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 | D+0 | Fatura vence, Asaas registra inadimplência | Automático |
 | D+1 | Bot inicia cobrança via WhatsApp | Automático |
 | D+2 | Segunda tentativa de cobrança via bot | Automático |
-| D+3 | Bloqueio remoto do veículo | Manual (registrado no sistema) |
+| D+3 | ~~Bloqueio remoto do veículo~~ → desde 31/10 o bloqueio fica disponível a partir de **8 dias** (raia "até 14 dias") | Manual (registrado no sistema) |
 | D+10 | Notificação extrajudicial | Manual |
 | D+12 | Início do processo de recuperação do veículo | Manual |
 
@@ -921,15 +921,38 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > **Fuso (Regra 15, 20/10/2026):** D+0, D+1, D+2 e D+3 contam a partir do dia de **Brasília**
 > (`dataHojeBrasil()`), não do dia UTC do servidor — às 22h de Brasília ainda é D+2, não D+3.
 
-> **Decisão 2026-08-31 (Luís, homologação) — o kanban da régua é por DIAS DE ATRASO.** Colunas
-> **1 a 7 dias + "+7 dias"**; o caso se move de coluna conforme o atraso (em **dias de
-> calendário** — venceu ontem = 1 dia, independente da hora) da parcela vencida mais antiga.
-> Os marcos da tabela acima (D+1/D+2 cobrança, D+3 bloqueio, D+10/D+12) continuam valendo como
-> **automação e alçada** — na tela viram subtítulo da coluna correspondente, não colunas
-> próprias. Correção da mesma data: dias de atraso em TODO o sistema (régua, mora da
-> renegociação, conciliação de pagamento) contam por calendário, nunca por diferença de
-> milissegundos ÷ 24h (que zerava o primeiro dia — caso real: contrato vencido ontem sumia
-> da régua).
+> **Decisão 2026-08-31 (Luís, homologação) — o kanban da régua é por DIAS DE ATRASO.** O caso
+> se move de coluna conforme o atraso (em **dias de calendário** — venceu ontem = 1 dia,
+> independente da hora) da parcela vencida mais antiga. Os marcos da tabela acima (D+1/D+2
+> cobrança, D+10/D+12) continuam valendo como **automação e alçada** — na tela viram subtítulo
+> da coluna correspondente, não colunas próprias. Correção da mesma data: dias de atraso em
+> TODO o sistema (régua, mora da renegociação, conciliação de pagamento) contam por calendário,
+> nunca por diferença de milissegundos ÷ 24h (que zerava o primeiro dia — caso real: contrato
+> vencido ontem sumia da régua).
+>
+> **Decisão 2026-10-31 (Luís) — RAIAS em vez de coluna por dia.** As colunas 1…7 + "+7" (31/08)
+> poluíam a tela e não mostravam o que importa. O quadro passa a ter **raias** (fonte única
+> `RAIAS_REGUA`, @azit/utils — Regra 16):
+>
+> | Raia | Dias de atraso | Marco (subtítulo) |
+> |---|---|---|
+> | **Vence hoje** | 0 — parcela vencendo hoje, nada vencido | lembrete de vencimento (§28) |
+> | **Vencida até 7 dias** | 1–7 | cobrança ativa (D+1 · D+2) |
+> | **Vencida até 14 dias** | 8–14 | **bloqueio disponível** |
+> | **Vencida até 21 dias** | 15–21 | notificação extrajudicial |
+> | **Vencida até 30 dias** | 22–30 | recuperação do veículo |
+> | **Vencida até 60 dias** | 31–60 | recuperação do veículo |
+> | **Mais de 60 dias** | 61+ | judicial |
+>
+> "Vence hoje" entra no quadro antes de atrasar (parcela com vencimento no dia de Brasília, fora
+> de acordo); quem tem atraso E parcela de hoje fica na raia do atraso, com a marca "+n hoje".
+> Caso só em intervenção (bloqueado ou em recuperação, sem atraso) fica numa raia extra
+> "Em intervenção", visível só quando existe. **Bloqueio do veículo: disponível a partir da raia
+> "até 14 dias"** (`DIAS_BLOQUEIO_DISPONIVEL` = 8, uma constante só, backend e tela) — o D+3 da
+> tabela acima **deixa de ser o gatilho do bloqueio**; desbloqueio continua sempre manual (Regra 6
+> reescrita nesses termos). Os contadores no topo são um por raia e filtram o quadro; **busca**
+> por nome, CPF, placa ou número do contrato filtra junto. Raia "Mais de 60" e o rótulo dos
+> marcos foram escolha minha para fechar a escala — a validar.
 
 ### 7.7 Acordo (recuperação branda)
 
@@ -2600,25 +2623,41 @@ Genival Silva, Peterson, Genival Oliveira, Edvan) — o total bate, muda só o m
 conhecida: fatura paga em partes conta inteira no mês da última parte (uma data de pagamento por
 fatura).
 
-### 27.2 Por produto — nada chumbado
+### 27.2 Por produto — só produto é linha
 
-A linha de produto **nasce do item da fatura**, nunca de uma lista fixa na tela ou no código
-(`chaveProdutoItemFatura`, @azit/utils — Regra 16):
+**Decisão Luís 31/10:** "Reembolso Parcelado e Proteção são produtos, ok, mas pagamento parcial
+não é produto, entrada de acordo não é produto, intermediária não é produto — tudo isso faz parte
+da Compra Parcelada ou dos demais produtos; acordo e renegociação também. É deixar cada um na
+sua caixinha: a única diferenciação que faz sentido é só a VISÃO, o valor em si é dentro do
+Compra Parcelada." A primeira versão (30/10) tinha linha própria para acordo, entradas,
+intermediária e qualquer serviço pela descrição (apareceu "Pagamento parcial da parcela do dia
+12/10/2026…" como produto).
 
-- `SERVICO` → a própria descrição (sem a marca "(legado)"): Proteção veicular, Taxa de boleto e
-  PIX, Clube de benefícios quando existir…;
-- `PRINCIPAL`/`INTERMEDIARIA` → o contrato da parcela: item de origem ACORDO → **Acordo**;
-  senão o tipo do contrato (`classificarContrato`, §5.2): veículo → **Compra Parcelada**,
-  reembolso → **Reembolso Parcelado**, crédito → **Crédito avulso**, Termo de novação;
-  intermediária tem linha própria; item sem parcela (legado) → a descrição decide;
+A linha nasce do item da fatura (`chaveProdutoItemFatura`, @azit/utils — Regra 16), e cada
+item recebe **produto** (linha) e **parte** (composição):
+
+- `PRINCIPAL`/`INTERMEDIARIA` → o produto é o **tipo do contrato** da parcela
+  (`classificarContrato`, §5.2): veículo → **Compra Parcelada**, reembolso → **Reembolso
+  Parcelado**, crédito → **Crédito avulso**, Termo de novação. Cota de acordo (origem ACORDO,
+  ou "renegociação" na descrição do legado) é a parte **acordo** do MESMO produto; intermediária
+  é a parte **intermediária** da Compra Parcelada;
+- `SERVICO` que é produto do Catálogo → linha própria: **Proteção veicular**, **Taxa de boleto
+  e PIX**, **Clube de benefícios** (identificados pela descrição, numa lista única em
+  `PRODUTOS_SERVICO`; produto de serviço novo no Catálogo entra ali). Qualquer outro serviço
+  (pagamento parcial, pró-rata, avulso do legado) é a parte **avulso** do produto do contrato —
+  Compra Parcelada quando o item não tem parcela;
+- entradas de contrato e de acordo (lançamentos da conta) → partes **entrada de contrato** /
+  **entrada de acordo** da Compra Parcelada — não são linha;
 - `ENCARGO` → **fora do teto** (receita de atraso). Encargo recebido = **excedente pago**
   (`valorPago − valorTotal`), que é o padrão do sistema: a conciliação nativa não cria item de
   encargo, só registra o pago maior; o item ENCARGO do legado é a mesma coisa escrita como
   linha (informativo, não somado). Decisão Luís 30/10: "como está o padrão atual".
 
 Cada linha mostra **recebido (caixa)**, **teto** e a barra de **% do teto já pago** (faturas do
-período pagas ÷ teto); no mês, também o recebido do mês anterior. Entradas de contrato e de acordo
-são linhas próprias, **sem teto** (não são cronograma), no fim da lista.
+período pagas ÷ teto); no mês, também o recebido do mês anterior. Quando a linha tem mais de uma
+parte, mostra embaixo, em texto miúdo, a **composição** ("inclui parcelas R$ x · acordo /
+renegociação R$ y · entradas de contrato R$ z…") — a soma das partes é o valor da linha. Entradas
+não têm teto (não são cronograma): entram só no recebido da Compra Parcelada.
 
 ### 27.3 Mês a mês, comparação e projeção
 

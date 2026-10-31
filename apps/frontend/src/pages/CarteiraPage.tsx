@@ -289,6 +289,16 @@ export function CarteiraPage() {
                     ) : (
                       <span className="col-span-2 text-[11px] sm:col-span-1" style={{ color: 'var(--text-muted)' }}>sem teto</span>
                     )}
+                    {/* Composição (decisão Luís 31/10): acordo, entradas, intermediárias e
+                        avulsos NÃO são produto — o valor já está na linha; aqui só a visão. */}
+                    {p.composicao.length > 1 && (
+                      <div className="col-span-2 flex flex-wrap gap-x-[10px] gap-y-[2px] text-[11px] sm:col-span-4" style={{ color: 'var(--text-muted)' }}>
+                        <span>{p.recebido ? 'inclui' : 'teto inclui'}</span>
+                        {p.composicao.map((c) => (
+                          <span key={c.parte}>{c.rotulo.toLowerCase()} <b className="font-display font-semibold tabular-nums" style={{ color: 'var(--text-body)' }}>{semCentavos(p.recebido ? c.recebido : c.teto)}</b></span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}

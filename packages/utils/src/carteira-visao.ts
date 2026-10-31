@@ -20,10 +20,15 @@
 //   · VENCIDAS = ABERTA | FECHADA com vencimento < hoje (fuso Brasil);
 //   · A VENCER = ABERTA | FECHADA com vencimento ≥ hoje (inclui "vence hoje");
 //   · clientes = contas distintas em cada conjunto;
-//   · POR PRODUTO: a linha nasce do item da fatura (`chaveProdutoItemFatura`),
-//     nunca de uma lista fixa — produto novo no Catálogo aparece sozinho. Cada
-//     linha tem teto e pago do período (por vencimento) e recebido (caixa);
-//     entradas de contrato/acordo são linhas próprias, sem teto.
+//   · POR PRODUTO (revisão Luís 31/10): só PRODUTO vira linha — os tipos de
+//     contrato (Compra Parcelada, Reembolso Parcelado, Crédito avulso, Termo de
+//     novação) e os serviços do Catálogo (Proteção veicular, Taxa de boleto e
+//     PIX, Clube de benefícios). Acordo/renegociação, entrada de contrato,
+//     entrada de acordo, intermediária e pagamento parcial/avulso NÃO são
+//     produto: somam DENTRO do produto a que pertencem (por padrão a Compra
+//     Parcelada) e aparecem só como COMPOSIÇÃO da linha ("deixar a visão, o
+//     valor em si é dentro do compra parcelada"). Cada linha tem teto e pago do
+//     período (por vencimento) e recebido (caixa).
 // ============================================================
 import { TipoContrato } from './tipo-contrato';
 import { diasCalendarioEntre, somarDiasISO } from './datas';
@@ -62,12 +67,34 @@ export interface RecebimentoVisao {
   itens?: ItemFaturaVisao[]; // fatura: composição, para o "por produto"
 }
 
+// Parte de um produto: como o dinheiro daquele produto se apresenta. NÃO é
+// produto (decisão 31/10) — só composição da linha, para leitura.
+export type ParteProduto = 'parcela' | 'acordo' | 'intermediaria' | 'entrada_contrato' | 'entrada_acordo' | 'avulso';
+
+export const ROTULO_PARTE: Record<ParteProduto, string> = {
+  parcela: 'Parcelas',
+  acordo: 'Acordo / renegociação',
+  intermediaria: 'Intermediárias (entrada diluída)',
+  entrada_contrato: 'Entradas de contrato',
+  entrada_acordo: 'Entradas de acordo',
+  avulso: 'Pagamentos parciais e avulsos',
+};
+
+export interface ParteVisao {
+  parte: ParteProduto;
+  rotulo: string;
+  teto: number; // centavos
+  pagoDoPeriodo: number; // centavos
+  recebido: number; // centavos
+}
+
 export interface ProdutoVisao {
   chave: string;
   rotulo: string;
   teto: number; // centavos — soma do item nas faturas do período (por vencimento)
   pagoDoPeriodo: number; // centavos — soma do item nas faturas do período já pagas
   recebido: number; // centavos — CAIXA: soma do item nos recebimentos do período (qualquer vencimento)
+  composicao: ParteVisao[]; // só as partes com valor, na ordem de ROTULO_PARTE
 }
 
 export interface ResumoEstado {
@@ -129,50 +156,65 @@ export interface ChaveProduto {
   chave: string;
   rotulo: string;
   foraDoTeto: boolean; // encargo: receita de atraso, não compõe o teto
+  parte: ParteProduto; // como o valor se apresenta dentro do produto (composição)
 }
 
-const ROTULO_TIPO_CONTRATO: Record<TipoContrato, ChaveProduto> = {
-  veiculo: { chave: 'compra_parcelada', rotulo: 'Compra Parcelada', foraDoTeto: false },
-  reembolso: { chave: 'reembolso_parcelado', rotulo: 'Reembolso Parcelado', foraDoTeto: false },
-  credito: { chave: 'credito_avulso', rotulo: 'Crédito avulso', foraDoTeto: false },
-  termo_novacao: { chave: 'termo_novacao', rotulo: 'Termo de novação', foraDoTeto: false },
-};
-const ACORDO: ChaveProduto = { chave: 'acordo', rotulo: 'Acordo (renegociação)', foraDoTeto: false };
-
-// Linhas das entradas avulsas no "por produto" (sem teto — não são cronograma).
-const PRODUTO_ENTRADA: Record<Exclude<OrigemRecebimento, 'fatura'>, ChaveProduto> = {
-  entrada_contrato: { chave: 'entrada_contrato', rotulo: 'Entrada de contrato', foraDoTeto: false },
-  entrada_acordo: { chave: 'entrada_acordo', rotulo: 'Entrada de acordo', foraDoTeto: false },
+const ROTULO_TIPO_CONTRATO: Record<TipoContrato, { chave: string; rotulo: string }> = {
+  veiculo: { chave: 'compra_parcelada', rotulo: 'Compra Parcelada' },
+  reembolso: { chave: 'reembolso_parcelado', rotulo: 'Reembolso Parcelado' },
+  credito: { chave: 'credito_avulso', rotulo: 'Crédito avulso' },
+  termo_novacao: { chave: 'termo_novacao', rotulo: 'Termo de novação' },
 };
 
-function slug(texto: string): string {
-  return texto
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
+// Serviços que SÃO produto do Catálogo (linha própria). Fonte única desta
+// identificação: a descrição do item é livre (vem do Catálogo/legado), por isso
+// o casamento é por padrão. Serviço que não casa aqui é lançamento avulso
+// (ex.: "Pagamento parcial da parcela do dia…") e soma dentro do produto.
+const PRODUTOS_SERVICO: { chave: string; rotulo: string; casa: RegExp }[] = [
+  { chave: 'protecao_veicular', rotulo: 'Proteção veicular', casa: /prote[cç][aã]o/i },
+  { chave: 'taxa_de_boleto_e_pix', rotulo: 'Taxa de boleto e PIX', casa: /taxa/i },
+  { chave: 'clube_de_beneficios', rotulo: 'Clube de benefícios', casa: /clube/i },
+];
+
+const ENCARGOS: ChaveProduto = { chave: 'encargos', rotulo: 'Encargos de atraso', foraDoTeto: true, parte: 'avulso' };
+
+function produtoDoContrato(tipo: TipoContrato | null | undefined, parte: ParteProduto): ChaveProduto {
+  const base = ROTULO_TIPO_CONTRATO[tipo ?? 'veiculo'];
+  return { ...base, foraDoTeto: false, parte };
 }
 
-// Produto de um item da fatura. Serviço (proteção, taxa…) é identificado pela
-// própria descrição — sem lista fixa; "(legado)" é só marca de origem e cai.
-// Principal/intermediária seguem o contrato da parcela: cota de acordo (item de
-// origem ACORDO) → acordo; senão o tipo do contrato (`classificarContrato`).
-// Sem contexto (item sem parcela), a descrição decide.
+// Produto (linha) e parte (composição) de um item da fatura — decisão 31/10:
+//   · SERVICO que é produto do Catálogo (proteção, taxa, clube) → linha própria;
+//     qualquer outro serviço é avulso e soma no produto do contrato (Compra
+//     Parcelada quando o item não tem parcela);
+//   · PRINCIPAL/INTERMEDIARIA seguem o contrato da parcela (`classificarContrato`):
+//     cota de acordo (origem ACORDO, ou descrição de renegociação no legado) é
+//     parte "acordo" DO MESMO produto, nunca linha própria; intermediária é parte
+//     "intermediaria" da Compra Parcelada;
+//   · ENCARGO fica fora do teto (receita de atraso).
 export function chaveProdutoItemFatura(item: ItemFaturaVisao): ChaveProduto {
   const tipo = String(item.tipo).toUpperCase();
   const descricao = (item.descricao ?? '').replace(/\s*\(legado\)\s*$/i, '').trim();
-  if (tipo === 'ENCARGO') return { chave: 'encargos', rotulo: 'Encargos de atraso', foraDoTeto: true };
-  if (tipo === 'SERVICO') return { chave: slug(descricao) || 'servico', rotulo: descricao || 'Serviço', foraDoTeto: false };
-  if (tipo === 'INTERMEDIARIA') return { chave: 'intermediaria', rotulo: 'Intermediária (entrada diluída)', foraDoTeto: false };
-  if (tipo === 'ENTRADA') return { chave: 'entrada', rotulo: 'Entrada', foraDoTeto: false };
+  if (tipo === 'ENCARGO') return ENCARGOS;
+  if (tipo === 'SERVICO') {
+    const prod = PRODUTOS_SERVICO.find((p) => p.casa.test(descricao));
+    if (prod) return { chave: prod.chave, rotulo: prod.rotulo, foraDoTeto: false, parte: 'parcela' };
+    return produtoDoContrato(item.tipoContrato, 'avulso');
+  }
+  if (tipo === 'INTERMEDIARIA') return produtoDoContrato(item.tipoContrato ?? 'veiculo', 'intermediaria');
+  if (tipo === 'ENTRADA') return produtoDoContrato(item.tipoContrato ?? 'veiculo', 'entrada_contrato');
   // PRINCIPAL
-  if (String(item.origemItem ?? '').toUpperCase() === 'ACORDO') return ACORDO;
-  if (item.tipoContrato) return ROTULO_TIPO_CONTRATO[item.tipoContrato];
-  if (/renegocia|acordo/i.test(descricao)) return ACORDO;
-  if (/reembolso/i.test(descricao)) return ROTULO_TIPO_CONTRATO.reembolso;
-  return ROTULO_TIPO_CONTRATO.veiculo;
+  const acordo = String(item.origemItem ?? '').toUpperCase() === 'ACORDO' || (!item.tipoContrato && /renegocia|acordo/i.test(descricao));
+  if (item.tipoContrato) return produtoDoContrato(item.tipoContrato, acordo ? 'acordo' : 'parcela');
+  if (/reembolso/i.test(descricao)) return produtoDoContrato('reembolso', 'parcela');
+  return produtoDoContrato('veiculo', acordo ? 'acordo' : 'parcela');
 }
+
+// Entradas avulsas (lançamentos da conta) são parte da Compra Parcelada — não produto.
+const PRODUTO_ENTRADA: Record<Exclude<OrigemRecebimento, 'fatura'>, ChaveProduto> = {
+  entrada_contrato: produtoDoContrato('veiculo', 'entrada_contrato'),
+  entrada_acordo: produtoDoContrato('veiculo', 'entrada_acordo'),
+};
 
 function resumo(): ResumoEstado & { contas: Set<string> } {
   return { valor: 0, faturas: 0, clientes: 0, contas: new Set<string>() };
@@ -181,16 +223,27 @@ function fechar(r: ResumoEstado & { contas: Set<string> }): ResumoEstado {
   return { valor: r.valor, faturas: r.faturas, clientes: r.contas.size };
 }
 
+const ORDEM_PARTES = Object.keys(ROTULO_PARTE) as ParteProduto[];
+function ordenarPartes(partes: ParteVisao[]): ParteVisao[] {
+  return partes
+    .filter((c) => c.teto || c.pagoDoPeriodo || c.recebido)
+    .sort((a, b) => ORDEM_PARTES.indexOf(a.parte) - ORDEM_PARTES.indexOf(b.parte));
+}
+
 const SEM_CAIXA: CaixaVisao = { recebimentos: [], periodo: { de: '0000-00-00', ate: '9999-99-99' } };
 
 export function agregarVisaoCarteira(faturas: FaturaVisao[], hoje: string, caixa: CaixaVisao = SEM_CAIXA): VisaoCarteira {
   const teto = resumo(), pag = resumo(), venc = resumo(), aven = resumo();
   let valorPago = 0;
   const produtos = new Map<string, ProdutoVisao>();
-  const linhaDe = (p: ChaveProduto): ProdutoVisao => {
+  // Soma no produto E na parte (composição): a linha é o produto; a parte só explica.
+  const somar = (p: ChaveProduto, campo: 'teto' | 'pagoDoPeriodo' | 'recebido', valor: number) => {
     let linha = produtos.get(p.chave);
-    if (!linha) { linha = { chave: p.chave, rotulo: p.rotulo, teto: 0, pagoDoPeriodo: 0, recebido: 0 }; produtos.set(p.chave, linha); }
-    return linha;
+    if (!linha) { linha = { chave: p.chave, rotulo: p.rotulo, teto: 0, pagoDoPeriodo: 0, recebido: 0, composicao: [] }; produtos.set(p.chave, linha); }
+    linha[campo] += valor;
+    let parte = linha.composicao.find((c) => c.parte === p.parte);
+    if (!parte) { parte = { parte: p.parte, rotulo: ROTULO_PARTE[p.parte], teto: 0, pagoDoPeriodo: 0, recebido: 0 }; linha.composicao.push(parte); }
+    parte[campo] += valor;
   };
 
   // 1) Por vencimento: teto e seu progresso (pagas / vencidas / a vencer).
@@ -203,9 +256,8 @@ export function agregarVisaoCarteira(faturas: FaturaVisao[], hoje: string, caixa
     for (const it of f.itens) {
       const p = chaveProdutoItemFatura(it);
       if (p.foraDoTeto) continue;
-      const linha = linhaDe(p);
-      linha.teto += it.valor;
-      if (estado === 'recebida') linha.pagoDoPeriodo += it.valor;
+      somar(p, 'teto', it.valor);
+      if (estado === 'recebida') somar(p, 'pagoDoPeriodo', it.valor);
     }
   }
 
@@ -228,11 +280,11 @@ export function agregarVisaoCarteira(faturas: FaturaVisao[], hoje: string, caixa
       for (const it of r.itens ?? []) {
         const p = chaveProdutoItemFatura(it);
         if (p.foraDoTeto) continue;
-        linhaDe(p).recebido += it.valor;
+        somar(p, 'recebido', it.valor);
       }
     } else {
       rec.entradas += r.valor;
-      linhaDe(PRODUTO_ENTRADA[r.origem]).recebido += r.valor;
+      somar(PRODUTO_ENTRADA[r.origem], 'recebido', r.valor);
     }
   }
   const { contas, ...recebido } = rec;
@@ -244,8 +296,11 @@ export function agregarVisaoCarteira(faturas: FaturaVisao[], hoje: string, caixa
     vencidas: fechar(venc),
     aVencer: fechar(aven),
     recebido,
-    // Teto desc; linhas sem teto (entradas, produto só recebido) depois, por recebido desc.
-    porProduto: [...produtos.values()].sort((a, b) => (b.teto - a.teto) || (b.recebido - a.recebido)),
+    // Teto desc; produto só recebido (sem teto) depois, por recebido desc.
+    // Composição na ordem de ROTULO_PARTE (parcelas primeiro), só partes com valor.
+    porProduto: [...produtos.values()]
+      .map((l) => ({ ...l, composicao: ordenarPartes(l.composicao) }))
+      .sort((a, b) => (b.teto - a.teto) || (b.recebido - a.recebido)),
     encargosRecebidos: recebido.encargos,
   };
 }

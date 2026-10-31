@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatCurrency, resolverEstagioRegua } from '@azit/utils';
+import { formatCurrency, RAIAS_REGUA, resolverRaiaRegua, type RaiaRegua } from '@azit/utils';
 import { reguaService, type ReguaItem } from '../services/regua.service';
 import { operacoesService } from '../services/operacoes.service';
 import { Modal } from '../components/Modal';
@@ -14,36 +14,46 @@ import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
 import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 import { dataBR } from '../lib/datas';
 
-// Kanban por DIAS DE ATRASO (decisão Luís 31/08): colunas 1 a 7 dias + "+7";
-// o caso se MOVE de coluna conforme o atraso da parcela vencida mais antiga.
-// Os marcos operacionais da régua (cobrança D+1/D+2, bloqueio D+3, extrajudicial
-// D+10, recuperação D+12) continuam como automação — aqui viram o subtítulo da
-// coluna, e a cor vem do estágio correspondente (statusColors, Regra 9).
-// Layout v2 (doc 03 §11, 30/10): contadores por estágio são cartões clicáveis
-// que filtram o quadro; no celular as colunas empilham (sem rolagem lateral).
-const COLUNAS_DIAS: { chave: string; rotulo: string; marco: string; estagio: string; corresponde: (d: number) => boolean }[] = [
-  { chave: 'd1', rotulo: '1 dia', marco: 'Cobrança ativa (D+1)', estagio: 'd1', corresponde: (d) => d === 1 },
-  { chave: 'd2', rotulo: '2 dias', marco: '2ª tentativa (D+2)', estagio: 'd2', corresponde: (d) => d === 2 },
-  { chave: 'd3', rotulo: '3 dias', marco: 'Bloqueio disponível (D+3)', estagio: 'd3a7', corresponde: (d) => d === 3 },
-  { chave: 'd4', rotulo: '4 dias', marco: '', estagio: 'd3a7', corresponde: (d) => d === 4 },
-  { chave: 'd5', rotulo: '5 dias', marco: '', estagio: 'd3a7', corresponde: (d) => d === 5 },
-  { chave: 'd6', rotulo: '6 dias', marco: '', estagio: 'd3a7', corresponde: (d) => d === 6 },
-  { chave: 'd7', rotulo: '7 dias', marco: '', estagio: 'd3a7', corresponde: (d) => d === 7 },
-  { chave: 'd7mais', rotulo: '+7 dias', marco: 'Extrajudicial (D+10) · Recuperação (D+12)', estagio: 'd7mais', corresponde: (d) => d > 7 },
+// Kanban por RAIAS de atraso (decisão Luís 31/10, doc 02 §7.6): "Vence hoje",
+// vencida até 7 / 14 / 21 / 30 / 60 dias e mais de 60 — a coluna por dia (1…7,
+// +7, de 31/08) poluía e não mostrava o que importa. As raias vêm de
+// `RAIAS_REGUA` (@azit/utils, Regra 16): o caso se MOVE de raia conforme o
+// atraso da parcela vencida mais antiga; "Vence hoje" entra antes de atrasar.
+// Os marcos da régua (cobrança D+1/D+2, extrajudicial, recuperação) são o
+// subtítulo da raia; a cor vem do estágio correspondente (statusColors, Regra 9).
+// Bloqueio do veículo disponível a partir da raia "até 14 dias" (backend decide:
+// `bloqueioDisponivel` no item). Cartões no topo = contadores por raia que
+// filtram o quadro; busca por nome/CPF/placa/contrato filtra junto.
+// Caso só em intervenção (bloqueado/recuperação, sem atraso) fica na raia extra
+// "Em intervenção", visível só quando existe.
+type ChaveColuna = RaiaRegua['chave'] | 'intervencao';
+const RAIA_INTERVENCAO = { chave: 'intervencao' as const, rotulo: 'Em intervenção', marco: 'bloqueado ou em recuperação, sem atraso', estagio: 'D+3' as const };
+const COLUNAS: { chave: ChaveColuna; rotulo: string; marco: string; estagio: RaiaRegua['estagio'] }[] = [
+  ...RAIAS_REGUA.map((r) => ({ chave: r.chave, rotulo: r.rotulo, marco: r.marco, estagio: r.estagio })),
+  RAIA_INTERVENCAO,
 ];
-// Dia representativo da coluna p/ resolver a cor pelo estágio (statusColors).
-const DIA_COR: Record<string, number> = { d1: 1, d2: 2, d3: 3, d4: 4, d5: 5, d6: 6, d7: 7, d7mais: 12 };
-
-// Estágios da régua para os cartões-indicadores (agrupam as colunas do quadro).
-const ESTAGIOS: { chave: string; rotulo: string; detalhe: string; tom: TomIndicador }[] = [
-  { chave: 'd1', rotulo: '1 dia de atraso', detalhe: 'cobrança ativa (D+1)', tom: 'warn' },
-  { chave: 'd2', rotulo: '2 dias', detalhe: '2ª tentativa (D+2)', tom: 'warn' },
-  { chave: 'd3a7', rotulo: '3 a 7 dias', detalhe: 'bloqueio disponível (D+3)', tom: 'bad' },
-  { chave: 'd7mais', rotulo: 'Mais de 7 dias', detalhe: 'extrajudicial (D+10) · recuperação (D+12)', tom: 'neutro' },
-];
+function colunaDoItem(i: ReguaItem): ChaveColuna | null {
+  const raia = resolverRaiaRegua(i.diasAtraso, i.parcelasVenceHoje > 0);
+  if (raia) return raia.chave;
+  return i.bloqueado || i.emRecuperacao ? 'intervencao' : null;
+}
+const TOM_COLUNA: Record<ChaveColuna, TomIndicador> = {
+  hoje: 'neutro', ate7: 'warn', ate14: 'bad', ate21: 'bad', ate30: 'bad', ate60: 'bad', mais60: 'neutro', intervencao: 'neutro',
+};
+function normalizar(t: string): string {
+  return t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+function casaBusca(i: ReguaItem, termo: string): boolean {
+  if (!termo) return true;
+  const alvo = normalizar([i.titular.nome, i.titular.cpfCnpj, i.numero, i.ativo?.placa ?? '', i.ativo?.modelo ?? ''].join(' '));
+  const digitos = termo.replace(/\D/g, '');
+  return normalizar(termo).split(/\s+/).filter(Boolean).every((t) => alvo.includes(t)) || (digitos.length >= 3 && i.titular.cpfCnpj.replace(/\D/g, '').includes(digitos));
+}
 
 function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem; onAcao: (acao: 'bloquear' | 'desbloquear', item: ReguaItem) => void; onAbrir: () => void; ocupado: boolean; podeOperar: boolean }) {
-  const podeBloquear = podeOperar && !item.bloqueado && item.diasAtraso >= 3;
+  // Bloqueio disponível a partir da raia "até 14 dias" — quem decide é o backend (31/10).
+  const podeBloquear = podeOperar && !item.bloqueado && item.bloqueioDisponivel;
+  const soHoje = item.diasAtraso === 0 && item.parcelasVenceHoje > 0;
   return (
     <div
       onClick={onAbrir}
@@ -75,10 +85,11 @@ function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem;
       </div>
       <div className="flex items-center justify-between">
         <div className="font-display text-[13px] font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>
-          {formatCurrency(item.valorVencido)}
+          {formatCurrency(soHoje ? item.valorVenceHoje : item.valorVencido)}
         </div>
         <div className="text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
-          {item.diasAtraso}d · {item.parcelasVencidas}p
+          {soHoje ? `vence hoje · ${item.parcelasVenceHoje}p` : `${item.diasAtraso}d · ${item.parcelasVencidas}p`}
+          {!soHoje && item.parcelasVenceHoje > 0 ? ` · +${item.parcelasVenceHoje} hoje` : ''}
         </div>
       </div>
       {(podeBloquear || (item.bloqueado && podeOperar)) && (
@@ -89,7 +100,7 @@ function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem;
           onClick={(e) => { e.stopPropagation(); onAcao(item.bloqueado ? 'desbloquear' : 'bloquear', item); }}
           disabled={ocupado}
         >
-          {item.bloqueado ? 'Desbloquear' : 'Bloquear veículo (D+3)'}
+          {item.bloqueado ? 'Desbloquear' : 'Bloquear veículo'}
         </Botao>
       )}
     </div>
@@ -110,7 +121,9 @@ function CasoModal({ item, onClose, onRenegociar }: { item: ReguaItem; onClose: 
     <Modal open onClose={onClose} title={`Caso de cobrança — ${item.titular.nome}`}>
       <div className="flex flex-col gap-[10px]">
         <div className="flex flex-wrap items-center gap-[8px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
-          <span className="rounded-full px-[10px] py-[2px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{item.estagio} · {item.diasAtraso} dia(s) de atraso</span>
+          <span className="rounded-full px-[10px] py-[2px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
+            {item.diasAtraso > 0 ? `${resolverRaiaRegua(item.diasAtraso)?.rotulo ?? 'Vencida'} · ${item.diasAtraso} dia(s) de atraso` : item.parcelasVenceHoje > 0 ? 'Vence hoje' : 'Em intervenção'}
+          </span>
           <span>{item.ativo?.modelo ?? '—'} · {item.ativo?.placa ?? 'sem placa'} · contrato {item.numero}</span>
           {item.bloqueado && <span className="rounded-full px-[10px] py-[2px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>Veículo bloqueado</span>}
         </div>
@@ -163,10 +176,11 @@ export function ReguaPage() {
   const [ocupado, setOcupado] = useState(false);
   const [caso, setCaso] = useState<ReguaItem | null>(null);
   const [renegociando, setRenegociando] = useState<ReguaItem | null>(null);
-  // Bloqueio pede confirmação (Regra 6: D+3 é absoluto e o desbloqueio é sempre manual).
+  // Bloqueio pede confirmação (disponível a partir da raia "até 14 dias"; o desbloqueio é sempre manual).
   const [bloqueando, setBloqueando] = useState<ReguaItem | null>(null);
-  // Estágio selecionado nos cartões (null = quadro inteiro).
-  const [estagio, setEstagio] = useState<string | null>(null);
+  // Raia selecionada nos cartões (null = quadro inteiro) e busca livre (31/10).
+  const [raia, setRaia] = useState<ChaveColuna | null>(null);
+  const [busca, setBusca] = useState('');
   const pode = usePodeRole();
   const podeOperar = pode(ROLE_OPERACAO);
   const regua = useQuery({ queryKey: ['regua'], queryFn: () => reguaService.listar() });
@@ -184,39 +198,50 @@ export function ReguaPage() {
     }
   }
 
-  const itens = regua.data ?? [];
-  const colunasDoEstagio = (chave: string) => COLUNAS_DIAS.filter((c) => c.estagio === chave);
-  const itensDoEstagio = (chave: string) => itens.filter((i) => colunasDoEstagio(chave).some((c) => c.corresponde(i.diasAtraso)));
-  const colunasVisiveis = estagio ? colunasDoEstagio(estagio) : COLUNAS_DIAS;
+  const todos = regua.data ?? [];
+  const itens = todos.filter((i) => casaBusca(i, busca.trim()));
+  const itensDaColuna = (chave: ChaveColuna) => itens.filter((i) => colunaDoItem(i) === chave);
+  // Raia "Em intervenção" só aparece quando tem alguém.
+  const colunasComDados = COLUNAS.filter((c) => c.chave !== 'intervencao' || todos.some((i) => colunaDoItem(i) === 'intervencao'));
+  const colunasVisiveis = raia ? colunasComDados.filter((c) => c.chave === raia) : colunasComDados;
 
   return (
     <div className="flex h-full flex-col gap-[14px]">
-      {/* Indicadores por estágio — clicar filtra o quadro ("todo dado é link"). */}
-      <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-2 lg:grid-cols-4">
-        {ESTAGIOS.map((e) => {
-          const doEstagio = itensDoEstagio(e.chave);
-          const valor = doEstagio.reduce((s, i) => s + i.valorVencido, 0);
+      {/* Contadores por raia — clicar filtra o quadro ("todo dado é link"). */}
+      <div className="grid grid-cols-2 gap-[8px] sm:grid-cols-4 xl:grid-cols-7">
+        {colunasComDados.map((c) => {
+          const daRaia = itensDaColuna(c.chave);
+          const valor = daRaia.reduce((s, i) => s + (c.chave === 'hoje' ? i.valorVenceHoje : i.valorVencido), 0);
           return (
             <CartaoIndicador
-              key={e.chave}
-              rotulo={e.rotulo}
-              tom={e.tom}
-              valor={regua.data ? String(doEstagio.length) : '—'}
-              detalhe={regua.data && doEstagio.length > 0 ? `${formatCurrency(valor)} vencido · ${e.detalhe}` : e.detalhe}
-              onClick={() => setEstagio((atual) => (atual === e.chave ? null : e.chave))}
-              ativo={estagio === e.chave}
+              key={c.chave}
+              rotulo={c.rotulo}
+              tom={TOM_COLUNA[c.chave]}
+              valor={regua.data ? String(daRaia.length) : '—'}
+              detalhe={regua.data && daRaia.length > 0 ? `${formatCurrency(valor)} · ${c.marco}` : c.marco}
+              onClick={() => setRaia((atual) => (atual === c.chave ? null : c.chave))}
+              ativo={raia === c.chave}
             />
           );
         })}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-[8px]">
+      <div className="flex flex-wrap items-center gap-[8px]">
+        <input
+          type="search"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar por nome, CPF, placa ou contrato"
+          aria-label="Buscar na régua"
+          className="min-h-[30px] min-w-[200px] flex-1 rounded-full border px-[12px] text-[12.5px] sm:max-w-[320px]"
+          style={{ background: 'var(--surface)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
+        />
         <div className="text-[12.5px]" style={{ color: 'var(--text-body)' }}>
-          {itens.length} contrato(s) em régua de cobrança
-          {estagio && (
+          {itens.length}{busca.trim() && itens.length !== todos.length ? ` de ${todos.length}` : ''} contrato(s) em régua de cobrança
+          {raia && (
             <>
               {' · '}
-              <button type="button" onClick={() => setEstagio(null)} className="font-semibold" style={{ color: 'var(--accent)' }}>
+              <button type="button" onClick={() => setRaia(null)} className="font-semibold" style={{ color: 'var(--accent)' }}>
                 ver o quadro inteiro
               </button>
             </>
@@ -242,13 +267,12 @@ export function ReguaPage() {
           vazias somem no celular para não virar uma fila de "Vazio"). */}
       <div className="flex flex-col gap-[10px] md:flex-1 md:flex-row md:gap-[13px] md:overflow-x-auto md:pb-[8px]">
         {colunasVisiveis.map((col) => {
-          const cards = itens.filter((i) => col.corresponde(i.diasAtraso));
-          const estagioCor = resolverEstagioRegua(DIA_COR[col.chave]);
-          const cor = (estagioCor && REGUA_STAGE_COLORS[estagioCor]) || 'var(--text-label)';
+          const cards = itensDaColuna(col.chave);
+          const cor = (col.estagio && REGUA_STAGE_COLORS[col.estagio]) || 'var(--text-label)';
           return (
             <div
               key={col.chave}
-              className={`${cards.length === 0 ? 'hidden md:flex' : 'flex'} flex-col rounded-card md:w-[200px] md:flex-none`}
+              className={`${cards.length === 0 ? 'hidden md:flex' : 'flex'} flex-col rounded-card md:w-[190px] md:flex-none`}
               style={{ background: 'var(--surface-muted)', border: '1px solid var(--border)' }}
             >
               <div className="flex items-center gap-[8px] px-[13px] py-[11px]" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -282,9 +306,9 @@ export function ReguaPage() {
             </div>
           );
         })}
-        {!regua.isLoading && (estagio ? itensDoEstagio(estagio).length === 0 : itens.length === 0) && (
+        {!regua.isLoading && (raia ? itensDaColuna(raia).length === 0 : itens.length === 0) && (
           <div className="rounded-card px-[18px] py-[24px] text-center text-[12.5px] md:hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-            {estagio ? 'Nenhum contrato neste estágio.' : 'Nenhum contrato em régua de cobrança.'}
+            {busca.trim() ? 'Nada encontrado para a busca.' : raia ? 'Nenhum contrato nesta raia.' : 'Nenhum contrato em régua de cobrança.'}
           </div>
         )}
       </div>

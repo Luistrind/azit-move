@@ -36,25 +36,31 @@ describe('estadoFaturaVisao — estado runtime da fatura na visão (doc 02 §27)
   });
 });
 
-describe('chaveProdutoItemFatura — a linha nasce do item, não de lista fixa', () => {
-  it('serviço é identificado pela descrição, sem a marca (legado)', () => {
-    expect(chaveProdutoItemFatura({ tipo: 'SERVICO', descricao: 'Proteção veicular (legado)', valor: 5000 })).toEqual({ chave: 'protecao_veicular', rotulo: 'Proteção veicular', foraDoTeto: false });
+describe('chaveProdutoItemFatura — só produto vira linha; o resto é composição (decisão 31/10)', () => {
+  it('serviço do Catálogo é linha própria, sem a marca (legado)', () => {
+    expect(chaveProdutoItemFatura({ tipo: 'SERVICO', descricao: 'Proteção veicular (legado)', valor: 5000 })).toEqual({ chave: 'protecao_veicular', rotulo: 'Proteção veicular', foraDoTeto: false, parte: 'parcela' });
+    expect(chaveProdutoItemFatura({ tipo: 'SERVICO', descricao: 'Taxa de boleto e PIX', valor: 500 }).chave).toBe('taxa_de_boleto_e_pix');
     expect(chaveProdutoItemFatura({ tipo: 'servico', descricao: 'Clube de benefícios', valor: 5000 }).chave).toBe('clube_de_beneficios');
   });
-  it('principal segue o contrato: veículo, reembolso, crédito; cota de acordo vence o tipo', () => {
-    expect(chaveProdutoItemFatura({ tipo: 'PRINCIPAL', descricao: 'x', valor: 1, tipoContrato: 'veiculo' }).chave).toBe('compra_parcelada');
+  it('serviço que não é produto (pagamento parcial, avulso do legado) soma na Compra Parcelada como avulso', () => {
+    const parcial = chaveProdutoItemFatura({ tipo: 'SERVICO', descricao: 'Pagamento parcial da parcela do dia 12/10/2026, com o restante agendado para o dia 27/10/2026.', valor: 60000 });
+    expect(parcial).toMatchObject({ chave: 'compra_parcelada', parte: 'avulso' });
+    expect(chaveProdutoItemFatura({ tipo: 'SERVICO', descricao: 'Pró-rata 2 diárias', valor: 1, tipoContrato: 'reembolso' })).toMatchObject({ chave: 'reembolso_parcelado', parte: 'avulso' });
+  });
+  it('principal segue o contrato: veículo, reembolso, crédito; cota de acordo fica no MESMO produto como parte "acordo"', () => {
+    expect(chaveProdutoItemFatura({ tipo: 'PRINCIPAL', descricao: 'x', valor: 1, tipoContrato: 'veiculo' })).toMatchObject({ chave: 'compra_parcelada', parte: 'parcela' });
     expect(chaveProdutoItemFatura({ tipo: 'PRINCIPAL', descricao: 'x', valor: 1, tipoContrato: 'reembolso' }).chave).toBe('reembolso_parcelado');
     expect(chaveProdutoItemFatura({ tipo: 'PRINCIPAL', descricao: 'x', valor: 1, tipoContrato: 'credito' }).chave).toBe('credito_avulso');
-    expect(chaveProdutoItemFatura({ tipo: 'PRINCIPAL', descricao: 'x', valor: 1, tipoContrato: 'veiculo', origemItem: 'ACORDO' }).chave).toBe('acordo');
+    expect(chaveProdutoItemFatura({ tipo: 'PRINCIPAL', descricao: 'x', valor: 1, tipoContrato: 'veiculo', origemItem: 'ACORDO' })).toMatchObject({ chave: 'compra_parcelada', parte: 'acordo' });
   });
   it('sem contexto de parcela, a descrição decide (legado migrado)', () => {
-    expect(chaveProdutoItemFatura({ tipo: 'PRINCIPAL', descricao: 'Renegociação parcela 2/4', valor: 1 }).chave).toBe('acordo');
+    expect(chaveProdutoItemFatura({ tipo: 'PRINCIPAL', descricao: 'Renegociação parcela 2/4', valor: 1 })).toMatchObject({ chave: 'compra_parcelada', parte: 'acordo' });
     expect(chaveProdutoItemFatura({ tipo: 'PRINCIPAL', descricao: 'Reembolso Parcelado · IPVA 2/3', valor: 1 }).chave).toBe('reembolso_parcelado');
-    expect(chaveProdutoItemFatura({ tipo: 'PRINCIPAL', descricao: 'Parcela 3/48', valor: 1 }).chave).toBe('compra_parcelada');
+    expect(chaveProdutoItemFatura({ tipo: 'PRINCIPAL', descricao: 'Parcela 3/48', valor: 1 })).toMatchObject({ chave: 'compra_parcelada', parte: 'parcela' });
   });
-  it('encargo fica fora do teto; intermediária tem linha própria', () => {
+  it('encargo fica fora do teto; intermediária é parte da Compra Parcelada', () => {
     expect(chaveProdutoItemFatura({ tipo: 'ENCARGO', descricao: 'Multa e juros de atraso (legado)', valor: 1 }).foraDoTeto).toBe(true);
-    expect(chaveProdutoItemFatura({ tipo: 'INTERMEDIARIA', descricao: 'Intermediária 2 (entrada diluída)', valor: 1 }).chave).toBe('intermediaria');
+    expect(chaveProdutoItemFatura({ tipo: 'INTERMEDIARIA', descricao: 'Intermediária 2 (entrada diluída)', valor: 1 })).toMatchObject({ chave: 'compra_parcelada', parte: 'intermediaria' });
   });
 });
 
@@ -93,6 +99,8 @@ describe('agregarVisaoCarteira — teto = pagas + vencidas + a vencer (por venci
     expect(cp.recebido).toBe(0);
     const rp = v.porProduto.find((p) => p.chave === 'reembolso_parcelado')!;
     expect(rp).toMatchObject({ teto: 28330, pagoDoPeriodo: 28330, rotulo: 'Reembolso Parcelado' });
+    // só parcelas → composição de uma parte só
+    expect(cp.composicao.map((c) => [c.parte, c.teto])).toEqual([['parcela', cp.teto]]);
     expect(v.recebido.valor).toBe(0);
     expect(v.encargosRecebidos).toBe(0);
   });
@@ -121,12 +129,14 @@ describe('agregarVisaoCarteira — teto = pagas + vencidas + a vencer (por venci
     expect(c.encargosRecebidos).toBe(2027);
     // por vencimento não muda com o caixa
     expect(c.pagas.valor + c.vencidas.valor + c.aVencer.valor).toBe(c.teto.valor);
-    // por produto: recebido (caixa) soma os itens das DUAS faturas pagas; entradas são linhas sem teto, no fim
+    // por produto: recebido (caixa) soma os itens das DUAS faturas pagas; entradas de contrato e de
+    // acordo NÃO são produto — somam na Compra Parcelada e aparecem só na composição (31/10)
     const cp = c.porProduto.find((p) => p.chave === 'compra_parcelada')!;
-    expect(cp.recebido).toBe(94200 * 2);
+    expect(cp.recebido).toBe(94200 * 2 + 399000 + 86108);
     expect(cp.pagoDoPeriodo).toBe(94200 * 2 + 142000);
-    const ult = c.porProduto.slice(-2).map((p) => [p.chave, p.teto, p.recebido]);
-    expect(ult).toEqual([['entrada_contrato', 0, 399000], ['entrada_acordo', 0, 86108]]);
+    expect(c.porProduto.map((p) => p.chave)).toEqual(['compra_parcelada', 'reembolso_parcelado', 'protecao_veicular', 'taxa_de_boleto_e_pix']);
+    expect(cp.composicao.map((x) => [x.parte, x.recebido])).toEqual([['parcela', 94200 * 2], ['entrada_contrato', 399000], ['entrada_acordo', 86108]]);
+    expect(cp.composicao.reduce((s, x) => s + x.recebido, 0)).toBe(cp.recebido);
   });
 
   it('período vazio devolve zeros, não erro', () => {

@@ -525,6 +525,15 @@ Visão em tempo real de todos os clientes em situação de inadimplência, agrup
 }
 ```
 
+> **Implementado (31/10):** `GET /api/v1/regua` devolve um array de itens `{ id, numero, contaId,
+> bloqueado, emRecuperacao, diasAtraso, estagio, valorVencido, parcelasVencidas, valorVenceHoje,
+> parcelasVenceHoje, bloqueioDisponivel, titular { nome, cpfCnpj }, ativo { placa, modelo } | null }`
+> (centavos). Entram contratos ATIVOS com atraso ≥ 1 dia, com parcela vencendo hoje
+> (`parcelasVenceHoje > 0`, raia "Vence hoje") ou em intervenção. A raia é calculada na tela por
+> `resolverRaiaRegua(diasAtraso, parcelasVenceHoje > 0)` (@azit/utils); `bloqueioDisponivel` =
+> `diasAtraso >= DIAS_BLOQUEIO_DISPONIVEL` (8 — raia "até 14 dias"); `POST /contratos/:id/bloquear`
+> responde 422 `antes_da_raia_de_bloqueio` abaixo disso.
+
 #### POST `/api/v1/contratos/:id/bloquear`
 Registra o bloqueio do veículo no sistema (ação manual do operador).
 
@@ -1192,7 +1201,8 @@ O título lista `natureza.grupo { codigo, nome }` e `centro` pode ser `null`.
 
 Todas as rotas abaixo usam a MESMA agregação (`agregarVisaoCarteira`, @azit/utils). `teto`/`pagas`/
 `vencidas`/`aVencer` são por VENCIMENTO; `recebido` é CAIXA (data de pagamento: faturas de qualquer
-vencimento + entradas de contrato/acordo). Datas são
+vencimento + entradas de contrato/acordo). `porProduto` só tem PRODUTO como linha (31/10): acordo,
+entradas, intermediárias e avulsos somam dentro do produto e aparecem em `composicao[]`. Datas são
 data-calendário no fuso do negócio.
 
 `GET /api/v1/contas/carteira/visao?de=2026-10-01&ate=2026-10-31`
@@ -1207,9 +1217,13 @@ data-calendário no fuso do negócio.
   "aVencer":   { "valor": 1427473,  "faturas": 13,  "clientes": 13 },
   "recebido":  { "valor": 21266267, "recebimentos": 198, "clientes": 59, "faturasDoPeriodo": 16693479, "faturasDeOutrosPeriodos": 3774788, "entradas": 798000, "encargos": 108248 },
   "porProduto": [
-    { "chave": "compra_parcelada", "rotulo": "Compra Parcelada", "teto": 21583496, "pagoDoPeriodo": 14928673, "recebido": 18301122 },
-    { "chave": "protecao_veicular", "rotulo": "Proteção veicular", "teto": 1194804, "pagoDoPeriodo": 832078, "recebido": 1020400 },
-    { "chave": "entrada_contrato", "rotulo": "Entrada de contrato", "teto": 0, "pagoDoPeriodo": 0, "recebido": 798000 }
+    { "chave": "compra_parcelada", "rotulo": "Compra Parcelada", "teto": 21583496, "pagoDoPeriodo": 14928673, "recebido": 19099122,
+      "composicao": [
+        { "parte": "parcela", "rotulo": "Parcelas", "teto": 20224496, "pagoDoPeriodo": 14239773, "recebido": 17612222 },
+        { "parte": "acordo", "rotulo": "Acordo / renegociação", "teto": 1359000, "pagoDoPeriodo": 688900, "recebido": 688900 },
+        { "parte": "entrada_contrato", "rotulo": "Entradas de contrato", "teto": 0, "pagoDoPeriodo": 0, "recebido": 798000 }
+      ] },
+    { "chave": "protecao_veicular", "rotulo": "Proteção veicular", "teto": 1194804, "pagoDoPeriodo": 832078, "recebido": 1020400, "composicao": [{ "parte": "parcela", "rotulo": "Parcelas", "teto": 1194804, "pagoDoPeriodo": 832078, "recebido": 1020400 }] }
   ],
   "encargosRecebidos": 108248
 }

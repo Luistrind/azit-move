@@ -8,7 +8,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { dataHojeBrasil, diasAtrasoCalendario, DIA_MS, FUSO_NEGOCIO, inicioHojeBrasilUTC, resolverEstagioRegua } from '@azit/utils';
+import { bloqueioDisponivel, dataHojeBrasil, diasAtrasoCalendario, DIA_MS, DIAS_BLOQUEIO_DISPONIVEL, FUSO_NEGOCIO, inicioHojeBrasilUTC, resolverEstagioRegua } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { FaturaService } from '../cobranca/fatura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
@@ -59,6 +59,16 @@ export class ReguaService {
       _count: { _all: true },
     });
     const porId = new Map(vencidas.map((v) => [v.contratoId, v]));
+    // Raia "Vence hoje" (decisão Luís 31/10, doc 02 §7.6): parcelas que vencem
+    // HOJE (fuso do Brasil), fora de acordo — o caso entra no quadro antes de
+    // atrasar, para o lembrete do dia. Não é atraso: diasAtraso continua 0.
+    const vencendoHoje = await this.prisma.db.parcela.groupBy({
+      by: ['contratoId'],
+      where: { contratoId: { in: ids }, status: null, dataVencimento: { gte: hoje, lt: new Date(hoje.getTime() + DIA_MS) }, acordoId: null },
+      _sum: { valorNominal: true },
+      _count: { _all: true },
+    });
+    const hojePorId = new Map(vencendoHoje.map((v) => [v.contratoId, v]));
 
     return contratos
       .map((c) => {
@@ -66,6 +76,7 @@ export class ReguaService {
         const maisAntiga = v?._min.dataVencimento;
         // Dias de CALENDÁRIO (correção 31/08): venceu ontem = 1 dia, sempre.
         const diasAtraso = maisAntiga ? diasAtrasoCalendario(maisAntiga) : 0;
+        const h = hojePorId.get(c.id);
         return {
           id: c.id,
           numero: c.numero,
@@ -78,14 +89,20 @@ export class ReguaService {
           estagio: resolverEstagioRegua(diasAtraso),
           valorVencido: cent(v?._sum.valorNominal ?? null),
           parcelasVencidas: v?._count._all ?? 0,
+          // Raia "Vence hoje": o que vence no dia (sem atraso ainda).
+          valorVenceHoje: cent(h?._sum.valorNominal ?? null),
+          parcelasVenceHoje: h?._count._all ?? 0,
+          // Bloqueio disponível a partir da raia "até 14 dias" (DIAS_BLOQUEIO_DISPONIVEL, 31/10).
+          bloqueioDisponivel: bloqueioDisponivel(diasAtraso),
           titular: c.conta.titular,
           ativo: c.ativo,
         };
       })
-      // Kanban por DIAS de atraso (decisão 31/08): entra na régua a partir de
-      // 1 dia de calendário — e permanece enquanto houver intervenção ativa
-      // (bloqueio/recuperação), mesmo sem atraso, até o desbloqueio manual.
-      .filter((c) => c.diasAtraso >= 1 || c.bloqueado || c.emRecuperacao);
+      // Kanban por DIAS de atraso (decisão 31/08, raias 31/10): entra na régua a
+      // partir de 1 dia de calendário OU com parcela vencendo hoje — e permanece
+      // enquanto houver intervenção ativa (bloqueio/recuperação), mesmo sem
+      // atraso, até o desbloqueio manual.
+      .filter((c) => c.diasAtraso >= 1 || c.parcelasVenceHoje > 0 || c.bloqueado || c.emRecuperacao);
   }
 
   // Job agendado: varre a régua diariamente (madrugada). Em dev o operador também
@@ -130,8 +147,10 @@ export class ReguaService {
     return { faturasVencidas: aVencer, emRegua: emRegua.length, notificados };
   }
 
-  // 5.4 — Bloqueio D+3 (regra absoluta, registrado no sistema; integração externa
-  // é placeholder). Só permitido a partir de D+3.
+  // 5.4 — Bloqueio do veículo (registrado no sistema; integração externa é
+  // placeholder). Disponível a partir da raia "Vencida até 14 dias" do kanban
+  // (DIAS_BLOQUEIO_DISPONIVEL em @azit/utils — decisão Luís 31/10, doc 02 §7.6;
+  // substitui o gatilho D+3). Desbloqueio continua sempre manual.
   // Modelo de 3 camadas (07/09): bloqueio é INTERVENÇÃO (carimbo), não fase —
   // o contrato segue ATIVO com o veículo bloqueado.
   async bloquear(contratoId: string, usuarioId?: string) {
@@ -145,10 +164,10 @@ export class ReguaService {
     if (contrato.veiculoBloqueadoEm) {
       throw new UnprocessableEntityException({ erro: 'ja_bloqueado', mensagem: 'O veículo já está bloqueado' });
     }
-    if (diasAtraso < 3) {
+    if (!bloqueioDisponivel(diasAtraso)) {
       throw new UnprocessableEntityException({
-        erro: 'antes_do_d3',
-        mensagem: 'Bloqueio só a partir de D+3',
+        erro: 'antes_da_raia_de_bloqueio',
+        mensagem: `Bloqueio só a partir de ${DIAS_BLOQUEIO_DISPONIVEL} dias de atraso (raia "Vencida até 14 dias")`,
       });
     }
     await this.prisma.db.contratoCredito.update({

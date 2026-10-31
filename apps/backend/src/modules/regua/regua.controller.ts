@@ -15,7 +15,7 @@ export class ReguaController {
     return this.regua.listar();
   }
 
-  // 5.4 — Bloqueio D+3 (regra absoluta, registrado manualmente pelo operador).
+  // 5.4 — Bloqueio do veículo (disponível a partir da raia "até 14 dias" — DIAS_BLOQUEIO_DISPONIVEL; registrado manualmente pelo operador).
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post('contratos/:id/bloquear')
   bloquear(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {

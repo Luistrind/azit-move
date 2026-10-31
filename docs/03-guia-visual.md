@@ -309,6 +309,8 @@ Os estágios abaixo são posições na régua operacional — **não são status
 | D+12 · Recuperação | `#5b6b7f` |
 
 > No D+10 o status do Contrato ainda é "Bloqueado" ou "Inadimplente". O estágio da régua é informação operacional separada, não um campo de status no banco.
+>
+> **31/10/2026 (doc 02 §7.6):** o kanban passou a ter RAIAS de atraso — Vence hoje · até 7 · até 14 · até 21 · até 30 · até 60 · mais de 60 (+ "Em intervenção" quando existe). A cor da raia vem do estágio de referência desta tabela (até 7 → D+1; até 14 → D+3, onde o bloqueio fica disponível; até 21 → D+10; 30/60/+60 → D+12; Vence hoje neutra). Contadores por raia filtram o quadro; há busca por nome/CPF/placa/contrato.
 
 ### 4.6 Origens de capital
 
@@ -726,7 +728,7 @@ Card "Posição na régua":
 
 **Nota:** este padrão kanban é exclusivo desta tela. A tela de Acordos usa o mesmo componente com dados diferentes — ver seção 9.
 
-`KanbanBoard` com 5 colunas, configuração:
+`KanbanBoard` — desde 31/10 as colunas são as RAIAS de `RAIAS_REGUA` (@azit/utils; doc 02 §7.6), não os estágios. A tabela abaixo é a configuração ORIGINAL (cores de referência por estágio):
 
 | Coluna | Estágio | Cor |
 |---|---|---|

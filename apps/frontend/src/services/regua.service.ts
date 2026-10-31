@@ -11,6 +11,9 @@ export interface ReguaItem {
   estagio: string; // 'D+1' | 'D+2' | 'D+3' | 'D+10' | 'D+12'
   valorVencido: number;
   parcelasVencidas: number;
+  valorVenceHoje: number; // raia "Vence hoje" (31/10): parcelas que vencem no dia, sem atraso
+  parcelasVenceHoje: number;
+  bloqueioDisponivel: boolean; // a partir da raia "até 14 dias" (DIAS_BLOQUEIO_DISPONIVEL, @azit/utils)
   titular: { nome: string; cpfCnpj: string };
   ativo: { placa: string | null; modelo: string | null } | null; // null = sem ativo (RP)
 }
