@@ -1460,6 +1460,16 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 > a OAuth se o connector ganhar mais usuários (Regra 12). Convive com o pipeline
 > automático da API: quem tiver `ANTHROPIC_API_KEY` gera sozinho; o MCP é a via de custo
 > zero/aprofundamento.
+>
+> **31/10/2026 — payload bruto em PARTES.** `obter_consulta_bruta` cortava o retorno em 100 mil
+> caracteres com um "[TRUNCADO]" seco; a Camada 1 e os Processos da BigData chegam a 1,4 milhão
+> (caso Althieres: só 1 dos 9 processos ficava visível, e o assistente concluía errado). Agora a
+> ferramenta aceita `compacto` (textos acima de 400 chars encurtados; listas de andamentos,
+> petições, decisões e publicações reduzidas às 5 últimas com a contagem dos omitidos; número,
+> classe, assunto, vara, polo, status e valores inteiros) e `parte` (paginação determinística
+> de 100 mil chars sobre o mesmo JSON, cabeçalho "parte i de N — continue com parte=i+1"). A
+> descrição da ferramenta orienta: começar compacto; integral em partes só quando precisar do
+> texto.
 - **Máquina de estados**: os 20 status oficiais da Política §25, um ativo por vez, transições com pré-condições e histórico. **Encerramentos classificados**: não aprovação ≠ desistência ≠ ausência de retorno ≠ expiração.
 - **Pacote mínimo** bloqueante para liberar a Contratos e Ativação (decisão válida, parecer + códigos, documentos, CNH do condutor, consultas válidas ou ausência decidida pelo COCAD, renda apurada, sem pendência, ressalvas cumpridas, garantidor aceito, versão da política, responsável).
 - **Parâmetros versionados** (mesma mecânica do simulador): limites, fatores, validades (consultas 30d, aprovação 10du), prazos e texto da autorização. Cada análise congela a versão aplicada.

@@ -146,33 +146,43 @@ export class McpAzitService {
       },
     );
 
+    // Payload bruto em PARTES (31/10/2026, caso Althieres: Camada 1 e Processos da
+    // BigData com ~1,4 milhão de chars; o corte seco em 100 mil deixava 1 dos 9
+    // processos visível). Duas saídas: `compacto` (textos longos encurtados, listas
+    // de andamentos/petições/decisões reduzidas às últimas — cabe quase sempre numa
+    // chamada) e paginação determinística por `parte` sobre o MESMO JSON.
     registrar(
       'obter_consulta_bruta',
       {
-        title: 'Obter o payload bruto de UMA consulta',
+        title: 'Obter o payload bruto de UMA consulta (em partes)',
         description:
-          'Retorna o payload BRUTO integral de uma consulta de birô da análise (uma por chamada). Use o tipo exatamente como listado no dossiê (ex.: CAMADA1, SCORE_QUOD, RESTRITIVOS, BOAVISTA_SCORE, SCORE_POSITIVO, DISTRIBUICAO_PROCESSOS, PROCESSOS, KYC).',
+          'Retorna o payload BRUTO de uma consulta de birô da análise (uma por chamada). Use o tipo exatamente como listado no dossiê (ex.: CAMADA1, SCORE_QUOD, RESTRITIVOS, BOAVISTA_SCORE, SCORE_POSITIVO, DISTRIBUICAO_PROCESSOS, PROCESSOS, KYC). ' +
+          'Cada chamada devolve no máximo ~100 mil caracteres. Comece com compacto=true (textos longos encurtados; andamentos, petições e decisões reduzidos aos mais recentes — número, classe, assunto, vara, polo, status e valores ficam inteiros). ' +
+          'Se ainda assim vier em partes, ou se precisar do texto integral, chame de novo com compacto=false e parte=1, 2, 3… até a última (o cabeçalho diz "parte i de N").',
         inputSchema: {
           analiseId: z.string().min(1).describe('id da análise'),
           tipo: z.string().min(2).describe('tipo da consulta, como no dossiê'),
+          parte: z.number().int().min(1).optional().describe('qual parte do payload (1 = primeira; default 1)'),
+          compacto: z.boolean().optional().describe('true = versão compacta (textos longos encurtados, listas de andamentos reduzidas); default false'),
         },
       },
-      async ({ analiseId, tipo }: { analiseId: string; tipo: string }) => {
+      async ({ analiseId, tipo, parte, compacto }: { analiseId: string; tipo: string; parte?: number; compacto?: boolean }) => {
         const c = await this.prisma.db.consultaExterna.findFirst({
           where: { analiseId, tipo: tipo.toUpperCase() as never },
           orderBy: { dataConsulta: 'desc' },
         });
         if (!c) return { content: [{ type: 'text', text: `Consulta ${tipo} não encontrada na análise ${analiseId}.` }], isError: true };
-        let corpo = JSON.stringify(c.resultado ?? {}, null, 0);
-        if (corpo.length > 100_000) corpo = corpo.slice(0, 100_000) + ' [TRUNCADO]';
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `CONSULTA ${c.tipo} · ${c.fornecedor} · ${diaBrasil(c.dataConsulta)} · ${c.situacao}${c.motivoFalha ? ` · falha: ${c.motivoFalha}` : ''}\n${corpo}`,
-            },
-          ],
-        };
+        const bruto = c.resultado ?? {};
+        const corpo = JSON.stringify(compacto ? compactarPayload(bruto) : bruto, null, 0);
+        const total = Math.max(1, Math.ceil(corpo.length / TAMANHO_PARTE));
+        const i = Math.min(Math.max(1, parte ?? 1), total);
+        const trecho = corpo.slice((i - 1) * TAMANHO_PARTE, i * TAMANHO_PARTE);
+        const cabecalho =
+          `CONSULTA ${c.tipo} · ${c.fornecedor} · ${diaBrasil(c.dataConsulta)} · ${c.situacao}${c.motivoFalha ? ` · falha: ${c.motivoFalha}` : ''}` +
+          ` · ${compacto ? 'COMPACTO' : 'INTEGRAL'} · ${corpo.length.toLocaleString('pt-BR')} chars · parte ${i} de ${total}` +
+          (total > 1 ? (i < total ? ` — continue com parte=${i + 1}` : ' — última parte') : '') +
+          (i > 1 ? ' (trecho de JSON cortado no meio: junte as partes antes de ler)' : '');
+        return { content: [{ type: 'text', text: `${cabecalho}\n${trecho}` }] };
       },
     );
 
@@ -257,4 +267,31 @@ export class McpAzitService {
 
     return server;
   }
+}
+
+// ---------- payload bruto em partes ----------
+const TAMANHO_PARTE = 100_000;
+const TEXTO_MAX = 400;
+const LISTA_MAX = 5;
+// Listas que carregam o volume dos processos na BigData (andamentos, petições,
+// decisões, publicações) — no modo compacto ficam só as últimas LISTA_MAX.
+const LISTAS_VOLUMOSAS = /^(updates|petitions|decisions|publications|movements|movimenta|andamentos|peticoes|decisoes|publicacoes|hearings|audiencias)/i;
+
+/** Versão compacta de um payload de birô: encurta textos longos e reduz listas volumosas. */
+export function compactarPayload(valor: unknown, chave = ''): unknown {
+  if (typeof valor === 'string') {
+    return valor.length > TEXTO_MAX ? `${valor.slice(0, TEXTO_MAX)}…[+${valor.length - TEXTO_MAX} chars]` : valor;
+  }
+  if (Array.isArray(valor)) {
+    const lista = LISTAS_VOLUMOSAS.test(chave) && valor.length > LISTA_MAX
+      ? [...valor.slice(-LISTA_MAX), { _omitidos: valor.length - LISTA_MAX, _nota: `${valor.length} itens no total; mostrados os ${LISTA_MAX} últimos — peça compacto=false para o integral` }]
+      : valor;
+    return lista.map((v) => compactarPayload(v, chave));
+  }
+  if (valor && typeof valor === 'object') {
+    const saida: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(valor as Record<string, unknown>)) saida[k] = compactarPayload(v, k);
+    return saida;
+  }
+  return valor;
 }
