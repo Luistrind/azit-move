@@ -26,6 +26,10 @@ import { dataBR } from '../lib/datas';
 // filtram o quadro; busca por nome/CPF/placa/contrato filtra junto.
 // Caso só em intervenção (bloqueado/recuperação, sem atraso) fica na raia extra
 // "Em intervenção", visível só quando existe.
+// Raia SELECIONADA (01/11, Luís: "as caixinhas são muito pequenas"): em vez da
+// coluna de 190px com o resto da tela vazio, a raia toma a largura inteira e os
+// cartões viram uma grade larga (CardLargo) — nome legível, placa/modelo/contrato
+// numa linha, valor grande, atraso por extenso, ações lado a lado.
 type ChaveColuna = RaiaRegua['chave'] | 'intervencao';
 const RAIA_INTERVENCAO = { chave: 'intervencao' as const, rotulo: 'Em intervenção', marco: 'bloqueado ou em recuperação, sem atraso', estagio: 'D+3' as const };
 const COLUNAS: { chave: ChaveColuna; rotulo: string; marco: string; estagio: RaiaRegua['estagio'] }[] = [
@@ -103,6 +107,66 @@ function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem;
           {item.bloqueado ? 'Desbloquear' : 'Bloquear veículo'}
         </Botao>
       )}
+    </div>
+  );
+}
+
+// Cartão da raia expandida: mesma informação do Card, com espaço para ler.
+function CardLargo({ item, proximaAcao, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem; proximaAcao: string; onAcao: (acao: 'bloquear' | 'desbloquear', item: ReguaItem) => void; onAbrir: () => void; ocupado: boolean; podeOperar: boolean }) {
+  const podeBloquear = podeOperar && !item.bloqueado && item.bloqueioDisponivel;
+  const soHoje = item.diasAtraso === 0 && item.parcelasVenceHoje > 0;
+  const plural = (n: number, s: string, p: string) => (n === 1 ? s : p);
+  const atraso = soHoje
+    ? `vence hoje · ${item.parcelasVenceHoje} ${plural(item.parcelasVenceHoje, 'parcela', 'parcelas')}`
+    : item.diasAtraso > 0
+      ? `${item.diasAtraso} ${plural(item.diasAtraso, 'dia', 'dias')} de atraso · ${item.parcelasVencidas} ${plural(item.parcelasVencidas, 'parcela vencida', 'parcelas vencidas')}${item.parcelasVenceHoje > 0 ? ` · mais ${item.parcelasVenceHoje} vence hoje` : ''}`
+      : 'sem parcela vencida';
+  const situacao = item.bloqueado ? 'Veículo bloqueado' : item.emRecuperacao ? 'Em recuperação' : null;
+  return (
+    <div
+      onClick={onAbrir}
+      role="button"
+      title="Abrir o caso de cobrança"
+      className="grid cursor-pointer grid-cols-[1fr_auto] gap-x-[12px] gap-y-[8px] rounded-[12px] px-[16px] py-[14px] transition-[filter] hover:brightness-[1.03]"
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+    >
+      <div className="min-w-0">
+        <div className="truncate text-[14px] font-bold" style={{ color: 'var(--text-primary)' }}>{item.titular.nome}</div>
+        <div className="truncate text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+          <strong style={{ color: 'var(--text-primary)' }}>{item.ativo?.placa ?? 'sem placa'}</strong> · {item.ativo?.modelo ?? 'sem ativo'} · contrato {item.numero}
+        </div>
+      </div>
+      <span
+        className="self-start justify-self-end rounded-[20px] px-[9px] py-[3px] text-[10.5px] font-bold"
+        style={situacao ? { background: 'var(--danger-bg)', color: 'var(--danger-fg)' } : { border: '1px solid var(--border)', color: 'var(--text-muted)' }}
+      >
+        {situacao ?? 'Sem bloqueio'}
+      </span>
+      <div className="col-span-2 flex flex-wrap items-end justify-between gap-x-[12px] gap-y-[8px]">
+        <div className="min-w-0">
+          <div className="font-display text-[19px] font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>
+            {formatCurrency(soHoje ? item.valorVenceHoje : item.valorVencido)}
+          </div>
+          <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>{atraso}</div>
+        </div>
+        <div className="ml-auto flex gap-[8px]" onClick={(e) => e.stopPropagation()}>
+        <Botao variante="secundaria" tamanho="sm" onClick={onAbrir}>Abrir caso</Botao>
+        {(podeBloquear || (item.bloqueado && podeOperar)) && (
+          <Botao
+            variante={item.bloqueado ? 'secundaria' : 'perigo'}
+            tamanho="sm"
+            onClick={() => onAcao(item.bloqueado ? 'desbloquear' : 'bloquear', item)}
+            disabled={ocupado}
+          >
+            {item.bloqueado ? 'Desbloquear' : 'Bloquear veículo'}
+          </Botao>
+        )}
+        </div>
+      </div>
+      <div className="col-span-2 flex flex-wrap gap-x-[14px] pt-[8px] text-[11.5px]" style={{ borderTop: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+        <span>próxima ação <strong style={{ color: 'var(--text-secondary)' }}>{proximaAcao}</strong></span>
+        <span>CPF <strong style={{ color: 'var(--text-secondary)' }}>{item.titular.cpfCnpj}</strong></span>
+      </div>
     </div>
   );
 }
@@ -203,7 +267,7 @@ export function ReguaPage() {
   const itensDaColuna = (chave: ChaveColuna) => itens.filter((i) => colunaDoItem(i) === chave);
   // Raia "Em intervenção" só aparece quando tem alguém.
   const colunasComDados = COLUNAS.filter((c) => c.chave !== 'intervencao' || todos.some((i) => colunaDoItem(i) === 'intervencao'));
-  const colunasVisiveis = raia ? colunasComDados.filter((c) => c.chave === raia) : colunasComDados;
+  const raiaSelecionada = raia ? colunasComDados.find((c) => c.chave === raia) ?? null : null;
 
   return (
     <div className="flex h-full flex-col gap-[14px]">
@@ -263,10 +327,49 @@ export function ReguaPage() {
         )}
       </div>
 
-      {/* Quadro: colunas lado a lado no desktop; empilhadas no celular (colunas
-          vazias somem no celular para não virar uma fila de "Vazio"). */}
+      {raiaSelecionada ? (() => {
+        // Raia expandida: painel na largura inteira, cartões em grade.
+        const col = raiaSelecionada;
+        const cards = itensDaColuna(col.chave);
+        const cor = (col.estagio && REGUA_STAGE_COLORS[col.estagio]) || 'var(--text-label)';
+        const total = cards.reduce((s, i) => s + (col.chave === 'hoje' ? i.valorVenceHoje : i.valorVencido), 0);
+        return (
+          <div className="flex flex-col rounded-card md:flex-1 md:overflow-auto" style={{ background: 'var(--surface-muted)', border: '1px solid var(--border)', borderLeft: `4px solid ${cor}` }}>
+            <div className="flex flex-wrap items-center gap-x-[12px] gap-y-[4px] px-[16px] py-[12px]" style={{ borderBottom: '1px solid var(--border)' }}>
+              <div className="min-w-0 flex-1">
+                <div className="text-[14px] font-bold" style={{ color: 'var(--text-primary)' }}>
+                  {col.rotulo} · {cards.length} contrato{cards.length === 1 ? '' : 's'}
+                </div>
+                <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>{col.marco}</div>
+              </div>
+              {cards.length > 0 && (
+                <div className="font-display text-[14px] font-bold tabular-nums" style={{ color: 'var(--text-secondary)' }}>
+                  {formatCurrency(total)} {col.chave === 'hoje' ? 'vencendo hoje' : 'em atraso nesta raia'}
+                </div>
+              )}
+              <button type="button" onClick={() => setRaia(null)} className="text-[12.5px] font-semibold" style={{ color: 'var(--accent)' }}>
+                ← todas as raias
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-[12px] p-[14px] md:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
+              {cards.length === 0 && (
+                <div className="py-[24px] text-center text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
+                  {busca.trim() ? 'Nada encontrado para a busca.' : 'Nenhum contrato nesta raia.'}
+                </div>
+              )}
+              {cards.map((item) => (
+                <CardLargo key={item.id} item={item} proximaAcao={col.marco} ocupado={ocupado} podeOperar={podeOperar} onAbrir={() => setCaso(item)} onAcao={(acao, alvo) =>
+                  (acao === 'bloquear' ? setBloqueando(alvo) : void comRefetch(() => reguaService.desbloquear(alvo.id)))
+                } />
+              ))}
+            </div>
+          </div>
+        );
+      })() : (
+      /* Quadro: colunas lado a lado no desktop; empilhadas no celular (colunas
+         vazias somem no celular para não virar uma fila de "Vazio"). */
       <div className="flex flex-col gap-[10px] md:flex-1 md:flex-row md:gap-[13px] md:overflow-x-auto md:pb-[8px]">
-        {colunasVisiveis.map((col) => {
+        {colunasComDados.map((col) => {
           const cards = itensDaColuna(col.chave);
           const cor = (col.estagio && REGUA_STAGE_COLORS[col.estagio]) || 'var(--text-label)';
           return (
@@ -306,12 +409,13 @@ export function ReguaPage() {
             </div>
           );
         })}
-        {!regua.isLoading && (raia ? itensDaColuna(raia).length === 0 : itens.length === 0) && (
+        {!regua.isLoading && itens.length === 0 && (
           <div className="rounded-card px-[18px] py-[24px] text-center text-[12.5px] md:hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-            {busca.trim() ? 'Nada encontrado para a busca.' : raia ? 'Nenhum contrato nesta raia.' : 'Nenhum contrato em régua de cobrança.'}
+            {busca.trim() ? 'Nada encontrado para a busca.' : 'Nenhum contrato em régua de cobrança.'}
           </div>
         )}
       </div>
+      )}
 
       <ModalConfirmacao
         open={!!bloqueando}

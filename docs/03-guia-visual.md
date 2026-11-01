@@ -310,7 +310,7 @@ Os estágios abaixo são posições na régua operacional — **não são status
 
 > No D+10 o status do Contrato ainda é "Bloqueado" ou "Inadimplente". O estágio da régua é informação operacional separada, não um campo de status no banco.
 >
-> **31/10/2026 (doc 02 §7.6):** o kanban passou a ter RAIAS de atraso — Vence hoje · até 7 · até 14 · até 21 · até 30 · até 60 · mais de 60 (+ "Em intervenção" quando existe). A cor da raia vem do estágio de referência desta tabela (até 7 → D+1; até 14 → D+3, onde o bloqueio fica disponível; até 21 → D+10; 30/60/+60 → D+12; Vence hoje neutra). Contadores por raia filtram o quadro; há busca por nome/CPF/placa/contrato.
+> **31/10/2026 (doc 02 §7.6):** o kanban passou a ter RAIAS de atraso — Vence hoje · até 7 · até 14 · até 21 · até 30 · até 60 · mais de 60 (+ "Em intervenção" quando existe). A cor da raia vem do estágio de referência desta tabela (até 7 → D+1; até 14 → D+3, onde o bloqueio fica disponível; até 21 → D+10; 30/60/+60 → D+12; Vence hoje neutra). Contadores por raia filtram o quadro; há busca por nome/CPF/placa/contrato. **01/11/2026:** a raia selecionada não fica numa coluna de 190px — vira um painel na largura inteira (cabeçalho com quantidade, total e "todas as raias") e os cartões viram grade larga (mín. 320px): nome legível, placa/modelo/contrato numa linha, valor grande, atraso por extenso, "Abrir caso" e bloqueio lado a lado, próxima ação da raia no rodapé. O quadro de colunas só aparece sem raia selecionada.
 
 ### 4.6 Origens de capital
 
