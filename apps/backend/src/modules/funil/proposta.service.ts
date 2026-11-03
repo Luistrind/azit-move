@@ -725,6 +725,7 @@ export class PropostaService {
       veiculo: rotuloVeiculoProposta(p),
       veiculoAtribuidoEm: p.veiculoAtribuidoEm?.toISOString() ?? null,
       veiculoConferidoEm: p.veiculoConferidoEm?.toISOString() ?? null,
+      ajusteVeiculo: (p.conferenciaVeiculo ?? null) as Record<string, unknown> | null,
       titular: p.titular,
       valorEntrada: cent(p.valorEntrada),
       valorParcela: cent(p.valorParcela),
@@ -940,6 +941,11 @@ export class PropostaService {
       adicionalProtecao: adicional,
       valorParcela: r.parcelaBase + adicional,
       parcelaAprovada: cent(p.valorParcela),
+      // Valores da aprovação por referência — restaurados se o carro for devolvido
+      // depois de confirmado (o carro caiu, a aprovação continua valendo).
+      numeroParcelasAprovado: p.numeroParcelas,
+      adicionalProtecaoAprovado: cent(p.adicionalProtecao),
+      foraParametroAprovado: p.foraParametro,
       numeroParcelas: r.numeroParcelas,
       foraParametro: r.foraParametroMotivo !== null,
       foraParametroMotivo: r.foraParametroMotivo,
@@ -986,7 +992,10 @@ export class PropostaService {
     if (p.contratoGeradoId) {
       throw new UnprocessableEntityException({ erro: 'ja_formalizada', mensagem: 'Proposta já gerou contrato' });
     }
-    const ajuste = (p.conferenciaVeiculo ?? {}) as { valorParcela?: number; adicionalProtecao?: number; numeroParcelas?: number; foraParametro?: boolean; valorAvista?: number };
+    const ajuste = (p.conferenciaVeiculo ?? {}) as {
+      valorParcela?: number; adicionalProtecao?: number; numeroParcelas?: number; foraParametro?: boolean; valorAvista?: number;
+      parcelaAprovada?: number; numeroParcelasAprovado?: number; adicionalProtecaoAprovado?: number; foraParametroAprovado?: boolean; valorFipeReferencia?: number | null;
+    };
 
     if (dto.confirmar) {
       await this.prisma.db.$transaction(async (tx) => {
@@ -1023,13 +1032,29 @@ export class PropostaService {
       return this.detalhe(propostaId);
     }
 
-    // Devolver à fila.
+    // Devolver à fila. Se já estava conferido, os valores do carro real saem e
+    // os da aprovação por referência voltam (a aprovação continua valendo).
+    const jaConferido = !!p.veiculoConferidoEm;
     await this.prisma.db.$transaction(async (tx) => {
       await tx.ativo.updateMany({ where: { id: p.ativoId!, reservadoPropostaId: propostaId }, data: { status: 'DISPONIVEL', reservadoPropostaId: null, reservadoEm: null } });
       await tx.proposta.update({
         where: { id: propostaId },
-        data: { ativoId: null, veiculoAtribuidoEm: null, veiculoConferidoEm: null, veiculoConferidoPorId: null, conferenciaVeiculo: Prisma.DbNull },
+        data: {
+          ativoId: null, veiculoAtribuidoEm: null, veiculoConferidoEm: null, veiculoConferidoPorId: null, conferenciaVeiculo: Prisma.DbNull,
+          ...(jaConferido
+            ? {
+                valorParcela: ajuste.parcelaAprovada !== undefined ? reais(ajuste.parcelaAprovada) : undefined,
+                numeroParcelas: ajuste.numeroParcelasAprovado,
+                prazoSemanas: ajuste.numeroParcelasAprovado,
+                adicionalProtecao: ajuste.adicionalProtecaoAprovado !== undefined ? reais(ajuste.adicionalProtecaoAprovado) : undefined,
+                foraParametro: ajuste.foraParametroAprovado,
+              }
+            : {}),
+        },
       });
+      if (jaConferido && p.simulacao && ajuste.valorFipeReferencia) {
+        await tx.simulacao.update({ where: { id: p.simulacao.id }, data: { valorAvista: reais(ajuste.valorFipeReferencia), ativoId: null } });
+      }
     });
     await this.prisma.db.logAuditoria.create({
       data: { acao: 'veiculo_devolvido', entidade: 'proposta', entidadeId: propostaId, usuarioId, depois: { ativoId: p.ativoId, observacao: dto.observacao ?? null, ajusteDescartado: ajuste } as Prisma.InputJsonValue },

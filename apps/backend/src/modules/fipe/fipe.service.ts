@@ -98,7 +98,8 @@ export class FipeService {
   async anos(codigoMarca: string, codigoModelo: string): Promise<ItemFipe[]> {
     const { ref } = await this.marcasCache();
     const anos = await this.post<ModeloFipe[]>('ConsultarAnoModelo', { codigoTabelaReferencia: ref, codigoTipoVeiculo: CARRO, codigoMarca: Number(codigoMarca), codigoModelo: Number(codigoModelo) });
-    return (anos ?? []).map((a) => ({ codigo: String(a.Value), nome: a.Label.trim() }));
+    // A Fundação usa "32000" como ano de ZERO KM — a tela mostra por extenso.
+    return (anos ?? []).map((a) => ({ codigo: String(a.Value), nome: a.Label.trim().replace(/^32000\b/, 'Zero km') }));
   }
 
   async valorPorCodigos(p: { codigoMarca: string; codigoModelo: string; ano: string }): Promise<ValorFipe> {

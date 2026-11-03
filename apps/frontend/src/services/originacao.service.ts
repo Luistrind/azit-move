@@ -118,6 +118,7 @@ export interface PropostaDetalhe {
   veiculo: string;
   veiculoAtribuidoEm?: string | null;
   veiculoConferidoEm?: string | null;
+  ajusteVeiculo?: AjusteVeiculo | null;
   titular: { id: string; nome: string; cpfCnpj: string; whatsapp: string };
   valorEntrada: number;
   valorParcela: number;
