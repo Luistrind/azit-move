@@ -98,6 +98,11 @@ export function AtendimentoPage() {
   // Modelo de REFERÊNCIA (doc 02 §29.1): sem carro no estoque, escolhe marca →
   // modelo → ano na FIPE; o valor à vista vem da Fundação, nunca digitado.
   const [modoReferencia, setModoReferencia] = useState(false);
+  // Lista curta do balcão (Luís 03/11): HB20S/HB20 manual, Mobi, Kwid, Polo —
+  // versões de entrada, anos reunidos. A lista completa fica atrás de um link.
+  const [listaCompleta, setListaCompleta] = useState(false);
+  const [modeloTrabalho, setModeloTrabalho] = useState('');
+  const [anoTrabalho, setAnoTrabalho] = useState('');
   const [fipeMarca, setFipeMarca] = useState('');
   const [fipeModelo, setFipeModelo] = useState('');
   const [fipeAno, setFipeAno] = useState('');
@@ -158,7 +163,9 @@ export function AtendimentoPage() {
     queryFn: () => originacaoService.ativosDisponiveis(),
     enabled: passo === 2,
   });
-  const fipeMarcas = useQuery({ queryKey: ['fipe-marcas'], queryFn: () => originacaoService.fipeMarcas(), enabled: passo === 2 && modoReferencia, staleTime: 3_600_000 });
+  const modelosTrabalho = useQuery({ queryKey: ['fipe-modelos-trabalho'], queryFn: () => originacaoService.fipeModelosTrabalho(), enabled: passo === 2 && modoReferencia && !listaCompleta, staleTime: 3_600_000 });
+  const anosTrabalho = useQuery({ queryKey: ['fipe-anos-trabalho', modeloTrabalho], queryFn: () => originacaoService.fipeAnosTrabalho(modeloTrabalho), enabled: modoReferencia && !listaCompleta && !!modeloTrabalho, staleTime: 3_600_000 });
+  const fipeMarcas = useQuery({ queryKey: ['fipe-marcas'], queryFn: () => originacaoService.fipeMarcas(), enabled: passo === 2 && modoReferencia && listaCompleta, staleTime: 3_600_000 });
   const fipeModelos = useQuery({ queryKey: ['fipe-modelos', fipeMarca], queryFn: () => originacaoService.fipeModelos(fipeMarca), enabled: modoReferencia && !!fipeMarca, staleTime: 3_600_000 });
   const fipeAnos = useQuery({ queryKey: ['fipe-anos', fipeMarca, fipeModelo], queryFn: () => originacaoService.fipeAnos(fipeMarca, fipeModelo), enabled: modoReferencia && !!fipeMarca && !!fipeModelo, staleTime: 3_600_000 });
 
@@ -699,6 +706,52 @@ export function AtendimentoPage() {
               <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
                 Sem o carro no estoque: a pessoa é analisada com o valor FIPE do modelo e, aprovada, entra na lista de espera até um veículo ser atribuído.
               </div>
+              {!listaCompleta ? (
+                <>
+                  <div className="flex flex-col gap-[6px]">
+                    {modelosTrabalho.isLoading && <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando os modelos…</div>}
+                    {(modelosTrabalho.data ?? []).map((m) => (
+                      <button
+                        key={m.chave}
+                        type="button"
+                        onClick={() => { setModeloTrabalho(m.chave); setAnoTrabalho(''); }}
+                        className="flex items-center justify-between gap-[10px] rounded-[12px] px-[14px] py-[10px] text-left"
+                        style={{ background: modeloTrabalho === m.chave ? 'var(--surface-input)' : 'var(--surface)', border: `1.5px solid ${modeloTrabalho === m.chave ? 'var(--accent)' : 'var(--border)'}` }}
+                      >
+                        <div className="min-w-0">
+                          <div className="text-[14px] font-bold">{m.rotulo}</div>
+                          <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>{m.detalhe}</div>
+                        </div>
+                        {modeloTrabalho === m.chave && <span style={{ color: 'var(--accent)' }}>✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                  <div>
+                    <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Ano do modelo</span>
+                    <select value={anoTrabalho} onChange={(e) => setAnoTrabalho(e.target.value)} disabled={!modeloTrabalho} className={inputCls} style={inputStyle}>
+                      <option value="">{!modeloTrabalho ? 'Escolha o modelo antes' : anosTrabalho.isLoading ? 'Consultando a FIPE…' : anosTrabalho.isError ? 'FIPE indisponível agora' : 'Selecione o ano'}</option>
+                      {(anosTrabalho.data ?? []).map((a) => <option key={a.codigoModelo + ':' + a.codigo} value={a.codigoModelo + ':' + a.codigo}>{a.nome}</option>)}
+                    </select>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const [codigoModelo, ano] = anoTrabalho.split(':');
+                      const m = (modelosTrabalho.data ?? []).find((x) => x.chave === modeloTrabalho);
+                      if (m) void simularCom({ referencia: { codigoMarca: m.codigoMarca, codigoModelo, ano } });
+                    }}
+                    disabled={ocupado || !modeloTrabalho || !anoTrabalho}
+                    className="h-[50px] rounded-[12px] text-[15px] font-bold disabled:opacity-40"
+                    style={{ background: 'var(--navy)', color: '#fff' }}
+                  >
+                    {ocupado ? 'Consultando a FIPE…' : 'Simular pelo valor FIPE'}
+                  </button>
+                  <div className="flex justify-between">
+                    <button onClick={() => setListaCompleta(true)} className="text-[12.5px] font-semibold" style={{ color: 'var(--text-muted)' }}>outro modelo (lista completa da FIPE)</button>
+                    <button onClick={() => setModoReferencia(false)} className="text-[12.5px] font-semibold" style={{ color: 'var(--text-muted)' }}>voltar ao estoque</button>
+                  </div>
+                </>
+              ) : (
+              <>
               <div>
                 <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Marca</span>
                 <select value={fipeMarca} onChange={(e) => { setFipeMarca(e.target.value); setFipeModelo(''); setFipeAno(''); }} className={inputCls} style={inputStyle}>
@@ -728,7 +781,12 @@ export function AtendimentoPage() {
               >
                 {ocupado ? 'Consultando a FIPE…' : 'Simular pelo valor FIPE'}
               </button>
-              <button onClick={() => setModoReferencia(false)} className="text-[12.5px] font-semibold" style={{ color: 'var(--text-muted)' }}>voltar ao estoque</button>
+              <div className="flex justify-between">
+                <button onClick={() => setListaCompleta(false)} className="text-[12.5px] font-semibold" style={{ color: 'var(--text-muted)' }}>← modelos de trabalho</button>
+                <button onClick={() => setModoReferencia(false)} className="text-[12.5px] font-semibold" style={{ color: 'var(--text-muted)' }}>voltar ao estoque</button>
+              </div>
+              </>
+              )}
             </div>
           ) : (
             <button

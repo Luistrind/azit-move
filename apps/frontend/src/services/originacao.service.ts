@@ -219,6 +219,15 @@ export const originacaoService = {
     return data;
   },
   // Busca na FIPE para o veículo de referência (doc 02 §29.1).
+  // Lista curta do balcão (decisão Luís 03/11): modelos de trabalho + anos reunidos.
+  async fipeModelosTrabalho(): Promise<{ chave: string; rotulo: string; detalhe: string; codigoMarca: string }[]> {
+    const { data } = await api.get('/api/v1/fipe/modelos-trabalho');
+    return data;
+  },
+  async fipeAnosTrabalho(chave: string): Promise<(ItemFipe & { codigoModelo: string; versao: string })[]> {
+    const { data } = await api.get(`/api/v1/fipe/modelos-trabalho/${chave}/anos`);
+    return data;
+  },
   async fipeMarcas(): Promise<ItemFipe[]> {
     const { data } = await api.get('/api/v1/fipe/marcas');
     return data;

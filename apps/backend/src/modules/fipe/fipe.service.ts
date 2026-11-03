@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { escolherModeloFipe, valorFipeParaCentavos, type ModeloFipe } from '@azit/utils';
+import { MODELOS_TRABALHO } from './modelos-trabalho';
 
 // ============================================================
 // Tabela FIPE — fonte OFICIAL (veiculos.fipe.org.br, a mesma API que o site
@@ -45,6 +46,7 @@ export class FipeService {
   private cacheRef: { codigo: number; em: number } | null = null;
   private cacheMarcas: { ref: number; marcas: ModeloFipe[] } | null = null;
   private cacheModelos = new Map<string, ModeloFipe[]>();
+  private cacheAnos = new Map<string, ModeloFipe[]>();
 
   private async post<T>(rota: string, corpo: Record<string, unknown>): Promise<T> {
     const resp = await fetch(`${BASE}/${rota}`, {
@@ -97,9 +99,49 @@ export class FipeService {
   // Ano vem como "2020-1" (ano-combustível); o rótulo é "2020 Gasolina".
   async anos(codigoMarca: string, codigoModelo: string): Promise<ItemFipe[]> {
     const { ref } = await this.marcasCache();
-    const anos = await this.post<ModeloFipe[]>('ConsultarAnoModelo', { codigoTabelaReferencia: ref, codigoTipoVeiculo: CARRO, codigoMarca: Number(codigoMarca), codigoModelo: Number(codigoModelo) });
+    const chave = `${ref}:${codigoMarca}:${codigoModelo}`;
+    let anos = this.cacheAnos.get(chave);
+    if (!anos) {
+      anos = (await this.post<ModeloFipe[]>('ConsultarAnoModelo', { codigoTabelaReferencia: ref, codigoTipoVeiculo: CARRO, codigoMarca: Number(codigoMarca), codigoModelo: Number(codigoModelo) })) ?? [];
+      this.cacheAnos.set(chave, anos);
+    }
     // A Fundação usa "32000" como ano de ZERO KM — a tela mostra por extenso.
-    return (anos ?? []).map((a) => ({ codigo: String(a.Value), nome: a.Label.trim().replace(/^32000\b/, 'Zero km') }));
+    return anos.map((a) => ({ codigo: String(a.Value), nome: a.Label.trim().replace(/^32000\b/, 'Zero km') }));
+  }
+
+  // --- Modelos de TRABALHO (decisão Luís 03/11): lista curta do balcão ---
+  modelosTrabalho() {
+    return MODELOS_TRABALHO.map(({ chave, rotulo, detalhe, codigoMarca }) => ({ chave, rotulo, detalhe, codigoMarca }));
+  }
+
+  // Anos do modelo de trabalho = união dos anos das versões de entrada, cada ano
+  // apontando para a PRIMEIRA versão (ordem de preferência) que o tem na FIPE.
+  async anosTrabalho(chave: string): Promise<(ItemFipe & { codigoModelo: string; versao: string })[]> {
+    const m = MODELOS_TRABALHO.find((x) => x.chave === chave);
+    if (!m) throw new Error(`modelo de trabalho "${chave}" não existe`);
+    const { ref } = await this.marcasCache();
+    const porAno = new Map<string, ItemFipe & { codigoModelo: string; versao: string }>();
+    for (const codigoModelo of m.versoes) {
+      const nomeVersao = (this.cacheModelos.get(`${ref}:${m.codigoMarca}`) ?? (await this.modelosBrutos(m.codigoMarca))).find((x) => String(x.Value) === codigoModelo)?.Label.replace(/\s+/g, ' ').trim() ?? '';
+      for (const a of await this.anos(m.codigoMarca, codigoModelo)) {
+        const ano = a.codigo.split('-')[0];
+        if (!porAno.has(ano)) porAno.set(ano, { codigo: a.codigo, nome: `${a.nome} · ${nomeVersao}`, codigoModelo, versao: nomeVersao });
+      }
+    }
+    // Zero km primeiro, depois do mais novo ao mais antigo.
+    return [...porAno.entries()].sort(([a], [b]) => Number(b) - Number(a)).map(([, v]) => v);
+  }
+
+  private async modelosBrutos(codigoMarca: string): Promise<ModeloFipe[]> {
+    const { ref } = await this.marcasCache();
+    const chave = `${ref}:${codigoMarca}`;
+    let modelos = this.cacheModelos.get(chave);
+    if (!modelos) {
+      const r = await this.post<{ Modelos: ModeloFipe[] }>('ConsultarModelos', { codigoTabelaReferencia: ref, codigoTipoVeiculo: CARRO, codigoMarca: Number(codigoMarca) });
+      modelos = r.Modelos ?? [];
+      this.cacheModelos.set(chave, modelos);
+    }
+    return modelos;
   }
 
   async valorPorCodigos(p: { codigoMarca: string; codigoModelo: string; ano: string }): Promise<ValorFipe> {
