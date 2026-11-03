@@ -1140,12 +1140,16 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > devolvido na troca. Entra no saldo-base (antes do desconto; a taxa inicial incide sobre ele),
 > fica congelado no snapshot e o instrumento declara valor e motivo. É o espelho do desconto,
 > sem exigir comitê (o desconto reduz dívida; o acréscimo é dívida reconhecida pelo cliente).
-> **Contrato único (adaptação Luís, 2026-10-13 — provisória até o jurídico validar o instrumento
-> de novação; PADRÃO desde 2026-11-03, decisão Luís — a opção nasce marcada e desmarcar é a
-> exceção; uma novação já aprovada em veículo + Termo pode ser CONVERTIDA em contrato único
-> enquanto aguarda assinatura e ninguém assinou: o Termo é encerrado por cancelamento, o
-> contrato do veículo recebe os números do modo único e o instrumento é regenerado e reenviado):**
-> a proposta pode marcar "contrato único". Aprovada, nasce **um só** contrato de
+> **Contrato único — ÚNICO modo desde 2026-11-03 (decisão Luís):** novação é encerrar o contrato
+> antigo e vender de novo no **contrato padrão de veículo**, com valor global = soma das parcelas
+> simuladas — "como se tivéssemos pego o carro de volta e vendido novamente". Não existe mais a
+> opção veículo + Termo nem o instrumento provisório de 14/09 (que chegou a ser assinado no caso
+> Bruno Alessandro, 03/11); o código do modo antigo fica só para ler novações já feitas. Uma
+> novação antiga em veículo + Termo que ainda aguarda assinatura pode ser **convertida**: o Termo
+> é encerrado por cancelamento, o contrato do veículo recebe os números do modo único, o contrato
+> padrão é gerado e reenviado (assinatura parcial não barra — o documento anterior é cancelado na
+> ZapSign e todos assinam de novo). Histórico da adaptação de 2026-10-13, hoje superada: a
+> proposta podia marcar "contrato único". Aprovada, nasce **um só** contrato de
 > Compra Parcelada do veículo (o da troca, se houver), com **valor global = todas as pendências**
 > (veículo + demais produtos + ajuste da troca + acréscimo − desconto + taxa inicial), pela MESMA
 > precificação da novação: N = parcelas do Termo + parcelas do veículo, todas no valor único do

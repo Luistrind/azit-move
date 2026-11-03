@@ -155,9 +155,13 @@ export class NovacaoService implements OnModuleInit {
     // Números do SERVIDOR (fonte de verdade) — valida saldo do veículo > 0.
     const sim = await this.decomposicao.simular(contaId, dto);
 
+    // Decisão Luís 03/11: novação É encerrar o contrato antigo e vender de novo no
+    // contrato padrão, com valor global = soma das parcelas simuladas. Sempre
+    // contrato único — o modo "veículo + Termo" (instrumento provisório de 14/09)
+    // não é mais gerado; o código fica só para ler novações antigas.
     const snapshot: SnapshotNovacao = {
       dataBase: sim.dataBase,
-      dto,
+      dto: { ...dto, contratoUnico: true },
       simulacao: sim,
     };
     const novacao = await this.prisma.db.novacao.create({
@@ -841,9 +845,13 @@ export class NovacaoService implements OnModuleInit {
     if (snap.dto.contratoUnico || !novacao.contratoTermo) {
       throw new UnprocessableEntityException({ erro: 'ja_unico', mensagem: 'Esta novação já é de contrato único' });
     }
+    // Assinatura parcial NÃO barra (Luís 03/11, caso Bruno): o que foi assinado é o
+    // instrumento provisório de dois contratos, que sai de cena; o reenvio cancela o
+    // documento na ZapSign e todos assinam o contrato padrão. Só o totalmente
+    // assinado não se converte — aí a novação já destrava a ativação.
     const doc = novacao.contratoVeiculo.documentoAssinatura;
-    if (doc && (doc.status === 'assinado' || doc.status === 'parcialmente_assinado')) {
-      throw new UnprocessableEntityException({ erro: 'ja_assinado', mensagem: 'O instrumento já tem assinatura — não dá mais para converter' });
+    if (doc && doc.status === 'assinado') {
+      throw new UnprocessableEntityException({ erro: 'ja_assinado', mensagem: 'O instrumento já foi assinado por todos — cancele a novação e refaça' });
     }
     const c1 = novacao.contratoVeiculo;
     const termo = novacao.contratoTermo;
