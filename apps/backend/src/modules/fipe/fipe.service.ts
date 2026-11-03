@@ -26,6 +26,18 @@ export interface ConsultaFipe {
 }
 export type ResultadoFipe = { ok: true; fipe: ConsultaFipe } | { ok: false; motivo: string };
 
+// Item de lista para a busca em tela (doc 02 §29.1): código + rótulo.
+export interface ItemFipe { codigo: string; nome: string }
+export interface ValorFipe {
+  valor: number; // centavos
+  codigoFipe: string;
+  marca: string;
+  modelo: string;
+  anoModelo: number;
+  combustivel: string;
+  referencia: string;
+}
+
 @Injectable()
 export class FipeService {
   private readonly logger = new Logger(FipeService.name);
@@ -51,6 +63,63 @@ export class FipeService {
     if (!tabelas?.length) throw new Error('FIPE sem tabela de referência');
     this.cacheRef = { codigo: tabelas[0].Codigo, em: Date.now() };
     return tabelas[0].Codigo;
+  }
+
+  // --- Busca em tela para o veículo de REFERÊNCIA (doc 02 §29.1) ---
+  // Mesma API oficial, mesmo cache; aqui o operador escolhe nas listas e o
+  // valor vem da Fundação — nunca digitado.
+  private async marcasCache(): Promise<{ ref: number; marcas: ModeloFipe[] }> {
+    const ref = await this.referencia();
+    if (!this.cacheMarcas || this.cacheMarcas.ref !== ref) {
+      this.cacheMarcas = { ref, marcas: await this.post<ModeloFipe[]>('ConsultarMarcas', { codigoTabelaReferencia: ref, codigoTipoVeiculo: CARRO }) };
+      this.cacheModelos.clear();
+    }
+    return this.cacheMarcas;
+  }
+
+  async marcas(): Promise<ItemFipe[]> {
+    const { marcas } = await this.marcasCache();
+    return marcas.map((m) => ({ codigo: String(m.Value), nome: m.Label.trim() }));
+  }
+
+  async modelos(codigoMarca: string): Promise<ItemFipe[]> {
+    const { ref } = await this.marcasCache();
+    const chave = `${ref}:${codigoMarca}`;
+    let modelos = this.cacheModelos.get(chave);
+    if (!modelos) {
+      const r = await this.post<{ Modelos: ModeloFipe[] }>('ConsultarModelos', { codigoTabelaReferencia: ref, codigoTipoVeiculo: CARRO, codigoMarca: Number(codigoMarca) });
+      modelos = r.Modelos ?? [];
+      this.cacheModelos.set(chave, modelos);
+    }
+    return modelos.map((m) => ({ codigo: String(m.Value), nome: m.Label.replace(/\s+/g, ' ').trim() }));
+  }
+
+  // Ano vem como "2020-1" (ano-combustível); o rótulo é "2020 Gasolina".
+  async anos(codigoMarca: string, codigoModelo: string): Promise<ItemFipe[]> {
+    const { ref } = await this.marcasCache();
+    const anos = await this.post<ModeloFipe[]>('ConsultarAnoModelo', { codigoTabelaReferencia: ref, codigoTipoVeiculo: CARRO, codigoMarca: Number(codigoMarca), codigoModelo: Number(codigoModelo) });
+    return (anos ?? []).map((a) => ({ codigo: String(a.Value), nome: a.Label.trim() }));
+  }
+
+  async valorPorCodigos(p: { codigoMarca: string; codigoModelo: string; ano: string }): Promise<ValorFipe> {
+    const { ref, marcas } = await this.marcasCache();
+    const [anoModelo, combustivel] = p.ano.split('-');
+    const v = await this.post<{ Valor?: string; CodigoFipe?: string; Marca?: string; Modelo?: string; AnoModelo?: number; Combustivel?: string; MesReferencia?: string; erro?: string }>('ConsultarValorComTodosParametros', {
+      codigoTabelaReferencia: ref, codigoTipoVeiculo: CARRO, codigoMarca: Number(p.codigoMarca), codigoModelo: Number(p.codigoModelo),
+      ano: p.ano, anoModelo: Number(anoModelo), codigoTipoCombustivel: Number(combustivel), tipoConsulta: 'tradicional',
+    });
+    const valor = v.Valor ? valorFipeParaCentavos(v.Valor) : null;
+    if (!valor) throw new Error(v.erro || 'a FIPE não devolveu valor para essa combinação');
+    const marca = marcas.find((m) => String(m.Value) === p.codigoMarca)?.Label.trim() ?? v.Marca ?? '';
+    return {
+      valor,
+      codigoFipe: v.CodigoFipe ?? '',
+      marca: v.Marca?.trim() || marca,
+      modelo: (v.Modelo ?? '').replace(/\s+/g, ' ').trim(),
+      anoModelo: Number(v.AnoModelo ?? anoModelo),
+      combustivel: v.Combustivel ?? '',
+      referencia: (v.MesReferencia ?? '').trim(),
+    };
   }
 
   async consultar(veiculo: { marca: string | null; modelo: string | null; anoModelo: number | null }): Promise<ResultadoFipe> {

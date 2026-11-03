@@ -713,6 +713,11 @@ export class AnaliseService implements OnModuleInit {
       // Observação do vendedor no envio da proposta (passo 10 do atendimento) —
       // antes ficava só na proposta e o analista não a via (Luís 28/10).
       observacaoVendedor: a.proposta.parecerOperador?.trim() || null,
+      // Veículo da proposta (doc 02 §29.2): ativo real ou referência FIPE.
+      veiculo: this.blocoVeiculo(a.proposta),
+      // Conferência do carro real atribuído a uma proposta da lista de espera
+      // (doc 02 §29.4 passo 4) — o analista confirma ou devolve aqui mesmo.
+      conferenciaVeiculo: this.blocoConferencia(a.proposta),
       // Resumo do assistente (IA — 14/09): apoio ao analista, nunca decisão.
       resumoIa: (a.resumoIa as ResumoIa | null) ?? null,
       politicaVersao: a.parametroVersao.politicaVersao,
@@ -1267,6 +1272,85 @@ export class AnaliseService implements OnModuleInit {
 
   // --- internos --------------------------------------------------------------
 
+  // Doc 02 §29.2 — bloco Veículo do dossiê.
+  private blocoVeiculo(p: {
+    ativoId: string | null;
+    referencia: { marca: string; modelo: string; anoModelo: number; valorFipe: Prisma.Decimal; fipeReferencia: string; consultadoEm: Date } | null;
+    ativo: {
+      id: string; descricao: string; marca: string | null; modelo: string | null; anoFabricacao: number | null; anoModelo: number | null; placa: string | null;
+      quilometragemEntrada: number | null; origem: string | null; valorVenda: Prisma.Decimal | null; fipeModelo: string | null; fipeReferencia: string | null; status: string;
+      contratosCredito: { id: string; numero: string; status: string; motivoEncerramento: string | null; createdAt: Date; recuperacaoIniciadaEm: Date | null; conta: { titular: { nome: string } } }[];
+    } | null;
+  }) {
+    if (p.ativo) {
+      const a = p.ativo;
+      const anoAtual = new Date().getFullYear();
+      // Contratos ANTERIORES à proposta em análise: tudo que o ativo já teve.
+      const anteriores = a.contratosCredito.map((c) => ({
+        id: c.id,
+        numero: c.numero,
+        status: c.status,
+        motivoEncerramento: c.motivoEncerramento,
+        recuperado: c.recuperacaoIniciadaEm !== null,
+        cliente: c.conta.titular.nome,
+        inicio: c.createdAt.toISOString(),
+      }));
+      return {
+        tipo: 'ativo' as const,
+        id: a.id,
+        descricao: a.descricao,
+        marca: a.marca,
+        modelo: a.modelo,
+        anoFabricacao: a.anoFabricacao,
+        anoModelo: a.anoModelo,
+        idadeAnos: a.anoModelo ? anoAtual - a.anoModelo : null,
+        placa: a.placa,
+        quilometragemEntrada: a.quilometragemEntrada,
+        origem: a.origem ? a.origem.toLowerCase() : null,
+        valorVenda: a.valorVenda ? cent(a.valorVenda) : null,
+        fipeModelo: a.fipeModelo,
+        fipeReferencia: a.fipeReferencia,
+        status: a.status.toLowerCase(),
+        novoNaOperacao: anteriores.length === 0,
+        contratosAnteriores: anteriores,
+        jaRecuperado: anteriores.some((c) => c.recuperado),
+      };
+    }
+    if (p.referencia) {
+      return {
+        tipo: 'referencia' as const,
+        marca: p.referencia.marca,
+        modelo: p.referencia.modelo,
+        anoModelo: p.referencia.anoModelo,
+        valorFipe: cent(p.referencia.valorFipe),
+        fipeReferencia: p.referencia.fipeReferencia,
+        consultadoEm: p.referencia.consultadoEm.toISOString(),
+      };
+    }
+    return null;
+  }
+
+  // Doc 02 §29.4 passo 4 — o que o analista vê para confirmar o carro real.
+  private blocoConferencia(p: {
+    id: string;
+    referenciaId: string | null;
+    veiculoAtribuidoEm: Date | null;
+    veiculoConferidoEm: Date | null;
+    conferenciaVeiculo: Prisma.JsonValue;
+    valorParcela: Prisma.Decimal;
+  }) {
+    if (!p.referenciaId || !p.veiculoAtribuidoEm) return null;
+    const c = (p.conferenciaVeiculo ?? null) as Record<string, unknown> | null;
+    return {
+      propostaId: p.id,
+      pendente: !p.veiculoConferidoEm,
+      atribuidoEm: p.veiculoAtribuidoEm.toISOString(),
+      conferidoEm: p.veiculoConferidoEm?.toISOString() ?? null,
+      parcelaAprovada: cent(p.valorParcela),
+      ajuste: c,
+    };
+  }
+
   private async carregar(analiseId: string) {
     const a = await this.prisma.db.analiseCadastro.findFirst({
       where: { id: analiseId },
@@ -1274,7 +1358,25 @@ export class AnaliseService implements OnModuleInit {
         parametroVersao: true,
         // Documentos da proposta no dossiê (decisão 08/08 Q4): complementares
         // podem ou não ser comprovante de renda — o analista precisa vê-los.
-        proposta: { include: { documentos: { orderBy: { dataAnexo: 'desc' } } } },
+        proposta: {
+          include: {
+            documentos: { orderBy: { dataAnexo: 'desc' } },
+            // Bloco Veículo do dossiê (doc 02 §29.2): a análise olha o carro —
+            // km, origem, se já veio de outro contrato, FIPE × venda.
+            ativo: {
+              select: {
+                id: true, descricao: true, marca: true, modelo: true, anoFabricacao: true, anoModelo: true, placa: true,
+                quilometragemEntrada: true, origem: true, valorVenda: true, fipeModelo: true, fipeReferencia: true, status: true,
+                contratosCredito: {
+                  where: { deletedAt: null },
+                  orderBy: { createdAt: 'asc' },
+                  select: { id: true, numero: true, status: true, motivoEncerramento: true, createdAt: true, recuperacaoIniciadaEm: true, conta: { select: { titular: { select: { nome: true } } } } },
+                },
+              },
+            },
+            referencia: true,
+          },
+        },
         participantes: { include: { titular: { select: { nome: true, cpfCnpj: true } } } },
         autorizacoes: true,
         consultas: { orderBy: { dataConsulta: 'desc' } },

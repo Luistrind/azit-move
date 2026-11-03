@@ -33,6 +33,16 @@ export interface ParecerAnalise {
   emitidoEm: string; emitidoPor: string;
 }
 
+export type VeiculoDossie =
+  | {
+      tipo: 'ativo';
+      id: string; descricao: string; marca: string | null; modelo: string | null; anoFabricacao: number | null; anoModelo: number | null; idadeAnos: number | null;
+      placa: string | null; quilometragemEntrada: number | null; origem: string | null; valorVenda: number | null; fipeModelo: string | null; fipeReferencia: string | null;
+      status: string; novoNaOperacao: boolean; jaRecuperado: boolean;
+      contratosAnteriores: { id: string; numero: string; status: string; motivoEncerramento: string | null; recuperado: boolean; cliente: string; inicio: string }[];
+    }
+  | { tipo: 'referencia'; marca: string; modelo: string; anoModelo: number; valorFipe: number; fipeReferencia: string; consultadoEm: string };
+
 export interface DossieAnalise {
   id: string; propostaId: string; status: string; politicaVersao: string;
   // Parecer do analista (o mais recente) e o histórico — quem decide precisa lê-lo.
@@ -40,6 +50,20 @@ export interface DossieAnalise {
   pareceres: ParecerAnalise[];
   // Observação do vendedor no envio da proposta (passo 10 do atendimento).
   observacaoVendedor: string | null;
+  // Bloco Veículo (doc 02 §29.2): ativo real ou referência FIPE.
+  veiculo: VeiculoDossie | null;
+  // Conferência do carro real atribuído a uma proposta da lista de espera (§29.4).
+  conferenciaVeiculo: {
+    propostaId: string;
+    pendente: boolean;
+    atribuidoEm: string;
+    conferidoEm: string | null;
+    parcelaAprovada: number;
+    ajuste: {
+      ativoRotulo?: string; valorAvista?: number; valorFipeReferencia?: number | null; parcelaBase?: number; adicionalProtecao?: number;
+      valorParcela?: number; numeroParcelas?: number; foraParametro?: boolean; foraParametroMotivo?: string | null; camada1Renovada?: string | null;
+    } | null;
+  } | null;
   resumoIa: ResumoIaAnalise | null;
   condutorPrincipalTitularId: string | null;
   parcelaMensalEquivalente: number; comprometimento: number | null;

@@ -25,6 +25,59 @@ export interface OfertaSimulada {
   foraParametroMotivo?: string | null;
 }
 
+// Veículo de REFERÊNCIA (doc 02 §29.1): descrição com preço FIPE, sem ativo.
+export interface ReferenciaVeiculo {
+  id: string;
+  marca: string;
+  modelo: string;
+  anoModelo: number;
+  combustivel: string | null;
+  fipeCodigo: string | null;
+  valorFipe: number;
+  fipeReferencia: string;
+  consultadoEm: string;
+  rotulo: string;
+}
+export interface ItemFipe { codigo: string; nome: string }
+
+// Lista de espera (doc 02 §29.3): proposta aprovada por referência, sem carro.
+export interface PropostaEspera {
+  id: string;
+  titular: { id: string; nome: string; cpfCnpj: string; whatsapp: string | null };
+  referencia: ReferenciaVeiculo | null;
+  ativo: { id: string; descricao: string; placa: string | null; rotulo: string; valorVenda: number | null } | null;
+  valorEntrada: number;
+  valorParcela: number;
+  numeroParcelas: number;
+  prazoMeses: number | null;
+  frequencia: string | null;
+  foraParametro: boolean;
+  analiseId: string | null;
+  aprovadaEm: string | null;
+  validaAte: string | null;
+  diasRestantes: number | null;
+  situacao: 'na_fila' | 'em_conferencia' | 'pronta' | 'expirada';
+  situacaoRotulo: string;
+  veiculoAtribuidoEm: string | null;
+  veiculoConferidoEm: string | null;
+  ajuste: AjusteVeiculo | null;
+}
+export interface AjusteVeiculo {
+  ativoId: string;
+  ativoRotulo: string;
+  valorAvista: number;
+  valorFipeReferencia: number | null;
+  parcelaBase: number;
+  adicionalProtecao: number;
+  valorParcela: number;
+  parcelaAprovada: number;
+  numeroParcelas: number;
+  foraParametro: boolean;
+  foraParametroMotivo: string | null;
+  camada1Renovada: string | null;
+  calculadoEm: string;
+}
+
 export interface SimulacaoResultado {
   id: string;
   status: string;
@@ -33,6 +86,7 @@ export interface SimulacaoResultado {
   cliente?: { nome: string; cpf: string; telefone: string | null; titularId: string | null } | null;
   propostaId?: string | null;
   ativo: { id: string; descricao: string; placa: string | null } | null;
+  referencia?: ReferenciaVeiculo | null;
   valorAvista: number;
   valorAvistaManual: boolean;
   avisoDivergencia: string | null;
@@ -45,6 +99,7 @@ export interface PropostaResumo {
   modalidade: string;
   titular: string;
   ativo: string;
+  porReferencia?: boolean;
   valorEntrada: number;
   valorParcela: number;
   numeroParcelas: number;
@@ -57,7 +112,12 @@ export interface PropostaDetalhe {
   id: string;
   status: string;
   modalidade: string;
-  ativo: { id: string; descricao: string; placa: string | null; rotulo: string };
+  // Doc 02 §29: ativo OU referência; `veiculo` é o rótulo único para as telas.
+  ativo: { id: string; descricao: string; placa: string | null; rotulo: string } | null;
+  referencia?: ReferenciaVeiculo | null;
+  veiculo: string;
+  veiculoAtribuidoEm?: string | null;
+  veiculoConferidoEm?: string | null;
   titular: { id: string; nome: string; cpfCnpj: string; whatsapp: string };
   valorEntrada: number;
   valorParcela: number;
@@ -153,8 +213,34 @@ export const originacaoService = {
     const { data } = await api.get<SimulacaoResultado>(`/api/v1/simulacoes/${id}`);
     return data;
   },
-  async simular(body: { ativoId?: string; valorAvista?: number; leadId?: string; titularId?: string }): Promise<SimulacaoResultado> {
+  async simular(body: { ativoId?: string; referencia?: { codigoMarca: string; codigoModelo: string; ano: string }; valorAvista?: number; leadId?: string; titularId?: string }): Promise<SimulacaoResultado> {
     const { data } = await api.post('/api/v1/simulacoes', body);
+    return data;
+  },
+  // Busca na FIPE para o veículo de referência (doc 02 §29.1).
+  async fipeMarcas(): Promise<ItemFipe[]> {
+    const { data } = await api.get('/api/v1/fipe/marcas');
+    return data;
+  },
+  async fipeModelos(marca: string): Promise<ItemFipe[]> {
+    const { data } = await api.get('/api/v1/fipe/modelos', { params: { marca } });
+    return data;
+  },
+  async fipeAnos(marca: string, modelo: string): Promise<ItemFipe[]> {
+    const { data } = await api.get('/api/v1/fipe/anos', { params: { marca, modelo } });
+    return data;
+  },
+  // Lista de espera (doc 02 §29.3–29.4).
+  async listaEspera(): Promise<PropostaEspera[]> {
+    const { data } = await api.get('/api/v1/propostas/lista-espera');
+    return data;
+  },
+  async atribuirVeiculo(propostaId: string, ativoId: string): Promise<PropostaDetalhe> {
+    const { data } = await api.post(`/api/v1/propostas/${propostaId}/atribuir-veiculo`, { ativoId });
+    return data;
+  },
+  async conferirVeiculo(propostaId: string, body: { confirmar: boolean; observacao?: string }): Promise<PropostaDetalhe> {
+    const { data } = await api.post(`/api/v1/propostas/${propostaId}/conferir-veiculo`, body);
     return data;
   },
   // Tela 3 — cenário personalizado (bloqueios de entrada/prazo no backend).

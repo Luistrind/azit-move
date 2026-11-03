@@ -30,6 +30,7 @@ const GRUPOS_NAV: GrupoNav[] = [
       { to: '/atendimento', label: 'Novo atendimento' },
       { to: '/simulacoes', label: 'Simulações' },
       { to: '/propostas', label: 'Propostas' },
+      { to: '/lista-espera', label: 'Lista de espera' },
     ],
   },
   {

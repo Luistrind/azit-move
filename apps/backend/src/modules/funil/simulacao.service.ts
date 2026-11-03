@@ -4,7 +4,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, Periodicidade as PeriodicidadePrisma } from '@prisma/client';
-import { rotuloAtivo, precificarSimulacao, FrequenciaSimulacao, DIA_MS } from '@azit/utils';
+import { rotuloAtivo, rotuloReferencia, precificarSimulacao, FrequenciaSimulacao, DIA_MS } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { ParametrosService, ParametrosVigentes } from '../simulador/parametros.service';
 import { OfertaFixaService } from '../simulador/oferta-fixa.service';
@@ -14,6 +14,8 @@ import {
   ParametrosCatalogoCompraParcelada,
 } from '../catalogo/catalogo-fonte.service';
 import { CriarSimulacaoDto, SimularOpcaoDto } from './dto/simulacao.dto';
+import { FipeService } from '../fipe/fipe.service';
+import { referenciaParaApi } from './referencia';
 
 const cent = (d: Prisma.Decimal | null): number =>
   d !== null ? Math.round(Number(d.toString()) * 100) : 0;
@@ -42,6 +44,7 @@ export class SimulacaoService {
     private readonly parametros: ParametrosService,
     private readonly ofertaFixa: OfertaFixaService,
     private readonly catalogoFonte: CatalogoFonteService,
+    private readonly fipe: FipeService,
   ) {}
 
   // F2 (doc 02 §17): quando o produto compra_parcelada e a variante do ativo
@@ -193,10 +196,38 @@ export class SimulacaoService {
       }
     }
 
-    // VA: cadastro do ativo tem prioridade; manual quando não há valor cadastrado.
+    // Veículo de REFERÊNCIA (doc 02 §29.1): sem carro no estoque, o operador
+    // escolhe marca/modelo/ano na FIPE e o valor à vista é o da Fundação,
+    // congelado no dia. Nunca junto com ativo.
+    let referenciaId: string | null = null;
+    let valorReferencia = 0;
+    if (dto.referencia && !ativo) {
+      let fipe;
+      try {
+        fipe = await this.fipe.valorPorCodigos(dto.referencia);
+      } catch (e) {
+        throw new UnprocessableEntityException({ erro: 'fipe_indisponivel', mensagem: `Não foi possível consultar a FIPE: ${(e as Error).message}` });
+      }
+      const ref = await this.prisma.db.veiculoReferencia.create({
+        data: {
+          marca: fipe.marca,
+          modelo: fipe.modelo,
+          anoModelo: fipe.anoModelo,
+          combustivel: fipe.combustivel || null,
+          fipeCodigo: fipe.codigoFipe || null,
+          valorFipe: reais(fipe.valor),
+          fipeReferencia: fipe.referencia,
+        },
+      });
+      referenciaId = ref.id;
+      valorReferencia = fipe.valor;
+    }
+
+    // VA: cadastro do ativo tem prioridade; depois a referência FIPE; manual só
+    // quando não há nenhum dos dois.
     const valorCadastro = ativo?.valorVenda ? cent(ativo.valorVenda) : 0;
-    const valorAvista = valorCadastro > 0 ? valorCadastro : (dto.valorAvista ?? 0);
-    const manual = valorCadastro === 0;
+    const valorAvista = valorCadastro > 0 ? valorCadastro : valorReferencia > 0 ? valorReferencia : (dto.valorAvista ?? 0);
+    const manual = valorCadastro === 0 && valorReferencia === 0;
     if (valorAvista <= 0) {
       throw new UnprocessableEntityException({
         erro: 'sem_valor_avista',
@@ -226,6 +257,7 @@ export class SimulacaoService {
         leadId: dto.leadId,
         titularId: dto.titularId,
         ativoId: ativo?.id,
+        referenciaId,
         valorAvista: reais(valorAvista),
         valorAvistaManual: manual,
         valorEntrada: reais(entradaProvisoria), // provisório até escolher oferta
@@ -304,6 +336,7 @@ export class SimulacaoService {
 
     await this.auditar('simulacao_criada', simulacao.id, {
       ativoId: ativo?.id ?? null,
+      referenciaId,
       valorAvista,
       manual,
       parametroVersaoId: params?.id ?? null,
@@ -427,6 +460,7 @@ export class SimulacaoService {
       where: { id: simulacaoId },
       include: {
         ativo: { select: { id: true, descricao: true, placa: true } },
+        referencia: true,
         lead: { select: { nome: true, cpf: true, telefone: true } },
         titular: { select: { id: true, nome: true, cpfCnpj: true } },
         proposta: { select: { id: true } },
@@ -449,6 +483,7 @@ export class SimulacaoService {
       cliente,
       propostaId: s.proposta?.id ?? null,
       ativo: s.ativo ? { id: s.ativo.id, descricao: s.ativo.descricao, placa: s.ativo.placa } : null,
+      referencia: s.referencia ? referenciaParaApi(s.referencia) : null,
       valorAvista: cent(s.valorAvista),
       valorAvistaManual: s.valorAvistaManual,
       avisoDivergencia,
@@ -477,6 +512,7 @@ export class SimulacaoService {
         lead: { select: { nome: true } },
         titular: { select: { nome: true } },
         ativo: { select: { descricao: true, placa: true } },
+        referencia: { select: { marca: true, modelo: true, anoModelo: true } },
         ofertas: { where: { selecionada: true }, take: 1 },
         proposta: { select: { id: true, status: true } },
       },
@@ -486,7 +522,7 @@ export class SimulacaoService {
       return {
         id: s.id,
         cliente: s.titular?.nome ?? s.lead?.nome ?? '—',
-        ativo: s.ativo ? rotuloAtivo(s.ativo) : 'Valor manual',
+        ativo: s.ativo ? rotuloAtivo(s.ativo) : s.referencia ? rotuloReferencia(s.referencia) : 'Valor manual',
         valorAvista: cent(s.valorAvista),
         valorEntrada: cent(s.valorEntrada),
         status: this.expirada(s) ? 'expirada' : s.status.toLowerCase(),
@@ -503,6 +539,54 @@ export class SimulacaoService {
         propostaStatus: s.proposta?.status?.toLowerCase() ?? null,
       };
     });
+  }
+
+  // Recálculo da condição com o CARRO REAL (doc 02 §29.4 passo 3): mesmo motor,
+  // mesma fonte (Catálogo ou legado), mesmo prazo/frequência/entrada da proposta
+  // aprovada — muda só o valor à vista (valor de venda do ativo). Usado pela
+  // atribuição de veículo da lista de espera.
+  async recalcularCondicao(input: { ativoId: string; valorEntrada: number; prazoMeses: number; frequencia: FrequenciaSimulacao }) {
+    const ativo = await this.prisma.db.ativo.findFirst({
+      where: { id: input.ativoId },
+      select: { id: true, valorVenda: true, varianteCatalogo: true },
+    });
+    if (!ativo) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Ativo não encontrado' });
+    const valorAvista = ativo.valorVenda ? cent(ativo.valorVenda) : 0;
+    if (valorAvista <= 0) {
+      throw new UnprocessableEntityException({ erro: 'ativo_sem_valor', mensagem: 'O ativo não tem valor de venda cadastrado — preencha antes de atribuir' });
+    }
+    if (input.valorEntrada >= valorAvista) {
+      throw new UnprocessableEntityException({ erro: 'entrada_invalida', mensagem: 'A entrada aprovada é maior ou igual ao valor do veículo escolhido' });
+    }
+    const cat = await this.fonteCatalogo(ativo.id);
+    let foraParametroMotivo: string | null = null;
+    let r: { parcelaFinal: number; numeroParcelas: number };
+    if (cat) {
+      await this.aplicarProtecaoPV(cat, valorAvista);
+      foraParametroMotivo = this.avaliarForaParametro(cat, input);
+      r = this.precificarCatalogo(cat, valorAvista, input.valorEntrada, input.prazoMeses, input.frequencia);
+    } else {
+      const params = await this.parametros.vigente();
+      try {
+        this.validarCenario(params, valorAvista, input);
+      } catch (e) {
+        foraParametroMotivo = (e as { response?: { mensagem?: string } }).response?.mensagem ?? 'Condição fora do parâmetro';
+      }
+      r = precificarSimulacao({
+        valorAvista,
+        valorEntrada: input.valorEntrada,
+        prazoMeses: input.prazoMeses,
+        frequencia: input.frequencia,
+        comissaoInicial: params.comissaoInicial,
+        comissaoRecorrente: params.comissaoRecorrente,
+        taxaMensal: params.taxaMensal,
+        fatorPrecificacaoSemanal: params.fatorPrecificacaoSemanal,
+        fatorPrecificacaoQuinzenal: params.fatorPrecificacaoQuinzenal,
+        fatorSemanal: params.fatorSemanal,
+        fatorQuinzenal: params.fatorQuinzenal,
+      });
+    }
+    return { valorAvista, parcelaBase: r.parcelaFinal, numeroParcelas: r.numeroParcelas, foraParametroMotivo, varianteCP: ativo.varianteCatalogo ?? 'carro' };
   }
 
   private async buscar(id: string) {

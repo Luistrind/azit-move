@@ -95,6 +95,12 @@ export function AtendimentoPage() {
   const [buscaAtivo, setBuscaAtivo] = useState('');
   const [semAtivo, setSemAtivo] = useState(false);
   const [valorManualTexto, setValorManualTexto] = useState('');
+  // Modelo de REFERÊNCIA (doc 02 §29.1): sem carro no estoque, escolhe marca →
+  // modelo → ano na FIPE; o valor à vista vem da Fundação, nunca digitado.
+  const [modoReferencia, setModoReferencia] = useState(false);
+  const [fipeMarca, setFipeMarca] = useState('');
+  const [fipeModelo, setFipeModelo] = useState('');
+  const [fipeAno, setFipeAno] = useState('');
 
   // Passo 2/3 — simulação
   const [simulacao, setSimulacao] = useState<SimulacaoResultado | null>(null);
@@ -152,6 +158,9 @@ export function AtendimentoPage() {
     queryFn: () => originacaoService.ativosDisponiveis(),
     enabled: passo === 2,
   });
+  const fipeMarcas = useQuery({ queryKey: ['fipe-marcas'], queryFn: () => originacaoService.fipeMarcas(), enabled: passo === 2 && modoReferencia, staleTime: 3_600_000 });
+  const fipeModelos = useQuery({ queryKey: ['fipe-modelos', fipeMarca], queryFn: () => originacaoService.fipeModelos(fipeMarca), enabled: modoReferencia && !!fipeMarca, staleTime: 3_600_000 });
+  const fipeAnos = useQuery({ queryKey: ['fipe-anos', fipeMarca, fipeModelo], queryFn: () => originacaoService.fipeAnos(fipeMarca, fipeModelo), enabled: modoReferencia && !!fipeMarca && !!fipeModelo, staleTime: 3_600_000 });
 
   // Busca de cliente existente (nome ou CPF) — sem redigitar cadastro (padrão Asaas).
   const buscaLimpa = buscaCliente.trim();
@@ -203,7 +212,7 @@ export function AtendimentoPage() {
     }
   }
 
-  async function simularCom(body: { ativoId?: string; valorAvista?: number }) {
+  async function simularCom(body: { ativoId?: string; valorAvista?: number; referencia?: { codigoMarca: string; codigoModelo: string; ano: string } }) {
     setErro(null);
     setOcupado(true);
     try {
@@ -682,6 +691,55 @@ export function AtendimentoPage() {
             ))
           )}
 
+          {/* Modelo de referência (doc 02 §29.1): aprova a pessoa antes de ter o carro.
+              A proposta entra na Lista de espera depois de aprovada. */}
+          {modoReferencia ? (
+            <div className="flex flex-col gap-[10px] rounded-[14px] p-[16px]" style={{ background: 'var(--surface)', border: '1.5px solid var(--accent)' }}>
+              <div className="text-[15px] font-bold">Modelo de referência (FIPE)</div>
+              <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
+                Sem o carro no estoque: a pessoa é analisada com o valor FIPE do modelo e, aprovada, entra na lista de espera até um veículo ser atribuído.
+              </div>
+              <div>
+                <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Marca</span>
+                <select value={fipeMarca} onChange={(e) => { setFipeMarca(e.target.value); setFipeModelo(''); setFipeAno(''); }} className={inputCls} style={inputStyle}>
+                  <option value="">{fipeMarcas.isLoading ? 'Carregando…' : fipeMarcas.isError ? 'FIPE indisponível agora' : 'Selecione a marca'}</option>
+                  {(fipeMarcas.data ?? []).map((m) => <option key={m.codigo} value={m.codigo}>{m.nome}</option>)}
+                </select>
+              </div>
+              <div>
+                <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Modelo</span>
+                <select value={fipeModelo} onChange={(e) => { setFipeModelo(e.target.value); setFipeAno(''); }} disabled={!fipeMarca} className={inputCls} style={inputStyle}>
+                  <option value="">{!fipeMarca ? 'Escolha a marca antes' : fipeModelos.isLoading ? 'Carregando…' : 'Selecione o modelo'}</option>
+                  {(fipeModelos.data ?? []).map((m) => <option key={m.codigo} value={m.codigo}>{m.nome}</option>)}
+                </select>
+              </div>
+              <div>
+                <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Ano do modelo</span>
+                <select value={fipeAno} onChange={(e) => setFipeAno(e.target.value)} disabled={!fipeModelo} className={inputCls} style={inputStyle}>
+                  <option value="">{!fipeModelo ? 'Escolha o modelo antes' : fipeAnos.isLoading ? 'Carregando…' : 'Selecione o ano'}</option>
+                  {(fipeAnos.data ?? []).map((a) => <option key={a.codigo} value={a.codigo}>{a.nome}</option>)}
+                </select>
+              </div>
+              <button
+                onClick={() => simularCom({ referencia: { codigoMarca: fipeMarca, codigoModelo: fipeModelo, ano: fipeAno } })}
+                disabled={ocupado || !fipeMarca || !fipeModelo || !fipeAno}
+                className="h-[50px] rounded-[12px] text-[15px] font-bold disabled:opacity-40"
+                style={{ background: 'var(--navy)', color: '#fff' }}
+              >
+                {ocupado ? 'Consultando a FIPE…' : 'Simular pelo valor FIPE'}
+              </button>
+              <button onClick={() => setModoReferencia(false)} className="text-[12.5px] font-semibold" style={{ color: 'var(--text-muted)' }}>voltar ao estoque</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setModoReferencia(true); setSemAtivo(false); }}
+              className="h-[48px] rounded-[12px] text-[14px] font-semibold"
+              style={{ background: 'var(--surface)', border: '1.5px dashed var(--accent)', color: 'var(--text-primary)' }}
+            >
+              Não tem o carro? Simular por modelo de referência (FIPE)
+            </button>
+          )}
+
           {/* Continuar só preenchendo o valor — mesma fonte de cálculo do Catálogo */}
           {semAtivo ? (
             <div className="flex flex-col gap-[10px] rounded-[14px] p-[16px]" style={{ background: 'var(--surface)', border: '1.5px dashed var(--border)' }}>
@@ -722,7 +780,8 @@ export function AtendimentoPage() {
       {passo === 3 && simulacao && (
         <div className="flex flex-col gap-[14px]">
           <div className="rounded-[12px] p-[12px] text-[14px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-            <b>{simulacao.ativo ? rotuloAtivo(simulacao.ativo) : 'Ativo a definir'}</b>
+            <b>{simulacao.ativo ? rotuloAtivo(simulacao.ativo) : simulacao.referencia ? simulacao.referencia.rotulo : 'Ativo a definir'}</b>
+            {simulacao.referencia && <span className="ml-[6px] rounded-full px-[8px] py-[2px] text-[11px] font-bold" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}>lista de espera</span>}
             <span style={{ color: 'var(--text-muted)' }}> · à vista {reais(simulacao.valorAvista)}</span>
           </div>
 
@@ -1069,7 +1128,7 @@ export function AtendimentoPage() {
           <div className="mx-auto flex w-full max-w-[520px] flex-1 flex-col gap-[14px]">
             <div className="mt-[10px] text-center">
               <div className="text-[16px] font-semibold" style={{ color: 'var(--accent)' }}>
-                {simulacao.ativo ? rotuloAtivo(simulacao.ativo) : ''}
+                {simulacao.ativo ? rotuloAtivo(simulacao.ativo) : simulacao.referencia ? `${simulacao.referencia.marca} ${simulacao.referencia.modelo} ${simulacao.referencia.anoModelo}` : ''}
               </div>
               <div className="text-[13px]" style={{ color: 'var(--navy-text-body)' }}>
                 Condições para você

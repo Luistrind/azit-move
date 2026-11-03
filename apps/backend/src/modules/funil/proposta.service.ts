@@ -13,7 +13,7 @@ import {
 } from '@prisma/client';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { rotuloAtivo, limparDocumento, reaisParaCentavos, centavosParaReaisString, formatCurrency, fatorValorDesdeSemanal } from '@azit/utils';
+import { rotuloAtivo, rotuloVeiculoProposta, limparDocumento, reaisParaCentavos, centavosParaReaisString, formatCurrency, fatorValorDesdeSemanal, situacaoListaEspera, validadeAprovacaoEspera, aprovacaoExpirada, diasRestantesAprovacao, ROTULO_SITUACAO_ESPERA, type FrequenciaSimulacao } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { TitularService } from '../titular/titular.service';
 import { ContaService } from '../conta/conta.service';
@@ -21,6 +21,9 @@ import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { Camada1Service } from '../bureau/camada1.service';
 import { AnaliseService } from '../analise/analise.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
+import { NotificacaoService } from '../notificacao/notificacao.service';
+import { SimulacaoService } from './simulacao.service';
+import { referenciaParaApi } from './referencia';
 import {
   CriarPropostaDto,
   AdicionarVinculoDto,
@@ -78,6 +81,8 @@ export class PropostaService {
     private readonly camada1: Camada1Service,
     private readonly analise: AnaliseService,
     private readonly catalogoFonte: CatalogoFonteService,
+    private readonly notificacao: NotificacaoService,
+    private readonly simulacaoService: SimulacaoService,
   ) {
     // Bloco B da auditoria (15/09, P1-8): a exceção "fora de parâmetro" não
     // tinha efetivador — aprovar já funcionava (o gate da formalização lê o
@@ -144,12 +149,12 @@ export class PropostaService {
         mensagem: 'Simulação expirada — recalcule antes de converter em proposta',
       });
     }
-    // Proposta precisa de um ativo (o veículo da venda). Simulação por valor manual
-    // deve ser refeita com o ativo definido antes de virar proposta.
-    if (!simulacao.ativoId) {
+    // Proposta precisa de um ativo OU de um veículo de referência (doc 02 §29.1).
+    // Simulação por valor manual livre deve ser refeita com um dos dois.
+    if (!simulacao.ativoId && !simulacao.referenciaId) {
       throw new UnprocessableEntityException({
         erro: 'sem_ativo',
-        mensagem: 'Vincule um veículo/ativo à simulação antes de converter em proposta',
+        mensagem: 'Vincule um veículo do estoque ou um modelo de referência (FIPE) à simulação antes de converter em proposta',
       });
     }
 
@@ -161,6 +166,7 @@ export class PropostaService {
         simulacaoId: simulacao.id,
         titularId,
         ativoId: simulacao.ativoId,
+        referenciaId: simulacao.referenciaId,
         modalidade: dto.modalidade.toUpperCase() as ModalidadeContrato,
         valorEntrada: oferta.valorEntrada,
         // V3: prazo em meses + frequência (a conversão em contrato deriva daqui).
@@ -363,13 +369,15 @@ export class PropostaService {
 
   // Base do cálculo da proteção (mesma regra da simulação): valor à vista como
   // proxy da FIPE + fator de VALOR da frequência (semanal 1, quinzenal 2, mensal 4).
-  private async baseProtecao(p: { ativo: { varianteCatalogo: string }; simulacao: { valorAvista: Prisma.Decimal | null } | null; frequencia: Periodicidade | null }) {
+  // Sem ativo (proposta por referência, doc 02 §29) a variante é a padrão 'carro'.
+  private async baseProtecao(p: { ativo: { varianteCatalogo: string } | null; simulacao: { valorAvista: Prisma.Decimal | null } | null; frequencia: Periodicidade | null }) {
     const valorAvista = p.simulacao?.valorAvista ? cent(p.simulacao.valorAvista) : 0;
     if (valorAvista <= 0) return null;
-    const cat = await this.catalogoFonte.compraParcelada(p.ativo.varianteCatalogo ?? 'carro');
+    const varianteCP = p.ativo?.varianteCatalogo ?? 'carro';
+    const cat = await this.catalogoFonte.compraParcelada(varianteCP);
     if (!cat || !cat.protecaoObrigatoria) return null;
     const fator = p.frequencia ? fatorValorDesdeSemanal(p.frequencia) : 1;
-    return { varianteCP: p.ativo.varianteCatalogo ?? 'carro', valorAvista, fator };
+    return { varianteCP, valorAvista, fator };
   }
 
   // 7.6 — promoção/reconciliação por CPF; garante Conta; vincula lead e simulação.
@@ -619,6 +627,8 @@ export class PropostaService {
       });
     }
     await this.prisma.db.proposta.update({ where: { id: propostaId }, data: { status: alvo } });
+    // Doc 02 §29.4 passo 5: cancelar a proposta solta o ativo reservado.
+    if (alvo === 'CANCELADA') await this.liberarReserva(propostaId);
     return this.detalhe(propostaId);
   }
 
@@ -628,6 +638,7 @@ export class PropostaService {
       include: {
         titular: { select: { nome: true } },
         ativo: { select: { descricao: true, placa: true } },
+        referencia: { select: { marca: true, modelo: true, anoModelo: true } },
       },
     });
     return propostas.map((p) => ({
@@ -635,7 +646,8 @@ export class PropostaService {
       status: p.status.toLowerCase(),
       modalidade: p.modalidade.toLowerCase(),
       titular: p.titular.nome,
-      ativo: rotuloAtivo(p.ativo),
+      ativo: rotuloVeiculoProposta(p),
+      porReferencia: !!p.referenciaId,
       valorEntrada: cent(p.valorEntrada),
       valorParcela: cent(p.valorParcela),
       numeroParcelas: p.numeroParcelas,
@@ -687,6 +699,7 @@ export class PropostaService {
       include: {
         titular: { select: { id: true, nome: true, cpfCnpj: true, whatsapp: true } },
         ativo: { select: { id: true, descricao: true, placa: true, valorVenda: true } },
+        referencia: true,
         vinculos: { include: { titular: { select: { id: true, nome: true, cpfCnpj: true } } } },
         documentos: true,
         parecer: true,
@@ -706,7 +719,12 @@ export class PropostaService {
       id: p.id,
       status: p.status.toLowerCase(),
       modalidade: p.modalidade.toLowerCase(),
-      ativo: { id: p.ativo.id, descricao: p.ativo.descricao, placa: p.ativo.placa, rotulo: rotuloAtivo(p.ativo) },
+      // Doc 02 §29: ativo OU referência; `veiculo` é o rótulo único para as telas.
+      ativo: p.ativo ? { id: p.ativo.id, descricao: p.ativo.descricao, placa: p.ativo.placa, rotulo: rotuloAtivo(p.ativo) } : null,
+      referencia: p.referencia ? referenciaParaApi(p.referencia) : null,
+      veiculo: rotuloVeiculoProposta(p),
+      veiculoAtribuidoEm: p.veiculoAtribuidoEm?.toISOString() ?? null,
+      veiculoConferidoEm: p.veiculoConferidoEm?.toISOString() ?? null,
       titular: p.titular,
       valorEntrada: cent(p.valorEntrada),
       valorParcela: cent(p.valorParcela),
@@ -792,6 +810,248 @@ export class PropostaService {
     if (!p) throw this.naoEncontrada();
     return this.calcPendencias(p.vinculos, p.documentos);
   }
+
+  // =========================================================================
+  // Lista de espera (doc 02 §29, decisão Luís 03/11): proposta APROVADA por
+  // veículo de REFERÊNCIA (FIPE), sem carro no estoque. Situação calculada
+  // (Regra 7); validade = DIAS_VALIDADE_APROVACAO_ESPERA (Regra 16).
+  // =========================================================================
+
+  // Data da aprovação: liberação da análise de cadastro (trilha única §14) ou,
+  // no fluxo legado sem análise, o parecer.
+  private aprovadaEmDe(p: { analiseCadastro: { liberadaEm: Date | null } | null; parecer: { data: Date } | null; updatedAt: Date }): Date | null {
+    return p.analiseCadastro?.liberadaEm ?? p.parecer?.data ?? (p.analiseCadastro || p.parecer ? p.updatedAt : null);
+  }
+
+  async listaEspera() {
+    const propostas = await this.prisma.db.proposta.findMany({
+      where: { referenciaId: { not: null }, contratoGeradoId: null, status: { in: ['APROVADA', 'EM_FORMALIZACAO'] } },
+      include: {
+        titular: { select: { id: true, nome: true, cpfCnpj: true, whatsapp: true } },
+        referencia: true,
+        ativo: { select: { id: true, descricao: true, placa: true, valorVenda: true } },
+        analiseCadastro: { select: { id: true, liberadaEm: true } },
+        parecer: { select: { data: true } },
+      },
+    });
+    const agora = new Date();
+    const itens = propostas.map((p) => {
+      const aprovadaEm = this.aprovadaEmDe(p);
+      const situacao = situacaoListaEspera({ aprovadaEm, veiculoAtribuidoEm: p.veiculoAtribuidoEm, veiculoConferidoEm: p.veiculoConferidoEm }, agora);
+      return {
+        id: p.id,
+        titular: p.titular,
+        referencia: p.referencia ? referenciaParaApi(p.referencia) : null,
+        ativo: p.ativo ? { id: p.ativo.id, descricao: p.ativo.descricao, placa: p.ativo.placa, rotulo: rotuloAtivo(p.ativo), valorVenda: p.ativo.valorVenda ? cent(p.ativo.valorVenda) : null } : null,
+        valorEntrada: cent(p.valorEntrada),
+        valorParcela: cent(p.valorParcela),
+        numeroParcelas: p.numeroParcelas,
+        prazoMeses: p.prazoMeses,
+        frequencia: p.frequencia ? p.frequencia.toLowerCase() : null,
+        foraParametro: p.foraParametro,
+        analiseId: p.analiseCadastro?.id ?? null,
+        aprovadaEm: aprovadaEm?.toISOString() ?? null,
+        validaAte: aprovadaEm ? validadeAprovacaoEspera(aprovadaEm).toISOString() : null,
+        diasRestantes: diasRestantesAprovacao(aprovadaEm, agora),
+        situacao,
+        situacaoRotulo: ROTULO_SITUACAO_ESPERA[situacao],
+        veiculoAtribuidoEm: p.veiculoAtribuidoEm?.toISOString() ?? null,
+        veiculoConferidoEm: p.veiculoConferidoEm?.toISOString() ?? null,
+        ajuste: (p.conferenciaVeiculo ?? null) as Record<string, unknown> | null,
+      };
+    });
+    // Mais antiga primeiro (sugestão — o operador escolhe quem atende).
+    itens.sort((a, b) => (a.aprovadaEm ?? '').localeCompare(b.aprovadaEm ?? ''));
+    return itens;
+  }
+
+  // Passos 1–3 do §29.4: reserva o ativo, recalcula a condição com o carro real e
+  // guarda a proposta de ajuste SEM sobrescrever a aprovada; avisa a análise.
+  async atribuirVeiculo(propostaId: string, ativoId: string, usuarioId: string) {
+    const p = await this.prisma.db.proposta.findFirst({
+      where: { id: propostaId },
+      include: {
+        titular: { select: { nome: true, cpfCnpj: true } },
+        referencia: true,
+        analiseCadastro: { select: { id: true, liberadaEm: true } },
+        parecer: { select: { data: true } },
+      },
+    });
+    if (!p) throw this.naoEncontrada();
+    if (!p.referenciaId) {
+      throw new UnprocessableEntityException({ erro: 'nao_e_referencia', mensagem: 'Esta proposta já nasceu com um veículo do estoque' });
+    }
+    if (p.status !== 'APROVADA' || p.contratoGeradoId) {
+      throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: 'Só se atribui veículo a proposta aprovada e ainda sem contrato' });
+    }
+    if (p.veiculoAtribuidoEm) {
+      throw new UnprocessableEntityException({ erro: 'ja_atribuido', mensagem: 'Já há um veículo atribuído — devolva-o antes de escolher outro' });
+    }
+    const ativo = await this.prisma.db.ativo.findFirst({ where: { id: ativoId, deletedAt: null }, select: { id: true, status: true, descricao: true, placa: true, varianteCatalogo: true } });
+    if (!ativo) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Ativo não encontrado' });
+    if (ativo.status !== 'DISPONIVEL') {
+      throw new UnprocessableEntityException({ erro: 'ativo_indisponivel', mensagem: 'O ativo não está disponível (em contrato, reservado ou fora do estoque)' });
+    }
+
+    // Aprovação vencida (§29.3): nova Camada 1 antes de seguir; reprovado barra.
+    const aprovadaEm = this.aprovadaEmDe(p);
+    let camada1Renovada: string | null = null;
+    if (aprovacaoExpirada(aprovadaEm)) {
+      const r = await this.camada1.avaliar(p.titular.cpfCnpj);
+      camada1Renovada = r.status;
+      await this.prisma.db.proposta.update({
+        where: { id: propostaId },
+        data: { camada1Status: r.status, camada1Resultado: JSON.parse(JSON.stringify(r)) as Prisma.InputJsonValue },
+      });
+      await this.prisma.db.logAuditoria.create({
+        data: { acao: 'camada1_renovada_lista_espera', entidade: 'proposta', entidadeId: propostaId, depois: JSON.parse(JSON.stringify({ status: r.status, motivos: r.motivos, alertas: r.alertas })) as Prisma.InputJsonValue },
+      });
+      if (r.status === 'reprovado') {
+        throw new UnprocessableEntityException({
+          erro: 'camada1_reprovada',
+          mensagem: 'A aprovação venceu e a nova consulta de cadastro não permite seguir — a análise precisa reabrir o caso',
+        });
+      }
+    }
+
+    // Recalcula com o carro real: mesmo prazo/frequência/entrada da aprovação.
+    const freq = (p.frequencia ?? 'SEMANAL').toLowerCase() as FrequenciaSimulacao;
+    const r = await this.simulacaoService.recalcularCondicao({
+      ativoId: ativo.id,
+      valorEntrada: cent(p.valorEntrada),
+      prazoMeses: p.prazoMeses ?? Math.max(1, Math.round(p.numeroParcelas / (freq === 'mensal' ? 1 : freq === 'quinzenal' ? 2 : 4))),
+      frequencia: freq,
+    });
+    // Adicional de proteção (passo 8 do atendimento) recalculado sobre o valor real.
+    let adicional = 0;
+    if (p.planoProtecao !== 'essencial') {
+      const essencial = await this.catalogoFonte.protecaoPlano(r.varianteCP, r.valorAvista, 'essencial');
+      const escolhido = await this.catalogoFonte.protecaoPlano(r.varianteCP, r.valorAvista, p.planoProtecao as 'protecao' | 'completa');
+      if (essencial && escolhido) {
+        adicional = Math.max(0, Math.round((escolhido.semanalExata - essencial.semanalExata) * (p.frequencia ? fatorValorDesdeSemanal(p.frequencia) : 1)));
+      }
+    }
+    const ajuste = {
+      ativoId: ativo.id,
+      ativoRotulo: rotuloAtivo(ativo),
+      valorAvista: r.valorAvista,
+      valorFipeReferencia: p.referencia ? cent(p.referencia.valorFipe) : null,
+      parcelaBase: r.parcelaBase,
+      adicionalProtecao: adicional,
+      valorParcela: r.parcelaBase + adicional,
+      parcelaAprovada: cent(p.valorParcela),
+      numeroParcelas: r.numeroParcelas,
+      foraParametro: r.foraParametroMotivo !== null,
+      foraParametroMotivo: r.foraParametroMotivo,
+      camada1Renovada,
+      calculadoEm: new Date().toISOString(),
+      atribuidoPor: usuarioId,
+    };
+
+    await this.prisma.db.$transaction(async (tx) => {
+      await tx.ativo.update({ where: { id: ativo.id }, data: { status: 'RESERVADO', reservadoPropostaId: propostaId, reservadoEm: new Date() } });
+      await tx.proposta.update({
+        where: { id: propostaId },
+        data: { ativoId: ativo.id, veiculoAtribuidoEm: new Date(), veiculoConferidoEm: null, veiculoConferidoPorId: null, conferenciaVeiculo: ajuste as Prisma.InputJsonValue },
+      });
+    });
+    await this.prisma.db.logAuditoria.create({
+      data: { acao: 'veiculo_atribuido', entidade: 'proposta', entidadeId: propostaId, usuarioId, depois: ajuste as Prisma.InputJsonValue },
+    });
+    // Passo 6: a análise é avisada para conferir.
+    await this.notificacao.emitir({
+      titulo: `Veículo atribuído para conferência — ${p.titular.nome}`,
+      corpo: `${rotuloAtivo(ativo)} · parcela ${formatCurrency(ajuste.valorParcela)} (aprovada ${formatCurrency(ajuste.parcelaAprovada)})${ajuste.foraParametro ? ' · fora do parâmetro' : ''}`,
+      rota: p.analiseCadastro ? `/analises/${p.analiseCadastro.id}` : `/propostas/${propostaId}`,
+      tipo: 'APROVACAO',
+      area: 'ANALISE_CADASTRO',
+    });
+    return this.detalhe(propostaId);
+  }
+
+  // Passo 4 do §29.4: confirmar aplica o ajuste na proposta; devolver solta o
+  // ativo, descarta o ajuste e a proposta volta à fila com os valores aprovados.
+  async conferirVeiculo(propostaId: string, dto: { confirmar: boolean; observacao?: string }, usuarioId: string) {
+    const p = await this.prisma.db.proposta.findFirst({
+      where: { id: propostaId },
+      include: { titular: { select: { nome: true } }, simulacao: { select: { id: true } }, analiseCadastro: { select: { id: true } } },
+    });
+    if (!p) throw this.naoEncontrada();
+    if (!p.referenciaId || !p.veiculoAtribuidoEm || !p.ativoId) {
+      throw new UnprocessableEntityException({ erro: 'sem_atribuicao', mensagem: 'Não há veículo atribuído para conferir' });
+    }
+    if (p.veiculoConferidoEm && dto.confirmar) {
+      throw new UnprocessableEntityException({ erro: 'ja_conferido', mensagem: 'O veículo já foi conferido' });
+    }
+    if (p.contratoGeradoId) {
+      throw new UnprocessableEntityException({ erro: 'ja_formalizada', mensagem: 'Proposta já gerou contrato' });
+    }
+    const ajuste = (p.conferenciaVeiculo ?? {}) as { valorParcela?: number; adicionalProtecao?: number; numeroParcelas?: number; foraParametro?: boolean; valorAvista?: number };
+
+    if (dto.confirmar) {
+      await this.prisma.db.$transaction(async (tx) => {
+        await tx.proposta.update({
+          where: { id: propostaId },
+          data: {
+            valorParcela: ajuste.valorParcela !== undefined ? reais(ajuste.valorParcela) : undefined,
+            adicionalProtecao: ajuste.adicionalProtecao !== undefined ? reais(ajuste.adicionalProtecao) : undefined,
+            numeroParcelas: ajuste.numeroParcelas,
+            prazoSemanas: ajuste.numeroParcelas,
+            // Fora do parâmetro com o carro real → alçada, como já existe.
+            foraParametro: p.foraParametro || !!ajuste.foraParametro,
+            veiculoConferidoEm: new Date(),
+            veiculoConferidoPorId: usuarioId,
+          },
+        });
+        // A base comercial da proteção/contratação passa a ser o valor do carro
+        // real (a simulação segue CONVERTIDA; só o valor à vista é atualizado —
+        // registrado na auditoria abaixo).
+        if (p.simulacao && ajuste.valorAvista) {
+          await tx.simulacao.update({ where: { id: p.simulacao.id }, data: { valorAvista: reais(ajuste.valorAvista), ativoId: p.ativoId } });
+        }
+      });
+      await this.prisma.db.logAuditoria.create({
+        data: { acao: 'veiculo_conferido', entidade: 'proposta', entidadeId: propostaId, usuarioId, depois: { ...ajuste, observacao: dto.observacao ?? null } as Prisma.InputJsonValue },
+      });
+      await this.notificacao.emitir({
+        titulo: `Veículo confirmado — ${p.titular.nome}`,
+        corpo: `${dto.observacao?.trim() || 'A análise confirmou o carro real.'} Siga para o resumo e a geração do contrato.`,
+        rota: `/propostas/${propostaId}`,
+        tipo: 'INFO',
+        area: 'COMERCIAL',
+      });
+      return this.detalhe(propostaId);
+    }
+
+    // Devolver à fila.
+    await this.prisma.db.$transaction(async (tx) => {
+      await tx.ativo.updateMany({ where: { id: p.ativoId!, reservadoPropostaId: propostaId }, data: { status: 'DISPONIVEL', reservadoPropostaId: null, reservadoEm: null } });
+      await tx.proposta.update({
+        where: { id: propostaId },
+        data: { ativoId: null, veiculoAtribuidoEm: null, veiculoConferidoEm: null, veiculoConferidoPorId: null, conferenciaVeiculo: Prisma.DbNull },
+      });
+    });
+    await this.prisma.db.logAuditoria.create({
+      data: { acao: 'veiculo_devolvido', entidade: 'proposta', entidadeId: propostaId, usuarioId, depois: { ativoId: p.ativoId, observacao: dto.observacao ?? null, ajusteDescartado: ajuste } as Prisma.InputJsonValue },
+    });
+    await this.notificacao.emitir({
+      titulo: `Veículo devolvido à fila — ${p.titular.nome}`,
+      corpo: dto.observacao?.trim() || 'A análise devolveu o veículo; a proposta voltou à lista de espera.',
+      rota: '/lista-espera',
+      tipo: 'INFO',
+      area: 'COMERCIAL',
+    });
+    return this.detalhe(propostaId);
+  }
+
+  // Reserva cai sozinha ao cancelar a proposta (§29.4 passo 5).
+  private async liberarReserva(propostaId: string) {
+    await this.prisma.db.ativo.updateMany({
+      where: { reservadoPropostaId: propostaId, status: 'RESERVADO' },
+      data: { status: 'DISPONIVEL', reservadoPropostaId: null, reservadoEm: null },
+    });
+  }
+
 
   private naoEncontrada() {
     return new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Proposta não encontrada' });

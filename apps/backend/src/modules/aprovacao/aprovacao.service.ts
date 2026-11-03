@@ -7,7 +7,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { rotuloAtivo, inicioHojeBrasilUTC } from '@azit/utils';
+import { rotuloAtivo, rotuloVeiculoProposta, inicioHojeBrasilUTC } from '@azit/utils';
 import { VezAprovacao } from '@azit/types';
 import { PrismaService } from '../../database/prisma.service';
 import { AlcadaService } from '../alcada/alcada.service';
@@ -569,6 +569,7 @@ export class AprovacaoService {
             valorParcela: true,
             frequencia: true,
             ativo: { select: { descricao: true, placa: true, quilometragemEntrada: true, anoFabricacao: true, anoModelo: true, _count: { select: { contratosCredito: true } } } },
+            referencia: { select: { marca: true, modelo: true, anoModelo: true } },
           },
         },
         participantes: {
@@ -582,7 +583,7 @@ export class AprovacaoService {
       mapa.set(a.id, {
         analiseId: a.id,
         propostaId: a.propostaId,
-        ativo: rotuloAtivo(a.proposta.ativo),
+        ativo: rotuloVeiculoProposta(a.proposta),
         valorParcela: this.cent(a.proposta.valorParcela),
         frequencia: a.proposta.frequencia ? a.proposta.frequencia.toLowerCase() : null,
         rendaDeclarada: p?.rendaDeclarada ? this.cent(p.rendaDeclarada) : null,

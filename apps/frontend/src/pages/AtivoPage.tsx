@@ -27,7 +27,7 @@ const DOC_TIPOS: { v: string; l: string }[] = [
 ];
 
 const STATUS_LABEL: Record<string, string> = {
-  disponivel: 'Disponível', em_contrato: 'Em contrato', transferido: 'Transferido', recuperado: 'Recuperado', sinistrado: 'Sinistrado',
+  disponivel: 'Disponível', reservado: 'Reservado', em_contrato: 'Em contrato', transferido: 'Transferido', recuperado: 'Recuperado', sinistrado: 'Sinistrado',
 };
 const COMBUSTIVEIS = ['flex', 'gasolina', 'eletrico', 'diesel', 'hibrido'];
 const ORIGENS = ['locadora', 'particular', 'concessionaria'];
@@ -341,6 +341,12 @@ export function AtivoPage() {
                 <Link to={`/contratos/${a.cliente.contratoId}`} onClick={(e) => e.stopPropagation()} className="hover:underline" style={{ color: 'var(--text-primary)' }}>
                   {a.cliente.nome}
                   <span className="block text-[11px]" style={{ color: 'var(--text-muted)' }}>{a.cliente.contratoNumero}</span>
+                </Link>
+              ) : a.reserva ? (
+                // Reservado (doc 02 §29.4): para quem o carro está preso até a conferência.
+                <Link to="/lista-espera" onClick={(e) => e.stopPropagation()} className="hover:underline" style={{ color: 'var(--text-primary)' }}>
+                  {a.reserva.titularNome}
+                  <span className="block text-[11px]" style={{ color: 'var(--warn-fg)' }}>reservado · lista de espera</span>
                 </Link>
               ) : '—',
           },

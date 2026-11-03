@@ -1036,3 +1036,24 @@ explorar — não é questão de cor, é de layout e componentes.
 Carteira e Clientes da carteira já estão no padrão. As demais telas foram migradas em bloco antes
 do homolog v1.4: tabelas → `Tabela`, filtros → `Chips`, KPIs → `Metrica tom="kpi"`, seções →
 `Secao`/`Bloco`, botões → `Botao`, hex → tokens. Comportamento e dados não mudam.
+
+## Lista de espera e veículo de referência (03/11/2026 — doc 02 §29)
+
+- **Comercial > Lista de espera** (`/lista-espera`): propostas aprovadas por **modelo de
+  referência (FIPE)**, sem carro no estoque. Três métricas no topo (aguardando veículo, em
+  conferência, prontas para contrato), busca, chips por situação, tabela ordenada da mais antiga.
+  Situação é **calculada** e colorida: Na fila (info), Veículo em conferência (warn), Pronta para
+  contrato (ok), Aprovação vencida (danger). Ações na linha: Proposta, Dossiê, **Atribuir veículo**
+  (modal com o estoque disponível, modelos parecidos primeiro; ativo sem valor de venda fica
+  desabilitado) e **Devolver ao estoque**.
+- **Novo atendimento, passo do veículo**: além do estoque e do valor manual, o botão "Não tem o
+  carro? Simular por modelo de referência (FIPE)" abre marca → modelo → ano; o valor à vista vem
+  da FIPE. O cabeçalho das ofertas mostra o modelo com o selo "lista de espera".
+- **Dossiê da análise**: bloco **🚗 Veículo** em toda análise (modelo/ano/placa, km de entrada,
+  origem, novo na operação × contratos anteriores com desfecho, valor de venda × FIPE). Com
+  referência, o bloco diz que a aprovação é pelo valor FIPE. Quando há carro atribuído, aparece o
+  bloco **🔎 Conferir o veículo atribuído** com parcela aprovada × parcela com o carro real e os
+  botões Confirmar veículo / Devolver ao estoque.
+- **Frota e estoque**: status **Reservado** (warn) com o nome do cliente e o link para a lista.
+- **Propostas / detalhe**: o rótulo do veículo vem de `veiculo` (ativo OU "… · referência FIPE");
+  faixas de aviso quando a proposta é por referência ou quando o carro aguarda conferência.

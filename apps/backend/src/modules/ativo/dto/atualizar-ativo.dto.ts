@@ -25,7 +25,7 @@ export const atualizarAtivoSchema = z.object({
   pacoteOfertaId: z.string().trim().min(1).nullish(),
   ofertaFixaId: z.string().trim().min(1).nullish(),
   status: z
-    .enum(['disponivel', 'em_contrato', 'transferido', 'recuperado', 'sinistrado'])
+    .enum(['disponivel', 'reservado', 'em_contrato', 'transferido', 'recuperado', 'sinistrado'])
     .optional(),
   // Controle de frota (doc 02 §25.1): anotação livre da operação — "na
   // oficina", "aguardando documento". Editada na própria lista.

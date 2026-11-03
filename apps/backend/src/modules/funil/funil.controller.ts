@@ -34,6 +34,10 @@ import {
   EnviarAnaliseDto,
   adicionarProdutoSchema,
   AdicionarProdutoDto,
+  atribuirVeiculoSchema,
+  AtribuirVeiculoDto,
+  conferirVeiculoSchema,
+  ConferirVeiculoDto,
 } from './dto/proposta.dto';
 
 // Bloco 7 — Funil de originação nativa (Lead → Simulação → Proposta → ...).
@@ -112,6 +116,35 @@ export class FunilController {
   @Get('propostas')
   listarPropostas() {
     return this.proposta.listar();
+  }
+
+  // --- Lista de espera (doc 02 §29): aprovadas por referência FIPE, sem carro ---
+  @Get('propostas/lista-espera')
+  listaEspera() {
+    return this.proposta.listaEspera();
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('propostas/:id/atribuir-veiculo')
+  @HttpCode(200)
+  atribuirVeiculo(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(atribuirVeiculoSchema)) dto: AtribuirVeiculoDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.proposta.atribuirVeiculo(id, dto.ativoId, user.id);
+  }
+
+  // Conferência do carro real pela análise (confirmar) ou devolução à fila.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
+  @Post('propostas/:id/conferir-veiculo')
+  @HttpCode(200)
+  conferirVeiculo(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(conferirVeiculoSchema)) dto: ConferirVeiculoDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.proposta.conferirVeiculo(id, dto, user.id);
   }
 
   @Get('propostas/:id')

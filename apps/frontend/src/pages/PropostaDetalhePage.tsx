@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '@azit/utils';
 import { analiseService } from '../services/analise.service';
@@ -171,12 +171,24 @@ export function PropostaDetalhePage() {
     <div className="flex flex-col gap-[16px]">
       <Botao variante="fantasma" tamanho="sm" className="self-start !px-0" onClick={() => navigate('/propostas')}>← Voltar para Propostas</Botao>
 
+      {/* Lista de espera (doc 02 §29): sem carro ainda, ou carro atribuído aguardando a conferência da análise */}
+      {!p.ativo && !p.contratoGeradoId && (
+        <div className="rounded-[12px] p-[12px] text-[12.5px]" style={{ background: 'var(--info-bg)', border: '1px solid var(--info-fg)', color: 'var(--text-primary)' }}>
+          Proposta por <b>modelo de referência</b>: ainda não há veículo do estoque vinculado. {p.status === 'aprovada' ? <>Atribua um carro pela <Link to="/lista-espera" className="font-semibold underline">Lista de espera</Link> para seguir ao contrato.</> : 'Depois da aprovação ela entra na Lista de espera.'}
+        </div>
+      )}
+      {p.ativo && p.veiculoAtribuidoEm && !p.veiculoConferidoEm && (
+        <div className="rounded-[12px] p-[12px] text-[12.5px]" style={{ background: 'var(--warn-bg)', border: '1px solid var(--warn-fg)', color: 'var(--text-primary)' }}>
+          Veículo <b>{p.ativo.rotulo}</b> atribuído e reservado — aguardando a <b>conferência da análise</b> antes do contrato.
+        </div>
+      )}
+
       {/* Cabeçalho + Stepper */}
       <div className="rounded-card p-[18px]" style={card}>
         <div className="mb-[14px] flex flex-wrap items-center justify-between gap-[8px]">
           <div className="min-w-0">
             <div className="truncate font-display text-[18px] font-bold" style={{ color: 'var(--text-primary)' }}>{p.titular.nome}</div>
-            <div className="text-[12px]" style={{ color: 'var(--text-body)' }}>{p.ativo.rotulo} · CPF {p.titular.cpfCnpj}</div>
+            <div className="text-[12px]" style={{ color: 'var(--text-body)' }}>{p.veiculo} · CPF {p.titular.cpfCnpj}</div>
           </div>
           <StatusBadge label={LABEL_STATUS[p.status] ?? p.status} colors={PROPOSTA_STATUS_COLORS} />
         </div>
@@ -590,7 +602,7 @@ export function PropostaDetalhePage() {
         <div className="rounded-card p-[18px]" style={card}>
           <Secao titulo="Revisão">
             <div className="grid grid-cols-1 gap-[14px] sm:grid-cols-2">
-              <Campo label="Ativo" valor={p.ativo.rotulo} />
+              <Campo label="Veículo" valor={p.veiculo} />
               <Campo label="Condições" valor={`${formatCurrency(p.valorEntrada)} + ${p.numeroParcelas}× ${formatCurrency(p.valorParcela)}`} />
               <div className="sm:col-span-2"><Campo label="Papéis" valor={p.papeis.map((v) => `${PAPEL_LABEL[v.papel]}: ${v.titular.nome}`).join(' · ')} /></div>
               <div className="sm:col-span-2"><Campo label="Parecer" valor={p.parecer ? `${p.parecer.resultado}${p.parecer.exigeGarantidor ? ' (exige garantidor)' : ''}` : '—'} /></div>

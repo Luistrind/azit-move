@@ -7,6 +7,7 @@ import {
   formatCurrency,
   inicioHojeBrasilUTC,
   rotuloAtivo,
+  rotuloVeiculoProposta,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AprovacaoService } from './aprovacao.service';
@@ -348,6 +349,7 @@ export class AprovacaoDossieService {
       select: {
         valorEntrada: true, valorParcela: true, numeroParcelas: true, frequencia: true,
         ativo: { select: { descricao: true, placa: true, valorVenda: true } },
+        referencia: { select: { marca: true, modelo: true, anoModelo: true, valorFipe: true } },
       },
     });
     if (!p) return base;
@@ -356,8 +358,9 @@ export class AprovacaoDossieService {
       {
         titulo: 'Condição proposta',
         campos: [
-          { rotulo: 'Veículo', valor: rotuloAtivo(p.ativo) },
-          ...(p.ativo.valorVenda ? [{ rotulo: 'Valor de venda do veículo', valor: formatCurrency(cent(p.ativo.valorVenda)) }] : []),
+          { rotulo: 'Veículo', valor: rotuloVeiculoProposta(p) },
+          ...(p.ativo?.valorVenda ? [{ rotulo: 'Valor de venda do veículo', valor: formatCurrency(cent(p.ativo.valorVenda)) }] : []),
+          ...(p.referencia ? [{ rotulo: 'Valor FIPE da referência', valor: formatCurrency(cent(p.referencia.valorFipe)) }] : []),
           { rotulo: 'Entrada', valor: formatCurrency(cent(p.valorEntrada)) },
           { rotulo: 'Plano', valor: `${p.numeroParcelas}× ${formatCurrency(cent(p.valorParcela))}${freq ? ` (${freq})` : ''}` },
         ],
