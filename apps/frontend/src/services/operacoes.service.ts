@@ -451,6 +451,11 @@ export const operacoesService = {
     return data;
   },
   // Troca a 1ª parcela enquanto a novação aguarda assinatura (15/10): regenera e reenvia o instrumento.
+  // Converter novação (veículo + Termo) em contrato único antes da assinatura (03/11).
+  async converterNovacaoContratoUnico(novacaoId: string): Promise<{ contrato: string; valorTotal: number; numeroParcelas: number; termoCancelado: string; assinatura: { reenviada: boolean; motivo: string | null } }> {
+    const { data } = await api.patch(`/api/v1/novacoes/${novacaoId}/contrato-unico`);
+    return data;
+  },
   async alterarPrimeiraParcelaNovacao(novacaoId: string, dataPrimeiraParcela: string): Promise<{ dataPrimeiraParcela: string; assinatura: { reenviada: boolean; motivo: string | null } }> {
     const { data } = await api.patch(`/api/v1/novacoes/${novacaoId}/primeira-parcela`, { dataPrimeiraParcela });
     return data;

@@ -157,6 +157,13 @@ export class OperacoesController {
     return this.novacao.solicitar(id, dto, user.id);
   }
 
+  // Converter novação em contrato único antes da assinatura (decisão Luís 03/11).
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
+  @Patch('novacoes/:id/contrato-unico')
+  converterNovacaoContratoUnico(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.novacao.converterEmContratoUnico(id, user.id);
+  }
+
   // 1ª parcela do contrato novo, alterável enquanto a novação aguarda assinatura
   // (doc 02 §7.7b, 15/10): regenera o instrumento e reenvia à ZapSign.
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)

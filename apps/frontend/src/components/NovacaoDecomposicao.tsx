@@ -263,7 +263,9 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
   // Contrato único (adaptação 13/10): enquanto o instrumento de novação não
   // sai do jurídico, a operação vira UM contrato de Compra Parcelada com o
   // valor global — mesma precificação, modelo padrão do contrato de veículo.
-  const [contratoUnico, setContratoUnico] = useState(false);
+  // Padrão MARCADO desde 03/11 (decisão Luís): até o instrumento de novação sair
+  // do jurídico, toda novação nasce em contrato único; desmarcar é a exceção.
+  const [contratoUnico, setContratoUnico] = useState(true);
   // 1ª parcela do contrato novo (15/10): vazio = ciclo da conta (a simulação
   // devolve a sugestão); o operador escolhe outra antes de propor.
   const [primeiraParcela, setPrimeiraParcela] = useState('');
@@ -409,7 +411,7 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
           <label className="flex items-start gap-[8px] rounded-[10px] px-[12px] py-[8px] text-[12px]" style={{ background: 'var(--warn-bg)', border: '1px solid var(--border)', color: 'var(--warn-ink)' }}>
             <input type="checkbox" checked={contratoUnico} onChange={(e) => setContratoUnico(e.target.checked)} className="mt-[2px]" />
             <span>
-              <b>Contrato único</b> (adaptação até o instrumento de novação ficar pronto): em vez de dois contratos, nasce <b>um contrato de Compra Parcelada</b> do veículo
+              <b>Contrato único</b> (padrão enquanto o instrumento de novação não fica pronto; desmarque para gerar veículo + Termo): em vez de dois contratos, nasce <b>um contrato de Compra Parcelada</b> do veículo
               {sim.troca ? ' da troca' : ''}, com o valor global de <b>{formatCurrency(sim.totalAPagar)}</b> em <b>{sim.contrato2.totalParcelas + sim.contrato1.totalParcelas} parcelas</b> de {formatCurrency(sim.valorParcelaTotal ?? sim.valorParcela)} {sim.contrato1.valorUltima > 0 ? <> (última de {formatCurrency(sim.contrato1.valorUltima + (sim.comissaoPorPeriodo ?? 0) + (sim.protecaoPorPeriodo ?? 0))})</> : null}, no modelo padrão do contrato de veículo — mesma precificação, sem Termo e sem fatura de transição.
             </span>
           </label>

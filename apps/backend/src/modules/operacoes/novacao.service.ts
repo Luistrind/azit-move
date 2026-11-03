@@ -812,6 +812,100 @@ export class NovacaoService implements OnModuleInit {
     return { dataPrimeiraParcela: dataISO, assinatura };
   }
 
+  // Converter em CONTRATO ÚNICO (decisão Luís 03/11, caso Bruno Alessandro): a
+  // novação aprovada em "veículo + Termo" vira um só contrato de Compra Parcelada
+  // com o valor global, exatamente como se a proposta tivesse nascido marcada —
+  // enquanto aguarda assinatura e ninguém assinou. O Termo é encerrado por
+  // cancelamento (nunca existiu como obrigação), o contrato do veículo recebe
+  // os números do modo único, o instrumento é regenerado e reenviado.
+  async converterEmContratoUnico(novacaoId: string, usuarioId: string) {
+    const novacao = await this.prisma.db.novacao.findFirst({
+      where: { id: novacaoId, deletedAt: null },
+      include: {
+        contratoVeiculo: {
+          include: {
+            documentoAssinatura: true,
+            ativo: { select: { id: true, descricao: true } },
+            itensContratados: { where: { natureza: 'PARCELADO' }, select: { id: true } },
+          },
+        },
+        contratoTermo: { select: { id: true, numero: true, dataPrimeiraParcela: true, status: true } },
+      },
+    });
+    if (!novacao) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Novação não encontrada' });
+    if (novacao.status !== 'AGUARDANDO_ASSINATURA' || !novacao.contratoVeiculo) {
+      throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: 'Só se converte em contrato único enquanto a novação aguarda assinatura' });
+    }
+    const snap = novacao.snapshotJson as unknown as SnapshotNovacao;
+    const sim = snap.simulacao;
+    if (snap.dto.contratoUnico || !novacao.contratoTermo) {
+      throw new UnprocessableEntityException({ erro: 'ja_unico', mensagem: 'Esta novação já é de contrato único' });
+    }
+    const doc = novacao.contratoVeiculo.documentoAssinatura;
+    if (doc && (doc.status === 'assinado' || doc.status === 'parcialmente_assinado')) {
+      throw new UnprocessableEntityException({ erro: 'ja_assinado', mensagem: 'O instrumento já tem assinatura — não dá mais para converter' });
+    }
+    const c1 = novacao.contratoVeiculo;
+    const termo = novacao.contratoTermo;
+    // Mesmos números do modo único em aoAprovar: valor global, entrada = recebimento
+    // inicial, N = parcelas do Termo + do veículo, 1ª parcela = a escolhida (era a do Termo).
+    const valorTotal = sim.totalAPagar;
+    const valorEntrada = snap.dto.recebimentoInicial ?? 0;
+    const saldo = valorTotal - valorEntrada;
+    const numeroParcelas = Math.max(1, sim.contrato2.totalParcelas + sim.contrato1.totalParcelas);
+    const primeira = sim.dataPrimeiraParcela ? dataDe(sim.dataPrimeiraParcela) : termo.dataPrimeiraParcela;
+    const antes = { valorTotal: cent(c1.valorTotal), valorEntrada: cent(c1.valorEntrada), numeroParcelas: c1.numeroParcelas, dataPrimeiraParcela: c1.dataPrimeiraParcela.toISOString(), termo: termo.numero };
+
+    await this.prisma.db.$transaction(async (tx) => {
+      await tx.contratoCredito.update({
+        where: { id: c1.id },
+        data: { valorTotal: reais(valorTotal), valorEntrada: reais(valorEntrada), saldoDevedor: reais(saldo), numeroParcelas, dataPrimeiraParcela: primeira },
+      });
+      const ancora = c1.itensContratados[0];
+      if (ancora) {
+        await tx.itemContratado.update({ where: { id: ancora.id }, data: { valor: reais(saldo), numeroParcelas, dataInicio: primeira } });
+      }
+      await tx.contratoCredito.update({
+        where: { id: termo.id },
+        data: { status: 'ENCERRADO', motivoEncerramento: 'CANCELAMENTO', dataEncerramento: new Date() },
+      });
+      await tx.novacao.update({
+        where: { id: novacao.id },
+        data: {
+          contratoTermoId: null,
+          snapshotJson: { ...snap, dto: { ...snap.dto, contratoUnico: true } } as unknown as Prisma.InputJsonValue,
+        },
+      });
+    });
+
+    // Instrumento: sai o de novação em dois contratos, entra o contrato padrão do veículo.
+    const documento = await this.gerarContratoUnico(novacao.id, c1.id, c1.ativoId ?? c1.ativo?.id ?? '', sim.frequencia);
+    const snapC1 = (c1.snapshotJson as Record<string, unknown> | null) ?? {};
+    await this.prisma.db.contratoCredito.update({
+      where: { id: c1.id },
+      data: { snapshotJson: { ...snapC1, documento } as unknown as Prisma.InputJsonValue },
+    });
+    let assinatura: { reenviada: boolean; motivo: string | null } = { reenviada: false, motivo: null };
+    try {
+      await this.assinatura.reenviar(c1.id, usuarioId);
+      assinatura = { reenviada: true, motivo: null };
+    } catch (e) {
+      assinatura = { reenviada: false, motivo: (e as Error).message };
+      this.logger.error(`Novação ${novacao.id}: reenvio à assinatura após conversão em contrato único falhou: ${assinatura.motivo}`);
+    }
+    await this.prisma.db.logAuditoria.create({
+      data: {
+        usuarioId,
+        acao: 'novacao_convertida_contrato_unico',
+        entidade: 'novacao',
+        entidadeId: novacao.id,
+        antes: antes as Prisma.InputJsonValue,
+        depois: { valorTotal, valorEntrada, numeroParcelas, dataPrimeiraParcela: primeira.toISOString(), termoCancelado: termo.numero, assinaturaReenviada: assinatura.reenviada, motivo: assinatura.motivo } as Prisma.InputJsonValue,
+      },
+    });
+    return { contrato: c1.numero, valorTotal, numeroParcelas, termoCancelado: termo.numero, assinatura };
+  }
+
   // Instrumento único (placeholder Regra 12 — jurídico dará a redação final).
   private async gerarInstrumento(
     novacaoId: string,

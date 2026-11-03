@@ -1141,7 +1141,11 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > fica congelado no snapshot e o instrumento declara valor e motivo. É o espelho do desconto,
 > sem exigir comitê (o desconto reduz dívida; o acréscimo é dívida reconhecida pelo cliente).
 > **Contrato único (adaptação Luís, 2026-10-13 — provisória até o jurídico validar o instrumento
-> de novação):** a proposta pode marcar "contrato único". Aprovada, nasce **um só** contrato de
+> de novação; PADRÃO desde 2026-11-03, decisão Luís — a opção nasce marcada e desmarcar é a
+> exceção; uma novação já aprovada em veículo + Termo pode ser CONVERTIDA em contrato único
+> enquanto aguarda assinatura e ninguém assinou: o Termo é encerrado por cancelamento, o
+> contrato do veículo recebe os números do modo único e o instrumento é regenerado e reenviado):**
+> a proposta pode marcar "contrato único". Aprovada, nasce **um só** contrato de
 > Compra Parcelada do veículo (o da troca, se houver), com **valor global = todas as pendências**
 > (veículo + demais produtos + ajuste da troca + acréscimo − desconto + taxa inicial), pela MESMA
 > precificação da novação: N = parcelas do Termo + parcelas do veículo, todas no valor único do

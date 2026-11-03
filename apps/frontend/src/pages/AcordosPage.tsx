@@ -463,6 +463,30 @@ function PrimeiraParcelaNovacao({ nv, podeEditar, onAlterada }: { nv: Novacao; p
         {nv.podeAlterarPrimeiraParcela && podeEditar && (
           <button type="button" onClick={() => setEditando(true)} className="text-left text-[11.5px] font-semibold" style={{ color: 'var(--accent)' }}>alterar antes da assinatura</button>
         )}
+        {nv.podeAlterarPrimeiraParcela && podeEditar && !nv.contratoUnico && (
+          <button
+            type="button"
+            disabled={salvando}
+            onClick={async () => {
+              if (!window.confirm('Converter esta novação em contrato único? O Termo é cancelado, o contrato do veículo passa a ter o valor global e o instrumento é regenerado e reenviado para assinatura.')) return;
+              setSalvando(true);
+              try {
+                const r = await operacoesService.converterNovacaoContratoUnico(nv.id);
+                if (r.assinatura.reenviada) toast.sucesso(`Contrato ${r.contrato} agora é único: ${formatCurrency(r.valorTotal)} em ${r.numeroParcelas} parcelas; Termo ${r.termoCancelado} cancelado. Instrumento reenviado para assinatura.`);
+                else toast.erro(`Convertida em contrato único, mas o reenvio à assinatura falhou: ${r.assinatura.motivo ?? 'motivo não informado'}. Reenvie pela tela do contrato.`);
+                await onAlterada();
+              } catch (e) {
+                toast.erro(mensagemErro(e));
+              } finally {
+                setSalvando(false);
+              }
+            }}
+            className="text-left text-[11.5px] font-semibold"
+            style={{ color: 'var(--warn-fg)' }}
+          >
+            converter em contrato único
+          </button>
+        )}
       </span>
     );
   }
