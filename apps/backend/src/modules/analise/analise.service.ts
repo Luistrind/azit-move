@@ -22,6 +22,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../database/prisma.service';
+import { PropostaStatusService } from '../funil/proposta-status.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { Camada1Service, SITUACOES_CPF_ACEITAS } from '../bureau/camada1.service';
 import { BigDataCorpService } from '../bureau/bigdatacorp.service';
@@ -66,6 +67,7 @@ export class AnaliseService implements OnModuleInit {
     private readonly bigDataCorp: BigDataCorpService,
     private readonly assistente: AssistenteAnaliseService,
     @InjectQueue(QUEUE_NAMES.RESUMO_ANALISE) private readonly filaResumo: Queue,
+    private readonly statusProposta: PropostaStatusService,
   ) {}
 
   // Bloco B da auditoria (15/09): pendências e ressalvas com PRAZO vencido
@@ -250,6 +252,9 @@ export class AnaliseService implements OnModuleInit {
       },
     });
     await this.auditar(usuarioId, 'analise_iniciada', analise.id, undefined, { propostaId, politicaVersao: versao.politicaVersao });
+    // Status da proposta é derivado dos fatos (04/11, caso Arlindo): análise
+    // aberta por QUALQUER caminho (atendimento, página da proposta) = Em análise.
+    await this.statusProposta.sincronizar(propostaId, 'análise de cadastro aberta', usuarioId);
     // A ponte com a proposta (Camada 1 + consultas automáticas) vale para QUALQUER
     // caminho de abertura — não só o "Enviar proposta" do atendimento (22/09).
     await this.ponteDaProposta(analise.id, usuarioId, documentosConferidos);
@@ -1214,7 +1219,7 @@ export class AnaliseService implements OnModuleInit {
       data: { encerradaEm: new Date(), motivoEncerramento: 'NAO_APROVACAO', codigoNaoAprovacao: codigo },
     });
     await this.mudarStatus(analiseId, 'NAO_APROVADO', usuarioId, `${codigo}: ${justificativa}`);
-    await this.prisma.db.proposta.update({ where: { id: a.propostaId }, data: { status: 'REPROVADA' } });
+    await this.statusProposta.sincronizar(a.propostaId, 'análise não aprovada', usuarioId);
     await this.auditar(usuarioId, 'analise_nao_aprovada', analiseId, undefined, { codigo, justificativa });
     return this.dossie(analiseId);
   }
@@ -1229,7 +1234,7 @@ export class AnaliseService implements OnModuleInit {
       data: { encerradaEm: new Date(), motivoEncerramento: mapa[motivo] },
     });
     await this.mudarStatus(analiseId, 'PROPOSTA_ENCERRADA', usuarioId, `Encerramento operacional: ${motivo}`);
-    await this.prisma.db.proposta.update({ where: { id: a.propostaId }, data: { status: 'CANCELADA' } });
+    await this.statusProposta.sincronizar(a.propostaId, `análise encerrada: ${motivo}`, usuarioId);
     return this.dossie(analiseId);
   }
 
@@ -1253,7 +1258,7 @@ export class AnaliseService implements OnModuleInit {
       data: { liberadaEm: new Date(), liberadaPor: usuarioId },
     });
     await this.mudarStatus(analiseId, 'LIBERADO_PARA_FORMALIZACAO', usuarioId, 'Pacote mínimo completo');
-    await this.prisma.db.proposta.update({ where: { id: a.propostaId }, data: { status: 'APROVADA' } });
+    await this.statusProposta.sincronizar(a.propostaId, 'análise liberada para formalização', usuarioId);
     await this.auditar(usuarioId, 'analise_liberada', analiseId, undefined, { pacote });
     return this.dossie(analiseId);
   }

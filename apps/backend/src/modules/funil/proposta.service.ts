@@ -21,6 +21,7 @@ import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { Camada1Service } from '../bureau/camada1.service';
 import { AnaliseService } from '../analise/analise.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
+import { PropostaStatusService } from './proposta-status.service';
 import {
   CriarPropostaDto,
   AdicionarVinculoDto,
@@ -78,6 +79,7 @@ export class PropostaService {
     private readonly camada1: Camada1Service,
     private readonly analise: AnaliseService,
     private readonly catalogoFonte: CatalogoFonteService,
+    private readonly statusProposta: PropostaStatusService,
   ) {
     // Bloco B da auditoria (15/09, P1-8): a exceção "fora de parâmetro" não
     // tinha efetivador — aprovar já funcionava (o gate da formalização lê o
@@ -328,7 +330,6 @@ export class PropostaService {
     await this.prisma.db.proposta.update({
       where: { id: propostaId },
       data: {
-        status: 'EM_ANALISE',
         rendaDeclarada: dto.rendaDeclarada !== undefined ? reais(dto.rendaDeclarada) : undefined,
         parecerOperador: dto.parecerOperador?.trim() || undefined,
       },
@@ -340,6 +341,9 @@ export class PropostaService {
     // cadastro, injeta a consulta da Camada 1 na trilha oficial e copia as
     // rendas — a política roda sempre, nunca em campo paralelo.
     await this.analise.abrirDaJornada(propostaId);
+    // Status derivado dos fatos (04/11): a análise aberta acima é o fato que
+    // leva a proposta a "Em análise" — mesmo gravador para todos os caminhos.
+    await this.statusProposta.sincronizar(propostaId, 'proposta enviada para análise');
     return this.detalhe(propostaId);
   }
 
@@ -600,11 +604,9 @@ export class PropostaService {
           analistaId,
         },
       });
-      await tx.proposta.update({
-        where: { id: propostaId },
-        data: { status: aprovada ? 'APROVADA' : 'REPROVADA' },
-      });
     });
+    // Status derivado dos fatos (04/11): o parecer gravado acima decide.
+    await this.statusProposta.sincronizar(propostaId, `parecer ${aprovada ? 'aprovado' : 'reprovado'}`, analistaId);
     return this.detalhe(propostaId);
   }
 

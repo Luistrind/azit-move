@@ -16,6 +16,7 @@ import { PropostaService } from './proposta.service';
 import { FormalizacaoService } from './formalizacao.service';
 import { AtivacaoProcessor } from './ativacao.processor';
 import { AssinaturaModule } from '../assinatura/assinatura.module';
+import { PropostaStatusModule } from './proposta-status.module';
 
 // Bloco 7 — Originação nativa em tela (funil que antecede e gera o ContratoCredito).
 // Reusa o ContratoService do núcleo na formalização e Titular/Conta na promoção.
@@ -30,6 +31,7 @@ import { AssinaturaModule } from '../assinatura/assinatura.module';
     BureauModule,
     NotificacaoModule,
     AssinaturaModule,
+    PropostaStatusModule,
     BullModule.registerQueue({ name: QUEUE_NAMES.ATIVAR_CONTRATO }),
   ],
   controllers: [FunilController],

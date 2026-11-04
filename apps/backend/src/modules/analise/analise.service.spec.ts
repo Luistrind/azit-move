@@ -101,7 +101,8 @@ function montar(estado: ReturnType<typeof analise>) {
       $transaction: jest.fn().mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops)),
     },
   };
-  const service = new AnaliseService(prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never);
+  const statusProposta = { sincronizar: jest.fn().mockResolvedValue(null) };
+  const service = new AnaliseService(prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never, statusProposta as never);
   return { service, prisma, auditorias, participanteUpdates, agregados, statusMudancas, estado };
 }
 

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { AprovacaoModule } from '../aprovacao/aprovacao.module';
 import { BureauModule } from '../bureau/bureau.module';
+import { PropostaStatusModule } from '../funil/proposta-status.module';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { AnaliseController } from './analise.controller';
 import { AnaliseService } from './analise.service';
@@ -15,6 +16,7 @@ import { ResumoAnaliseProcessor } from './resumo-analise.processor';
   imports: [
     AprovacaoModule,
     BureauModule,
+    PropostaStatusModule,
     BullModule.registerQueue({ name: QUEUE_NAMES.RESUMO_ANALISE }),
   ],
   controllers: [AnaliseController],
