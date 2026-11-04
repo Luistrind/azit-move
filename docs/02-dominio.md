@@ -273,6 +273,8 @@ A oferta escolhida formalizada como pedido de crédito. É o que **persiste** e 
 - gera um `ContratoCredito` na conversão
 
 > **Status e transições:** Pendente → Em Análise → Aprovada/Reprovada → Em Formalização → Convertida (ou Cancelada). Aprovada/Reprovada só ocorrem **dentro do fluxo de análise documental** (com parecer), não por movimentação livre. Convertida significa que o ContratoCredito já foi gerado.
+>
+> **O status é DERIVADO dos fatos (decisão Luís, 2026-11-04 — caso Arlindo):** nenhum fluxo grava o status da proposta diretamente. Uma única função (`derivarStatusProposta`, backend) decide a partir dos fatos — análise de cadastro aberta/liberada/não aprovada/encerrada, parecer legado, contrato gerado — e um único gravador (`PropostaStatusService.sincronizar`) é chamado por quem produz o fato (abrir análise por qualquer caminho, liberar, não aprovar, encerrar, registrar parecer, gerar contrato). Cancelada é evento e nunca se desfaz por fato; Em Formalização é um passo da família Aprovada e fica quando os fatos dizem "aprovada"; sem fato que decida, o gravado permanece (reprova da Camada 1, arraste no kanban). Uma varredura na subida do sistema e diária (5h) passa toda proposta viva pela função, corrige divergência e a registra na auditoria (`proposta_status_sincronizado`) — divergência corrigida é sinal de fluxo gravando status por fora, e o log aponta. Motivo: o campo era escrito em nove pontos de cinco módulos e o "Abrir análise" pela página da proposta nunca movia a proposta de Pendente — a coluna Em Análise vivia em zero. Na tela, "Próximo: Análise" passou a ENVIAR a proposta (mesmo caminho do atendimento) e o passo Análise do stepper só se acende com a proposta em análise.
 
 ### 4-A.5 DocumentoProposta
 
