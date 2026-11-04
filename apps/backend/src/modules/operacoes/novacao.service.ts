@@ -430,6 +430,14 @@ export class NovacaoService implements OnModuleInit {
       where: { id: novacao.id },
       data: { status: 'AGUARDANDO_RECEBIMENTO', asaasChargeIdRecebimento: cobranca.id },
     });
+    // O contrato novo acompanha (03/11, caso Genival): assinado por todos e com a
+    // cobrança do recebimento inicial no ar, ele está AGUARDANDO O PAGAMENTO
+    // INICIAL — mesmo estado que a venda dá ao contrato nesse ponto. Antes ficava
+    // "Aguardando assinatura" com todas as assinaturas feitas.
+    await this.prisma.db.contratoCredito.update({
+      where: { id: contratoId },
+      data: { status: 'AGUARDANDO_PAGAMENTO_INICIAL', entradaCobrancaAsaasId: cobranca.id },
+    });
     this.logger.log(`Novação ${novacao.id}: instrumento assinado — cobrança do recebimento inicial gerada (${cobranca.id})`);
   }
 

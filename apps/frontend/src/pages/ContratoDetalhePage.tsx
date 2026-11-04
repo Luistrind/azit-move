@@ -327,6 +327,19 @@ export function ContratoDetalhePage() {
         )}
       </div>
 
+      {/* Assinado por todos, aguardando o pagamento inicial (entrada da venda ou
+          recebimento inicial da novação): o cronograma nasce no pagamento. */}
+      {c && c.status === 'Aguardando pagamento inicial' && (
+        <div className="rounded-card p-[16px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <Secao titulo="Aguardando o pagamento inicial">
+            <div className="mb-[8px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
+              Contrato assinado por todos. A cobrança do pagamento inicial{c.valorEntrada ? ` de ${formatCurrency(c.valorEntrada)}` : ''} está no Asaas — quando ela for paga, o contrato ativa e o cronograma nasce (dia zero).
+            </div>
+            <BlocoAssinaturaDigital contratoId={c.id} ocupado={assinando} run={runAssinatura} />
+          </Secao>
+        </div>
+      )}
+
       {/* Termo do Reembolso Parcelado aguardando assinatura (doc 02 §18.5, 13/09):
           cronograma e pagamento ao fornecedor só nascem quando TODOS assinam. */}
       {c && c.status === 'Aguardando assinatura' && (
