@@ -17,6 +17,12 @@ export const authService = {
     return data;
   },
 
+  // Identidade completa do usuário logado (04/11) — re-hidrata a sessão.
+  async me(): Promise<UsuarioSessao> {
+    const { data } = await api.get<UsuarioSessao>('/api/v1/auth/me');
+    return data;
+  },
+
   async logout(): Promise<void> {
     const refreshToken = tokenStorage.getRefresh();
     if (refreshToken) {

@@ -52,6 +52,13 @@ export class AuthService {
     });
   }
 
+  // Identidade do usuário logado (GET /auth/me) — mesmo formato de `usuario` do login.
+  async me(id: string): Promise<TokensResponse['usuario']> {
+    const usuario = await this.prisma.db.usuario.findFirst({ where: { id, ativo: true }, include: { roles: true } });
+    if (!usuario) throw new UnauthorizedException({ erro: 'nao_autenticado', mensagem: 'Sessão inválida' });
+    return { id: usuario.id, nome: usuario.nome, email: usuario.email, roles: usuario.roles.map((r) => r.role) };
+  }
+
   // Renovação com rotação (Doc 6 §3.3): valida o refresh, revoga-o e emite um novo par.
   async refresh(refreshToken: string): Promise<TokensResponse> {
     const registro = await this.prisma.db.refreshToken.findUnique({
