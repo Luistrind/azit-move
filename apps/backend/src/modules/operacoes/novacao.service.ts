@@ -644,6 +644,35 @@ export class NovacaoService implements OnModuleInit {
       });
     }
 
+    // Etapa 3c — o recebimento inicial PAGO vira lançamento da conta (03/11,
+    // caso Bruno): é a entrada do contrato novo, igual à venda — aparece em
+    // "Entradas e lançamentos" da ficha e entra no caixa da Carteira. Idempotente
+    // (a ativação roda pela fila com retry).
+    const recebimentoPago = cent(novacao.recebimentoInicial);
+    if (recebimentoPago > 0) {
+      const contratoNovo = await this.prisma.db.contratoCredito.findFirst({ where: { id: novacao.contratoVeiculoId }, select: { id: true, numero: true, entradaPagaEm: true } });
+      const jaLancado = await this.prisma.db.lancamentoConta.findFirst({ where: { contratoId: novacao.contratoVeiculoId, tipo: 'ENTRADA_CONTRATO' }, select: { id: true } });
+      if (contratoNovo && !jaLancado) {
+        const dataRecebimento = paymentDateISO ? new Date(paymentDateISO.length === 10 ? `${paymentDateISO}T12:00:00-03:00` : paymentDateISO) : new Date();
+        await this.prisma.db.$transaction(async (tx) => {
+          await tx.lancamentoConta.create({
+            data: {
+              contaId: novacao.contaId,
+              contratoId: contratoNovo.id,
+              tipo: 'ENTRADA_CONTRATO',
+              descricao: `Entrada do contrato ${contratoNovo.numero} (recebimento inicial da novação)`,
+              valor: reais(recebimentoPago),
+              dataPagamento: dataRecebimento,
+              asaasChargeId: novacao.asaasChargeIdRecebimento,
+            },
+          });
+          if (!contratoNovo.entradaPagaEm) {
+            await tx.contratoCredito.update({ where: { id: contratoNovo.id }, data: { entradaPagaEm: dataRecebimento, valorEntradaPago: reais(recebimentoPago) } });
+          }
+        });
+      }
+    }
+
     // Etapa 4 — commit do estado da novação.
     await this.prisma.db.novacao.update({
       where: { id: novacao.id },
