@@ -14,6 +14,7 @@ export interface ReguaItem {
   valorVenceHoje: number; // raia "Vence hoje" (31/10): parcelas que vencem no dia, sem atraso
   parcelasVenceHoje: number;
   bloqueioDisponivel: boolean; // a partir da raia "até 14 dias" (DIAS_BLOQUEIO_DISPONIVEL, @azit/utils)
+  recuperacaoDisponivel: boolean; // "Iniciar recuperação" a partir da raia "até 30 dias" (DIAS_RECUPERACAO_DISPONIVEL, doc 02 §29.1)
   titular: { nome: string; cpfCnpj: string };
   ativo: { placa: string | null; modelo: string | null } | null; // null = sem ativo (RP)
 }
@@ -28,6 +29,13 @@ export const reguaService = {
   },
   async desbloquear(contratoId: string): Promise<void> {
     await api.post(`/api/v1/contratos/${contratoId}/desbloquear`);
+  },
+  // Recuperação do veículo — intervenção manual (doc 02 §29.1, 04/11).
+  async iniciarRecuperacao(contratoId: string): Promise<void> {
+    await api.post(`/api/v1/contratos/${contratoId}/recuperacao`);
+  },
+  async encerrarRecuperacao(contratoId: string): Promise<void> {
+    await api.post(`/api/v1/contratos/${contratoId}/recuperacao/encerrar`);
   },
   // Dev: roda a régua (varre inadimplência + cobrança automática D+1/D+2).
   async rodar(): Promise<void> {

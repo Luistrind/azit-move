@@ -39,6 +39,19 @@ export const sinistroSchema = z.object({
 });
 export type SinistroBody = z.infer<typeof sinistroSchema>;
 
+// Rescisão por inadimplência (doc 02 §29, 04/11): data-base = data da retomada do veículo.
+export const rescisaoSchema = z.object({
+  dataBase: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  observacao: z.string().trim().max(2000).optional(),
+});
+export type RescisaoBody = z.infer<typeof rescisaoSchema>;
+
+export const devolucaoRescisaoSchema = z.object({
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  observacao: z.string().trim().max(2000).optional(),
+});
+export type DevolucaoRescisaoBody = z.infer<typeof devolucaoRescisaoSchema>;
+
 export const reajusteSchema = z.object({
   indicePercentual: z.coerce.number().min(0).max(100), // ex: 4.5 = 4,5%
 });

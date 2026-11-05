@@ -600,10 +600,11 @@ export class FaturaService {
   // `incluirNovadas` as traz de volta.
   async faturasDaConta(contaId: string, page = 1, limit = 8, incluirNovadas = false) {
     const skip = (Math.max(1, page) - 1) * limit;
-    const where: Prisma.FaturaWhereInput = incluirNovadas ? { contaId } : { contaId, status: { not: 'NOVADA' } };
+    // RESCINDIDA (doc 02 §29) segue a mesma regra da NOVADA: histórico, oculta por padrão.
+    const where: Prisma.FaturaWhereInput = incluirNovadas ? { contaId } : { contaId, status: { notIn: ['NOVADA', 'RESCINDIDA'] } };
     const [total, ocultas, faturas] = await Promise.all([
       this.prisma.db.fatura.count({ where }),
-      incluirNovadas ? Promise.resolve(0) : this.prisma.db.fatura.count({ where: { contaId, status: 'NOVADA' } }),
+      incluirNovadas ? Promise.resolve(0) : this.prisma.db.fatura.count({ where: { contaId, status: { in: ['NOVADA', 'RESCINDIDA'] } } }),
       this.prisma.db.fatura.findMany({
         where,
         orderBy: { dataVencimento: 'asc' },

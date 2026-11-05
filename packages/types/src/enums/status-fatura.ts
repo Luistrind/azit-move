@@ -7,4 +7,5 @@ export enum StatusFatura {
   PAGA_EM_ATRASO = 'Paga em atraso',
   RENEGOCIADA    = 'Renegociada',
   NOVADA         = 'Novada',
+  RESCINDIDA     = 'Rescindida', // extinta pela rescisão por inadimplência (doc 02 §29)
 }

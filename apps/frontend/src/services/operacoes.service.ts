@@ -1,4 +1,31 @@
 import { api } from '../lib/api';
+import type { AcertoRescisao } from '@azit/utils';
+
+// Rescisão por inadimplência (doc 02 §29, 04/11). Valores em centavos; a conta
+// é do backend (@azit/utils) — a tela só exibe.
+export interface PreviaRescisao {
+  contrato: {
+    id: string; numero: string; status: string; titular: string; diasAtraso: number; saldoEmAberto: number;
+    ativo: { descricao: string; placa: string | null; modelo: string | null } | null;
+    recuperacaoIniciadaEm: string | null;
+  };
+  acerto: AcertoRescisao;
+  elegivel: boolean;
+  motivoInelegivel: string | null;
+}
+export interface Rescisao {
+  id: string;
+  contratoId: string;
+  status: 'pendente' | 'efetivada' | 'reprovada' | 'cancelada';
+  dataBase: string; // 'YYYY-MM-DD'
+  observacao: string | null;
+  efetivadaEm: string | null;
+  devolvidoEm: string | null; // 'YYYY-MM-DD'
+  devolucaoObservacao: string | null;
+  acerto: AcertoRescisao;
+  avisos: string[];
+  aprovacaoId: string | null; // dossiê na Central enquanto pendente
+}
 
 // Operações sobre contratos (Bloco 6). Valores em centavos.
 export interface ContratoResumo {
@@ -478,5 +505,21 @@ export const operacoesService = {
   // aprovação (Central de Aprovações — Doc 2 §7.9-A).
   async reajustar(contratoId: string, indicePercentual: number): Promise<void> {
     await api.post(`/api/v1/contratos/${contratoId}/reajuste`, { indicePercentual });
+  },
+  // --- Rescisão por inadimplência (doc 02 §29) ---
+  async previaRescisao(contratoId: string, dataBase?: string): Promise<PreviaRescisao> {
+    const { data } = await api.get<PreviaRescisao>(`/api/v1/contratos/${contratoId}/rescisao/previa`, { params: dataBase ? { dataBase } : {} });
+    return data;
+  },
+  async solicitarRescisao(contratoId: string, body: { dataBase: string; observacao?: string }): Promise<{ id: string; status: string }> {
+    const { data } = await api.post(`/api/v1/contratos/${contratoId}/rescisao`, body);
+    return data;
+  },
+  async rescisoes(contratoId: string): Promise<Rescisao[]> {
+    const { data } = await api.get<Rescisao[]>(`/api/v1/contratos/${contratoId}/rescisoes`);
+    return data;
+  },
+  async registrarDevolucaoRescisao(rescisaoId: string, body: { data: string; observacao?: string }): Promise<void> {
+    await api.post(`/api/v1/rescisoes/${rescisaoId}/devolucao`, body);
   },
 };

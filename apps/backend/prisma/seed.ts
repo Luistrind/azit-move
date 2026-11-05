@@ -472,6 +472,7 @@ const OPERACOES_ALCADA: { chave: string; nome: string }[] = [
   { chave: 'acordo', nome: 'Acordo (recuperação branda)' },
   { chave: 'novacao', nome: 'Novação (recuperação radical)' },
   { chave: 'reajuste', nome: 'Reajuste IPCA' },
+  { chave: 'rescisao', nome: 'Rescisão por inadimplência' }, // doc 02 §29 (04/11): 1 aprovador
   // 'despesa' e 'venda' REMOVIDOS (auditoria 15/09, P0-2): nenhum código cria
   // aprovação com esses tipos — as chaves reais são as de contas a pagar
   // (despesa_contas_pagar etc.), semeadas por migração.
@@ -496,6 +497,7 @@ const ALCADAS: {
   { papel: RoleUsuario.APROVADOR, tipoOperacao: 'acordo', ...lim('50000') },
   { papel: RoleUsuario.APROVADOR, tipoOperacao: 'novacao', ...lim('50000') },
   { papel: RoleUsuario.APROVADOR, tipoOperacao: 'reajuste', ...ILIM },
+  { papel: RoleUsuario.APROVADOR, tipoOperacao: 'rescisao', ...ILIM },
   // OPERADOR: origina, aprova pouco (crédito avulso = 0 → não aprova, só origina).
   { papel: RoleUsuario.OPERADOR, tipoOperacao: 'credito_avulso', ...lim('0') },
   { papel: RoleUsuario.OPERADOR, tipoOperacao: 'acordo', ...lim('20000') },

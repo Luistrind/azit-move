@@ -57,6 +57,8 @@ export interface RaiaRegua {
 
 /** Primeiro dia de atraso em que o bloqueio do veículo fica disponível (raia "até 14 dias"). */
 export const DIAS_BLOQUEIO_DISPONIVEL = 8;
+/** Primeiro dia de atraso em que "Iniciar recuperação do veículo" fica disponível (raia "até 30 dias" — doc 02 §29.1, 04/11; provisório). */
+export const DIAS_RECUPERACAO_DISPONIVEL = 22;
 
 export const RAIAS_REGUA: RaiaRegua[] = [
   { chave: 'hoje', rotulo: 'Vence hoje', de: 0, ate: 0, estagio: null, marco: 'lembrete de vencimento' },
@@ -82,4 +84,9 @@ export function resolverRaiaRegua(diasAtraso: number, venceHoje = false): RaiaRe
 /** Bloqueio disponível a partir da raia "até 14 dias" (decisão 31/10). */
 export function bloqueioDisponivel(diasAtraso: number): boolean {
   return diasAtraso >= DIAS_BLOQUEIO_DISPONIVEL;
+}
+
+/** "Iniciar recuperação do veículo" disponível a partir da raia "até 30 dias" (doc 02 §29.1, 04/11). */
+export function recuperacaoDisponivel(diasAtraso: number): boolean {
+  return diasAtraso >= DIAS_RECUPERACAO_DISPONIVEL;
 }

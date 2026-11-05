@@ -54,9 +54,13 @@ function casaBusca(i: ReguaItem, termo: string): boolean {
   return normalizar(termo).split(/\s+/).filter(Boolean).every((t) => alvo.includes(t)) || (digitos.length >= 3 && i.titular.cpfCnpj.replace(/\D/g, '').includes(digitos));
 }
 
-function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem; onAcao: (acao: 'bloquear' | 'desbloquear', item: ReguaItem) => void; onAbrir: () => void; ocupado: boolean; podeOperar: boolean }) {
+type AcaoRegua = 'bloquear' | 'desbloquear' | 'recuperar' | 'encerrar_recuperacao';
+
+function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem; onAcao: (acao: AcaoRegua, item: ReguaItem) => void; onAbrir: () => void; ocupado: boolean; podeOperar: boolean }) {
   // Bloqueio disponível a partir da raia "até 14 dias" — quem decide é o backend (31/10).
   const podeBloquear = podeOperar && !item.bloqueado && item.bloqueioDisponivel;
+  // Recuperação do veículo a partir da raia "até 30 dias" (doc 02 §29.1, 04/11).
+  const podeRecuperar = podeOperar && !item.emRecuperacao && item.recuperacaoDisponivel;
   const soHoje = item.diasAtraso === 0 && item.parcelasVenceHoje > 0;
   return (
     <div
@@ -78,12 +82,12 @@ function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem;
             {item.ativo?.modelo ?? '—'} · {item.numero}
           </div>
         </div>
-        {item.bloqueado && (
+        {(item.bloqueado || item.emRecuperacao) && (
           <span
             className="rounded-[20px] px-[9px] py-[3px] text-[10.5px] font-bold"
-            style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}
+            style={item.bloqueado ? { background: 'var(--danger-bg)', color: 'var(--danger-fg)' } : { background: 'var(--purple-bg)', color: 'var(--purple-fg)' }}
           >
-            Bloqueado
+            {item.bloqueado ? 'Bloqueado' : 'Em recuperação'}
           </span>
         )}
       </div>
@@ -107,13 +111,25 @@ function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem;
           {item.bloqueado ? 'Desbloquear' : 'Bloquear veículo'}
         </Botao>
       )}
+      {(podeRecuperar || (item.emRecuperacao && podeOperar)) && (
+        <Botao
+          variante="secundaria"
+          tamanho="sm"
+          className="mt-[6px] w-full"
+          onClick={(e) => { e.stopPropagation(); onAcao(item.emRecuperacao ? 'encerrar_recuperacao' : 'recuperar', item); }}
+          disabled={ocupado}
+        >
+          {item.emRecuperacao ? 'Encerrar recuperação' : 'Iniciar recuperação'}
+        </Botao>
+      )}
     </div>
   );
 }
 
 // Cartão da raia expandida: mesma informação do Card, com espaço para ler.
-function CardLargo({ item, proximaAcao, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem; proximaAcao: string; onAcao: (acao: 'bloquear' | 'desbloquear', item: ReguaItem) => void; onAbrir: () => void; ocupado: boolean; podeOperar: boolean }) {
+function CardLargo({ item, proximaAcao, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem; proximaAcao: string; onAcao: (acao: AcaoRegua, item: ReguaItem) => void; onAbrir: () => void; ocupado: boolean; podeOperar: boolean }) {
   const podeBloquear = podeOperar && !item.bloqueado && item.bloqueioDisponivel;
+  const podeRecuperar = podeOperar && !item.emRecuperacao && item.recuperacaoDisponivel;
   const soHoje = item.diasAtraso === 0 && item.parcelasVenceHoje > 0;
   const plural = (n: number, s: string, p: string) => (n === 1 ? s : p);
   const atraso = soHoje
@@ -159,6 +175,16 @@ function CardLargo({ item, proximaAcao, onAcao, onAbrir, ocupado, podeOperar }: 
             disabled={ocupado}
           >
             {item.bloqueado ? 'Desbloquear' : 'Bloquear veículo'}
+          </Botao>
+        )}
+        {(podeRecuperar || (item.emRecuperacao && podeOperar)) && (
+          <Botao
+            variante="secundaria"
+            tamanho="sm"
+            onClick={() => onAcao(item.emRecuperacao ? 'encerrar_recuperacao' : 'recuperar', item)}
+            disabled={ocupado}
+          >
+            {item.emRecuperacao ? 'Encerrar recuperação' : 'Iniciar recuperação'}
           </Botao>
         )}
         </div>
@@ -242,6 +268,14 @@ export function ReguaPage() {
   const [renegociando, setRenegociando] = useState<ReguaItem | null>(null);
   // Bloqueio pede confirmação (disponível a partir da raia "até 14 dias"; o desbloqueio é sempre manual).
   const [bloqueando, setBloqueando] = useState<ReguaItem | null>(null);
+  // Recuperação do veículo também pede confirmação (raia "até 30 dias", doc 02 §29.1).
+  const [recuperando, setRecuperando] = useState<ReguaItem | null>(null);
+  function acaoRegua(acao: AcaoRegua, alvo: ReguaItem) {
+    if (acao === 'bloquear') setBloqueando(alvo);
+    else if (acao === 'recuperar') setRecuperando(alvo);
+    else if (acao === 'encerrar_recuperacao') void comRefetch(() => reguaService.encerrarRecuperacao(alvo.id));
+    else void comRefetch(() => reguaService.desbloquear(alvo.id));
+  }
   // Raia selecionada nos cartões (null = quadro inteiro) e busca livre (31/10).
   const [raia, setRaia] = useState<ChaveColuna | null>(null);
   const [busca, setBusca] = useState('');
@@ -358,9 +392,7 @@ export function ReguaPage() {
                 </div>
               )}
               {cards.map((item) => (
-                <CardLargo key={item.id} item={item} proximaAcao={col.marco} ocupado={ocupado} podeOperar={podeOperar} onAbrir={() => setCaso(item)} onAcao={(acao, alvo) =>
-                  (acao === 'bloquear' ? setBloqueando(alvo) : void comRefetch(() => reguaService.desbloquear(alvo.id)))
-                } />
+                <CardLargo key={item.id} item={item} proximaAcao={col.marco} ocupado={ocupado} podeOperar={podeOperar} onAbrir={() => setCaso(item)} onAcao={acaoRegua} />
               ))}
             </div>
           </div>
@@ -401,9 +433,7 @@ export function ReguaPage() {
                   </div>
                 )}
                 {cards.map((item) => (
-                  <Card key={item.id} item={item} ocupado={ocupado} podeOperar={podeOperar} onAbrir={() => setCaso(item)} onAcao={(acao, alvo) =>
-                    (acao === 'bloquear' ? setBloqueando(alvo) : void comRefetch(() => reguaService.desbloquear(alvo.id)))
-                  } />
+                  <Card key={item.id} item={item} ocupado={ocupado} podeOperar={podeOperar} onAbrir={() => setCaso(item)} onAcao={acaoRegua} />
                 ))}
               </div>
             </div>
@@ -433,6 +463,26 @@ export function ReguaPage() {
           <>
             Tem certeza? O veículo <strong style={{ color: 'var(--text-primary)' }}>{bloqueando.ativo?.modelo ?? '—'} · {bloqueando.ativo?.placa ?? 'sem placa'}</strong> de{' '}
             <strong style={{ color: 'var(--text-primary)' }}>{bloqueando.titular.nome}</strong> ({bloqueando.diasAtraso} dias de atraso) será bloqueado. O desbloqueio é sempre manual.
+          </>
+        )}
+      </ModalConfirmacao>
+      <ModalConfirmacao
+        open={!!recuperando}
+        titulo="Iniciar recuperação do veículo"
+        confirmar="Iniciar recuperação"
+        variante="primaria"
+        carregando={ocupado}
+        onCancelar={() => setRecuperando(null)}
+        onConfirmar={async () => {
+          if (!recuperando) return;
+          await comRefetch(() => reguaService.iniciarRecuperacao(recuperando.id));
+          setRecuperando(null);
+        }}
+      >
+        {recuperando && (
+          <>
+            Marca o início da retomada do <strong style={{ color: 'var(--text-primary)' }}>{recuperando.ativo?.modelo ?? '—'} · {recuperando.ativo?.placa ?? 'sem placa'}</strong> de{' '}
+            <strong style={{ color: 'var(--text-primary)' }}>{recuperando.titular.nome}</strong> ({recuperando.diasAtraso} dias de atraso). O contrato segue ativo; a rescisão, com o acerto dos 20%, é pedida na ficha do contrato depois da retomada.
           </>
         )}
       </ModalConfirmacao>

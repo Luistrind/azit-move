@@ -2803,3 +2803,91 @@ Depois que a carteira (§27) e o layout v2 passarem pelo homolog: (1) rebase da 
 sobre a main; (2) `asaasInvoiceUrl` na fatura + retroalimentação; (3) os dois momentos no job
 diário, reaproveitando o cliente da Meta; (4) tela. Nada disso sai de verdade antes de a conta da
 Meta sair do "Continuar" da plataforma WhatsApp (pendência desde 06/10).
+
+---
+
+## 29. Rescisão por inadimplência e recuperação do veículo (decisão Luís, 2026-11-04)
+
+> **Contexto.** O contrato de venda (cláusulas 8.3, 8.4, 8.4.1 e 8.4.2 do modelo em
+> `contrato-veiculo.template.ts`) prevê retomada administrativa do veículo, vencimento antecipado
+> após 30 dias de atraso, cláusula resolutiva expressa e retenção de **80% dos valores pagos** pelo
+> VENDEDOR (os 20% restantes voltam ao comprador). O Luís rescindiu um contrato por inadimplência
+> em 11/2026 sem apoio do sistema: a fase `Encerrado / Rescisão` (§5.2) existia no enum mas nenhum
+> fluxo a produzia, e o carimbo `recuperacaoIniciadaEm` nunca era gravado. Esta seção modela os
+> dois mecanismos. Vocabulário: "rescisão" e "recuperação do veículo" — sem "financiamento".
+
+### 29.1 Recuperação do veículo (intervenção, camada 3 do §5.2)
+
+- **Iniciar recuperação** é ato manual do operador (régua ou ficha do contrato), disponível a
+  partir da raia **"Vencida até 30 dias"** (22 dias de atraso — constante única
+  `DIAS_RECUPERACAO_DISPONIVEL` em `@azit/utils`, mesma mecânica de `DIAS_BLOQUEIO_DISPONIVEL`;
+  valor provisório, substituível sem tocar em código de tela). Grava `recuperacaoIniciadaEm`,
+  auditado (`recuperacao_iniciada`). O contrato segue **Ativo** (é intervenção, não fase).
+- **Encerrar recuperação** (cliente regularizou, ou a retomada não aconteceu) limpa o carimbo,
+  auditado (`recuperacao_encerrada`). Como no desbloqueio, é sempre manual.
+- A régua mostra o caso com o selo "Em recuperação" e mantém-no no quadro enquanto a intervenção
+  durar (como já faz com o bloqueio).
+
+### 29.2 Rescisão por inadimplência
+
+**Pré-condições:** contrato na fase **Ativo**, com veículo (`ativoId`), com ao menos uma parcela
+vencida fora de acordo. O operador informa a **data-base** (data da retomada do veículo — não pode
+ser futura) e uma observação. A rescisão **passa pelo motor de aprovação** (§7.9-A), tipo de
+operação `rescisao`, **uma aprovação** (decisão Luís: alçada de um aprovador — APROVADOR, DIRETOR e
+ADMIN sem limite; editável na tela de Alçadas). Valor da solicitação = saldo em aberto do contrato
+na data-base (o que deixa de ser cobrado pelo cronograma). Uma rescisão pendente por contrato;
+reprovada ou cancelada, pode-se pedir outra.
+
+**O acerto (decisões Luís 04/11, uma função única `calcularAcertoRescisao` em `@azit/utils`):**
+
+1. **Base dos 20% = só o principal pago: entrada + parcelas.** Principal pago da parcela =
+   (valor pago − encargos de atraso pagos) − proteção veicular embutida na parcela (item SERVICO
+   da parcela na fatura). Ficam **fora** da base: proteção, taxa de boleto/PIX, reembolsos
+   parcelados, encargos de atraso. Entrada = `valorEntradaPago`.
+2. **Crédito do cliente = 20% do principal pago** (`PERCENTUAL_CREDITO_RESCISAO`, constante única).
+3. **Os 20% quitam as parcelas atrasadas até a data-base** — e só elas. Dívida vencida = parcelas
+   do contrato em aberto (fora de acordo) com vencimento ≤ data-base, pelo valor nominal **mais o
+   encargo de atraso** calculado na data-base pela fórmula única (`calcularEncargoAtraso`, taxas do
+   contrato). Compensação = mín(crédito, dívida).
+4. **Resultado:** crédito > dívida → **valor a devolver ao cliente**; dívida > crédito → **saldo
+   remanescente devido pelo cliente** ("ele ainda fica com o restante do débito").
+5. **Parcelas futuras** (vencimento > data-base) não são cobradas: o contrato se resolve com a
+   retomada — não se aplica o vencimento antecipado da cláusula 8.4 ao acerto (decisão Luís: os
+   20% quitam as atrasadas, não o saldo inteiro).
+
+**Efetivação (ao aprovar, transação única, idempotente):**
+
+- Contrato → `Encerrado` / motivo **Rescisão** / `dataEncerramento` = data-base;
+  `recuperacaoIniciadaEm` recebe a data-base se ainda não havia recuperação iniciada.
+- Parcelas em aberto do contrato (vencidas e futuras) → status **`RESCINDIDA`** (novo valor nos
+  enums de parcela e fatura — Regra 3: nada se apaga; a memória do acerto diz quais foram
+  compensadas). Recebíveis esperados → `CANCELADO`. Itens contratados do contrato → `ENCERRADO`.
+- Faturas não pagas da conta que contêm **só** itens deste contrato → **`RESCINDIDA`**, e a cobrança
+  no Asaas sai do ar (como na novação). Fatura **mista** (itens de outro contrato da mesma conta):
+  os itens deste contrato saem dela, o total é recalculado; se já tinha cobrança, a cobrança sai do
+  ar e a fatura volta a `ABERTA` para a emissão normal reemitir com o valor certo — o acerto avisa.
+- Ativo → **`RECUPERADO`** (volta à frota pelo fluxo do §25; a data do fato para responsabilidade de
+  multas, §25.2, passa a ser a data-base).
+- Registro `RescisaoContrato` guarda o snapshot do acerto (entrada, principal das parcelas, crédito,
+  parcelas vencidas com encargo, compensado, a devolver, saldo remanescente, memória), quem pediu,
+  quem aprovou e quando efetivou. Auditoria `contrato_rescindido`.
+
+**Depois da efetivação (placeholders funcionais, Regra 12):**
+
+- **Devolução ao cliente** (quando há valor a devolver): fica **pendente na ficha do contrato** até o
+  operador registrar "Devolução feita" (data + observação, auditado). O pagamento em si acontece
+  fora do sistema por enquanto — gerar título em Contas a Pagar é decisão futura (ligada ao papel
+  gestor e ao lugar do desembolso, pendência do §18).
+- **Saldo remanescente** (quando a dívida supera o crédito): fica registrado na rescisão e visível na
+  ficha do contrato; **não gera cobrança no Asaas** nem entra na régua — a cobrança desse resto é
+  fora do cronograma (acordo avulso ou judicial; o dossiê para judicialização é o próximo bloco).
+  Emitir cobrança automática desse saldo é decisão futura.
+- Acordo ativo da conta cujo plano pertence só a este contrato → `CANCELADO` (as cotas viram
+  `RESCINDIDA` junto com as demais parcelas). Acordo que mistura contratos não é tocado — o acerto
+  avisa.
+
+**Tela:** ficha do contrato ganha "Iniciar/Encerrar recuperação" e "Rescindir contrato" (prévia do
+acerto com memória antes de pedir aprovação); a Central de Aprovações mostra o dossiê da rescisão
+(acerto, parcelas vencidas, veículo, atraso, histórico de recuperação da conta); contrato encerrado
+por rescisão mostra o acerto, a devolução pendente/feita e o saldo remanescente. A régua ganha o
+botão "Iniciar recuperação" a partir da raia "Vencida até 30 dias".

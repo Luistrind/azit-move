@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -23,6 +24,7 @@ import { NovacaoDecomposicaoService } from './novacao-decomposicao.service';
 import { QuitacaoService } from './quitacao.service';
 import { SinistroService } from './sinistro.service';
 import { ReajusteService } from './reajuste.service';
+import { RescisaoService } from './rescisao.service';
 import { simularNovacaoSchema, SimularNovacaoBody, solicitarNovacaoSchema, SolicitarNovacaoBody, primeiraParcelaNovacaoSchema, PrimeiraParcelaNovacaoBody } from './dto/novacao.dto';
 import {
   criarRenegociacaoSchema,
@@ -33,6 +35,10 @@ import {
   SinistroBody,
   reajusteSchema,
   ReajusteBody,
+  rescisaoSchema,
+  RescisaoBody,
+  devolucaoRescisaoSchema,
+  DevolucaoRescisaoBody,
 } from './dto/operacoes.dto';
 
 @Controller()
@@ -44,6 +50,7 @@ export class OperacoesController {
     private readonly quitacao: QuitacaoService,
     private readonly sinistro: SinistroService,
     private readonly reajuste: ReajusteService,
+    private readonly rescisao: RescisaoService,
     @InjectQueue(QUEUE_NAMES.EFETIVAR_ACORDO) private readonly filaAcordo: Queue,
   ) {}
 
@@ -235,5 +242,41 @@ export class OperacoesController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.reajuste.gerar(id, dto.indicePercentual, user.id);
+  }
+
+  // --- Rescisão por inadimplência (doc 02 §29, 04/11) ---
+  // Prévia do acerto (20% do principal pago × parcelas vencidas até a data-base).
+  @Get('contratos/:id/rescisao/previa')
+  previaRescisao(@Param('id') id: string, @Query('dataBase') dataBase?: string) {
+    return this.rescisao.previa(id, dataBase || undefined);
+  }
+
+  // Pede a rescisão — aprovação (1 aprovador) e efetivação via motor (§7.9-A).
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('contratos/:id/rescisao')
+  @HttpCode(201)
+  solicitarRescisao(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(rescisaoSchema)) dto: RescisaoBody,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.rescisao.solicitar(id, dto, user.id);
+  }
+
+  @Get('contratos/:id/rescisoes')
+  rescisoes(@Param('id') id: string) {
+    return this.rescisao.listarDoContrato(id);
+  }
+
+  // Devolução ao cliente registrada (placeholder: pagamento fora do sistema).
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.FINANCEIRO)
+  @Post('rescisoes/:id/devolucao')
+  @HttpCode(200)
+  registrarDevolucao(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(devolucaoRescisaoSchema)) dto: DevolucaoRescisaoBody,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.rescisao.registrarDevolucao(id, dto, user.id);
   }
 }

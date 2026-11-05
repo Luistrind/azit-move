@@ -12,7 +12,11 @@ import {
   SITUACAO_CONTRATO_COLORS,
   SITUACAO_CONTRATO_LABEL,
   PARCELA_STATUS_COLORS,
+  MOTIVO_ENCERRAMENTO_COLORS,
+  MOTIVO_ENCERRAMENTO_LABEL,
 } from '../config/statusColors';
+import { reguaService } from '../services/regua.service';
+import { BlocoRescisao, ModalRescisao } from '../components/RescisaoContrato';
 import { usePodeRole, ROLE_OPERACAO, ROLE_REAJUSTE, mensagemErro } from '../lib/permissoes';
 import { reaisParaCentavos, numeroBR } from '../lib/valor';
 import { Metrica } from '../components/Metrica';
@@ -193,7 +197,33 @@ export function ContratoDetalhePage() {
     }
   }
 
+  // Doc 02 §29 (04/11): recuperação do veículo (intervenção manual) e rescisão
+  // por inadimplência (prévia do acerto → 1 aprovação na Central).
+  const [rescisaoAberta, setRescisaoAberta] = useState(false);
+  async function alternarRecuperacao() {
+    if (!detalhe.data) return;
+    setSimulando(true);
+    try {
+      if (detalhe.data.recuperacaoIniciadaEm) {
+        await reguaService.encerrarRecuperacao(id);
+        toast.sucesso('Recuperação encerrada — o contrato segue ativo.');
+      } else {
+        await reguaService.iniciarRecuperacao(id);
+        toast.sucesso('Recuperação do veículo iniciada.');
+      }
+      await queryClient.invalidateQueries({ queryKey: ['contrato', id] });
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+    } finally {
+      setSimulando(false);
+    }
+  }
+
+  const rescisoes = useQuery({ queryKey: ['contrato', id, 'rescisoes'], queryFn: () => operacoesService.rescisoes(id), enabled: detalhe.data?.status === 'Ativo' });
+  const rescisaoPendente = (rescisoes.data ?? []).some((r) => r.status === 'pendente');
+
   const c = detalhe.data;
+  const podeRescindir = !!c && c.status === 'Ativo' && !!c.ativo && c.situacaoFinanceira === 'em_atraso' && !rescisaoPendente;
 
   return (
     <div className="flex flex-col gap-[16px]">
@@ -270,9 +300,10 @@ export function ContratoDetalhePage() {
                   </span>
                 )}
                 {c.status === 'Encerrado' && c.motivoEncerramento && (
-                  <span className="rounded-full px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: 'var(--surface-input)', color: 'var(--text-body)' }}>
-                    {c.motivoEncerramento}
-                  </span>
+                  <StatusBadge
+                    label={MOTIVO_ENCERRAMENTO_LABEL[c.motivoEncerramento] ?? c.motivoEncerramento}
+                    colors={{ [MOTIVO_ENCERRAMENTO_LABEL[c.motivoEncerramento] ?? c.motivoEncerramento]: MOTIVO_ENCERRAMENTO_COLORS[c.motivoEncerramento] }}
+                  />
                 )}
               </div>
             </div>
@@ -358,6 +389,11 @@ export function ContratoDetalhePage() {
         </div>
       )}
 
+      {/* Rescisão por inadimplência (doc 02 §29): pendente na Central ou acerto efetivado. */}
+      {c && (c.status === 'Ativo' || (c.status === 'Encerrado' && c.motivoEncerramento === 'rescisao')) && (
+        <BlocoRescisao contratoId={c.id} encerradoPorRescisao={c.status === 'Encerrado' && c.motivoEncerramento === 'rescisao'} podeOperar={podeOperar} />
+      )}
+
       {/* Resumo financeiro + documento do contrato — Bloco com a Leitura do Hub */}
       {c && (
         <Bloco
@@ -413,6 +449,22 @@ export function ContratoDetalhePage() {
               Cancelar contrato
             </Botao>
           )}
+          {podeOperar && c?.status === 'Ativo' && c.ativo && (
+            <Botao
+              variante="secundaria"
+              tamanho="sm"
+              onClick={() => void alternarRecuperacao()}
+              disabled={simulando}
+              title={c.recuperacaoIniciadaEm ? 'Limpa o carimbo de recuperação (o contrato segue ativo)' : 'Disponível a partir da raia "Vencida até 30 dias" (doc 02 §29.1)'}
+            >
+              {c.recuperacaoIniciadaEm ? 'Encerrar recuperação' : 'Iniciar recuperação'}
+            </Botao>
+          )}
+          {podeOperar && podeRescindir && (
+            <Botao variante="perigo" tamanho="sm" onClick={() => setRescisaoAberta(true)} disabled={simulando} title="20% do principal pago quita as parcelas vencidas; 1 aprovação na Central">
+              Rescindir contrato
+            </Botao>
+          )}
           {podeOperar && FERRAMENTAS_TESTE && (
             <Botao
               variante="primaria"
@@ -426,6 +478,10 @@ export function ContratoDetalhePage() {
           )}
         </div>
       </div>
+
+      {rescisaoAberta && c && (
+        <ModalRescisao contratoId={c.id} onClose={() => setRescisaoAberta(false)} onSolicitado={async () => { await queryClient.invalidateQueries({ queryKey: ['contrato', id] }); }} />
+      )}
 
       {sinistroAberto && (
         <Modal open onClose={() => setSinistroAberto(false)} title="Registrar sinistro">

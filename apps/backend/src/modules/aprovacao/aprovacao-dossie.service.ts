@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { StatusParcela } from '@prisma/client';
 import {
+  AcertoRescisao,
   comprometimentoRenda,
   dataCalendarioUTC,
   formatarDiaBR,
+  formatarInstanteBR,
   formatCurrency,
   inicioHojeBrasilUTC,
   rotuloAtivo,
@@ -99,6 +101,8 @@ export class AprovacaoDossieService {
         return this.detalheCredito(base, referenciaId, payload);
       case 'reajuste':
         return this.detalheReajuste(base, referenciaId);
+      case 'rescisao':
+        return this.detalheRescisao(base, referenciaId);
       case 'proposta':
         return this.detalheProposta(base, referenciaId, titularId);
       case 'titulo_pagar':
@@ -338,6 +342,62 @@ export class AprovacaoDossieService {
       },
     ];
     return { ...base, blocos, conta: await this.contextoConta(r.contrato.contaId) };
+  }
+
+  // --- Rescisão por inadimplência (doc 02 §29) ---------------------------------------
+
+  private async detalheRescisao(base: DetalheDossie, contratoId: string): Promise<DetalheDossie> {
+    const r = await this.prisma.db.rescisaoContrato.findFirst({
+      where: { contratoId, status: 'PENDENTE' },
+      orderBy: { createdAt: 'desc' },
+      include: { contrato: { select: { numero: true, contaId: true, veiculoBloqueadoEm: true, recuperacaoIniciadaEm: true, ativo: { select: { descricao: true, placa: true } } } } },
+    });
+    if (!r) return base;
+    const mem = r.memoriaJson as unknown as { acerto: AcertoRescisao; avisos?: string[] };
+    const a = mem.acerto;
+    const solicitante = await this.prisma.db.usuario.findFirst({ where: { id: r.solicitanteId }, select: { nome: true } });
+    const resultado = a.valorADevolver > 0
+      ? { rotulo: 'A devolver ao cliente', valor: formatCurrency(a.valorADevolver), tom: 'ok' as const }
+      : a.saldoRemanescente > 0
+        ? { rotulo: 'Saldo remanescente do cliente', valor: `${formatCurrency(a.saldoRemanescente)} (fica devendo — cobrança fora do cronograma)`, tom: 'alerta' as const }
+        : { rotulo: 'Resultado', valor: 'Crédito e dívida se anulam' };
+    const blocos: BlocoDossie[] = [
+      {
+        titulo: 'O acerto da rescisão',
+        campos: [
+          { rotulo: 'Contrato', valor: `${r.contrato.numero}${r.contrato.ativo ? ` · ${rotuloAtivo(r.contrato.ativo)}` : ''}` },
+          { rotulo: 'Data-base (retomada do veículo)', valor: formatarDiaBR(r.dataBase) },
+          { rotulo: 'Atraso na data-base', valor: a.vencidas.length ? `${a.vencidas[0].diasAtraso} dia(s) · ${a.vencidas.length} parcela(s) vencida(s)` : '—', tom: 'atencao' },
+          { rotulo: 'Principal pago', valor: `${formatCurrency(a.principalPago)} (entrada ${formatCurrency(a.entradaPaga)} + ${a.parcelasPagas} parcela(s) ${formatCurrency(a.principalParcelas)})` },
+          { rotulo: `Crédito do cliente (${a.percentualCredito}%)`, valor: formatCurrency(a.valorCredito) },
+          { rotulo: 'Dívida vencida na data-base', valor: `${formatCurrency(a.dividaTotal)} (${formatCurrency(a.dividaVencida)} + encargos ${formatCurrency(a.encargosVencidos)})` },
+          { rotulo: 'Compensado com o crédito', valor: formatCurrency(a.valorCompensado) },
+          resultado,
+          { rotulo: 'Parcelas futuras não cobradas', valor: `${a.futuras.quantidade} parcela(s) · ${formatCurrency(a.futuras.valorNominal)}` },
+        ],
+        nota: 'Base dos 20% = só o principal (entrada + parcelas, sem proteção, taxas ou encargos). O crédito quita as parcelas vencidas até a data-base; o que sobra volta ao cliente, o que falta fica devido (doc 02 §29).',
+      },
+    ];
+    if (a.vencidas.length) {
+      blocos.push({
+        titulo: 'Parcelas vencidas compensadas',
+        tabela: {
+          colunas: ['Parcela', 'Vencimento', 'Dias', 'Valor', 'Encargo', 'Total'],
+          direita: [2, 3, 4, 5],
+          linhas: a.vencidas.map((v) => ({ celulas: [v.display, formatarDiaBR(new Date(`${v.dataVencimento}T00:00:00.000Z`)), String(v.diasAtraso), formatCurrency(v.valorNominal), formatCurrency(v.encargo), formatCurrency(v.total)] })),
+        },
+      });
+    }
+    const situacao: string[] = [];
+    if (r.contrato.veiculoBloqueadoEm) situacao.push(`veículo bloqueado desde ${formatarInstanteBR(r.contrato.veiculoBloqueadoEm)}`);
+    if (r.contrato.recuperacaoIniciadaEm) situacao.push(`recuperação iniciada em ${formatarInstanteBR(r.contrato.recuperacaoIniciadaEm)}`);
+    if (situacao.length) blocos.push({ titulo: 'Intervenções', campos: situacao.map((s) => ({ rotulo: '', valor: s })) });
+    return {
+      ...base,
+      observacao: r.observacao ? { autor: solicitante?.nome ?? null, em: r.createdAt.toISOString(), texto: r.observacao } : null,
+      blocos,
+      conta: await this.contextoConta(r.contrato.contaId),
+    };
   }
 
   // --- Condição comercial fora do parâmetro -----------------------------------
