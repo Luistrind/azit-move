@@ -113,8 +113,9 @@ export function AtivoPage() {
     queryKey: ['ativos', filtroStatus, busca],
     queryFn: () => ativoService.listar({
       status: filtroStatus || undefined,
-      placa: busca || undefined,
-      chassi: busca || undefined,
+      // Um termo só, casado em placa, chassi, descrição, marca ou modelo (correção 05/11:
+      // mandar o mesmo texto em placa E chassi exigia os dois e a busca por placa não achava nada).
+      busca: busca || undefined,
       // Estoque é FROTA: o ativo sintético do crédito avulso (âncora de
       // recebível) não aparece aqui (feedback Luís 08/09).
       tipo: 'veiculo',
@@ -183,7 +184,7 @@ export function AtivoPage() {
     <div className="flex flex-col gap-[16px]">
       {/* Barra de controles: busca + filtro de status em chips + ação principal */}
       <div className="flex flex-wrap items-center gap-[10px]">
-        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar placa/chassi" aria-label="Buscar placa ou chassi" className={`${inputCls} min-w-0 flex-1 sm:max-w-[220px]`} style={inStyle} />
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar placa, chassi ou modelo" aria-label="Buscar placa, chassi ou modelo" className={`${inputCls} min-w-0 flex-1 sm:max-w-[220px]`} style={inStyle} />
         {/* Regra "não clica, não exiba" (doc 03 §1): quitado/recuperado/sinistrado
             não têm produtor hoje (grupo B da varredura) — filtro que nada retorna
             some; voltam quando as transições existirem. */}
