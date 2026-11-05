@@ -59,6 +59,20 @@ export class ReguaService {
       _count: { _all: true },
     });
     const porId = new Map(vencidas.map((v) => [v.contratoId, v]));
+    // Contagem por FATURA (05/11, caso Wallace): a fatura é a cobrança real e pode
+    // carregar a parcela do carro + a cota do acordo — contar parcela mostrava
+    // "4 parcelas vencidas" para quem deve 2 faturas. Parcela sem fatura conta por si.
+    const linhasAbertas = await this.prisma.db.parcela.findMany({
+      where: { contratoId: { in: ids }, status: null, dataVencimento: { lt: new Date(hoje.getTime() + DIA_MS) }, acordoId: null },
+      select: { id: true, contratoId: true, faturaId: true, dataVencimento: true },
+    });
+    const faturasVencidas = new Map<string, Set<string>>();
+    const faturasHoje = new Map<string, Set<string>>();
+    for (const p of linhasAbertas) {
+      const alvo = p.dataVencimento < hoje ? faturasVencidas : faturasHoje;
+      if (!alvo.has(p.contratoId)) alvo.set(p.contratoId, new Set());
+      alvo.get(p.contratoId)!.add(p.faturaId ?? p.id);
+    }
     // Raia "Vence hoje" (decisão Luís 31/10, doc 02 §7.6): parcelas que vencem
     // HOJE (fuso do Brasil), fora de acordo — o caso entra no quadro antes de
     // atrasar, para o lembrete do dia. Não é atraso: diasAtraso continua 0.
@@ -89,9 +103,11 @@ export class ReguaService {
           estagio: resolverEstagioRegua(diasAtraso),
           valorVencido: cent(v?._sum.valorNominal ?? null),
           parcelasVencidas: v?._count._all ?? 0,
+          faturasVencidas: faturasVencidas.get(c.id)?.size ?? 0,
           // Raia "Vence hoje": o que vence no dia (sem atraso ainda).
           valorVenceHoje: cent(h?._sum.valorNominal ?? null),
           parcelasVenceHoje: h?._count._all ?? 0,
+          faturasVenceHoje: faturasHoje.get(c.id)?.size ?? 0,
           // Bloqueio disponível a partir da raia "até 14 dias" (DIAS_BLOQUEIO_DISPONIVEL, 31/10).
           bloqueioDisponivel: bloqueioDisponivel(diasAtraso),
           // "Iniciar recuperação" a partir da raia "até 30 dias" (DIAS_RECUPERACAO_DISPONIVEL, doc 02 §29.1).
