@@ -2891,3 +2891,46 @@ acerto com memória antes de pedir aprovação); a Central de Aprovações mostr
 (acerto, parcelas vencidas, veículo, atraso, histórico de recuperação da conta); contrato encerrado
 por rescisão mostra o acerto, a devolução pendente/feita e o saldo remanescente. A régua ganha o
 botão "Iniciar recuperação" a partir da raia "Vencida até 30 dias".
+
+---
+
+## 30. Dossiê para cobrança judicial (pedido Luís, 2026-11-04)
+
+> **Contexto.** Quando a recuperação não acontece, o caso vai para o jurídico. Em 10/2026 o dossiê
+> do João Gabriel (contrato 2026030012) foi montado à mão: contrato assinado, histórico de pagamentos,
+> capturas da conversa de WhatsApp (duas por página, numeradas), relatório do rastreador e o contrato
+> social da Azit. O Luís pediu que o sistema gere "aquele artefato em PDF", pedindo ao operador **só
+> as capturas do WhatsApp** — o resto o sistema já tem.
+
+**O que o sistema monta (um PDF, nesta ordem):**
+
+1. **Capa com sumário** (contrato, titular, veículo, data de emissão, seções com página inicial) e avisos
+   do que faltou.
+2. **Contrato assinado** — o PDF da assinatura digital (ZapSign) do contrato ou do contrato-âncora do
+   mesmo pacote; para contrato migrado, o PDF do legado (`DocumentoAssinatura` com provedor `legado`,
+   ou o PDF anexado ao caso de migração). Sem PDF, entra o instrumento em texto gerado pelo sistema
+   (snapshot da formalização) e o dossiê avisa.
+3. **Histórico do contrato** (gerado): cliente, contrato, veículo, parcela e composição; pílulas
+   (entrada paga, total pago, em atraso desde); tabela entrada + parcelas (vencimento, valor, pagamento,
+   valor pago, situação); parcelas a vencer agrupadas depois das 6 primeiras; totais pago e em atraso
+   (valor de face) e nota explicando multa/juros do contrato, última parcela paga e desde quando não
+   há pagamento. Mesma fonte dos números da ficha (parcelas, `valorEntradaPago`), Regra 7.
+4. **Anexo — Comunicações com o cliente**: capa + capturas de tela do WhatsApp, duas por página,
+   numeradas em ordem (ordem dos arquivos como enviados pelo operador; o nome do arquivo ordena).
+5. **Anexo — Notificação extrajudicial** (opcional, PDF enviado pelo operador; o modelo é feito fora
+   do sistema por enquanto — gerar pelo sistema é bloco futuro).
+6. **Anexo — Rastreamento Infleet** (opcional, PDF exportado da plataforma; o robô do §25 só importa
+   multas, não gera relatório de localização).
+7. **Anexo — Contrato social da Azit**: PDF guardado em **Configuração › Documentos da empresa**
+   (com descrição, ex.: "Alteração contratual de 30/12/2025"). Sem ele o dossiê sai sem a seção e
+   avisa.
+
+Rodapé em toda página: "Dossiê · contrato N · titular — página x de y". Cada geração vira um
+`DossieContrato` (quem gerou, quando, páginas, capturas, tamanho, composição com as páginas de cada
+seção e avisos), com o PDF em `uploads/dossies/`, auditado (`dossie_gerado`); a ficha do contrato lista
+os dossiês gerados para baixar. Gerar de novo não apaga o anterior.
+
+**Mecânica:** as capturas sobem uma a uma (base64, como todo upload do sistema) para uma área de
+entrada e são apagadas depois da montagem; as páginas geradas são HTML no padrão visual do Hub
+renderizado pelo Chromium que já está na imagem (Playwright); os PDFs são juntados com `pdf-lib`.
+Disponível para qualquer contrato que já virou obrigação (ativo ou encerrado por rescisão).

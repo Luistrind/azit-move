@@ -24,6 +24,7 @@ import { ContasPagarPage } from './pages/ContasPagarPage';
 import { FornecedoresPage } from './pages/FornecedoresPage';
 import { FinanceiroConfigPage } from './pages/FinanceiroConfigPage';
 import { AssinaturaConfigPage } from './pages/AssinaturaConfigPage';
+import { DocumentosEmpresaPage } from './pages/DocumentosEmpresaPage';
 import { TitularPage } from './pages/TitularPage';
 import { TitularDetalhePage } from './pages/TitularDetalhePage';
 import { AprovacoesPage } from './pages/AprovacoesPage';
@@ -158,6 +159,10 @@ export const router = createBrowserRouter([
       {
         path: 'configuracoes/assinatura',
         element: <AssinaturaConfigPage />,
+      },
+      {
+        path: 'configuracoes/documentos-empresa',
+        element: <DocumentosEmpresaPage />,
       },
       {
         path: 'frota/ocorrencias',

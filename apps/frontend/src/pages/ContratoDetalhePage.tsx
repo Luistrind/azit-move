@@ -17,6 +17,7 @@ import {
 } from '../config/statusColors';
 import { reguaService } from '../services/regua.service';
 import { BlocoRescisao, ModalRescisao } from '../components/RescisaoContrato';
+import { BlocoDossies, ModalDossie } from '../components/DossieContrato';
 import { usePodeRole, ROLE_OPERACAO, ROLE_REAJUSTE, mensagemErro } from '../lib/permissoes';
 import { reaisParaCentavos, numeroBR } from '../lib/valor';
 import { Metrica } from '../components/Metrica';
@@ -200,6 +201,9 @@ export function ContratoDetalhePage() {
   // Doc 02 §29 (04/11): recuperação do veículo (intervenção manual) e rescisão
   // por inadimplência (prévia do acerto → 1 aprovação na Central).
   const [rescisaoAberta, setRescisaoAberta] = useState(false);
+  // Dossiê para cobrança judicial (doc 02 §30): só pede as capturas do WhatsApp.
+  const [dossieAberto, setDossieAberto] = useState(false);
+  const podeDossie = !!detalhe.data && !['Rascunho', 'Aguardando assinatura'].includes(detalhe.data.status);
   async function alternarRecuperacao() {
     if (!detalhe.data) return;
     setSimulando(true);
@@ -394,6 +398,9 @@ export function ContratoDetalhePage() {
         <BlocoRescisao contratoId={c.id} encerradoPorRescisao={c.status === 'Encerrado' && c.motivoEncerramento === 'rescisao'} podeOperar={podeOperar} />
       )}
 
+      {/* Dossiês gerados para cobrança judicial (doc 02 §30). */}
+      {c && podeDossie && <BlocoDossies contratoId={c.id} />}
+
       {/* Resumo financeiro + documento do contrato — Bloco com a Leitura do Hub */}
       {c && (
         <Bloco
@@ -460,6 +467,11 @@ export function ContratoDetalhePage() {
               {c.recuperacaoIniciadaEm ? 'Encerrar recuperação' : 'Iniciar recuperação'}
             </Botao>
           )}
+          {podeOperar && podeDossie && (
+            <Botao variante="secundaria" tamanho="sm" onClick={() => setDossieAberto(true)} disabled={simulando} title="PDF único: contrato assinado + histórico + capturas do WhatsApp + contrato social">
+              Dossiê judicial
+            </Botao>
+          )}
           {podeOperar && podeRescindir && (
             <Botao variante="perigo" tamanho="sm" onClick={() => setRescisaoAberta(true)} disabled={simulando} title="20% do principal pago quita as parcelas vencidas; 1 aprovação na Central">
               Rescindir contrato
@@ -478,6 +490,10 @@ export function ContratoDetalhePage() {
           )}
         </div>
       </div>
+
+      {dossieAberto && c && (
+        <ModalDossie contratoId={c.id} numero={c.numero} onClose={() => setDossieAberto(false)} onGerado={async () => { await queryClient.invalidateQueries({ queryKey: ['contrato', id, 'dossies'] }); }} />
+      )}
 
       {rescisaoAberta && c && (
         <ModalRescisao contratoId={c.id} onClose={() => setRescisaoAberta(false)} onSolicitado={async () => { await queryClient.invalidateQueries({ queryKey: ['contrato', id] }); }} />

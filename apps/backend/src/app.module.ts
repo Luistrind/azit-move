@@ -33,6 +33,7 @@ import { ContasPagarModule } from './modules/contas-pagar/contas-pagar.module';
 import { ProdutoModule } from './modules/produto/produto.module';
 import { InvestimentoModule } from './modules/investimento/investimento.module';
 import { AssinaturaModule } from './modules/assinatura/assinatura.module';
+import { DossieModule } from './modules/dossie/dossie.module';
 import { FrotaModule } from './modules/frota/frota.module';
 import { MigracaoLegadoModule } from './modules/migracao-legado/migracao-legado.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -77,6 +78,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     ProdutoModule,
     InvestimentoModule,
     AssinaturaModule,
+    DossieModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

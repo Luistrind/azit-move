@@ -1082,6 +1082,7 @@ model ContratoCredito {
   acordos           Acordo[]
   reajustes         ReajusteIPCA[]
   rescisoes         RescisaoContrato[] // rescisão por inadimplência (doc 02 §29)
+  dossies           DossieContrato[] // dossiê para judicialização (doc 02 §30)
   vinculosPapel     VinculoPapel[]
   lancamentos       LancamentoConta[]
   propostaOrigem    Proposta?        @relation("PropostaContrato")
@@ -1499,6 +1500,43 @@ model RescisaoContrato {
   @@index([contratoId])
   @@index([status])
   @@map("rescisoes_contrato")
+}
+
+// Dossiê para judicialização (doc 02 §30, pedido Luís 04/11/2026): PDF único
+// (contrato assinado + histórico + capturas do WhatsApp + anexos + contrato
+// social) gerado pelo sistema e guardado em uploads/dossies/<id>.pdf.
+model DossieContrato {
+  id          String   @id @default(cuid())
+  contratoId  String
+  geradoPor   String
+  arquivoRef  String
+  paginas     Int
+  capturas    Int
+  tamanho     Int // bytes
+  composicao  Json // seções com página inicial/final + avisos
+  observacao  String?
+
+  contrato ContratoCredito @relation(fields: [contratoId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([contratoId])
+  @@map("dossies_contrato")
+}
+
+// Documentos da empresa (Configuração): contrato social anexado a todo dossiê.
+model ParametroEmpresa {
+  id                     String    @id @default(cuid())
+  contratoSocialRef      String?
+  contratoSocialNome     String?
+  contratoSocialDescricao String   @default("") // ex.: "Alteração contratual de 30/12/2025"
+  contratoSocialEm       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("parametros_empresa")
 }
 
 // Catálogo de tipos de operação sujeitos a alçada (Doc 2 §7.9). Configurável pelo
