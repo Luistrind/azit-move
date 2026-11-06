@@ -52,7 +52,7 @@ export interface CriarAtivoBody {
 }
 
 export const ativoService = {
-  async listar(params: { status?: string; placa?: string; chassi?: string; tipo?: 'veiculo' | 'outro' } = {}): Promise<{ total: number; data: Ativo[] }> {
+  async listar(params: { status?: string; placa?: string; chassi?: string; busca?: string; tipo?: 'veiculo' | 'outro' } = {}): Promise<{ total: number; data: Ativo[] }> {
     const { data } = await api.get('/api/v1/ativos', { params: { limit: 100, ...params } });
     return data;
   },

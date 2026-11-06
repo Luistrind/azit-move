@@ -96,8 +96,8 @@ function Card({ item, onAcao, onAbrir, ocupado, podeOperar }: { item: ReguaItem;
           {formatCurrency(soHoje ? item.valorVenceHoje : item.valorVencido)}
         </div>
         <div className="text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
-          {soHoje ? `vence hoje · ${item.parcelasVenceHoje}p` : `${item.diasAtraso}d · ${item.parcelasVencidas}p`}
-          {!soHoje && item.parcelasVenceHoje > 0 ? ` · +${item.parcelasVenceHoje} hoje` : ''}
+          {soHoje ? `vence hoje · ${item.faturasVenceHoje}f` : `${item.diasAtraso}d · ${item.faturasVencidas}f`}
+          {!soHoje && item.faturasVenceHoje > 0 ? ` · +${item.faturasVenceHoje} hoje` : ''}
         </div>
       </div>
       {(podeBloquear || (item.bloqueado && podeOperar)) && (
@@ -133,10 +133,10 @@ function CardLargo({ item, proximaAcao, onAcao, onAbrir, ocupado, podeOperar }: 
   const soHoje = item.diasAtraso === 0 && item.parcelasVenceHoje > 0;
   const plural = (n: number, s: string, p: string) => (n === 1 ? s : p);
   const atraso = soHoje
-    ? `vence hoje · ${item.parcelasVenceHoje} ${plural(item.parcelasVenceHoje, 'parcela', 'parcelas')}`
+    ? `vence hoje · ${item.faturasVenceHoje} ${plural(item.faturasVenceHoje, 'fatura', 'faturas')}`
     : item.diasAtraso > 0
-      ? `${item.diasAtraso} ${plural(item.diasAtraso, 'dia', 'dias')} de atraso · ${item.parcelasVencidas} ${plural(item.parcelasVencidas, 'parcela vencida', 'parcelas vencidas')}${item.parcelasVenceHoje > 0 ? ` · mais ${item.parcelasVenceHoje} vence hoje` : ''}`
-      : 'sem parcela vencida';
+      ? `${item.diasAtraso} ${plural(item.diasAtraso, 'dia', 'dias')} de atraso · ${item.faturasVencidas} ${plural(item.faturasVencidas, 'fatura vencida', 'faturas vencidas')}${item.faturasVenceHoje > 0 ? ` · mais ${item.faturasVenceHoje} vence hoje` : ''}`
+      : 'sem fatura vencida';
   const situacao = item.bloqueado ? 'Veículo bloqueado' : item.emRecuperacao ? 'Em recuperação' : null;
   return (
     <div

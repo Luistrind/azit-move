@@ -11,8 +11,10 @@ export interface ReguaItem {
   estagio: string; // 'D+1' | 'D+2' | 'D+3' | 'D+10' | 'D+12'
   valorVencido: number;
   parcelasVencidas: number;
+  faturasVencidas: number; // cobranças reais em atraso (uma fatura pode ter parcela do carro + cota de acordo)
   valorVenceHoje: number; // raia "Vence hoje" (31/10): parcelas que vencem no dia, sem atraso
   parcelasVenceHoje: number;
+  faturasVenceHoje: number;
   bloqueioDisponivel: boolean; // a partir da raia "até 14 dias" (DIAS_BLOQUEIO_DISPONIVEL, @azit/utils)
   recuperacaoDisponivel: boolean; // "Iniciar recuperação" a partir da raia "até 30 dias" (DIAS_RECUPERACAO_DISPONIVEL, doc 02 §29.1)
   titular: { nome: string; cpfCnpj: string };

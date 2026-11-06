@@ -10,6 +10,8 @@ export const listarAtivosSchema = z.object({
   tipo: z.enum(['veiculo', 'outro']).optional(),
   placa: z.string().trim().min(1).optional(),
   chassi: z.string().trim().min(1).optional(),
+  // Termo livre (05/11): placa, chassi, descrição, marca ou modelo — qualquer um.
+  busca: z.string().trim().min(1).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });

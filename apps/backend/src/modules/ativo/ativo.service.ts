@@ -89,6 +89,17 @@ export class AtivoService {
     if (filtros.tipo) where.tipo = filtros.tipo === 'veiculo' ? 'VEICULO' : 'OUTRO';
     if (filtros.placa) where.placa = { contains: filtros.placa, mode: 'insensitive' };
     if (filtros.chassi) where.chassi = { contains: filtros.chassi, mode: 'insensitive' };
+    if (filtros.busca) {
+      // Placa digitada com hífen/espaço ("ABC-1D23") casa com a gravada ("ABC1D23").
+      const termo = filtros.busca.replace(/[\s-]/g, '');
+      where.OR = [
+        { placa: { contains: termo, mode: 'insensitive' } },
+        { chassi: { contains: termo, mode: 'insensitive' } },
+        { descricao: { contains: filtros.busca, mode: 'insensitive' } },
+        { marca: { contains: filtros.busca, mode: 'insensitive' } },
+        { modelo: { contains: filtros.busca, mode: 'insensitive' } },
+      ];
+    }
 
     const [total, registros] = await Promise.all([
       this.prisma.db.ativo.count({ where }),
