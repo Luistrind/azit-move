@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, NotFoundException, Param, Patch, Post, Put } from '@nestjs/common';
 import { AreaSistema, Prisma, RoleUsuario } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { z } from 'zod';
@@ -105,6 +105,9 @@ export class UsuariosController {
     @Body(new ZodValidationPipe(criarUsuarioSchema)) dto: z.infer<typeof criarUsuarioSchema>,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
+    this.exigirAdminParaPapelAdmin(user, dto.papeis);
+    const emailEmUso = await this.prisma.db.usuario.findUnique({ where: { email: dto.email.toLowerCase() }, select: { id: true } });
+    if (emailEmUso) throw new BadRequestException({ erro: 'email_em_uso', mensagem: 'Já existe um usuário com este e-mail' });
     const senhaHash = await bcrypt.hash(dto.senha, 10);
     const criado = await this.prisma.db.usuario.create({
       data: {
@@ -125,7 +128,16 @@ export class UsuariosController {
     @Body(new ZodValidationPipe(atualizarUsuarioSchema)) dto: z.infer<typeof atualizarUsuarioSchema>,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
-    const antes = await this.prisma.db.usuario.findFirst({ where: { id }, include: { roles: true } });
+    const antes = await this.prisma.db.usuario.findFirst({ where: { id, deletedAt: null }, include: { roles: true } });
+    if (!antes) throw new NotFoundException({ erro: 'usuario_nao_encontrado', mensagem: 'Usuário não encontrado' });
+    const eraAdmin = antes.roles.some((r) => r.role === RoleUsuario.ADMIN);
+    const perdeAdmin = dto.papeis ? eraAdmin && !dto.papeis.includes(RoleUsuario.ADMIN) : false;
+    const ganhaAdmin = dto.papeis ? !eraAdmin && dto.papeis.includes(RoleUsuario.ADMIN) : false;
+    if (perdeAdmin || ganhaAdmin) this.exigirAdminParaPapelAdmin(user, [RoleUsuario.ADMIN]);
+    if (id === user.id && (dto.ativo === false || perdeAdmin)) {
+      throw new BadRequestException({ erro: 'auto_bloqueio', mensagem: 'Você não pode desativar a si mesmo nem retirar o seu próprio papel de administrador' });
+    }
+    if (eraAdmin && antes.ativo && (dto.ativo === false || perdeAdmin)) await this.exigirOutroAdmin(id);
     await this.prisma.db.usuario.update({ where: { id }, data: { nome: dto.nome, ativo: dto.ativo } });
     if (dto.papeis) {
       await this.prisma.db.usuarioRole.deleteMany({ where: { usuarioId: id } });
@@ -148,6 +160,35 @@ export class UsuariosController {
     const senhaHash = await bcrypt.hash(dto.senha, 10);
     await this.prisma.db.usuario.update({ where: { id }, data: { senhaHash } });
     await this.auditar(user.id, 'usuario_senha_redefinida', id);
+    return { resultado: 'ok' };
+  }
+
+  // Exclusão (Luís, 07/11/2026: "fazer a limpa" nos usuários de produção, inclusive o
+  // `admin`, concentrando o papel de administrador no perfil dele). Exclusão LÓGICA:
+  // o registro fica para o histórico (aprovações, decisões, auditoria apontam para
+  // ele), mas o acesso acaba na hora — sessões revogadas, e-mail liberado para reuso.
+  // Só ADMIN exclui; ninguém exclui a si mesmo; o último administrador ativo fica.
+  @Roles(RoleUsuario.ADMIN)
+  @Delete('usuarios/:id')
+  @HttpCode(200)
+  async excluir(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    if (id === user.id) {
+      throw new BadRequestException({ erro: 'auto_bloqueio', mensagem: 'Você não pode excluir o seu próprio usuário' });
+    }
+    const alvo = await this.prisma.db.usuario.findFirst({ where: { id, deletedAt: null }, include: { roles: true } });
+    if (!alvo) throw new NotFoundException({ erro: 'usuario_nao_encontrado', mensagem: 'Usuário não encontrado' });
+    const papeis = alvo.roles.map((r) => r.role);
+    if (alvo.ativo && papeis.includes(RoleUsuario.ADMIN)) await this.exigirOutroAdmin(id);
+
+    const agora = new Date();
+    // Sufixo libera o e-mail (é único) para um cadastro novo; o original fica na auditoria.
+    const emailLiberado = `${alvo.email}.excluido-${agora.getTime()}`;
+    await this.prisma.$transaction(async (tx) => {
+      await tx.usuario.update({ where: { id }, data: { ativo: false, deletedAt: agora, email: emailLiberado } });
+      await tx.refreshToken.updateMany({ where: { usuarioId: id, revogado: false }, data: { revogado: true } });
+      await tx.permissaoUsuarioArea.deleteMany({ where: { usuarioId: id } });
+    });
+    await this.auditar(user.id, 'usuario_excluido', id, { nome: alvo.nome, email: alvo.email, ativo: alvo.ativo, papeis }, { deletedAt: agora.toISOString() });
     return { resultado: 'ok' };
   }
 
@@ -223,6 +264,24 @@ export class UsuariosController {
   }
 
   // --- internos ---
+
+  // Papel de administrador só é dado ou tirado por quem é administrador (07/11:
+  // o papel fica concentrado; DIRETOR gerencia os demais papéis).
+  private exigirAdminParaPapelAdmin(user: UsuarioAutenticado, papeis: RoleUsuario[]) {
+    if (papeis.includes(RoleUsuario.ADMIN) && !user.roles.includes(RoleUsuario.ADMIN)) {
+      throw new ForbiddenException({ erro: 'sem_alcada', mensagem: 'Só um administrador pode conceder ou retirar o papel de administrador' });
+    }
+  }
+
+  // O sistema nunca fica sem administrador ativo.
+  private async exigirOutroAdmin(exceto: string) {
+    const outros = await this.prisma.db.usuario.count({
+      where: { id: { not: exceto }, deletedAt: null, ativo: true, roles: { some: { role: RoleUsuario.ADMIN } } },
+    });
+    if (outros === 0) {
+      throw new BadRequestException({ erro: 'ultimo_admin', mensagem: 'Este é o único administrador ativo — conceda o papel a outro usuário antes' });
+    }
+  }
 
   private resolver(
     papeis: RoleUsuario[],
