@@ -1,4 +1,4 @@
--- Doc 02 §29 (decisão Luís 2026-11-03): aprovação por veículo de referência (FIPE),
+-- Doc 02 §31 (decisão Luís 2026-11-03): aprovação por veículo de referência (FIPE),
 -- lista de espera, estado Reservado do ativo e conferência do carro real pela análise.
 
 ALTER TYPE "StatusAtivo" ADD VALUE IF NOT EXISTS 'RESERVADO';

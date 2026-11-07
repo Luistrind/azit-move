@@ -1244,7 +1244,7 @@ Valores em centavos. 400 `validacao` para datas fora de `YYYY-MM-DD`/`YYYY-MM` o
 `{ "contas": 62, "contasEmAtraso": 29, "contasBloqueadas": 2, "contratosAtivos": 66, "valorSobGestaoPresente": 0, "valorSobGestaoNominal": 0, "valorEmAtraso": 0 }`
 — valor sob gestão a valor presente = soma de `QuitacaoService.simular(contrato).valorQuitacao` dos contratos ATIVO.
 
-## 6-E. Lista de espera e veículo de referência — doc 02 §29 (03/11/2026)
+## 6-E. Lista de espera e veículo de referência — doc 02 §31 (03/11/2026)
 
 **FIPE em tela** (só leitura, fonte oficial; valor nunca digitado):
 - `GET /fipe/marcas` → `[{ codigo, nome }]`

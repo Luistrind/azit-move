@@ -61,6 +61,7 @@ export class AprovacaoService {
       case 'novacao':
         return '/acordos';
       case 'reajuste':
+      case 'rescisao': // referenciaId é o contrato (doc 02 §29)
         return `/contratos/${a.referenciaId}`;
       case 'condicao_fora_parametro':
         return `/propostas/${a.referenciaId}`;

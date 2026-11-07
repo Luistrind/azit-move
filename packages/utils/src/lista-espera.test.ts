@@ -8,7 +8,7 @@ import {
 } from './lista-espera';
 import { DIA_MS } from './datas';
 
-// Doc 02 §29.3: validade 60 dias; situação calculada (Regra 7).
+// Doc 02 §31.3: validade 60 dias; situação calculada (Regra 7).
 describe('lista de espera', () => {
   const agora = new Date('2026-11-03T15:00:00Z');
   const dias = (n: number) => new Date(agora.getTime() - n * DIA_MS);

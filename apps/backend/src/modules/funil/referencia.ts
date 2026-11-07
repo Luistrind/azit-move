@@ -1,7 +1,7 @@
 import { VeiculoReferencia } from '@prisma/client';
 import { rotuloReferencia } from '@azit/utils';
 
-// Veículo de referência na borda da API (doc 02 §29.1): valor em centavos,
+// Veículo de referência na borda da API (doc 02 §31.1): valor em centavos,
 // datas ISO e o rótulo único das telas.
 export interface ReferenciaApi {
   id: string;

@@ -47,6 +47,7 @@ const EFEITO_APROVACAO: Record<string, string> = {
   credito_avulso: 'o crédito é efetivado no contrato do cliente.',
   reembolso_parcelado: 'o Reembolso Parcelado é efetivado e o desembolso ao fornecedor segue para o contas a pagar.',
   reajuste: 'a parcela reajustada passa a valer no contrato.',
+  rescisao: 'o contrato é encerrado por rescisão na data-base: as parcelas em aberto saem do cronograma, as cobranças saem do Asaas, o veículo volta como recuperado e o acerto (a devolver ou saldo remanescente) fica registrado na ficha do contrato.',
   condicao_fora_parametro: 'a proposta fica liberada para formalizar com esta condição.',
   despesa_contas_pagar: 'o título segue para a programação de pagamento.',
   orcamento_contas_pagar: 'a cotação escolhida vira título a pagar no fluxo normal.',

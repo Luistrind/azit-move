@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
@@ -13,6 +14,15 @@ import { ROTULO_SITUACAO_PROPOSTA as LABEL_STATUS } from '../lib/rotulos';
 export function SimulacoesPage() {
   const navigate = useNavigate();
   const sims = useQuery({ queryKey: ['simulacoes'], queryFn: () => originacaoService.listarSimulacoes() });
+  // Busca livre (pedido Luís 05/11): cliente, ativo (placa/modelo) ou situação, sem acento.
+  const [busca, setBusca] = useState('');
+  const normalizar = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const termos = normalizar(busca.trim()).split(/\s+/).filter(Boolean);
+  const linhas = (sims.data ?? []).filter((s) => {
+    if (!termos.length) return true;
+    const alvo = normalizar([s.cliente, s.ativo, s.status, s.propostaStatus ?? ''].join(' '));
+    return termos.every((t) => alvo.includes(t));
+  });
 
   const podeContinuar = (s: SimulacaoResumo) => !['convertida', 'cancelada', 'expirada'].includes(s.status);
   const ir = (s: SimulacaoResumo) => {
@@ -69,15 +79,26 @@ export function SimulacoesPage() {
     <div className="flex flex-col gap-[16px]">
       <div className="flex flex-wrap items-center justify-between gap-[8px]">
         <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>Simulações são exploratórias; a escolhida vira proposta.</div>
-        <Botao variante="primaria" onClick={() => navigate('/atendimento')}>+ Novo atendimento</Botao>
+        <div className="flex flex-wrap items-center gap-[8px]">
+          <input
+            type="search"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar cliente, placa, modelo ou situação"
+            aria-label="Buscar simulação"
+            className="h-[34px] w-full min-w-0 rounded-[10px] px-[10px] text-[12.5px] sm:w-[280px]"
+            style={{ background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+          />
+          <Botao variante="primaria" onClick={() => navigate('/atendimento')}>+ Novo atendimento</Botao>
+        </div>
       </div>
       <Tabela
         colunas={colunas}
-        linhas={sims.data ?? []}
+        linhas={linhas}
         chave={(s) => s.id}
         onClick={ir}
         carregando={sims.isLoading}
-        vazio="Nenhuma simulação."
+        vazio={busca.trim() ? 'Nenhuma simulação encontrada para a busca.' : 'Nenhuma simulação.'}
       />
     </div>
   );

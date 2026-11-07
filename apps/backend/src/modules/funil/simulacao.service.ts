@@ -196,7 +196,7 @@ export class SimulacaoService {
       }
     }
 
-    // Veículo de REFERÊNCIA (doc 02 §29.1): sem carro no estoque, o operador
+    // Veículo de REFERÊNCIA (doc 02 §31.1): sem carro no estoque, o operador
     // escolhe marca/modelo/ano na FIPE e o valor à vista é o da Fundação,
     // congelado no dia. Nunca junto com ativo.
     let referenciaId: string | null = null;
@@ -541,7 +541,7 @@ export class SimulacaoService {
     });
   }
 
-  // Recálculo da condição com o CARRO REAL (doc 02 §29.4 passo 3): mesmo motor,
+  // Recálculo da condição com o CARRO REAL (doc 02 §31.4 passo 3): mesmo motor,
   // mesma fonte (Catálogo ou legado), mesmo prazo/frequência/entrada da proposta
   // aprovada — muda só o valor à vista (valor de venda do ativo). Usado pela
   // atribuição de veículo da lista de espera.

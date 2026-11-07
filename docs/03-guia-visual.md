@@ -1037,7 +1037,7 @@ Carteira e Clientes da carteira já estão no padrão. As demais telas foram mig
 do homolog v1.4: tabelas → `Tabela`, filtros → `Chips`, KPIs → `Metrica tom="kpi"`, seções →
 `Secao`/`Bloco`, botões → `Botao`, hex → tokens. Comportamento e dados não mudam.
 
-## Lista de espera e veículo de referência (03/11/2026 — doc 02 §29)
+## Lista de espera e veículo de referência (03/11/2026 — doc 02 §31)
 
 - **Comercial > Lista de espera** (`/lista-espera`): propostas aprovadas por **modelo de
   referência (FIPE)**, sem carro no estoque. Três métricas no topo (aguardando veículo, em

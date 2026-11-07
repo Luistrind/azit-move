@@ -141,6 +141,7 @@ const ESTADO_DOS_STATUS: Record<string, EstadoFaturaVisao | 'aberta'> = {
   FECHADA: 'aberta',
   RENEGOCIADA: 'fora',
   NOVADA: 'fora',
+  RESCINDIDA: 'fora', // extinta pela rescisão (doc 02 §29): nem teto nem vencida
 };
 
 // Estado da fatura na visão — "vencida"/"a vencer" são runtime (Regra 7), o

@@ -279,7 +279,7 @@ export function AnalisePage() {
         )}
       </Bloco>
 
-      {/* Veículo (doc 02 §29.2, Luís 03/11: "a análise faz diferença o veículo"):
+      {/* Veículo (doc 02 §31.2, Luís 03/11: "a análise faz diferença o veículo"):
           km, origem, se é novo na operação ou já veio de outro contrato, FIPE × venda.
           Com referência: a aprovação é pelo valor FIPE, sem carro ainda. */}
       <Bloco titulo="🚗 Veículo" tag={d.veiculo?.tipo === 'referencia' ? <span className="rounded-full px-[8px] py-[2px] text-[11px] font-bold" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}>referência FIPE · lista de espera</span> : undefined}>
@@ -310,7 +310,7 @@ export function AnalisePage() {
         )}
       </Bloco>
 
-      {/* Conferência do carro real (doc 02 §29.4 passo 4): passo curto — o analista
+      {/* Conferência do carro real (doc 02 §31.4 passo 4): passo curto — o analista
           vê o veículo acima e a parcela nova contra a aprovada; confirma ou devolve. */}
       {d.conferenciaVeiculo && d.conferenciaVeiculo.pendente && (
         <Bloco titulo="🔎 Conferir o veículo atribuído" tag={<span className="rounded-full px-[8px] py-[2px] text-[11px] font-bold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-fg)' }}>aguardando sua confirmação</span>}>

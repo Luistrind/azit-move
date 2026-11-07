@@ -5,7 +5,7 @@ export const criarSimulacaoSchema = z.object({
   leadId: z.string().min(1).optional(),
   titularId: z.string().min(1).optional(),
   ativoId: z.string().min(1).optional(),
-  // Veículo de REFERÊNCIA (doc 02 §29.1): códigos da FIPE escolhidos em tela —
+  // Veículo de REFERÊNCIA (doc 02 §31.1): códigos da FIPE escolhidos em tela —
   // o valor à vista vem da consulta, nunca digitado.
   referencia: z
     .object({ codigoMarca: z.string().min(1), codigoModelo: z.string().min(1), ano: z.string().min(1) })

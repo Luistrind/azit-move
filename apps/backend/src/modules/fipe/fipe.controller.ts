@@ -1,7 +1,7 @@
 import { BadRequestException, Controller, Get, Param, Query } from '@nestjs/common';
 import { FipeService } from './fipe.service';
 
-// Busca na Tabela FIPE para o veículo de REFERÊNCIA do atendimento (doc 02 §29.1):
+// Busca na Tabela FIPE para o veículo de REFERÊNCIA do atendimento (doc 02 §31.1):
 // marca → modelo → ano → valor. Só leitura; o valor nunca é digitado.
 @Controller('fipe')
 export class FipeController {

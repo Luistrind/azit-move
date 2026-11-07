@@ -12,6 +12,7 @@ export enum StatusParcela {
   PAGA_ANTECIPADA = 'Paga antecipada',
   RENEGOCIADA     = 'Renegociada',
   NOVADA          = 'Novada',
+  RESCINDIDA      = 'Rescindida', // extinta pela rescisão por inadimplência (doc 02 §29)
   CANCELADA       = 'Cancelada',
   ESTORNADA       = 'Estornada',
   SUSPENSA        = 'Suspensa',
@@ -24,6 +25,7 @@ export const STATUS_PARCELA_ARMAZENAVEIS = [
   StatusParcela.PAGA_ANTECIPADA,
   StatusParcela.RENEGOCIADA,
   StatusParcela.NOVADA,
+  StatusParcela.RESCINDIDA,
   StatusParcela.CANCELADA,
   StatusParcela.ESTORNADA,
   StatusParcela.SUSPENSA,

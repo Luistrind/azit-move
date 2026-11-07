@@ -41,7 +41,7 @@ enum TipoAtivo {
 
 enum StatusAtivo {
   DISPONIVEL
-  RESERVADO // preso a uma proposta aprovada da lista de espera (doc 02 §29.4)
+  RESERVADO // preso a uma proposta aprovada da lista de espera (doc 02 §31.4)
   EM_CONTRATO
   TRANSFERIDO // reserva de domínio transferida ao cliente (Gatilho 9; Vocabulário 07/09 — era QUITADO)
   RECUPERADO
@@ -185,6 +185,7 @@ enum StatusParcela {
   PAGA_ANTECIPADA
   RENEGOCIADA
   NOVADA // obrigação extinta pela ativação atômica de uma novação (14/09)
+  RESCINDIDA // extinta pela rescisão por inadimplência (doc 02 §29, 04/11) — vencidas compensadas pelo acerto, futuras não cobradas
   CANCELADA
   ESTORNADA
   SUSPENSA
@@ -199,6 +200,7 @@ enum StatusFatura {
   PAGA_EM_ATRASO
   RENEGOCIADA
   NOVADA // fatura extinta pela ativação atômica de uma novação (14/09)
+  RESCINDIDA // fatura só deste contrato, extinta pela rescisão (doc 02 §29, 04/11)
 }
 
 enum TipoItemFatura {
@@ -215,6 +217,14 @@ enum TipoItemFatura {
 enum TipoLancamentoConta {
   ENTRADA_CONTRATO
   ENTRADA_ACORDO
+}
+
+// Rescisão por inadimplência (doc 02 §29, 04/11): solicitação → aprovação (1) → efetivada.
+enum StatusRescisao {
+  PENDENTE
+  EFETIVADA
+  REPROVADA
+  CANCELADA
 }
 
 enum StatusRecebivel {
@@ -443,7 +453,7 @@ model Simulacao {
   leadId            String?
   titularId         String?
   ativoId           String? // opcional: simulação por valor manual
-  referenciaId      String? // veículo de REFERÊNCIA (FIPE) sem ativo no estoque (doc 02 §29.1)
+  referenciaId      String? // veículo de REFERÊNCIA (FIPE) sem ativo no estoque (doc 02 §31.1)
   valorAvista       Decimal?        @db.Decimal(12, 2) // base comercial (VA)
   valorAvistaManual Boolean         @default(false) // origem: manual × cadastro do ativo
   valorEntrada      Decimal         @db.Decimal(12, 2)
@@ -609,13 +619,13 @@ model Proposta {
   id               String             @id @default(cuid())
   simulacaoId      String?            @unique
   titularId        String
-  // Doc 02 §29 (03/11): a proposta tem um ativo do estoque OU um veículo de
+  // Doc 02 §31 (03/11): a proposta tem um ativo do estoque OU um veículo de
   // referência (FIPE) — nunca os dois até a atribuição. Aprovada sem ativo =
   // lista de espera.
   ativoId          String?
   referenciaId     String?
   veiculoAtribuidoEm   DateTime? // operador vinculou um ativo real à proposta da fila
-  veiculoConferidoEm   DateTime? // analista confirmou o carro real (§29.4 passo 4)
+  veiculoConferidoEm   DateTime? // analista confirmou o carro real (§31.4 passo 4)
   veiculoConferidoPorId String?
   conferenciaVeiculo   Json? // proposta de ajuste (parcela nova etc.) — não sobrescreve até confirmar
   modalidade       ModalidadeContrato @default(COMPRA_PARCELADA)
@@ -712,7 +722,7 @@ model Parecer {
 // Modelos — camada do ativo e capital
 // ============================================================
 
-// Veículo de REFERÊNCIA (doc 02 §29.1, decisão Luís 03/11): descrição com preço
+// Veículo de REFERÊNCIA (doc 02 §31.1, decisão Luís 03/11): descrição com preço
 // FIPE congelado no dia, para aprovar a pessoa ANTES de ter o carro no estoque.
 // Não é ativo: sem placa, sem status, fora da frota. Nasce na simulação, é
 // copiada para a proposta e fica no histórico depois que o carro real entra.
@@ -760,7 +770,7 @@ model Ativo {
   pacoteOfertaId       String? // vínculo opcional a pacote/oferta genérica (legado PopHub)
   ofertaFixaId         String? // oferta fixa desenhada (Doc 2 §4-A.3) — seletor no cadastro
   status               StatusAtivo      @default(DISPONIVEL)
-  // Reserva (doc 02 §29.4): ativo preso a uma proposta aprovada da lista de
+  // Reserva (doc 02 §31.4): ativo preso a uma proposta aprovada da lista de
   // espera até a conferência/formalização; cai sozinha ao cancelar/devolver.
   reservadoPropostaId  String?
   reservadoEm          DateTime?
@@ -1112,6 +1122,8 @@ model ContratoCredito {
   titulosPagar      TituloPagar[] // desembolso do RP (doc 02 sec.18.5, 13/09)
   acordos           Acordo[]
   reajustes         ReajusteIPCA[]
+  rescisoes         RescisaoContrato[] // rescisão por inadimplência (doc 02 §29)
+  dossies           DossieContrato[] // dossiê para judicialização (doc 02 §30)
   vinculosPapel     VinculoPapel[]
   lancamentos       LancamentoConta[]
   propostaOrigem    Proposta?        @relation("PropostaContrato")
@@ -1493,6 +1505,79 @@ model ReajusteIPCA {
   @@index([contratoId])
   @@index([status])
   @@map("reajustes_ipca")
+}
+
+// Rescisão por inadimplência (doc 02 §29, decisão Luís 04/11/2026): snapshot do
+// acerto — base dos 20% = principal pago (entrada + parcelas); os 20% quitam as
+// parcelas vencidas até a data-base; o resto é a devolver (crédito maior) ou
+// saldo remanescente (dívida maior). Valores em REAIS (Decimal), como o resto.
+model RescisaoContrato {
+  id                 String         @id @default(cuid())
+  contratoId         String
+  status             StatusRescisao @default(PENDENTE)
+  dataBase           DateTime // data da retomada do veículo (data-base do acerto)
+  observacao         String?
+  solicitanteId      String
+  aprovadaPor        String?
+  efetivadaEm        DateTime?
+  principalEntrada   Decimal        @db.Decimal(12, 2)
+  principalParcelas  Decimal        @db.Decimal(12, 2)
+  percentualCredito  Decimal        @db.Decimal(5, 2) // 20,00 no momento do acerto
+  valorCredito       Decimal        @db.Decimal(12, 2)
+  dividaVencida      Decimal        @db.Decimal(12, 2) // nominal das parcelas vencidas
+  encargosVencidos   Decimal        @db.Decimal(12, 2) // encargo de atraso na data-base
+  valorCompensado    Decimal        @db.Decimal(12, 2)
+  valorADevolver     Decimal        @db.Decimal(12, 2)
+  saldoRemanescente  Decimal        @db.Decimal(12, 2)
+  memoriaJson        Json // AcertoRescisao completo (parcelas, avisos)
+  devolvidoEm        DateTime? // devolução ao cliente registrada (placeholder: pagamento fora do sistema)
+  devolucaoObservacao String?
+
+  contrato ContratoCredito @relation(fields: [contratoId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([contratoId])
+  @@index([status])
+  @@map("rescisoes_contrato")
+}
+
+// Dossiê para judicialização (doc 02 §30, pedido Luís 04/11/2026): PDF único
+// (contrato assinado + histórico + capturas do WhatsApp + anexos + contrato
+// social) gerado pelo sistema e guardado em uploads/dossies/<id>.pdf.
+model DossieContrato {
+  id          String   @id @default(cuid())
+  contratoId  String
+  geradoPor   String
+  arquivoRef  String
+  paginas     Int
+  capturas    Int
+  tamanho     Int // bytes
+  composicao  Json // seções com página inicial/final + avisos
+  observacao  String?
+
+  contrato ContratoCredito @relation(fields: [contratoId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([contratoId])
+  @@map("dossies_contrato")
+}
+
+// Documentos da empresa (Configuração): contrato social anexado a todo dossiê.
+model ParametroEmpresa {
+  id                     String    @id @default(cuid())
+  contratoSocialRef      String?
+  contratoSocialNome     String?
+  contratoSocialDescricao String   @default("") // ex.: "Alteração contratual de 30/12/2025"
+  contratoSocialEm       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("parametros_empresa")
 }
 
 // Catálogo de tipos de operação sujeitos a alçada (Doc 2 §7.9). Configurável pelo

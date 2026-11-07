@@ -15,7 +15,7 @@ import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
 import { dataBR } from '../lib/datas';
 import type { StatusColor } from '../config/statusColors';
 
-// Lista de espera (doc 02 §29.3–29.4, decisão Luís 03/11): propostas APROVADAS
+// Lista de espera (doc 02 §31.3–29.4, decisão Luís 03/11): propostas APROVADAS
 // por modelo de REFERÊNCIA (FIPE) enquanto não havia carro no estoque. Ordem:
 // mais antiga primeiro (sugestão — o operador escolhe). Daqui o operador
 // atribui um ativo disponível; a análise confere no dossiê; depois a proposta
@@ -201,7 +201,7 @@ export function ListaEsperaPage() {
         )}
       />
 
-      {/* Atribuir veículo (doc 02 §29.4 passos 1–3): escolhe um ativo disponível;
+      {/* Atribuir veículo (doc 02 §31.4 passos 1–3): escolhe um ativo disponível;
           o sistema reserva, recalcula com o carro real e avisa a análise. */}
       <Modal open={alvo !== null} onClose={() => { if (!ocupado) { setAlvo(null); setBuscaAtivo(''); } }} title={alvo ? `Atribuir veículo — ${alvo.titular.nome}` : ''} largura={620}>
         {alvo && (

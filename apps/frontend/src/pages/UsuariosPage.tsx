@@ -6,7 +6,8 @@ import {
   nomeArea,
   nomePapel,
 } from '../services/usuario.service';
-import { mensagemErro } from '../lib/permissoes';
+import { mensagemErro, usePodeRole } from '../lib/permissoes';
+import { useAuthStore } from '../stores/authStore';
 import { Botao } from '../components/Botao';
 import { Chips } from '../components/Chips';
 import { Secao } from '../components/Secao';
@@ -63,6 +64,29 @@ function ListaUsuarios({ onMudou }: { onMudou: () => void }) {
   const [criando, setCriando] = useState(false);
   const [abertoId, setAbertoId] = useState<string | null>(null);
   const [ocupadoId, setOcupadoId] = useState<string | null>(null);
+  const meuId = useAuthStore((s) => s.usuario?.id);
+  const pode = usePodeRole();
+  const souAdmin = pode(['ADMIN']);
+
+  // Exclusão (07/11): só administrador, nunca a si mesmo. O backend ainda impede
+  // excluir o último administrador ativo. Exclusão é lógica: o histórico fica.
+  async function excluir(usuario: UsuarioInterno) {
+    const ok = window.confirm(
+      `Excluir o usuário ${usuario.nome} (${usuario.email})?\n\nO acesso é cortado na hora e o usuário some da lista. ` +
+        'O que ele fez no sistema (aprovações, decisões, auditoria) continua registrado em nome dele.',
+    );
+    if (!ok) return;
+    setOcupadoId(usuario.id);
+    try {
+      await usuarioService.excluir(usuario.id);
+      if (abertoId === usuario.id) setAbertoId(null);
+      onMudou();
+    } catch (e) {
+      window.alert(mensagemErro(e));
+    } finally {
+      setOcupadoId(null);
+    }
+  }
 
   async function alternarAtivo(usuario: UsuarioInterno) {
     setOcupadoId(usuario.id);
@@ -141,9 +165,14 @@ function ListaUsuarios({ onMudou }: { onMudou: () => void }) {
             <Botao tamanho="sm" variante={abertoId === u.id ? 'secundaria' : 'fantasma'} onClick={() => setAbertoId(abertoId === u.id ? null : u.id)}>
               {abertoId === u.id ? 'Fechar' : 'Gerenciar'}
             </Botao>
-            <Botao tamanho="sm" variante={u.ativo ? 'perigo' : 'secundaria'} onClick={() => void alternarAtivo(u)} disabled={ocupadoId === u.id}>
+            <Botao tamanho="sm" variante={u.ativo ? 'perigo' : 'secundaria'} onClick={() => void alternarAtivo(u)} disabled={ocupadoId === u.id || u.id === meuId}>
               {u.ativo ? 'Desativar' : 'Reativar'}
             </Botao>
+            {souAdmin && u.id !== meuId && (
+              <Botao tamanho="sm" variante="perigo" onClick={() => void excluir(u)} disabled={ocupadoId === u.id}>
+                Excluir
+              </Botao>
+            )}
           </>
         )}
       />
@@ -470,14 +499,22 @@ const NOMES_ORDENADOS: Record<string, string> = {
 const PAPEIS = ['ADMIN', 'DIRETOR', 'APROVADOR', 'OPERADOR', 'FINANCEIRO'];
 
 function SeletorPapeis({ valor, onChange }: { valor: string[]; onChange: (v: string[]) => void }) {
+  // Só administrador dá ou tira o papel de administrador (07/11) — o backend recusa; a tela já trava.
+  const souAdmin = usePodeRole()(['ADMIN']);
   return (
     <div>
       <div className="mb-[4px] text-[11px] font-semibold" style={{ color: 'var(--text-label)' }}>Papéis</div>
       <div className="flex flex-wrap gap-[10px]">
         {PAPEIS.map((papel) => (
-          <label key={papel} className="flex min-h-[30px] items-center gap-[5px] text-[12.5px]" style={{ color: 'var(--text-primary)' }}>
+          <label
+            key={papel}
+            className="flex min-h-[30px] items-center gap-[5px] text-[12.5px]"
+            style={{ color: 'var(--text-primary)', opacity: papel === 'ADMIN' && !souAdmin ? 0.5 : 1 }}
+            title={papel === 'ADMIN' && !souAdmin ? 'Só um administrador concede ou retira este papel' : undefined}
+          >
             <input
               type="checkbox"
+              disabled={papel === 'ADMIN' && !souAdmin}
               checked={valor.includes(papel)}
               onChange={(e) =>
                 onChange(e.target.checked ? [...valor, papel] : valor.filter((v) => v !== papel))

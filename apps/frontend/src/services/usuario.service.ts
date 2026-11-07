@@ -57,6 +57,11 @@ export const usuarioService = {
     const { data } = await api.patch(`/api/v1/usuarios/${id}`, body);
     return data;
   },
+  // Exclusão lógica (só administrador): acesso cortado na hora, histórico preservado.
+  async excluir(id: string) {
+    const { data } = await api.delete(`/api/v1/usuarios/${id}`);
+    return data;
+  },
   async redefinirSenha(id: string, senha: string) {
     const { data } = await api.post(`/api/v1/usuarios/${id}/senha`, { senha });
     return data;

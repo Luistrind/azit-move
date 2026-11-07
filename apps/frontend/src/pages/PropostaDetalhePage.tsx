@@ -98,7 +98,7 @@ export function PropostaDetalhePage() {
 
   const q = useQuery({ queryKey: ['proposta', id], queryFn: () => originacaoService.detalheProposta(id), enabled: !!id });
   const p = q.data;
-  // Conferência do carro real (doc 02 §29.4 passo 4) — também daqui, para quem decide.
+  // Conferência do carro real (doc 02 §31.4 passo 4) — também daqui, para quem decide.
   const [ocupadoVeiculo, setOcupadoVeiculo] = useState(false);
   async function conferirVeiculo(confirmar: boolean) {
     const observacao = confirmar ? undefined : (window.prompt('Motivo da devolução (opcional):') ?? undefined);
@@ -169,8 +169,12 @@ export function PropostaDetalhePage() {
   const aprovada = !!p && ['aprovada', 'em_formalizacao', 'convertida'].includes(p.status);
   const podeFormalizar = aprovada && !p?.contratoGeradoId && !precisaGarantidor;
 
+  // Passo "Análise" só quando a proposta ESTÁ em análise (status ou análise de
+  // cadastro aberta) — antes, documentos completos bastavam e o stepper dizia
+  // "Análise" com a proposta ainda "Pendente" (caso Arlindo, 04/11).
+  const emAnaliseOuAlem = !!p && (!!p.analiseCadastro || p.status !== 'pendente');
   let maxReachable = 1;
-  if (p?.documentosCompletos) maxReachable = 2;
+  if (p?.documentosCompletos && emAnaliseOuAlem) maxReachable = 2;
   if (p?.parecer) maxReachable = 3;
   if (aprovada && !precisaGarantidor) maxReachable = 4;
 
@@ -187,7 +191,7 @@ export function PropostaDetalhePage() {
     <div className="flex flex-col gap-[16px]">
       <Botao variante="fantasma" tamanho="sm" className="self-start !px-0" onClick={() => navigate('/propostas')}>← Voltar para Propostas</Botao>
 
-      {/* Lista de espera (doc 02 §29): sem carro ainda, ou carro atribuído aguardando a conferência da análise */}
+      {/* Lista de espera (doc 02 §31): sem carro ainda, ou carro atribuído aguardando a conferência da análise */}
       {!p.ativo && !p.contratoGeradoId && (
         <div className="rounded-[12px] p-[12px] text-[12.5px]" style={{ background: 'var(--info-bg)', border: '1px solid var(--info-fg)', color: 'var(--text-primary)' }}>
           Proposta por <b>modelo de referência</b>: ainda não há veículo do estoque vinculado. {p.status === 'aprovada' ? <>Atribua um carro pela <Link to="/lista-espera" className="font-semibold underline">Lista de espera</Link> para seguir ao contrato.</> : 'Depois da aprovação ela entra na Lista de espera.'}
@@ -412,15 +416,21 @@ export function PropostaDetalhePage() {
             </Secao>
           </div>
 
-          {/* Avanço explícito para a próxima etapa (não só pelo stepper) */}
+          {/* Avanço explícito para a próxima etapa. Proposta pendente: ENVIA para
+              análise de verdade (mesmo caminho do atendimento — abre a análise de
+              cadastro, roda a Camada 1 se preciso e a proposta vira "Em análise").
+              Antes só movia o stepper e o status ficava "Pendente" para sempre. */}
           <div className="flex justify-end">
             <Botao
               variante="primaria"
-              disabled={!p.documentosCompletos}
-              onClick={() => setStep(2)}
+              disabled={!p.documentosCompletos || ocupado}
+              onClick={() => {
+                if (emAnaliseOuAlem) { setStep(2); return; }
+                void run(async () => { await originacaoService.enviarParaAnalise(id, {}); setStep(2); });
+              }}
               title={p.documentosCompletos ? undefined : 'Anexe todos os documentos obrigatórios para liberar a análise'}
             >
-              Próximo: Análise →
+              {emAnaliseOuAlem ? 'Próximo: Análise →' : 'Enviar para análise →'}
             </Botao>
           </div>
         </div>

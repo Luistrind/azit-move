@@ -27,7 +27,7 @@ export interface ConsultaFipe {
 }
 export type ResultadoFipe = { ok: true; fipe: ConsultaFipe } | { ok: false; motivo: string };
 
-// Item de lista para a busca em tela (doc 02 §29.1): código + rótulo.
+// Item de lista para a busca em tela (doc 02 §31.1): código + rótulo.
 export interface ItemFipe { codigo: string; nome: string }
 export interface ValorFipe {
   valor: number; // centavos
@@ -67,7 +67,7 @@ export class FipeService {
     return tabelas[0].Codigo;
   }
 
-  // --- Busca em tela para o veículo de REFERÊNCIA (doc 02 §29.1) ---
+  // --- Busca em tela para o veículo de REFERÊNCIA (doc 02 §31.1) ---
   // Mesma API oficial, mesmo cache; aqui o operador escolhe nas listas e o
   // valor vem da Fundação — nunca digitado.
   private async marcasCache(): Promise<{ ref: number; marcas: ModeloFipe[] }> {

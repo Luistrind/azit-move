@@ -16,6 +16,7 @@ export const PARCELA_STATUS_COLORS: Record<string, StatusColor> = {
   'Paga antecipada': { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
   Renegociada: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' },
   Novada: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' }, // obrigação extinta por novação (F2, 14/09)
+  Rescindida: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' }, // extinta pela rescisão por inadimplência (doc 02 §29)
   'Em acordo': { bg: 'var(--info-bg)', fg: 'var(--info-fg)' }, // parcela coberta (Vocabulário 07/09)
   Cancelada: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
   Estornada: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
@@ -35,6 +36,21 @@ export const CONTRATO_STATUS_COLORS: Record<string, StatusColor> = {
   'Aguardando entrega do veículo': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
   Ativo: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
   Encerrado: { bg: 'var(--surface-input)', fg: 'var(--text-body)' },
+};
+
+// Motivo do encerramento (doc 02 §5.2) — chaves lower_snake como a API envia.
+// Antes a ficha imprimia o valor cru ('rescisao'); rótulo e cor vivem aqui.
+export const MOTIVO_ENCERRAMENTO_LABEL: Record<string, string> = {
+  quitacao: 'Quitação',
+  novacao: 'Novação',
+  rescisao: 'Rescisão por inadimplência',
+  cancelamento: 'Cancelamento',
+};
+export const MOTIVO_ENCERRAMENTO_COLORS: Record<string, StatusColor> = {
+  quitacao: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  novacao: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' },
+  rescisao: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  cancelamento: { bg: 'var(--surface-input)', fg: 'var(--text-body)' },
 };
 
 // Situação financeira do contrato — CALCULADA (Regra 7), chaves em lower_snake
@@ -75,7 +91,7 @@ export const NOVACAO_STATUS_COLORS: Record<string, StatusColor> = {
 // Status de Ativo (estoque, Bloco 7) — Doc 2 §4.4.
 export const ATIVO_STATUS_COLORS: Record<string, StatusColor> = {
   Disponível: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
-  Reservado: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' }, // doc 02 §29.4: preso a uma proposta da lista de espera
+  Reservado: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' }, // doc 02 §31.4: preso a uma proposta da lista de espera
   'Em contrato': { bg: 'var(--surface-muted)', fg: 'var(--text-body)' },
   Transferido: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' }, // Vocabulário 07/09: era Quitado
   Recuperado: { bg: 'var(--purple-bg)', fg: 'var(--purple-fg)' },
@@ -119,6 +135,7 @@ export const FATURA_SITUACAO_COLORS: Record<string, StatusColor> = {
   paga_em_atraso: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
   renegociada: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' },
   novada: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' },
+  rescindida: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' }, // extinta pela rescisão (doc 02 §29)
 };
 export const FATURA_SITUACAO_LABEL: Record<string, string> = {
   em_aberto: 'Em aberto',
@@ -128,6 +145,7 @@ export const FATURA_SITUACAO_LABEL: Record<string, string> = {
   paga_em_atraso: 'Paga (em atraso)',
   renegociada: 'Renegociada',
   novada: 'Novada',
+  rescindida: 'Rescindida',
 };
 
 // Contas a Pagar (RF-15/18) — chaves = valores do enum StatusTituloPagar.

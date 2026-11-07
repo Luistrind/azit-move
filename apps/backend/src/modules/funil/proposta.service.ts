@@ -24,6 +24,7 @@ import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
 import { SimulacaoService } from './simulacao.service';
 import { referenciaParaApi } from './referencia';
+import { PropostaStatusService } from './proposta-status.service';
 import {
   CriarPropostaDto,
   AdicionarVinculoDto,
@@ -83,6 +84,7 @@ export class PropostaService {
     private readonly catalogoFonte: CatalogoFonteService,
     private readonly notificacao: NotificacaoService,
     private readonly simulacaoService: SimulacaoService,
+    private readonly statusProposta: PropostaStatusService,
   ) {
     // Bloco B da auditoria (15/09, P1-8): a exceção "fora de parâmetro" não
     // tinha efetivador — aprovar já funcionava (o gate da formalização lê o
@@ -149,7 +151,7 @@ export class PropostaService {
         mensagem: 'Simulação expirada — recalcule antes de converter em proposta',
       });
     }
-    // Proposta precisa de um ativo OU de um veículo de referência (doc 02 §29.1).
+    // Proposta precisa de um ativo OU de um veículo de referência (doc 02 §31.1).
     // Simulação por valor manual livre deve ser refeita com um dos dois.
     if (!simulacao.ativoId && !simulacao.referenciaId) {
       throw new UnprocessableEntityException({
@@ -334,7 +336,6 @@ export class PropostaService {
     await this.prisma.db.proposta.update({
       where: { id: propostaId },
       data: {
-        status: 'EM_ANALISE',
         rendaDeclarada: dto.rendaDeclarada !== undefined ? reais(dto.rendaDeclarada) : undefined,
         parecerOperador: dto.parecerOperador?.trim() || undefined,
       },
@@ -346,6 +347,9 @@ export class PropostaService {
     // cadastro, injeta a consulta da Camada 1 na trilha oficial e copia as
     // rendas — a política roda sempre, nunca em campo paralelo.
     await this.analise.abrirDaJornada(propostaId);
+    // Status derivado dos fatos (04/11): a análise aberta acima é o fato que
+    // leva a proposta a "Em análise" — mesmo gravador para todos os caminhos.
+    await this.statusProposta.sincronizar(propostaId, 'proposta enviada para análise');
     return this.detalhe(propostaId);
   }
 
@@ -369,7 +373,7 @@ export class PropostaService {
 
   // Base do cálculo da proteção (mesma regra da simulação): valor à vista como
   // proxy da FIPE + fator de VALOR da frequência (semanal 1, quinzenal 2, mensal 4).
-  // Sem ativo (proposta por referência, doc 02 §29) a variante é a padrão 'carro'.
+  // Sem ativo (proposta por referência, doc 02 §31) a variante é a padrão 'carro'.
   private async baseProtecao(p: { ativo: { varianteCatalogo: string } | null; simulacao: { valorAvista: Prisma.Decimal | null } | null; frequencia: Periodicidade | null }) {
     const valorAvista = p.simulacao?.valorAvista ? cent(p.simulacao.valorAvista) : 0;
     if (valorAvista <= 0) return null;
@@ -608,11 +612,9 @@ export class PropostaService {
           analistaId,
         },
       });
-      await tx.proposta.update({
-        where: { id: propostaId },
-        data: { status: aprovada ? 'APROVADA' : 'REPROVADA' },
-      });
     });
+    // Status derivado dos fatos (04/11): o parecer gravado acima decide.
+    await this.statusProposta.sincronizar(propostaId, `parecer ${aprovada ? 'aprovado' : 'reprovado'}`, analistaId);
     return this.detalhe(propostaId);
   }
 
@@ -627,7 +629,7 @@ export class PropostaService {
       });
     }
     await this.prisma.db.proposta.update({ where: { id: propostaId }, data: { status: alvo } });
-    // Doc 02 §29.4 passo 5: cancelar a proposta solta o ativo reservado.
+    // Doc 02 §31.4 passo 5: cancelar a proposta solta o ativo reservado.
     if (alvo === 'CANCELADA') await this.liberarReserva(propostaId);
     return this.detalhe(propostaId);
   }
@@ -719,7 +721,7 @@ export class PropostaService {
       id: p.id,
       status: p.status.toLowerCase(),
       modalidade: p.modalidade.toLowerCase(),
-      // Doc 02 §29: ativo OU referência; `veiculo` é o rótulo único para as telas.
+      // Doc 02 §31: ativo OU referência; `veiculo` é o rótulo único para as telas.
       ativo: p.ativo ? { id: p.ativo.id, descricao: p.ativo.descricao, placa: p.ativo.placa, rotulo: rotuloAtivo(p.ativo) } : null,
       referencia: p.referencia ? referenciaParaApi(p.referencia) : null,
       veiculo: rotuloVeiculoProposta(p),
@@ -813,7 +815,7 @@ export class PropostaService {
   }
 
   // =========================================================================
-  // Lista de espera (doc 02 §29, decisão Luís 03/11): proposta APROVADA por
+  // Lista de espera (doc 02 §31, decisão Luís 03/11): proposta APROVADA por
   // veículo de REFERÊNCIA (FIPE), sem carro no estoque. Situação calculada
   // (Regra 7); validade = DIAS_VALIDADE_APROVACAO_ESPERA (Regra 16).
   // =========================================================================
@@ -866,7 +868,7 @@ export class PropostaService {
     return itens;
   }
 
-  // Passos 1–3 do §29.4: reserva o ativo, recalcula a condição com o carro real e
+  // Passos 1–3 do §31.4: reserva o ativo, recalcula a condição com o carro real e
   // guarda a proposta de ajuste SEM sobrescrever a aprovada; avisa a análise.
   async atribuirVeiculo(propostaId: string, ativoId: string, usuarioId: string) {
     const p = await this.prisma.db.proposta.findFirst({
@@ -894,7 +896,7 @@ export class PropostaService {
       throw new UnprocessableEntityException({ erro: 'ativo_indisponivel', mensagem: 'O ativo não está disponível (em contrato, reservado ou fora do estoque)' });
     }
 
-    // Aprovação vencida (§29.3): nova Camada 1 antes de seguir; reprovado barra.
+    // Aprovação vencida (§31.3): nova Camada 1 antes de seguir; reprovado barra.
     const aprovadaEm = this.aprovadaEmDe(p);
     let camada1Renovada: string | null = null;
     if (aprovacaoExpirada(aprovadaEm)) {
@@ -975,7 +977,7 @@ export class PropostaService {
     return this.detalhe(propostaId);
   }
 
-  // Passo 4 do §29.4: confirmar aplica o ajuste na proposta; devolver solta o
+  // Passo 4 do §31.4: confirmar aplica o ajuste na proposta; devolver solta o
   // ativo, descarta o ajuste e a proposta volta à fila com os valores aprovados.
   async conferirVeiculo(propostaId: string, dto: { confirmar: boolean; observacao?: string }, usuarioId: string) {
     const p = await this.prisma.db.proposta.findFirst({
@@ -1069,7 +1071,7 @@ export class PropostaService {
     return this.detalhe(propostaId);
   }
 
-  // Reserva cai sozinha ao cancelar a proposta (§29.4 passo 5).
+  // Reserva cai sozinha ao cancelar a proposta (§31.4 passo 5).
   private async liberarReserva(propostaId: string) {
     await this.prisma.db.ativo.updateMany({
       where: { reservadoPropostaId: propostaId, status: 'RESERVADO' },

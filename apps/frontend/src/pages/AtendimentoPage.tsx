@@ -95,7 +95,7 @@ export function AtendimentoPage() {
   const [buscaAtivo, setBuscaAtivo] = useState('');
   const [semAtivo, setSemAtivo] = useState(false);
   const [valorManualTexto, setValorManualTexto] = useState('');
-  // Modelo de REFERÊNCIA (doc 02 §29.1): sem carro no estoque, escolhe marca →
+  // Modelo de REFERÊNCIA (doc 02 §31.1): sem carro no estoque, escolhe marca →
   // modelo → ano na FIPE; o valor à vista vem da Fundação, nunca digitado.
   const [modoReferencia, setModoReferencia] = useState(false);
   // Lista curta do balcão (Luís 03/11): HB20S/HB20 manual, Mobi, Kwid, Polo —
@@ -698,7 +698,7 @@ export function AtendimentoPage() {
             ))
           )}
 
-          {/* Modelo de referência (doc 02 §29.1): aprova a pessoa antes de ter o carro.
+          {/* Modelo de referência (doc 02 §31.1): aprova a pessoa antes de ter o carro.
               A proposta entra na Lista de espera depois de aprovada. */}
           {modoReferencia ? (
             <div className="flex flex-col gap-[10px] rounded-[14px] p-[16px]" style={{ background: 'var(--surface)', border: '1.5px solid var(--accent)' }}>

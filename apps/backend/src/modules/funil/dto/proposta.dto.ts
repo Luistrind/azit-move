@@ -28,7 +28,7 @@ export const criarPropostaSchema = z.object({
 });
 export type CriarPropostaDto = z.infer<typeof criarPropostaSchema>;
 
-// Lista de espera (doc 02 §29.4): atribuir um ativo do estoque e conferir o carro real.
+// Lista de espera (doc 02 §31.4): atribuir um ativo do estoque e conferir o carro real.
 export const atribuirVeiculoSchema = z.object({ ativoId: z.string().min(1) });
 export type AtribuirVeiculoDto = z.infer<typeof atribuirVeiculoSchema>;
 export const conferirVeiculoSchema = z.object({

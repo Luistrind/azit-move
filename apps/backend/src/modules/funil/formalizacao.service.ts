@@ -30,6 +30,7 @@ const cent = (d: Prisma.Decimal): number => reaisParaCentavos(d.toString());
 // dados por placeholder). Ver templates/contrato-veiculo.template.ts.
 import { CONTRATO_VEICULO_TEMPLATE } from './templates/contrato-veiculo.template';
 import { AssinaturaService } from '../assinatura/assinatura.service';
+import { PropostaStatusService } from './proposta-status.service';
 
 // Qualificação da parte no padrão do contrato oficial (campos ausentes são omitidos).
 export function qualificarParte(t: {
@@ -94,6 +95,7 @@ export class FormalizacaoService {
     private readonly catalogoFonte: CatalogoFonteService,
     private readonly notificacao: NotificacaoService,
     private readonly assinatura: AssinaturaService,
+    private readonly statusProposta: PropostaStatusService,
   ) {}
 
   // 7.10 — congela snapshot, gera documento, cria o contrato.
@@ -155,7 +157,7 @@ export class FormalizacaoService {
     if (proposta.contratoGeradoId) {
       throw new UnprocessableEntityException({ erro: 'ja_formalizada', mensagem: 'Proposta já gerou contrato' });
     }
-    // Doc 02 §29.4: proposta por referência (lista de espera) só formaliza com o
+    // Doc 02 §31.4: proposta por referência (lista de espera) só formaliza com o
     // carro real atribuído E conferido pela análise.
     if (!proposta.ativo) {
       throw new UnprocessableEntityException({
@@ -458,8 +460,10 @@ export class FormalizacaoService {
     });
     await this.prisma.db.proposta.update({
       where: { id: propostaId },
-      data: { status: 'CONVERTIDA', contratoGeradoId: novo.id },
+      data: { contratoGeradoId: novo.id },
     });
+    // Status derivado dos fatos (04/11): contrato gerado = convertida.
+    await this.statusProposta.sincronizar(propostaId, `contrato ${novo.numero} gerado`);
 
     this.logger.log(`Proposta ${propostaId} formalizada → contrato ${novo.numero} (aguardando assinatura)`);
     return { contratoId: novo.id, numero: novo.numero, status: 'aguardando_assinatura', documento, snapshot };

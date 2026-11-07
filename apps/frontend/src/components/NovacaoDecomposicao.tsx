@@ -263,7 +263,10 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
   // Contrato único (adaptação 13/10): enquanto o instrumento de novação não
   // sai do jurídico, a operação vira UM contrato de Compra Parcelada com o
   // valor global — mesma precificação, modelo padrão do contrato de veículo.
-  const [contratoUnico, setContratoUnico] = useState(false);
+  // Decisão Luís 03/11: novação é SEMPRE contrato único — encerra o contrato
+  // antigo e vende de novo no contrato padrão, valor global = soma das parcelas.
+  // Não há mais opção; o backend grava a marca sozinho.
+  const contratoUnico = true;
   // 1ª parcela do contrato novo (15/10): vazio = ciclo da conta (a simulação
   // devolve a sugestão); o operador escolhe outra antes de propor.
   const [primeiraParcela, setPrimeiraParcela] = useState('');
@@ -406,13 +409,12 @@ function BlocoSimulacao({ contaId, frequenciaHerdada }: { contaId: string; frequ
             </div>
           )}
 
-          <label className="flex items-start gap-[8px] rounded-[10px] px-[12px] py-[8px] text-[12px]" style={{ background: 'var(--warn-bg)', border: '1px solid var(--border)', color: 'var(--warn-ink)' }}>
-            <input type="checkbox" checked={contratoUnico} onChange={(e) => setContratoUnico(e.target.checked)} className="mt-[2px]" />
+          <div className="flex items-start gap-[8px] rounded-[10px] px-[12px] py-[8px] text-[12px]" style={{ background: 'var(--info-bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
             <span>
-              <b>Contrato único</b> (adaptação até o instrumento de novação ficar pronto): em vez de dois contratos, nasce <b>um contrato de Compra Parcelada</b> do veículo
+              <b>O que nasce:</b> o contrato antigo é encerrado por novação e nasce <b>um contrato de Compra Parcelada</b> do veículo
               {sim.troca ? ' da troca' : ''}, com o valor global de <b>{formatCurrency(sim.totalAPagar)}</b> em <b>{sim.contrato2.totalParcelas + sim.contrato1.totalParcelas} parcelas</b> de {formatCurrency(sim.valorParcelaTotal ?? sim.valorParcela)} {sim.contrato1.valorUltima > 0 ? <> (última de {formatCurrency(sim.contrato1.valorUltima + (sim.comissaoPorPeriodo ?? 0) + (sim.protecaoPorPeriodo ?? 0))})</> : null}, no modelo padrão do contrato de veículo — mesma precificação, sem Termo e sem fatura de transição.
             </span>
-          </label>
+          </div>
 
           {/* 1ª parcela (15/10): o que vai para o instrumento e manda na ativação. */}
           <div className="text-[12px]" style={{ color: 'var(--text-body)' }}>

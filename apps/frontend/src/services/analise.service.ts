@@ -50,9 +50,9 @@ export interface DossieAnalise {
   pareceres: ParecerAnalise[];
   // Observação do vendedor no envio da proposta (passo 10 do atendimento).
   observacaoVendedor: string | null;
-  // Bloco Veículo (doc 02 §29.2): ativo real ou referência FIPE.
+  // Bloco Veículo (doc 02 §31.2): ativo real ou referência FIPE.
   veiculo: VeiculoDossie | null;
-  // Conferência do carro real atribuído a uma proposta da lista de espera (§29.4).
+  // Conferência do carro real atribuído a uma proposta da lista de espera (§31.4).
   conferenciaVeiculo: {
     propostaId: string;
     pendente: boolean;

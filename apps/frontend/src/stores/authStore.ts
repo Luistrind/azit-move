@@ -31,6 +31,8 @@ interface AuthState {
     refreshToken: string;
     usuario: UsuarioSessao;
   }) => void;
+  // Re-hidratação (04/11): token presente sem o usuário guardado → GET /auth/me.
+  setUsuario: (usuario: UsuarioSessao) => void;
   limpar: () => void;
 }
 
@@ -43,6 +45,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.setItem(REFRESH_KEY, refreshToken);
     localStorage.setItem(USER_KEY, JSON.stringify(usuario));
     set({ usuario, isAuthenticated: true });
+  },
+
+  setUsuario: (usuario) => {
+    localStorage.setItem(USER_KEY, JSON.stringify(usuario));
+    set({ usuario });
   },
 
   limpar: () => {

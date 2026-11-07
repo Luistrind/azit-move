@@ -8,7 +8,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { bloqueioDisponivel, dataHojeBrasil, diasAtrasoCalendario, DIA_MS, DIAS_BLOQUEIO_DISPONIVEL, FUSO_NEGOCIO, inicioHojeBrasilUTC, resolverEstagioRegua } from '@azit/utils';
+import { bloqueioDisponivel, dataHojeBrasil, diasAtrasoCalendario, DIA_MS, DIAS_BLOQUEIO_DISPONIVEL, DIAS_RECUPERACAO_DISPONIVEL, FUSO_NEGOCIO, inicioHojeBrasilUTC, recuperacaoDisponivel, resolverEstagioRegua } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { FaturaService } from '../cobranca/fatura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
@@ -59,6 +59,20 @@ export class ReguaService {
       _count: { _all: true },
     });
     const porId = new Map(vencidas.map((v) => [v.contratoId, v]));
+    // Contagem por FATURA (05/11, caso Wallace): a fatura é a cobrança real e pode
+    // carregar a parcela do carro + a cota do acordo — contar parcela mostrava
+    // "4 parcelas vencidas" para quem deve 2 faturas. Parcela sem fatura conta por si.
+    const linhasAbertas = await this.prisma.db.parcela.findMany({
+      where: { contratoId: { in: ids }, status: null, dataVencimento: { lt: new Date(hoje.getTime() + DIA_MS) }, acordoId: null },
+      select: { id: true, contratoId: true, faturaId: true, dataVencimento: true },
+    });
+    const faturasVencidas = new Map<string, Set<string>>();
+    const faturasHoje = new Map<string, Set<string>>();
+    for (const p of linhasAbertas) {
+      const alvo = p.dataVencimento < hoje ? faturasVencidas : faturasHoje;
+      if (!alvo.has(p.contratoId)) alvo.set(p.contratoId, new Set());
+      alvo.get(p.contratoId)!.add(p.faturaId ?? p.id);
+    }
     // Raia "Vence hoje" (decisão Luís 31/10, doc 02 §7.6): parcelas que vencem
     // HOJE (fuso do Brasil), fora de acordo — o caso entra no quadro antes de
     // atrasar, para o lembrete do dia. Não é atraso: diasAtraso continua 0.
@@ -89,11 +103,15 @@ export class ReguaService {
           estagio: resolverEstagioRegua(diasAtraso),
           valorVencido: cent(v?._sum.valorNominal ?? null),
           parcelasVencidas: v?._count._all ?? 0,
+          faturasVencidas: faturasVencidas.get(c.id)?.size ?? 0,
           // Raia "Vence hoje": o que vence no dia (sem atraso ainda).
           valorVenceHoje: cent(h?._sum.valorNominal ?? null),
           parcelasVenceHoje: h?._count._all ?? 0,
+          faturasVenceHoje: faturasHoje.get(c.id)?.size ?? 0,
           // Bloqueio disponível a partir da raia "até 14 dias" (DIAS_BLOQUEIO_DISPONIVEL, 31/10).
           bloqueioDisponivel: bloqueioDisponivel(diasAtraso),
+          // "Iniciar recuperação" a partir da raia "até 30 dias" (DIAS_RECUPERACAO_DISPONIVEL, doc 02 §29.1).
+          recuperacaoDisponivel: recuperacaoDisponivel(diasAtraso),
           titular: c.conta.titular,
           ativo: c.ativo,
         };
@@ -218,10 +236,49 @@ export class ReguaService {
     return { resultado: 'desbloqueado', diasAtraso };
   }
 
+  // Doc 02 §29.1 (04/11): recuperação do veículo é INTERVENÇÃO (carimbo), manual,
+  // disponível a partir da raia "Vencida até 30 dias". O contrato segue ATIVO.
+  async iniciarRecuperacao(contratoId: string, usuarioId?: string) {
+    const { contrato, diasAtraso } = await this.contratoComAtraso(contratoId);
+    if (contrato.status !== 'ATIVO') {
+      throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: `Só contrato em vida entra em recuperação (fase atual: ${contrato.status})` });
+    }
+    if (contrato.recuperacaoIniciadaEm) {
+      throw new UnprocessableEntityException({ erro: 'ja_em_recuperacao', mensagem: 'A recuperação do veículo já foi iniciada' });
+    }
+    if (!recuperacaoDisponivel(diasAtraso)) {
+      throw new UnprocessableEntityException({
+        erro: 'antes_da_raia_de_recuperacao',
+        mensagem: `Recuperação só a partir de ${DIAS_RECUPERACAO_DISPONIVEL} dias de atraso (raia "Vencida até 30 dias")`,
+      });
+    }
+    await this.prisma.db.contratoCredito.update({ where: { id: contratoId }, data: { recuperacaoIniciadaEm: new Date() } });
+    await this.prisma.db.logAuditoria.create({
+      data: { usuarioId, acao: 'recuperacao_iniciada', entidade: 'contrato', entidadeId: contratoId, antes: { emRecuperacao: false }, depois: { emRecuperacao: true, diasAtraso } },
+    });
+    return { resultado: 'recuperacao_iniciada', diasAtraso };
+  }
+
+  // Encerrar recuperação (cliente regularizou / retomada não aconteceu): sempre manual.
+  async encerrarRecuperacao(contratoId: string, usuarioId?: string) {
+    const { contrato, diasAtraso } = await this.contratoComAtraso(contratoId);
+    if (!contrato.recuperacaoIniciadaEm) {
+      throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: 'O contrato não está em recuperação' });
+    }
+    if (contrato.status !== 'ATIVO') {
+      throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: 'Contrato encerrado: a recuperação faz parte do histórico' });
+    }
+    await this.prisma.db.contratoCredito.update({ where: { id: contratoId }, data: { recuperacaoIniciadaEm: null } });
+    await this.prisma.db.logAuditoria.create({
+      data: { usuarioId, acao: 'recuperacao_encerrada', entidade: 'contrato', entidadeId: contratoId, antes: { emRecuperacao: true }, depois: { emRecuperacao: false, diasAtraso } },
+    });
+    return { resultado: 'recuperacao_encerrada', diasAtraso };
+  }
+
   private async contratoComAtraso(contratoId: string) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id: contratoId },
-      select: { id: true, numero: true, status: true, veiculoBloqueadoEm: true },
+      select: { id: true, numero: true, status: true, veiculoBloqueadoEm: true, recuperacaoIniciadaEm: true },
     });
     if (!contrato) {
       throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Contrato não encontrado' });

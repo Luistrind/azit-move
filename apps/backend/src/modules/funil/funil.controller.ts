@@ -118,7 +118,7 @@ export class FunilController {
     return this.proposta.listar();
   }
 
-  // --- Lista de espera (doc 02 §29): aprovadas por referência FIPE, sem carro ---
+  // --- Lista de espera (doc 02 §31): aprovadas por referência FIPE, sem carro ---
   @Get('propostas/lista-espera')
   listaEspera() {
     return this.proposta.listaEspera();

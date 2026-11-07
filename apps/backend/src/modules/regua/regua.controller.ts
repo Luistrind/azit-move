@@ -29,6 +29,19 @@ export class ReguaController {
     return this.regua.desbloquear(id, user.id);
   }
 
+  // Doc 02 §29.1 — recuperação do veículo (intervenção manual, a partir da raia "até 30 dias").
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('contratos/:id/recuperacao')
+  iniciarRecuperacao(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.regua.iniciarRecuperacao(id, user.id);
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('contratos/:id/recuperacao/encerrar')
+  encerrarRecuperacao(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.regua.encerrarRecuperacao(id, user.id);
+  }
+
   // Dev: roda a régua (varre inadimplência + dispara cobrança D+1/D+2).
   // Em prod é job agendado na fila regua-step.
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)

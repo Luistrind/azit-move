@@ -40,12 +40,12 @@ export function rotuloAtivo(a: { descricao: string; placa?: string | null }): st
   return a.placa ? `${a.descricao} · ${a.placa}` : a.descricao;
 }
 
-// Veículo de referência (doc 02 §29.1): descrição com preço FIPE, sem ativo.
+// Veículo de referência (doc 02 §31.1): descrição com preço FIPE, sem ativo.
 export function rotuloReferencia(r: { marca: string; modelo: string; anoModelo: number }): string {
   return `${r.marca} ${r.modelo} ${r.anoModelo} · referência FIPE`;
 }
 
-// Proposta tem ativo OU referência (doc 02 §29) — um rótulo só para as telas.
+// Proposta tem ativo OU referência (doc 02 §31) — um rótulo só para as telas.
 export function rotuloVeiculoProposta(p: {
   ativo?: { descricao: string; placa?: string | null } | null;
   referencia?: { marca: string; modelo: string; anoModelo: number } | null;

@@ -1,4 +1,4 @@
-// Lista de espera (doc 02 §29.3, decisão Luís 2026-11-03): proposta APROVADA sem
+// Lista de espera (doc 02 §31.3, decisão Luís 2026-11-03): proposta APROVADA sem
 // ativo — aprovada por veículo de REFERÊNCIA (FIPE) enquanto não há carro no
 // estoque. Situação é CALCULADA (Regra 7); a validade é uma constante única
 // (Regra 16), lida por backend e frontend daqui.

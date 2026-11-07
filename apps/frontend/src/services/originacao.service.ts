@@ -25,7 +25,7 @@ export interface OfertaSimulada {
   foraParametroMotivo?: string | null;
 }
 
-// Veículo de REFERÊNCIA (doc 02 §29.1): descrição com preço FIPE, sem ativo.
+// Veículo de REFERÊNCIA (doc 02 §31.1): descrição com preço FIPE, sem ativo.
 export interface ReferenciaVeiculo {
   id: string;
   marca: string;
@@ -40,7 +40,7 @@ export interface ReferenciaVeiculo {
 }
 export interface ItemFipe { codigo: string; nome: string }
 
-// Lista de espera (doc 02 §29.3): proposta aprovada por referência, sem carro.
+// Lista de espera (doc 02 §31.3): proposta aprovada por referência, sem carro.
 export interface PropostaEspera {
   id: string;
   titular: { id: string; nome: string; cpfCnpj: string; whatsapp: string | null };
@@ -112,7 +112,7 @@ export interface PropostaDetalhe {
   id: string;
   status: string;
   modalidade: string;
-  // Doc 02 §29: ativo OU referência; `veiculo` é o rótulo único para as telas.
+  // Doc 02 §31: ativo OU referência; `veiculo` é o rótulo único para as telas.
   ativo: { id: string; descricao: string; placa: string | null; rotulo: string } | null;
   referencia?: ReferenciaVeiculo | null;
   veiculo: string;
@@ -218,7 +218,7 @@ export const originacaoService = {
     const { data } = await api.post('/api/v1/simulacoes', body);
     return data;
   },
-  // Busca na FIPE para o veículo de referência (doc 02 §29.1).
+  // Busca na FIPE para o veículo de referência (doc 02 §31.1).
   // Lista curta do balcão (decisão Luís 03/11): modelos de trabalho + anos reunidos.
   async fipeModelosTrabalho(): Promise<{ chave: string; rotulo: string; detalhe: string; codigoMarca: string }[]> {
     const { data } = await api.get('/api/v1/fipe/modelos-trabalho');
@@ -240,7 +240,7 @@ export const originacaoService = {
     const { data } = await api.get('/api/v1/fipe/anos', { params: { marca, modelo } });
     return data;
   },
-  // Lista de espera (doc 02 §29.3–29.4).
+  // Lista de espera (doc 02 §31.3–29.4).
   async listaEspera(): Promise<PropostaEspera[]> {
     const { data } = await api.get('/api/v1/propostas/lista-espera');
     return data;

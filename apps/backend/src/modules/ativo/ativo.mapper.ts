@@ -13,7 +13,7 @@ import { reaisParaCentavos, centavosParaReaisString } from '@azit/utils';
 type TipoApi = 'veiculo' | 'outro';
 type StatusApi =
   | 'disponivel'
-  | 'reservado' // doc 02 §29.4: preso a uma proposta aprovada da lista de espera
+  | 'reservado' // doc 02 §31.4: preso a uma proposta aprovada da lista de espera
   | 'em_contrato'
   | 'transferido' // Vocabulário 07/09: era 'quitado' — veículo não se quita, é transferido
   | 'recuperado'
@@ -113,7 +113,7 @@ export interface AtivoApi {
   // do contrato ativo — as duas colunas que faltavam na lista de veículos.
   observacao: string | null;
   cliente: { id: string; nome: string; contratoId: string; contratoNumero: string } | null;
-  // Reserva (doc 02 §29.4): para quem o carro está preso enquanto a análise confere.
+  // Reserva (doc 02 §31.4): para quem o carro está preso enquanto a análise confere.
   reserva: { propostaId: string; titularNome: string; em: string } | null;
   createdAt: string;
   updatedAt: string;

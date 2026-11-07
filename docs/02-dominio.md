@@ -260,7 +260,7 @@ A oferta escolhida formalizada como pedido de crédito. É o que **persiste** e 
 - `id`
 - `simulacao_id` / `oferta_id` — a oferta que originou a proposta
 - `titular_id` — comprador principal (após promoção do lead)
-- `ativo_id` — **opcional desde 2026-11-03 (§29)**: a proposta tem um ativo do estoque OU um veículo de referência (`referencia_id`), nunca os dois até a atribuição
+- `ativo_id` — **opcional desde 2026-11-03 (§31)**: a proposta tem um ativo do estoque OU um veículo de referência (`referencia_id`), nunca os dois até a atribuição
 - `modalidade` — assinatura | compra_parcelada | compra_vista
 - `valor_entrada`, `prazo_semanas`, `valor_parcela`, `numero_parcelas` — condições da oferta escolhida
 - `status` — pendente | em_análise | aprovada | reprovada | cancelada | em_formalização | convertida
@@ -273,6 +273,8 @@ A oferta escolhida formalizada como pedido de crédito. É o que **persiste** e 
 - gera um `ContratoCredito` na conversão
 
 > **Status e transições:** Pendente → Em Análise → Aprovada/Reprovada → Em Formalização → Convertida (ou Cancelada). Aprovada/Reprovada só ocorrem **dentro do fluxo de análise documental** (com parecer), não por movimentação livre. Convertida significa que o ContratoCredito já foi gerado.
+>
+> **O status é DERIVADO dos fatos (decisão Luís, 2026-11-04 — caso Arlindo):** nenhum fluxo grava o status da proposta diretamente. Uma única função (`derivarStatusProposta`, backend) decide a partir dos fatos — análise de cadastro aberta/liberada/não aprovada/encerrada, parecer legado, contrato gerado — e um único gravador (`PropostaStatusService.sincronizar`) é chamado por quem produz o fato (abrir análise por qualquer caminho, liberar, não aprovar, encerrar, registrar parecer, gerar contrato). Cancelada é evento e nunca se desfaz por fato; Em Formalização é um passo da família Aprovada e fica quando os fatos dizem "aprovada"; sem fato que decida, o gravado permanece (reprova da Camada 1, arraste no kanban). Uma varredura na subida do sistema e diária (5h) passa toda proposta viva pela função, corrige divergência e a registra na auditoria (`proposta_status_sincronizado`) — divergência corrigida é sinal de fluxo gravando status por fora, e o log aponta. Motivo: o campo era escrito em nove pontos de cinco módulos e o "Abrir análise" pela página da proposta nunca movia a proposta de Pendente — a coluna Em Análise vivia em zero. Na tela, "Próximo: Análise" passou a ENVIAR a proposta (mesmo caminho do atendimento) e o passo Análise do stepper só se acende com a proposta em análise.
 
 ### 4-A.5 DocumentoProposta
 
@@ -339,7 +341,7 @@ O bem objeto do contrato — hoje predominantemente veículos.
 - `valor_aquisicao` — custo de aquisição (quanto a Azit pagou pelo veículo)
 - `valor_venda` — valor de venda do ativo, cadastrado manualmente; **base da precificação individualizada** na simulação
 - `pacote_oferta_id` — vínculo opcional a um pacote/oferta genérica (legado PopHub); quando presente, o pacote aparece como opção na simulação
-- `status` — disponivel | **reservado** (§29.4: preso a uma proposta aprovada da lista de espera) | em_contrato | quitado | recuperado | sinistrado
+- `status` — disponivel | **reservado** (§31.4: preso a uma proposta aprovada da lista de espera) | em_contrato | quitado | recuperado | sinistrado
 
 **Relacionamentos:**
 - tem uma `OrigemCapital`
@@ -1140,8 +1142,16 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > devolvido na troca. Entra no saldo-base (antes do desconto; a taxa inicial incide sobre ele),
 > fica congelado no snapshot e o instrumento declara valor e motivo. É o espelho do desconto,
 > sem exigir comitê (o desconto reduz dívida; o acréscimo é dívida reconhecida pelo cliente).
-> **Contrato único (adaptação Luís, 2026-10-13 — provisória até o jurídico validar o instrumento
-> de novação):** a proposta pode marcar "contrato único". Aprovada, nasce **um só** contrato de
+> **Contrato único — ÚNICO modo desde 2026-11-03 (decisão Luís):** novação é encerrar o contrato
+> antigo e vender de novo no **contrato padrão de veículo**, com valor global = soma das parcelas
+> simuladas — "como se tivéssemos pego o carro de volta e vendido novamente". Não existe mais a
+> opção veículo + Termo nem o instrumento provisório de 14/09 (que chegou a ser assinado no caso
+> Bruno Alessandro, 03/11); o código do modo antigo fica só para ler novações já feitas. Uma
+> novação antiga em veículo + Termo que ainda aguarda assinatura pode ser **convertida**: o Termo
+> é encerrado por cancelamento, o contrato do veículo recebe os números do modo único, o contrato
+> padrão é gerado e reenviado (assinatura parcial não barra — o documento anterior é cancelado na
+> ZapSign e todos assinam de novo). Histórico da adaptação de 2026-10-13, hoje superada: a
+> proposta podia marcar "contrato único". Aprovada, nasce **um só** contrato de
 > Compra Parcelada do veículo (o da troca, se houver), com **valor global = todas as pendências**
 > (veículo + demais produtos + ajuste da troca + acréscimo − desconto + taxa inicial), pela MESMA
 > precificação da novação: N = parcelas do Termo + parcelas do veículo, todas no valor único do
@@ -2796,7 +2806,138 @@ Meta sair do "Continuar" da plataforma WhatsApp (pendência desde 06/10).
 
 ---
 
-## 29. Aprovação por veículo de referência e lista de espera (decisão Luís, 2026-11-03)
+## 29. Rescisão por inadimplência e recuperação do veículo (decisão Luís, 2026-11-04)
+
+> **Contexto.** O contrato de venda (cláusulas 8.3, 8.4, 8.4.1 e 8.4.2 do modelo em
+> `contrato-veiculo.template.ts`) prevê retomada administrativa do veículo, vencimento antecipado
+> após 30 dias de atraso, cláusula resolutiva expressa e retenção de **80% dos valores pagos** pelo
+> VENDEDOR (os 20% restantes voltam ao comprador). O Luís rescindiu um contrato por inadimplência
+> em 11/2026 sem apoio do sistema: a fase `Encerrado / Rescisão` (§5.2) existia no enum mas nenhum
+> fluxo a produzia, e o carimbo `recuperacaoIniciadaEm` nunca era gravado. Esta seção modela os
+> dois mecanismos. Vocabulário: "rescisão" e "recuperação do veículo" — sem "financiamento".
+
+### 29.1 Recuperação do veículo (intervenção, camada 3 do §5.2)
+
+- **Iniciar recuperação** é ato manual do operador (régua ou ficha do contrato), disponível a
+  partir da raia **"Vencida até 30 dias"** (22 dias de atraso — constante única
+  `DIAS_RECUPERACAO_DISPONIVEL` em `@azit/utils`, mesma mecânica de `DIAS_BLOQUEIO_DISPONIVEL`;
+  valor provisório, substituível sem tocar em código de tela). Grava `recuperacaoIniciadaEm`,
+  auditado (`recuperacao_iniciada`). O contrato segue **Ativo** (é intervenção, não fase).
+- **Encerrar recuperação** (cliente regularizou, ou a retomada não aconteceu) limpa o carimbo,
+  auditado (`recuperacao_encerrada`). Como no desbloqueio, é sempre manual.
+- A régua mostra o caso com o selo "Em recuperação" e mantém-no no quadro enquanto a intervenção
+  durar (como já faz com o bloqueio).
+
+### 29.2 Rescisão por inadimplência
+
+**Pré-condições:** contrato na fase **Ativo**, com veículo (`ativoId`), com ao menos uma parcela
+vencida fora de acordo. O operador informa a **data-base** (data da retomada do veículo — não pode
+ser futura) e uma observação. A rescisão **passa pelo motor de aprovação** (§7.9-A), tipo de
+operação `rescisao`, **uma aprovação** (decisão Luís: alçada de um aprovador — APROVADOR, DIRETOR e
+ADMIN sem limite; editável na tela de Alçadas). Valor da solicitação = saldo em aberto do contrato
+na data-base (o que deixa de ser cobrado pelo cronograma). Uma rescisão pendente por contrato;
+reprovada ou cancelada, pode-se pedir outra.
+
+**O acerto (decisões Luís 04/11, uma função única `calcularAcertoRescisao` em `@azit/utils`):**
+
+1. **Base dos 20% = só o principal pago: entrada + parcelas.** Principal pago da parcela =
+   (valor pago − encargos de atraso pagos) − proteção veicular embutida na parcela (item SERVICO
+   da parcela na fatura). Ficam **fora** da base: proteção, taxa de boleto/PIX, reembolsos
+   parcelados, encargos de atraso. Entrada = `valorEntradaPago`.
+2. **Crédito do cliente = 20% do principal pago** (`PERCENTUAL_CREDITO_RESCISAO`, constante única).
+3. **Os 20% quitam as parcelas atrasadas até a data-base** — e só elas. Dívida vencida = parcelas
+   do contrato em aberto (fora de acordo) com vencimento ≤ data-base, pelo valor nominal **mais o
+   encargo de atraso** calculado na data-base pela fórmula única (`calcularEncargoAtraso`, taxas do
+   contrato). Compensação = mín(crédito, dívida).
+4. **Resultado:** crédito > dívida → **valor a devolver ao cliente**; dívida > crédito → **saldo
+   remanescente devido pelo cliente** ("ele ainda fica com o restante do débito").
+5. **Parcelas futuras** (vencimento > data-base) não são cobradas: o contrato se resolve com a
+   retomada — não se aplica o vencimento antecipado da cláusula 8.4 ao acerto (decisão Luís: os
+   20% quitam as atrasadas, não o saldo inteiro).
+
+**Efetivação (ao aprovar, transação única, idempotente):**
+
+- Contrato → `Encerrado` / motivo **Rescisão** / `dataEncerramento` = data-base;
+  `recuperacaoIniciadaEm` recebe a data-base se ainda não havia recuperação iniciada.
+- Parcelas em aberto do contrato (vencidas e futuras) → status **`RESCINDIDA`** (novo valor nos
+  enums de parcela e fatura — Regra 3: nada se apaga; a memória do acerto diz quais foram
+  compensadas). Recebíveis esperados → `CANCELADO`. Itens contratados do contrato → `ENCERRADO`.
+- Faturas não pagas da conta que contêm **só** itens deste contrato → **`RESCINDIDA`**, e a cobrança
+  no Asaas sai do ar (como na novação). Fatura **mista** (itens de outro contrato da mesma conta):
+  os itens deste contrato saem dela, o total é recalculado; se já tinha cobrança, a cobrança sai do
+  ar e a fatura volta a `ABERTA` para a emissão normal reemitir com o valor certo — o acerto avisa.
+- Ativo → **`RECUPERADO`** (volta à frota pelo fluxo do §25; a data do fato para responsabilidade de
+  multas, §25.2, passa a ser a data-base).
+- Registro `RescisaoContrato` guarda o snapshot do acerto (entrada, principal das parcelas, crédito,
+  parcelas vencidas com encargo, compensado, a devolver, saldo remanescente, memória), quem pediu,
+  quem aprovou e quando efetivou. Auditoria `contrato_rescindido`.
+
+**Depois da efetivação (placeholders funcionais, Regra 12):**
+
+- **Devolução ao cliente** (quando há valor a devolver): fica **pendente na ficha do contrato** até o
+  operador registrar "Devolução feita" (data + observação, auditado). O pagamento em si acontece
+  fora do sistema por enquanto — gerar título em Contas a Pagar é decisão futura (ligada ao papel
+  gestor e ao lugar do desembolso, pendência do §18).
+- **Saldo remanescente** (quando a dívida supera o crédito): fica registrado na rescisão e visível na
+  ficha do contrato; **não gera cobrança no Asaas** nem entra na régua — a cobrança desse resto é
+  fora do cronograma (acordo avulso ou judicial; o dossiê para judicialização é o próximo bloco).
+  Emitir cobrança automática desse saldo é decisão futura.
+- Acordo ativo da conta cujo plano pertence só a este contrato → `CANCELADO` (as cotas viram
+  `RESCINDIDA` junto com as demais parcelas). Acordo que mistura contratos não é tocado — o acerto
+  avisa.
+
+**Tela:** ficha do contrato ganha "Iniciar/Encerrar recuperação" e "Rescindir contrato" (prévia do
+acerto com memória antes de pedir aprovação); a Central de Aprovações mostra o dossiê da rescisão
+(acerto, parcelas vencidas, veículo, atraso, histórico de recuperação da conta); contrato encerrado
+por rescisão mostra o acerto, a devolução pendente/feita e o saldo remanescente. A régua ganha o
+botão "Iniciar recuperação" a partir da raia "Vencida até 30 dias".
+
+---
+
+## 30. Dossiê para cobrança judicial (pedido Luís, 2026-11-04)
+
+> **Contexto.** Quando a recuperação não acontece, o caso vai para o jurídico. Em 10/2026 o dossiê
+> do João Gabriel (contrato 2026030012) foi montado à mão: contrato assinado, histórico de pagamentos,
+> capturas da conversa de WhatsApp (duas por página, numeradas), relatório do rastreador e o contrato
+> social da Azit. O Luís pediu que o sistema gere "aquele artefato em PDF", pedindo ao operador **só
+> as capturas do WhatsApp** — o resto o sistema já tem.
+
+**O que o sistema monta (um PDF, nesta ordem):**
+
+1. **Capa com sumário** (contrato, titular, veículo, data de emissão, seções com página inicial) e avisos
+   do que faltou.
+2. **Contrato assinado** — o PDF da assinatura digital (ZapSign) do contrato ou do contrato-âncora do
+   mesmo pacote; para contrato migrado, o PDF do legado (`DocumentoAssinatura` com provedor `legado`,
+   ou o PDF anexado ao caso de migração). Sem PDF, entra o instrumento em texto gerado pelo sistema
+   (snapshot da formalização) e o dossiê avisa.
+3. **Histórico do contrato** (gerado): cliente, contrato, veículo, parcela e composição; pílulas
+   (entrada paga, total pago, em atraso desde); tabela entrada + parcelas (vencimento, valor, pagamento,
+   valor pago, situação); parcelas a vencer agrupadas depois das 6 primeiras; totais pago e em atraso
+   (valor de face) e nota explicando multa/juros do contrato, última parcela paga e desde quando não
+   há pagamento. Mesma fonte dos números da ficha (parcelas, `valorEntradaPago`), Regra 7.
+4. **Anexo — Comunicações com o cliente**: capa + capturas de tela do WhatsApp, duas por página,
+   numeradas em ordem (ordem dos arquivos como enviados pelo operador; o nome do arquivo ordena).
+5. **Anexo — Notificação extrajudicial** (opcional, PDF enviado pelo operador; o modelo é feito fora
+   do sistema por enquanto — gerar pelo sistema é bloco futuro).
+6. **Anexo — Rastreamento Infleet** (opcional, PDF exportado da plataforma; o robô do §25 só importa
+   multas, não gera relatório de localização).
+7. **Anexo — Contrato social da Azit**: PDF guardado em **Configuração › Documentos da empresa**
+   (com descrição, ex.: "Alteração contratual de 30/12/2025"). Sem ele o dossiê sai sem a seção e
+   avisa.
+
+Rodapé em toda página: "Dossiê · contrato N · titular — página x de y". Cada geração vira um
+`DossieContrato` (quem gerou, quando, páginas, capturas, tamanho, composição com as páginas de cada
+seção e avisos), com o PDF em `uploads/dossies/`, auditado (`dossie_gerado`); a ficha do contrato lista
+os dossiês gerados para baixar. Gerar de novo não apaga o anterior.
+
+**Mecânica:** as capturas sobem uma a uma (base64, como todo upload do sistema) para uma área de
+entrada e são apagadas depois da montagem; as páginas geradas são HTML no padrão visual do Hub
+renderizado pelo Chromium que já está na imagem (Playwright); os PDFs são juntados com `pdf-lib`.
+Disponível para qualquer contrato que já virou obrigação (ativo ou encerrado por rescisão).
+
+---
+
+## 31. Aprovação por veículo de referência e lista de espera (decisão Luís, 2026-11-03)
 
 > **Contexto.** Estoque curto e leads chegando — muita procura por HB20 sem HB20 disponível. O
 > Luís quer aprovar a pessoa **antes** de ter o carro, segurar o aprovado numa lista de espera e,
@@ -2809,7 +2950,7 @@ Meta sair do "Continuar" da plataforma WhatsApp (pendência desde 06/10).
 > que vale para TODO o funil: **a análise passa a olhar o veículo** (quilometragem, se é novo na
 > operação ou veio de outro contrato, recuperação) — não olhar era um erro.
 
-### 29.1 Veículo de referência ≠ ativo
+### 31.1 Veículo de referência ≠ ativo
 
 - **Ativo** é o carro físico: placa, chassi, quilometragem, status de estoque, frota, multas.
 - **Veículo de referência** (`VeiculoReferencia`) é só uma descrição com preço, congelada no dia:
@@ -2827,7 +2968,7 @@ Meta sair do "Continuar" da plataforma WhatsApp (pendência desde 06/10).
 - **Proibido** cadastrar "ativo fictício" sem placa para contornar: sujaria estoque, frota,
   multas e alguém formalizaria um contrato em cima dele.
 
-### 29.2 A análise olha o veículo (toda proposta, não só a da fila)
+### 31.2 A análise olha o veículo (toda proposta, não só a da fila)
 
 O dossiê da análise ganha o bloco **Veículo**. Com ativo:
 
@@ -2840,7 +2981,7 @@ O dossiê da análise ganha o bloco **Veículo**. Com ativo:
 Com referência: "**sem veículo — aprovação por referência FIPE R$ X (modelo, mês)**". Nada é
 decidido automaticamente por esse bloco (segue a política §14: é insumo do analista).
 
-### 29.3 Lista de espera
+### 31.3 Lista de espera
 
 - É a **proposta APROVADA sem ativo** — não há status novo (Regra 7: "na fila", "em conferência"
   e "expirada" são calculados).
@@ -2852,7 +2993,7 @@ decidido automaticamente por esse bloco (segue a política §14: é insumo do an
   **nova Camada 1** (a consulta do birô vale 30 dias) e passa pela conferência do analista; o
   cadastro e os documentos **não** são refeitos.
 
-### 29.4 Atribuição do veículo e estado Reservado
+### 31.4 Atribuição do veículo e estado Reservado
 
 1. O operador abre a proposta na lista e escolhe um ativo **disponível** (busca por modelo/placa).
 2. O sistema **reserva** o ativo: `status = RESERVADO`, `reservadoPropostaId`, `reservadoEm`.
@@ -2873,12 +3014,12 @@ decidido automaticamente por esse bloco (segue a política §14: é insumo do an
    referência **sem conferência confirmada não gera contrato**.
 6. O analista é avisado pela notificação de área (Análise) quando um veículo é atribuído.
 
-### 29.5 Pelo lado do estoque (fase seguinte)
+### 31.5 Pelo lado do estoque (fase seguinte)
 
 Ao cadastrar ou abrir um ativo disponível, mostrar os aprovados que esperam modelo parecido
 (mesma marca e modelo). Útil, não bloqueia a primeira entrega.
 
-### 29.6 Ordem de construção
+### 31.6 Ordem de construção
 
 (1) `VeiculoReferencia` + `Proposta.ativoId` opcional + `StatusAtivo.RESERVADO`; (2) busca FIPE
 no passo 4 do atendimento e simulação por referência; (3) proposta sem ativo liberada, Camada 1 e

@@ -45,10 +45,12 @@ export class AuthController {
     return { ok: true };
   }
 
-  // Rota autenticada simples — confirma o token e devolve a identidade (request.user).
+  // Identidade completa do usuário logado (04/11): a tela usa para re-hidratar a
+  // sessão quando só o token está guardado no navegador — sem isso a sidebar
+  // caía no fallback e TODA permissão de tela dava falso (botões sumiam).
   @Get('me')
   me(@CurrentUser() user: UsuarioAutenticado) {
-    return user;
+    return this.authService.me(user.id);
   }
 
   // GET /auth/admin-check REMOVIDO (auditoria 15/09, P0-5): era andaime de
