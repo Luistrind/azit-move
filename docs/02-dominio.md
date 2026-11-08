@@ -1852,8 +1852,10 @@ gerencial que a operação já usa (plano do Manda Pro Financeiro: grupo → cat
 > a partir do CEP, **segundo comprador opcional**; (8) **upsell da proteção** — tela própria: a
 > oferta já vem com "Proteção Veicular Essencial" embutida e ESCRITA; upgrade para Proteção e
 > Completa mostrado pelo ADICIONAL na parcela + diferenças QUALITATIVAS de cobertura;
-> (9) **documentos** — tela própria: **CNH é o ÚNICO obrigatório** (comprovante de endereço e
-> relatório BRIC caem — não mudam a análise); documentos complementares opcionais com descrição
+> (9) **documentos** — tela própria: **CNH e comprovante de endereço são obrigatórios** (decisão
+> Luís 2026-11-08; de 04/08 a 08/11 só a CNH era obrigatória; o relatório BRIC continua fora — não
+> muda a análise); a lista de obrigatórios tem fonte única no backend (`DOCS_OBRIGATORIOS`) e as
+> telas a leem da proposta; documentos complementares opcionais com descrição
 > livre; **renda declarada MENSAL** preenchida pelo operador na entrevista; (10) enviar a
 > proposta + **parecer opcional** do operador; (11) aguardar a decisão da análise (análise
 > manual continua); (12) decisão positiva → apresentar resumo ao cliente + confirmação + **duas

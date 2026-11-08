@@ -63,6 +63,8 @@ function rotuloOferta(o: OfertaSimulada, indicePadrao: number): string {
 const inputCls = 'h-[52px] w-full rounded-[12px] px-[14px] text-[16px]';
 const inputStyle = { background: 'var(--surface)', border: '1.5px solid var(--border)' } as const;
 const rotuloCls = 'mb-[6px] block text-[13px] font-semibold';
+// Rótulos dos documentos obrigatórios (a LISTA vem do backend; aqui só o nome por extenso).
+const DOC_OBRIGATORIO_LABEL: Record<string, string> = { cnh: 'CNH válida', comprovante_endereco: 'Comprovante de endereço' };
 const seletorAtivo = { background: 'var(--navy)', color: '#fff', border: '1.5px solid var(--navy)' } as const;
 const seletorInativo = { background: 'var(--surface)', border: '1.5px solid var(--border)' } as const;
 
@@ -1072,28 +1074,35 @@ export function AtendimentoPage() {
         </div>
       )}
 
-      {/* Passo 6 — documentos (CNH obrigatória) + renda declarada */}
+      {/* Passo 6 — documentos obrigatórios (a lista vem da proposta: CNH e
+          comprovante de endereço desde 08/11) + complementares + renda declarada */}
       {passo === 6 && proposta && (
         <div className="flex flex-col gap-[12px]">
-          <div className="rounded-[14px] p-[14px]" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)' }}>
-            <div className="mb-[4px] text-[14.5px] font-bold">CNH válida (obrigatória)</div>
-            {proposta.documentos.some((d) => d.tipo === 'cnh') ? (
-              <div className="flex flex-col gap-[4px]">
-                {proposta.documentos.filter((d) => d.tipo === 'cnh').map((d) => (
-                  <div key={d.id} className="flex items-center justify-between text-[13.5px]" style={{ color: 'var(--ok-fg)' }}>
-                    <span>✓ Anexada: {d.arquivoRef}</span>
-                    <button onClick={() => void removerDoc(d.id)} disabled={docBusy} className="text-[12px] font-semibold" style={{ color: 'var(--danger-fg)' }}>remover</button>
+          {proposta.documentosObrigatorios.map((tipo) => {
+            const rotulo = DOC_OBRIGATORIO_LABEL[tipo] ?? tipo;
+            const anexados = proposta.documentos.filter((d) => d.tipo === tipo);
+            return (
+              <div key={tipo} className="rounded-[14px] p-[14px]" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)' }}>
+                <div className="mb-[4px] text-[14.5px] font-bold">{rotulo} (obrigatório)</div>
+                {anexados.length > 0 ? (
+                  <div className="flex flex-col gap-[4px]">
+                    {anexados.map((d) => (
+                      <div key={d.id} className="flex items-center justify-between text-[13.5px]" style={{ color: 'var(--ok-fg)' }}>
+                        <span>✓ Anexado: {d.arquivoRef}</span>
+                        <button onClick={() => void removerDoc(d.id)} disabled={docBusy} className="text-[12px] font-semibold" style={{ color: 'var(--danger-fg)' }}>remover</button>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                ) : (
+                  <label className="block h-[48px] cursor-pointer rounded-[10px] text-center text-[14px] font-bold leading-[48px]" style={{ background: 'var(--navy)', color: '#fff', opacity: docBusy ? 0.6 : 1 }}>
+                    {docBusy ? 'Anexando…' : `Anexar ${rotulo.toLowerCase()}`}
+                    <input type="file" accept="image/*,.pdf" className="hidden" disabled={docBusy}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) void anexar(tipo, f); e.target.value = ''; }} />
+                  </label>
+                )}
               </div>
-            ) : (
-              <label className="block h-[48px] cursor-pointer rounded-[10px] text-center text-[14px] font-bold leading-[48px]" style={{ background: 'var(--navy)', color: '#fff', opacity: docBusy ? 0.6 : 1 }}>
-                {docBusy ? 'Anexando…' : 'Anexar foto da CNH'}
-                <input type="file" accept="image/*,.pdf" className="hidden" disabled={docBusy}
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void anexar('cnh', f); e.target.value = ''; }} />
-              </label>
-            )}
-          </div>
+            );
+          })}
 
           <div className="rounded-[14px] p-[14px]" style={{ background: 'var(--surface)', border: '1.5px dashed var(--border)' }}>
             <div className="mb-[4px] text-[14.5px] font-bold">Documentos complementares (opcional)</div>
@@ -1101,7 +1110,7 @@ export function AtendimentoPage() {
               Qualquer coisa que demonstre capacidade de pagamento: contracheque, extrato,
               contrato com locadora…
             </div>
-            {proposta.documentos.filter((d) => d.tipo !== 'cnh').map((d) => (
+            {proposta.documentos.filter((d) => !proposta.documentosObrigatorios.includes(d.tipo)).map((d) => (
               <div key={d.id} className="mb-[4px] flex items-center justify-between text-[13px]" style={{ color: 'var(--text-muted)' }}>
                 <span>✓ {d.arquivoRef}</span>
                 <button onClick={() => void removerDoc(d.id)} disabled={docBusy} className="text-[12px] font-semibold" style={{ color: 'var(--danger-fg)' }}>remover</button>
@@ -1136,7 +1145,7 @@ export function AtendimentoPage() {
             </div>
           </div>
 
-          <button onClick={() => setPasso(7)} disabled={!proposta.documentos.some((d) => d.tipo === 'cnh')} className="h-[54px] rounded-[12px] text-[16px] font-bold disabled:opacity-40" style={{ background: 'var(--navy)', color: '#fff' }}>
+          <button onClick={() => setPasso(7)} disabled={!proposta.documentosCompletos} className="h-[54px] rounded-[12px] text-[16px] font-bold disabled:opacity-40" style={{ background: 'var(--navy)', color: '#fff' }}>
             Continuar
           </button>
         </div>

@@ -56,11 +56,12 @@ const TRANSICOES: Record<string, StatusProposta[]> = {
   CANCELADA: [],
 };
 
-// Documentos obrigatórios por papel — decisão da homologação 04/08 (doc 02 §20
-// passo 9): SÓ a CNH é obrigatória. Comprovante de endereço e relatório BRIC
-// caíram (não mudam a análise; birô via API). Demais documentos são
-// COMPLEMENTARES opcionais (extrato, contracheque, contrato de locadora…).
-export const DOCS_OBRIGATORIOS: TipoDocumentoProposta[] = ['CNH'];
+// Documentos obrigatórios por papel (doc 02 §20 passo 9): CNH e comprovante de
+// endereço (decisão Luís 08/11/2026 — na homologação de 04/08 só a CNH era
+// obrigatória; o comprovante voltou, o relatório BRIC continua fora). Demais
+// documentos são COMPLEMENTARES opcionais (extrato, contracheque, contrato de
+// locadora…). Fonte única: as telas leem `documentosObrigatorios` da proposta.
+export const DOCS_OBRIGATORIOS: TipoDocumentoProposta[] = ['CNH', 'COMPROVANTE_ENDERECO'];
 const PAPEIS_QUE_EXIGEM_DOCS: PapelTitular[] = ['COMPRADOR_PRINCIPAL', 'COMPRADOR_SECUNDARIO'];
 
 export interface PendenciaDoc {
