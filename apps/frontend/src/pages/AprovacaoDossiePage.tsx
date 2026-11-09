@@ -22,6 +22,7 @@ import { toast } from '../components/Toast';
 import { AceiteWhatsapp, CalculoAcordo, CoberturaAcordo, PERIODICIDADE_LABEL, SelecaoAcordo } from '../components/renegociacao/AcordoBlocos';
 import { ContratosNovacao, DecomposicaoNovacao } from '../components/renegociacao/NovacaoBlocos';
 import { mensagemErro } from '../lib/permissoes';
+import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 import { esperaDesde, horaBR, instanteBR, mesAnoBR, dataBR } from '../lib/datas';
 import { motivosDe, notaAoAprovar, tituloHumano, trilhaDaSolicitacao } from '../lib/aprovacao';
 import {
@@ -580,6 +581,24 @@ function PainelDecisao({ a }: { a: AprovacaoDossie }) {
       await aprovacaoService.responderComplemento(a.id, texto.trim());
       return 'Resposta enviada — a solicitação voltou para a fila de decisão.';
     });
+  // Ferramenta de teste (homolog, 08/11): aprova em nome de outro usuário com
+  // alçada sem trocar de login. Nunca aparece em produção (e a rota nem existe lá).
+  const aprovarComoTeste = () =>
+    agir(async () => {
+      const r = await aprovacaoService.aprovarComoTeste(a.id, texto.trim() || undefined);
+      const quem = r.aprovadoPor.join(', ');
+      return r.efetivada ? `[teste] Aprovada em nome de ${quem} e efetivada.` : `[teste] Aprovação de ${quem} registrada — ainda faltam outras.`;
+    });
+  const botaoTeste = FERRAMENTAS_TESTE && a.status === 'PENDENTE' && !a.complementoAberto ? (
+    <div className="mt-[6px] flex flex-col gap-[4px] rounded-[10px] p-[8px]" style={{ border: '1px dashed var(--warn-fg)' }}>
+      <Botao variante="secundaria" className="w-full" disabled={ocupado} carregando={ocupado} onClick={() => void aprovarComoTeste()}>
+        Aprovar como outro usuário (ferramenta de teste)
+      </Botao>
+      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+        Só no homolog: registra a aprovação em nome de outro usuário com alçada, respeitando a segregação.
+      </div>
+    </div>
+  ) : null;
 
   const area = (placeholder: string) => (
     <textarea
@@ -599,9 +618,9 @@ function PainelDecisao({ a }: { a: AprovacaoDossie }) {
     const ultima = a.decisoes[a.decisoes.length - 1];
     corpo = aviso(<>Solicitação <b>{(APROVACAO_STATUS_LABEL[a.status] ?? a.status).toLowerCase()}</b>{ultima ? <> — última decisão de {ultima.usuario} em {quando(ultima.em)}</> : null}.</>);
   } else if (vez === VezAprovacao.VOCE_SOLICITOU) {
-    corpo = aviso('Você solicitou. Pela segregação, quem decide é outra pessoa.');
+    corpo = <>{aviso('Você solicitou. Pela segregação, quem decide é outra pessoa.')}{botaoTeste}</>;
   } else if (vez === VezAprovacao.VOCE_DECIDIU) {
-    corpo = aviso(`Você já registrou sua decisão. Aguardando ${a.aprovacoesFaltando} aprovação(ões).`);
+    corpo = <>{aviso(`Você já registrou sua decisão. Aguardando ${a.aprovacoesFaltando} aprovação(ões).`)}{botaoTeste}</>;
   } else if (vez === VezAprovacao.RESPONDER_COMPLEMENTO && a.complementoAberto) {
     corpo = (
       <div className="flex flex-col gap-[8px]">

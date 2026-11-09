@@ -63,6 +63,8 @@ function rotuloOferta(o: OfertaSimulada, indicePadrao: number): string {
 const inputCls = 'h-[52px] w-full rounded-[12px] px-[14px] text-[16px]';
 const inputStyle = { background: 'var(--surface)', border: '1.5px solid var(--border)' } as const;
 const rotuloCls = 'mb-[6px] block text-[13px] font-semibold';
+// Rótulos dos documentos obrigatórios (a LISTA vem do backend; aqui só o nome por extenso).
+const DOC_OBRIGATORIO_LABEL: Record<string, string> = { cnh: 'CNH válida', comprovante_endereco: 'Comprovante de endereço' };
 const seletorAtivo = { background: 'var(--navy)', color: '#fff', border: '1.5px solid var(--navy)' } as const;
 const seletorInativo = { background: 'var(--surface)', border: '1.5px solid var(--border)' } as const;
 
@@ -95,6 +97,17 @@ export function AtendimentoPage() {
   const [buscaAtivo, setBuscaAtivo] = useState('');
   const [semAtivo, setSemAtivo] = useState(false);
   const [valorManualTexto, setValorManualTexto] = useState('');
+  // Modelo de REFERÊNCIA (doc 02 §31.1): sem carro no estoque, escolhe marca →
+  // modelo → ano na FIPE; o valor à vista vem da Fundação, nunca digitado.
+  const [modoReferencia, setModoReferencia] = useState(false);
+  // Lista curta do balcão (Luís 03/11): HB20S/HB20 manual, Mobi, Kwid, Polo —
+  // versões de entrada, anos reunidos. A lista completa fica atrás de um link.
+  const [listaCompleta, setListaCompleta] = useState(false);
+  const [modeloTrabalho, setModeloTrabalho] = useState('');
+  const [anoTrabalho, setAnoTrabalho] = useState('');
+  const [fipeMarca, setFipeMarca] = useState('');
+  const [fipeModelo, setFipeModelo] = useState('');
+  const [fipeAno, setFipeAno] = useState('');
 
   // Passo 2/3 — simulação
   const [simulacao, setSimulacao] = useState<SimulacaoResultado | null>(null);
@@ -152,6 +165,11 @@ export function AtendimentoPage() {
     queryFn: () => originacaoService.ativosDisponiveis(),
     enabled: passo === 2,
   });
+  const modelosTrabalho = useQuery({ queryKey: ['fipe-modelos-trabalho'], queryFn: () => originacaoService.fipeModelosTrabalho(), enabled: passo === 2 && modoReferencia && !listaCompleta, staleTime: 3_600_000 });
+  const anosTrabalho = useQuery({ queryKey: ['fipe-anos-trabalho', modeloTrabalho], queryFn: () => originacaoService.fipeAnosTrabalho(modeloTrabalho), enabled: modoReferencia && !listaCompleta && !!modeloTrabalho, staleTime: 3_600_000 });
+  const fipeMarcas = useQuery({ queryKey: ['fipe-marcas'], queryFn: () => originacaoService.fipeMarcas(), enabled: passo === 2 && modoReferencia && listaCompleta, staleTime: 3_600_000 });
+  const fipeModelos = useQuery({ queryKey: ['fipe-modelos', fipeMarca], queryFn: () => originacaoService.fipeModelos(fipeMarca), enabled: modoReferencia && !!fipeMarca, staleTime: 3_600_000 });
+  const fipeAnos = useQuery({ queryKey: ['fipe-anos', fipeMarca, fipeModelo], queryFn: () => originacaoService.fipeAnos(fipeMarca, fipeModelo), enabled: modoReferencia && !!fipeMarca && !!fipeModelo, staleTime: 3_600_000 });
 
   // Busca de cliente existente (nome ou CPF) — sem redigitar cadastro (padrão Asaas).
   const buscaLimpa = buscaCliente.trim();
@@ -203,7 +221,7 @@ export function AtendimentoPage() {
     }
   }
 
-  async function simularCom(body: { ativoId?: string; valorAvista?: number }) {
+  async function simularCom(body: { ativoId?: string; valorAvista?: number; referencia?: { codigoMarca: string; codigoModelo: string; ano: string } }) {
     setErro(null);
     setOcupado(true);
     try {
@@ -682,6 +700,106 @@ export function AtendimentoPage() {
             ))
           )}
 
+          {/* Modelo de referência (doc 02 §31.1): aprova a pessoa antes de ter o carro.
+              A proposta entra na Lista de espera depois de aprovada. */}
+          {modoReferencia ? (
+            <div className="flex flex-col gap-[10px] rounded-[14px] p-[16px]" style={{ background: 'var(--surface)', border: '1.5px solid var(--accent)' }}>
+              <div className="text-[15px] font-bold">Modelo de referência (FIPE)</div>
+              <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
+                Sem o carro no estoque: a pessoa é analisada com o valor FIPE do modelo e, aprovada, entra na lista de espera até um veículo ser atribuído.
+              </div>
+              {!listaCompleta ? (
+                <>
+                  <div className="flex flex-col gap-[6px]">
+                    {modelosTrabalho.isLoading && <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando os modelos…</div>}
+                    {(modelosTrabalho.data ?? []).map((m) => (
+                      <button
+                        key={m.chave}
+                        type="button"
+                        onClick={() => { setModeloTrabalho(m.chave); setAnoTrabalho(''); }}
+                        className="flex items-center justify-between gap-[10px] rounded-[12px] px-[14px] py-[10px] text-left"
+                        style={{ background: modeloTrabalho === m.chave ? 'var(--surface-input)' : 'var(--surface)', border: `1.5px solid ${modeloTrabalho === m.chave ? 'var(--accent)' : 'var(--border)'}` }}
+                      >
+                        <div className="min-w-0">
+                          <div className="text-[14px] font-bold">{m.rotulo}</div>
+                          <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>{m.detalhe}</div>
+                        </div>
+                        {modeloTrabalho === m.chave && <span style={{ color: 'var(--accent)' }}>✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                  <div>
+                    <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Ano do modelo</span>
+                    <select value={anoTrabalho} onChange={(e) => setAnoTrabalho(e.target.value)} disabled={!modeloTrabalho} className={inputCls} style={inputStyle}>
+                      <option value="">{!modeloTrabalho ? 'Escolha o modelo antes' : anosTrabalho.isLoading ? 'Consultando a FIPE…' : anosTrabalho.isError ? 'FIPE indisponível agora' : 'Selecione o ano'}</option>
+                      {(anosTrabalho.data ?? []).map((a) => <option key={a.codigoModelo + ':' + a.codigo} value={a.codigoModelo + ':' + a.codigo}>{a.nome}</option>)}
+                    </select>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const [codigoModelo, ano] = anoTrabalho.split(':');
+                      const m = (modelosTrabalho.data ?? []).find((x) => x.chave === modeloTrabalho);
+                      if (m) void simularCom({ referencia: { codigoMarca: m.codigoMarca, codigoModelo, ano } });
+                    }}
+                    disabled={ocupado || !modeloTrabalho || !anoTrabalho}
+                    className="h-[50px] rounded-[12px] text-[15px] font-bold disabled:opacity-40"
+                    style={{ background: 'var(--navy)', color: '#fff' }}
+                  >
+                    {ocupado ? 'Consultando a FIPE…' : 'Simular pelo valor FIPE'}
+                  </button>
+                  <div className="flex justify-between">
+                    <button onClick={() => setListaCompleta(true)} className="text-[12.5px] font-semibold" style={{ color: 'var(--text-muted)' }}>outro modelo (lista completa da FIPE)</button>
+                    <button onClick={() => setModoReferencia(false)} className="text-[12.5px] font-semibold" style={{ color: 'var(--text-muted)' }}>voltar ao estoque</button>
+                  </div>
+                </>
+              ) : (
+              <>
+              <div>
+                <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Marca</span>
+                <select value={fipeMarca} onChange={(e) => { setFipeMarca(e.target.value); setFipeModelo(''); setFipeAno(''); }} className={inputCls} style={inputStyle}>
+                  <option value="">{fipeMarcas.isLoading ? 'Carregando…' : fipeMarcas.isError ? 'FIPE indisponível agora' : 'Selecione a marca'}</option>
+                  {(fipeMarcas.data ?? []).map((m) => <option key={m.codigo} value={m.codigo}>{m.nome}</option>)}
+                </select>
+              </div>
+              <div>
+                <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Modelo</span>
+                <select value={fipeModelo} onChange={(e) => { setFipeModelo(e.target.value); setFipeAno(''); }} disabled={!fipeMarca} className={inputCls} style={inputStyle}>
+                  <option value="">{!fipeMarca ? 'Escolha a marca antes' : fipeModelos.isLoading ? 'Carregando…' : 'Selecione o modelo'}</option>
+                  {(fipeModelos.data ?? []).map((m) => <option key={m.codigo} value={m.codigo}>{m.nome}</option>)}
+                </select>
+              </div>
+              <div>
+                <span className={rotuloCls} style={{ color: 'var(--text-muted)' }}>Ano do modelo</span>
+                <select value={fipeAno} onChange={(e) => setFipeAno(e.target.value)} disabled={!fipeModelo} className={inputCls} style={inputStyle}>
+                  <option value="">{!fipeModelo ? 'Escolha o modelo antes' : fipeAnos.isLoading ? 'Carregando…' : 'Selecione o ano'}</option>
+                  {(fipeAnos.data ?? []).map((a) => <option key={a.codigo} value={a.codigo}>{a.nome}</option>)}
+                </select>
+              </div>
+              <button
+                onClick={() => simularCom({ referencia: { codigoMarca: fipeMarca, codigoModelo: fipeModelo, ano: fipeAno } })}
+                disabled={ocupado || !fipeMarca || !fipeModelo || !fipeAno}
+                className="h-[50px] rounded-[12px] text-[15px] font-bold disabled:opacity-40"
+                style={{ background: 'var(--navy)', color: '#fff' }}
+              >
+                {ocupado ? 'Consultando a FIPE…' : 'Simular pelo valor FIPE'}
+              </button>
+              <div className="flex justify-between">
+                <button onClick={() => setListaCompleta(false)} className="text-[12.5px] font-semibold" style={{ color: 'var(--text-muted)' }}>← modelos de trabalho</button>
+                <button onClick={() => setModoReferencia(false)} className="text-[12.5px] font-semibold" style={{ color: 'var(--text-muted)' }}>voltar ao estoque</button>
+              </div>
+              </>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => { setModoReferencia(true); setSemAtivo(false); }}
+              className="h-[48px] rounded-[12px] text-[14px] font-semibold"
+              style={{ background: 'var(--surface)', border: '1.5px dashed var(--accent)', color: 'var(--text-primary)' }}
+            >
+              Não tem o carro? Simular por modelo de referência (FIPE)
+            </button>
+          )}
+
           {/* Continuar só preenchendo o valor — mesma fonte de cálculo do Catálogo */}
           {semAtivo ? (
             <div className="flex flex-col gap-[10px] rounded-[14px] p-[16px]" style={{ background: 'var(--surface)', border: '1.5px dashed var(--border)' }}>
@@ -722,7 +840,8 @@ export function AtendimentoPage() {
       {passo === 3 && simulacao && (
         <div className="flex flex-col gap-[14px]">
           <div className="rounded-[12px] p-[12px] text-[14px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-            <b>{simulacao.ativo ? rotuloAtivo(simulacao.ativo) : 'Ativo a definir'}</b>
+            <b>{simulacao.ativo ? rotuloAtivo(simulacao.ativo) : simulacao.referencia ? simulacao.referencia.rotulo : 'Ativo a definir'}</b>
+            {simulacao.referencia && <span className="ml-[6px] rounded-full px-[8px] py-[2px] text-[11px] font-bold" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}>lista de espera</span>}
             <span style={{ color: 'var(--text-muted)' }}> · à vista {reais(simulacao.valorAvista)}</span>
           </div>
 
@@ -955,28 +1074,35 @@ export function AtendimentoPage() {
         </div>
       )}
 
-      {/* Passo 6 — documentos (CNH obrigatória) + renda declarada */}
+      {/* Passo 6 — documentos obrigatórios (a lista vem da proposta: CNH e
+          comprovante de endereço desde 08/11) + complementares + renda declarada */}
       {passo === 6 && proposta && (
         <div className="flex flex-col gap-[12px]">
-          <div className="rounded-[14px] p-[14px]" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)' }}>
-            <div className="mb-[4px] text-[14.5px] font-bold">CNH válida (obrigatória)</div>
-            {proposta.documentos.some((d) => d.tipo === 'cnh') ? (
-              <div className="flex flex-col gap-[4px]">
-                {proposta.documentos.filter((d) => d.tipo === 'cnh').map((d) => (
-                  <div key={d.id} className="flex items-center justify-between text-[13.5px]" style={{ color: 'var(--ok-fg)' }}>
-                    <span>✓ Anexada: {d.arquivoRef}</span>
-                    <button onClick={() => void removerDoc(d.id)} disabled={docBusy} className="text-[12px] font-semibold" style={{ color: 'var(--danger-fg)' }}>remover</button>
+          {proposta.documentosObrigatorios.map((tipo) => {
+            const rotulo = DOC_OBRIGATORIO_LABEL[tipo] ?? tipo;
+            const anexados = proposta.documentos.filter((d) => d.tipo === tipo);
+            return (
+              <div key={tipo} className="rounded-[14px] p-[14px]" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)' }}>
+                <div className="mb-[4px] text-[14.5px] font-bold">{rotulo} (obrigatório)</div>
+                {anexados.length > 0 ? (
+                  <div className="flex flex-col gap-[4px]">
+                    {anexados.map((d) => (
+                      <div key={d.id} className="flex items-center justify-between text-[13.5px]" style={{ color: 'var(--ok-fg)' }}>
+                        <span>✓ Anexado: {d.arquivoRef}</span>
+                        <button onClick={() => void removerDoc(d.id)} disabled={docBusy} className="text-[12px] font-semibold" style={{ color: 'var(--danger-fg)' }}>remover</button>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                ) : (
+                  <label className="block h-[48px] cursor-pointer rounded-[10px] text-center text-[14px] font-bold leading-[48px]" style={{ background: 'var(--navy)', color: '#fff', opacity: docBusy ? 0.6 : 1 }}>
+                    {docBusy ? 'Anexando…' : `Anexar ${rotulo.toLowerCase()}`}
+                    <input type="file" accept="image/*,.pdf" className="hidden" disabled={docBusy}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) void anexar(tipo, f); e.target.value = ''; }} />
+                  </label>
+                )}
               </div>
-            ) : (
-              <label className="block h-[48px] cursor-pointer rounded-[10px] text-center text-[14px] font-bold leading-[48px]" style={{ background: 'var(--navy)', color: '#fff', opacity: docBusy ? 0.6 : 1 }}>
-                {docBusy ? 'Anexando…' : 'Anexar foto da CNH'}
-                <input type="file" accept="image/*,.pdf" className="hidden" disabled={docBusy}
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void anexar('cnh', f); e.target.value = ''; }} />
-              </label>
-            )}
-          </div>
+            );
+          })}
 
           <div className="rounded-[14px] p-[14px]" style={{ background: 'var(--surface)', border: '1.5px dashed var(--border)' }}>
             <div className="mb-[4px] text-[14.5px] font-bold">Documentos complementares (opcional)</div>
@@ -984,7 +1110,7 @@ export function AtendimentoPage() {
               Qualquer coisa que demonstre capacidade de pagamento: contracheque, extrato,
               contrato com locadora…
             </div>
-            {proposta.documentos.filter((d) => d.tipo !== 'cnh').map((d) => (
+            {proposta.documentos.filter((d) => !proposta.documentosObrigatorios.includes(d.tipo)).map((d) => (
               <div key={d.id} className="mb-[4px] flex items-center justify-between text-[13px]" style={{ color: 'var(--text-muted)' }}>
                 <span>✓ {d.arquivoRef}</span>
                 <button onClick={() => void removerDoc(d.id)} disabled={docBusy} className="text-[12px] font-semibold" style={{ color: 'var(--danger-fg)' }}>remover</button>
@@ -1019,7 +1145,7 @@ export function AtendimentoPage() {
             </div>
           </div>
 
-          <button onClick={() => setPasso(7)} disabled={!proposta.documentos.some((d) => d.tipo === 'cnh')} className="h-[54px] rounded-[12px] text-[16px] font-bold disabled:opacity-40" style={{ background: 'var(--navy)', color: '#fff' }}>
+          <button onClick={() => setPasso(7)} disabled={!proposta.documentosCompletos} className="h-[54px] rounded-[12px] text-[16px] font-bold disabled:opacity-40" style={{ background: 'var(--navy)', color: '#fff' }}>
             Continuar
           </button>
         </div>
@@ -1069,7 +1195,7 @@ export function AtendimentoPage() {
           <div className="mx-auto flex w-full max-w-[520px] flex-1 flex-col gap-[14px]">
             <div className="mt-[10px] text-center">
               <div className="text-[16px] font-semibold" style={{ color: 'var(--accent)' }}>
-                {simulacao.ativo ? rotuloAtivo(simulacao.ativo) : ''}
+                {simulacao.ativo ? rotuloAtivo(simulacao.ativo) : simulacao.referencia ? `${simulacao.referencia.marca} ${simulacao.referencia.modelo} ${simulacao.referencia.anoModelo}` : ''}
               </div>
               <div className="text-[13px]" style={{ color: 'var(--navy-text-body)' }}>
                 Condições para você

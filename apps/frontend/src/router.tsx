@@ -14,6 +14,7 @@ import { AcordosPage } from './pages/AcordosPage';
 import { AtendimentoPage } from './pages/AtendimentoPage';
 import { SimulacoesPage } from './pages/SimulacoesPage';
 import { PropostasPage } from './pages/PropostasPage';
+import { ListaEsperaPage } from './pages/ListaEsperaPage';
 import { PropostaDetalhePage } from './pages/PropostaDetalhePage';
 import { AnalisePage } from './pages/AnalisePage';
 import { AtivoPage } from './pages/AtivoPage';
@@ -103,6 +104,10 @@ export const router = createBrowserRouter([
       {
         path: 'propostas/:id',
         element: <PropostaDetalhePage />,
+      },
+      {
+        path: 'lista-espera',
+        element: <ListaEsperaPage />,
       },
       {
         path: 'analises/:id',

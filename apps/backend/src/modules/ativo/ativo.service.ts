@@ -19,6 +19,7 @@ import {
 // Cliente do veículo (doc 02 §25.1): titular do contrato ATIVO, quando existe.
 // 1 ativo = 1 contrato ativo por vez (Doc 2 §4.4), por isso take: 1.
 const INCLUDE_CLIENTE = {
+  reservadoProposta: { select: { id: true, titular: { select: { nome: true } } } },
   contratosCredito: {
     where: { status: 'ATIVO' as const, deletedAt: null },
     select: { id: true, numero: true, conta: { select: { titular: { select: { id: true, nome: true } } } } },

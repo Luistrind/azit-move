@@ -157,6 +157,21 @@ export class FormalizacaoService {
     if (proposta.contratoGeradoId) {
       throw new UnprocessableEntityException({ erro: 'ja_formalizada', mensagem: 'Proposta já gerou contrato' });
     }
+    // Doc 02 §31.4: proposta por referência (lista de espera) só formaliza com o
+    // carro real atribuído E conferido pela análise.
+    if (!proposta.ativo) {
+      throw new UnprocessableEntityException({
+        erro: 'sem_veiculo',
+        mensagem: 'A proposta não tem veículo — atribua um ativo do estoque pela Lista de espera antes de formalizar',
+      });
+    }
+    if (proposta.referenciaId && !proposta.veiculoConferidoEm) {
+      throw new UnprocessableEntityException({
+        erro: 'veiculo_nao_conferido',
+        mensagem: 'O veículo atribuído ainda não foi conferido pela análise',
+      });
+    }
+    const ativo = proposta.ativo;
     // Ressalva do parecer: exige garantidor → precisa do papel.
     if (proposta.parecer?.exigeGarantidor && !proposta.vinculos.some((v) => v.papel === 'GARANTIDOR')) {
       throw new UnprocessableEntityException({
@@ -250,7 +265,7 @@ export class FormalizacaoService {
     const novo = await this.contrato.criar(
       {
         contaId: conta.id,
-        ativoId: proposta.ativoId,
+        ativoId: ativo.id,
         numero: undefined,
         dataAssinatura,
         dataPrimeiraParcela: dataPrimeira,
@@ -262,7 +277,7 @@ export class FormalizacaoService {
         entradaParcelada: proposta.simulacao?.ofertas.find((o) => o.selecionada)?.entradaParcelada ?? false,
         // Doc 02 §4-A.4 (27/09): o produto é COMPRA PARCELADA — o termo
         // "financiamento" nunca aparece para o cliente (fatura, cobrança, instrumento).
-        descricaoFinanciamento: `Compra Parcelada ${proposta.ativo.descricao}`,
+        descricaoFinanciamento: `Compra Parcelada ${ativo.descricao}`,
         credor: 'azit',
         itensRecorrentes,
       },
@@ -279,7 +294,7 @@ export class FormalizacaoService {
       const apContrato = await this.contrato.criar(
         {
           contaId: conta.id,
-          ativoId: proposta.ativoId,
+          ativoId: ativo.id,
           numero: undefined,
           dataAssinatura,
           dataPrimeiraParcela: dataPrimeira,
@@ -370,18 +385,18 @@ export class FormalizacaoService {
       numero: novo.numero,
       compradoresBloco,
       garantidorBloco,
-      veiculoDescricao: proposta.ativo.descricao,
-      veiculoAnoFabricacao: proposta.ativo.anoFabricacao ?? '—',
-      veiculoAnoModelo: proposta.ativo.anoModelo ?? '—',
-      veiculoCor: proposta.ativo.cor ?? '—',
-      veiculoPlaca: proposta.ativo.placa ?? '—',
-      veiculoChassi: proposta.ativo.chassi ?? '—',
-      veiculoRenavam: proposta.ativo.renavam ?? '—',
-      veiculoOrigem: proposta.ativo.origem
-        ? proposta.ativo.origem.charAt(0) + proposta.ativo.origem.slice(1).toLowerCase()
+      veiculoDescricao: ativo.descricao,
+      veiculoAnoFabricacao: ativo.anoFabricacao ?? '—',
+      veiculoAnoModelo: ativo.anoModelo ?? '—',
+      veiculoCor: ativo.cor ?? '—',
+      veiculoPlaca: ativo.placa ?? '—',
+      veiculoChassi: ativo.chassi ?? '—',
+      veiculoRenavam: ativo.renavam ?? '—',
+      veiculoOrigem: ativo.origem
+        ? ativo.origem.charAt(0) + ativo.origem.slice(1).toLowerCase()
         : '—',
-      veiculoCombustivel: proposta.ativo.combustivel?.toLowerCase() ?? '—',
-      veiculoKm: proposta.ativo.quilometragemEntrada ?? '—',
+      veiculoCombustivel: ativo.combustivel?.toLowerCase() ?? '—',
+      veiculoKm: ativo.quilometragemEntrada ?? '—',
       valorTotal: formatCurrency(valorTotal),
       valorTotalExtenso: valorPorExtenso(valorTotal),
       valorEntrada: formatCurrency(valorEntrada),
@@ -409,7 +424,7 @@ export class FormalizacaoService {
       // o embutido; o adicional já está DENTRO da parcela acima).
       protecao: { plano: proposta.planoProtecao, adicionalPorPeriodo: cent(proposta.adicionalProtecao) },
       cliente: { nome: proposta.titular.nome, cpfCnpj: proposta.titular.cpfCnpj, whatsapp: proposta.titular.whatsapp },
-      ativo: { descricao: proposta.ativo.descricao, chassi: proposta.ativo.chassi, placa: proposta.ativo.placa },
+      ativo: { descricao: ativo.descricao, chassi: ativo.chassi, placa: ativo.placa },
       papeis: proposta.vinculos.map((v) => ({ papel: v.papel.toLowerCase(), nome: v.titular.nome, cpfCnpj: v.titular.cpfCnpj })),
       documento,
     };
@@ -418,7 +433,7 @@ export class FormalizacaoService {
     // a quitação por componente lê ESTE snapshot, nunca a versão vigente.
     // Homologação 04/08: congela também protS (proteção semanal exata calculada
     // do produto PV na contratação) — o valor da proteção não flutua depois.
-    const varianteContratada = proposta.ativo.varianteCatalogo ?? 'carro';
+    const varianteContratada = ativo.varianteCatalogo ?? 'carro';
     const catContratacao = await this.catalogoFonte.compraParcelada(varianteContratada);
     let protS: number | null = null;
     if (catContratacao?.protecaoObrigatoria) {

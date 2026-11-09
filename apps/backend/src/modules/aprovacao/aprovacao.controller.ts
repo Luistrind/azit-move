@@ -1,6 +1,7 @@
-import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
+import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AprovacaoService } from './aprovacao.service';
 import { AprovacaoDossieService } from './aprovacao-dossie.service';
@@ -53,6 +54,18 @@ export class AprovacaoController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.aprovacao.decidir(id, user.id, dto.decisao, dto.parecer);
+  }
+
+  // Ferramenta de teste (homolog/dev, 08/11): aprova em nome de outro usuário
+  // com alçada, sem trocar de login. Em produção a rota não existe (404).
+  @UseGuards(DevOnlyGuard)
+  @Post(':id/dev/aprovar-como-teste')
+  @HttpCode(200)
+  aprovarComoTeste(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(z.object({ parecer: z.string().trim().optional() }))) dto: { parecer?: string },
+  ) {
+    return this.aprovacao.aprovarComoTeste(id, dto.parecer);
   }
 
   @Post(':id/complemento')

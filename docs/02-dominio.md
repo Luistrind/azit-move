@@ -260,7 +260,7 @@ A oferta escolhida formalizada como pedido de crédito. É o que **persiste** e 
 - `id`
 - `simulacao_id` / `oferta_id` — a oferta que originou a proposta
 - `titular_id` — comprador principal (após promoção do lead)
-- `ativo_id`
+- `ativo_id` — **opcional desde 2026-11-03 (§31)**: a proposta tem um ativo do estoque OU um veículo de referência (`referencia_id`), nunca os dois até a atribuição
 - `modalidade` — assinatura | compra_parcelada | compra_vista
 - `valor_entrada`, `prazo_semanas`, `valor_parcela`, `numero_parcelas` — condições da oferta escolhida
 - `status` — pendente | em_análise | aprovada | reprovada | cancelada | em_formalização | convertida
@@ -341,7 +341,7 @@ O bem objeto do contrato — hoje predominantemente veículos.
 - `valor_aquisicao` — custo de aquisição (quanto a Azit pagou pelo veículo)
 - `valor_venda` — valor de venda do ativo, cadastrado manualmente; **base da precificação individualizada** na simulação
 - `pacote_oferta_id` — vínculo opcional a um pacote/oferta genérica (legado PopHub); quando presente, o pacote aparece como opção na simulação
-- `status` — disponivel | em_contrato | quitado | recuperado | sinistrado
+- `status` — disponivel | **reservado** (§31.4: preso a uma proposta aprovada da lista de espera) | em_contrato | quitado | recuperado | sinistrado
 
 **Relacionamentos:**
 - tem uma `OrigemCapital`
@@ -1852,8 +1852,10 @@ gerencial que a operação já usa (plano do Manda Pro Financeiro: grupo → cat
 > a partir do CEP, **segundo comprador opcional**; (8) **upsell da proteção** — tela própria: a
 > oferta já vem com "Proteção Veicular Essencial" embutida e ESCRITA; upgrade para Proteção e
 > Completa mostrado pelo ADICIONAL na parcela + diferenças QUALITATIVAS de cobertura;
-> (9) **documentos** — tela própria: **CNH é o ÚNICO obrigatório** (comprovante de endereço e
-> relatório BRIC caem — não mudam a análise); documentos complementares opcionais com descrição
+> (9) **documentos** — tela própria: **CNH e comprovante de endereço são obrigatórios** (decisão
+> Luís 2026-11-08; de 04/08 a 08/11 só a CNH era obrigatória; o relatório BRIC continua fora — não
+> muda a análise); a lista de obrigatórios tem fonte única no backend (`DOCS_OBRIGATORIOS`) e as
+> telas a leem da proposta; documentos complementares opcionais com descrição
 > livre; **renda declarada MENSAL** preenchida pelo operador na entrevista; (10) enviar a
 > proposta + **parecer opcional** do operador; (11) aguardar a decisão da análise (análise
 > manual continua); (12) decisão positiva → apresentar resumo ao cliente + confirmação + **duas
@@ -2934,3 +2936,96 @@ os dossiês gerados para baixar. Gerar de novo não apaga o anterior.
 entrada e são apagadas depois da montagem; as páginas geradas são HTML no padrão visual do Hub
 renderizado pelo Chromium que já está na imagem (Playwright); os PDFs são juntados com `pdf-lib`.
 Disponível para qualquer contrato que já virou obrigação (ativo ou encerrado por rescisão).
+
+---
+
+## 31. Aprovação por veículo de referência e lista de espera (decisão Luís, 2026-11-03)
+
+> **Contexto.** Estoque curto e leads chegando — muita procura por HB20 sem HB20 disponível. O
+> Luís quer aprovar a pessoa **antes** de ter o carro, segurar o aprovado numa lista de espera e,
+> quando o carro entrar, atribuí-lo e efetivar o contrato. Até aqui o funil parava no passo 5 da
+> jornada (§20): a simulação aceitava valor manual, mas a **Proposta exigia o ativo** e tudo que
+> vem depois (Camada 1, cadastro, documentos, análise) pende dela.
+>
+> **Decisões (Luís, 03/11):** validade da aprovação na fila **60 dias**; cria-se o estado
+> **Reservado** do ativo; a fila **sugere o mais antigo** e o operador escolhe. E uma correção
+> que vale para TODO o funil: **a análise passa a olhar o veículo** (quilometragem, se é novo na
+> operação ou veio de outro contrato, recuperação) — não olhar era um erro.
+
+### 31.1 Veículo de referência ≠ ativo
+
+- **Ativo** é o carro físico: placa, chassi, quilometragem, status de estoque, frota, multas.
+- **Veículo de referência** (`VeiculoReferencia`) é só uma descrição com preço, congelada no dia:
+  `marca`, `modelo`, `anoModelo`, `fipeCodigo`, `fipeModelo`, `valorFipe`, `fipeReferencia`
+  (mês), `consultadoEm`. Não tem placa, não tem status, **não aparece no estoque nem na frota**.
+  O valor vem **sempre da consulta FIPE oficial** (`FipeService`, o mesmo da migração §26.11) —
+  nunca digitado.
+- A referência nasce na **simulação** (passo 4: "escolher o ativo OU informar um modelo de
+  referência"; o valor manual livre continua existindo para o que não é carro) e é copiada para a
+  **proposta**. Proposta tem `ativoId` OU `referenciaId` — regra de runtime, nunca os dois até a
+  atribuição. Simulação por referência usa a variante `carro` do Catálogo (como o valor manual).
+- Na tela, o cartão mostra "HB20 1.0 2020 · referência FIPE R$ 62.300" com selo próprio, no lugar
+  de "HB20 · TDA5F09". Quando o carro real é atribuído, o ativo entra e a referência **fica no
+  histórico da proposta** — é o valor com que a pessoa foi aprovada.
+- **Proibido** cadastrar "ativo fictício" sem placa para contornar: sujaria estoque, frota,
+  multas e alguém formalizaria um contrato em cima dele.
+
+### 31.2 A análise olha o veículo (toda proposta, não só a da fila)
+
+O dossiê da análise ganha o bloco **Veículo**. Com ativo:
+
+- modelo, ano, placa e idade do carro;
+- quilometragem de entrada e origem da compra (locadora / particular / concessionária);
+- **novo na operação ou já veio de outro contrato**: quantos contratos anteriores no ativo e o
+  desfecho de cada um (encerrado, novado, recuperado, sinistrado);
+- valor de venda contra a FIPE do mês e a diferença.
+
+Com referência: "**sem veículo — aprovação por referência FIPE R$ X (modelo, mês)**". Nada é
+decidido automaticamente por esse bloco (segue a política §14: é insumo do analista).
+
+### 31.3 Lista de espera
+
+- É a **proposta APROVADA sem ativo** — não há status novo (Regra 7: "na fila", "em conferência"
+  e "expirada" são calculados).
+- Tela **Comercial > Lista de espera**: pessoa, modelo de referência e valor FIPE, parcela /
+  entrada / prazo aprovados, data da aprovação, validade restante, situação. Ordem: **mais antiga
+  primeiro** (sugestão; o operador escolhe quem atende).
+- **Validade: 60 dias** a partir do parecer favorável — constante única
+  `DIAS_VALIDADE_APROVACAO_ESPERA` em `packages/utils` (Regra 16). Expirada: a atribuição exige
+  **nova Camada 1** (a consulta do birô vale 30 dias) e passa pela conferência do analista; o
+  cadastro e os documentos **não** são refeitos.
+
+### 31.4 Atribuição do veículo e estado Reservado
+
+1. O operador abre a proposta na lista e escolhe um ativo **disponível** (busca por modelo/placa).
+2. O sistema **reserva** o ativo: `status = RESERVADO`, `reservadoPropostaId`, `reservadoEm`.
+   Reservado **não aparece** como disponível para simulação nem para outra atribuição; aparece na
+   lista de ativos e na frota como "Reservado · nome do cliente".
+3. O sistema **recalcula a oferta com o carro real** (mesmo motor, mesmos parâmetros versionados,
+   mesmo prazo/frequência e mesma entrada) e guarda o resultado como **proposta de ajuste**
+   (`conferenciaVeiculo`: parcela nova, nº de parcelas, fora de parâmetro, calculado em) — a
+   proposta **não é sobrescrita** até a conferência.
+4. **Conferência pela análise** (passo curto, minutos — não é análise nova): o analista vê o bloco
+   Veículo do carro real e a parcela nova contra a aprovada, e **confirma** ou **devolve**.
+   Confirmada → os valores do ajuste entram na proposta, `veiculoConferidoEm` é carimbado, e
+   segue para os passos 12 e 13 da jornada (resumo, datas, gerar contrato) como hoje. Fora de
+   parâmetro → **alçada**, exatamente como já existe (`foraParametro`). Devolvida → o ativo volta
+   a DISPONIVEL, o ajuste é descartado e a proposta volta à fila com os valores de referência.
+5. A reserva **cai sozinha** (ativo volta a DISPONIVEL) quando a proposta é cancelada ou devolvida.
+   Na formalização o ativo vira EM_CONTRATO como hoje. Formalizar exige `ativoId` — proposta por
+   referência **sem conferência confirmada não gera contrato**.
+6. O analista é avisado pela notificação de área (Análise) quando um veículo é atribuído.
+
+### 31.5 Pelo lado do estoque (fase seguinte)
+
+Ao cadastrar ou abrir um ativo disponível, mostrar os aprovados que esperam modelo parecido
+(mesma marca e modelo). Útil, não bloqueia a primeira entrega.
+
+### 31.6 Ordem de construção
+
+(1) `VeiculoReferencia` + `Proposta.ativoId` opcional + `StatusAtivo.RESERVADO`; (2) busca FIPE
+no passo 4 do atendimento e simulação por referência; (3) proposta sem ativo liberada, Camada 1 e
+análise iguais; (4) bloco Veículo no dossiê (toda proposta); (5) tela Lista de espera + atribuir
+veículo + conferência do analista + notificação; (6) ativos reservados fora da simulação; guarda
+na formalização. Marco de validação: lead sem carro aprovado, carro cadastrado, atribuído,
+conferido e contrato gerado — ponta a ponta em homolog.

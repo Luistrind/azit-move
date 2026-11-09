@@ -27,6 +27,8 @@ export interface Ativo {
   // Controle de frota (doc 02 §25.1): anotação livre e cliente do contrato ativo.
   observacao: string | null;
   cliente: { id: string; nome: string; contratoId: string; contratoNumero: string } | null;
+  // Reserva (doc 02 §31.4): preso a uma proposta aprovada da lista de espera.
+  reserva?: { propostaId: string; titularNome: string; em: string } | null;
 }
 
 export interface CriarAtivoBody {

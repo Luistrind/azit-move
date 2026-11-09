@@ -4,6 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '@azit/utils';
 import { analiseService, DossieAnalise, ParticipanteAnalise } from '../services/analise.service';
 import { originacaoService } from '../services/originacao.service';
+import { ROTULO_STATUS_CONTRATO } from '../lib/rotulos';
+import { dataBR } from '../lib/datas';
 import { reaisParaCentavos } from '../lib/valor';
 import { rotuloStatus } from '../lib/rotulos';
 import { Modal } from '../components/Modal';
@@ -179,6 +181,16 @@ export function AnalisePage() {
       if (ok) toast.sucesso(ok);
     } catch (e) { toast.erro(mensagemErro(e)); } finally { setOcupado(false); }
   }
+  // Ações que mexem na PROPOSTA (conferência do veículo, §29.4) e refletem no dossiê.
+  async function acaoProposta(fn: () => Promise<unknown>, ok?: string) {
+    setOcupado(true);
+    try {
+      await fn();
+      await refetch();
+      await qc.invalidateQueries({ queryKey: ['lista-espera'] });
+      if (ok) toast.sucesso(ok);
+    } catch (e) { toast.erro(mensagemErro(e)); } finally { setOcupado(false); }
+  }
 
   if (!d) return <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando análise…</div>;
 
@@ -266,6 +278,57 @@ export function AnalisePage() {
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>O vendedor não deixou observação no envio da proposta.</div>
         )}
       </Bloco>
+
+      {/* Veículo (doc 02 §31.2, Luís 03/11: "a análise faz diferença o veículo"):
+          km, origem, se é novo na operação ou já veio de outro contrato, FIPE × venda.
+          Com referência: a aprovação é pelo valor FIPE, sem carro ainda. */}
+      <Bloco titulo="🚗 Veículo" tag={d.veiculo?.tipo === 'referencia' ? <span className="rounded-full px-[8px] py-[2px] text-[11px] font-bold" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}>referência FIPE · lista de espera</span> : undefined}>
+        {!d.veiculo ? (
+          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>A proposta não tem veículo nem modelo de referência.</div>
+        ) : d.veiculo.tipo === 'referencia' ? (
+          <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-4">
+            <Metrica label="Modelo de referência" valor={`${d.veiculo.marca} ${d.veiculo.modelo}`} detalhe={`ano ${d.veiculo.anoModelo}`} />
+            <Metrica label="Valor FIPE" valor={moeda(d.veiculo.valorFipe)} detalhe={d.veiculo.fipeReferencia} />
+            <Metrica label="Consultada em" valor={dataBR(d.veiculo.consultadoEm)} />
+            <Metrica label="Carro real" valor="ainda não" detalhe="atribuído pela lista de espera" />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-[10px]">
+            <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-4">
+              <Metrica label="Veículo" valor={d.veiculo.descricao} detalhe={`${d.veiculo.placa ?? 'sem placa'}${d.veiculo.anoModelo ? ` · ${d.veiculo.anoFabricacao ?? '—'}/${d.veiculo.anoModelo}` : ''}`} />
+              <Metrica label="Quilometragem de entrada" valor={d.veiculo.quilometragemEntrada != null ? `${d.veiculo.quilometragemEntrada.toLocaleString('pt-BR')} km` : '—'} detalhe={d.veiculo.idadeAnos != null ? `${d.veiculo.idadeAnos} ano(s) de idade` : undefined} />
+              <Metrica label="Origem" valor={d.veiculo.origem ? d.veiculo.origem.charAt(0).toUpperCase() + d.veiculo.origem.slice(1) : '—'} detalhe={d.veiculo.novoNaOperacao ? 'novo na operação' : `${d.veiculo.contratosAnteriores.length} contrato(s) anterior(es)`} destaque={d.veiculo.jaRecuperado} />
+              <Metrica label="Valor de venda" valor={d.veiculo.valorVenda != null ? moeda(d.veiculo.valorVenda) : '—'} detalhe={d.veiculo.fipeModelo ? `FIPE ${d.veiculo.fipeReferencia ?? ''}` : 'sem FIPE no cadastro'} />
+            </div>
+            {d.veiculo.contratosAnteriores.length > 0 && (
+              <div className="text-[12px]" style={{ color: 'var(--text-body)' }}>
+                <b>Já esteve em contrato:</b>{' '}
+                {d.veiculo.contratosAnteriores.map((c) => `${c.cliente} (${c.numero} · ${ROTULO_STATUS_CONTRATO[c.status] ?? c.status}${c.motivoEncerramento ? ` por ${c.motivoEncerramento.toLowerCase()}` : ''}${c.recuperado ? ' · recuperado' : ''})`).join('; ')}
+              </div>
+            )}
+          </div>
+        )}
+      </Bloco>
+
+      {/* Conferência do carro real (doc 02 §31.4 passo 4): passo curto — o analista
+          vê o veículo acima e a parcela nova contra a aprovada; confirma ou devolve. */}
+      {d.conferenciaVeiculo && d.conferenciaVeiculo.pendente && (
+        <Bloco titulo="🔎 Conferir o veículo atribuído" tag={<span className="rounded-full px-[8px] py-[2px] text-[11px] font-bold" style={{ background: 'var(--warn-bg)', color: 'var(--warn-fg)' }}>aguardando sua confirmação</span>}>
+          <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-4">
+            <Metrica label="Parcela aprovada" valor={moeda(d.conferenciaVeiculo.parcelaAprovada)} detalhe="pela referência FIPE" />
+            <Metrica label="Parcela com o carro real" valor={moeda(d.conferenciaVeiculo.ajuste?.valorParcela ?? null)} detalhe={d.conferenciaVeiculo.ajuste?.numeroParcelas ? `${d.conferenciaVeiculo.ajuste.numeroParcelas} parcelas` : undefined} destaque={(d.conferenciaVeiculo.ajuste?.valorParcela ?? 0) > d.conferenciaVeiculo.parcelaAprovada} />
+            <Metrica label="Valor do carro real" valor={moeda(d.conferenciaVeiculo.ajuste?.valorAvista ?? null)} detalhe={d.conferenciaVeiculo.ajuste?.valorFipeReferencia ? `referência era ${moeda(d.conferenciaVeiculo.ajuste.valorFipeReferencia)}` : undefined} />
+            <Metrica label="Atribuído em" valor={dataBR(d.conferenciaVeiculo.atribuidoEm)} detalhe={d.conferenciaVeiculo.ajuste?.camada1Renovada ? `Camada 1 refeita: ${d.conferenciaVeiculo.ajuste.camada1Renovada}` : undefined} />
+          </div>
+          {d.conferenciaVeiculo.ajuste?.foraParametro && (
+            <div className="text-[12px]" style={{ color: 'var(--warn-fg)' }}>Com o carro real a condição fica fora do parâmetro: {d.conferenciaVeiculo.ajuste.foraParametroMotivo} — confirmar exigirá a aprovação de alçada antes do contrato.</div>
+          )}
+          <div className="flex flex-wrap gap-[8px]">
+            <Botao variante="primaria" tamanho="sm" disabled={ocupado} onClick={() => void acaoProposta(() => originacaoService.conferirVeiculo(d.conferenciaVeiculo!.propostaId, { confirmar: true }), 'Veículo confirmado — a proposta segue para o contrato.')}>Confirmar veículo</Botao>
+            <Botao variante="secundaria" tamanho="sm" disabled={ocupado} onClick={() => { const obs = window.prompt('Motivo da devolução (opcional):') ?? undefined; void acaoProposta(() => originacaoService.conferirVeiculo(d.conferenciaVeiculo!.propostaId, { confirmar: false, observacao: obs || undefined }), 'Veículo devolvido ao estoque; a proposta voltou à fila.'); }}>Devolver ao estoque</Botao>
+          </div>
+        </Bloco>
+      )}
 
       {/* Resumo do assistente (IA — 14/09): relatório cadastral automático a
           partir das consultas + documentos. APOIO ao analista — a decisão e o

@@ -16,6 +16,7 @@ import { PropostaService } from './proposta.service';
 import { FormalizacaoService } from './formalizacao.service';
 import { AtivacaoProcessor } from './ativacao.processor';
 import { AssinaturaModule } from '../assinatura/assinatura.module';
+import { FipeModule } from '../fipe/fipe.module';
 import { PropostaStatusModule } from './proposta-status.module';
 
 // Bloco 7 — Originação nativa em tela (funil que antecede e gera o ContratoCredito).
@@ -31,6 +32,7 @@ import { PropostaStatusModule } from './proposta-status.module';
     BureauModule,
     NotificacaoModule,
     AssinaturaModule,
+    FipeModule,
     PropostaStatusModule,
     BullModule.registerQueue({ name: QUEUE_NAMES.ATIVAR_CONTRATO }),
   ],

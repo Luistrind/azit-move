@@ -1243,3 +1243,37 @@ Valores em centavos. 400 `validacao` para datas fora de `YYYY-MM-DD`/`YYYY-MM` o
 `GET /api/v1/contas/carteira/resumo` (doc 02 §27.8) →
 `{ "contas": 62, "contasEmAtraso": 29, "contasBloqueadas": 2, "contratosAtivos": 66, "valorSobGestaoPresente": 0, "valorSobGestaoNominal": 0, "valorEmAtraso": 0 }`
 — valor sob gestão a valor presente = soma de `QuitacaoService.simular(contrato).valorQuitacao` dos contratos ATIVO.
+
+## 6-E. Lista de espera e veículo de referência — doc 02 §31 (03/11/2026)
+
+**FIPE em tela** (só leitura, fonte oficial; valor nunca digitado):
+- `GET /fipe/marcas` → `[{ codigo, nome }]`
+- `GET /fipe/modelos?marca=` → `[{ codigo, nome }]`
+- `GET /fipe/anos?marca=&modelo=` → `[{ codigo: "2020-1", nome: "2020 Gasolina" }]`
+- `GET /fipe/valor?marca=&modelo=&ano=` → `{ valor (centavos), codigoFipe, marca, modelo, anoModelo, combustivel, referencia }`
+
+**Simulação por referência**: `POST /simulacoes` aceita `referencia: { codigoMarca, codigoModelo, ano }`
+no lugar de `ativoId`/`valorAvista`; o detalhe devolve `referencia` (`VeiculoReferencia` com `rotulo`).
+`POST /propostas` converte simulação com referência (proposta nasce com `referenciaId` e `ativoId` nulo).
+Detalhe da proposta: `ativo` pode ser nulo; `referencia`, `veiculo` (rótulo único), `veiculoAtribuidoEm`,
+`veiculoConferidoEm`.
+
+**Lista de espera**:
+- `GET /propostas/lista-espera` → aprovadas por referência sem contrato, mais antiga primeiro:
+  `{ id, titular, referencia, ativo, valorEntrada, valorParcela, numeroParcelas, frequencia, foraParametro,
+  analiseId, aprovadaEm, validaAte (+60 dias), diasRestantes, situacao: na_fila | em_conferencia | pronta |
+  expirada, ajuste }`.
+- `POST /propostas/:id/atribuir-veiculo { ativoId }` (ADMIN/OPERADOR): reserva o ativo (`RESERVADO`),
+  recalcula a condição com o carro real e guarda em `conferenciaVeiculo` (não sobrescreve a proposta);
+  aprovação vencida refaz a Camada 1; avisa a área Análise. 422: `ativo_indisponivel`, `ativo_sem_valor`,
+  `ja_atribuido`, `camada1_reprovada`.
+- `POST /propostas/:id/conferir-veiculo { confirmar, observacao? }`: `true` aplica o ajuste (parcela,
+  adicional de proteção, nº de parcelas, fora de parâmetro) e carimba `veiculoConferidoEm`; `false` solta o
+  ativo e devolve a proposta à fila.
+- `POST /propostas/:id/formalizar` passa a exigir ativo e, se por referência, conferência (`sem_veiculo`,
+  `veiculo_nao_conferido`).
+
+**Ativos**: status `reservado` nos filtros/atualização; `AtivoApi.reserva = { propostaId, titularNome, em } | null`.
+
+**Dossiê da análise** (`GET /analises/:id`): `veiculo` (tipo `ativo` com km/origem/contratos anteriores/
+FIPE × venda, ou `referencia`) e `conferenciaVeiculo` (parcela aprovada × ajuste, pendente ou não).

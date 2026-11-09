@@ -30,6 +30,7 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
   // Auditoria 15/09 (Bloco D): 5 telas ficavam com topbar genérico "Azit Move".
   '/simulacoes': { title: 'Simulações', subtitle: 'Atendimentos simulados e retomada' },
   '/propostas': { title: 'Propostas', subtitle: 'Funil comercial — da proposta à formalização' },
+  '/lista-espera': { title: 'Lista de espera', subtitle: 'Aprovados por modelo de referência, aguardando veículo no estoque' },
   '/titulares': { title: 'Titulares', subtitle: 'Cadastro único de clientes' },
   '/ativos': { title: 'Frota e estoque', subtitle: 'Veículos, cliente e observações da operação' },
   '/frota/ocorrencias': { title: 'Multas e pendências', subtitle: 'Ocorrências da placa e repasse ao cliente' },

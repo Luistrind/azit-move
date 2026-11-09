@@ -148,6 +148,11 @@ export const aprovacaoService = {
     const { data } = await api.post(`/api/v1/aprovacoes/${id}/decidir`, { decisao, parecer });
     return data;
   },
+  // Ferramenta de teste (só homolog/dev): aprova em nome de outro usuário com alçada.
+  async aprovarComoTeste(id: string, parecer?: string): Promise<{ status: string; efetivada: boolean; mensagem?: string; aprovadoPor: string[] }> {
+    const { data } = await api.post(`/api/v1/aprovacoes/${id}/dev/aprovar-como-teste`, { parecer });
+    return data;
+  },
   async pedirComplemento(id: string, pergunta: string): Promise<{ id: string }> {
     const { data } = await api.post(`/api/v1/aprovacoes/${id}/complemento`, { pergunta });
     return data;

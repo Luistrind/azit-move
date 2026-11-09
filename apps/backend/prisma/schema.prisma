@@ -41,6 +41,7 @@ enum TipoAtivo {
 
 enum StatusAtivo {
   DISPONIVEL
+  RESERVADO // preso a uma proposta aprovada da lista de espera (doc 02 §31.4)
   EM_CONTRATO
   TRANSFERIDO // reserva de domínio transferida ao cliente (Gatilho 9; Vocabulário 07/09 — era QUITADO)
   RECUPERADO
@@ -452,6 +453,7 @@ model Simulacao {
   leadId            String?
   titularId         String?
   ativoId           String? // opcional: simulação por valor manual
+  referenciaId      String? // veículo de REFERÊNCIA (FIPE) sem ativo no estoque (doc 02 §31.1)
   valorAvista       Decimal?        @db.Decimal(12, 2) // base comercial (VA)
   valorAvistaManual Boolean         @default(false) // origem: manual × cadastro do ativo
   valorEntrada      Decimal         @db.Decimal(12, 2)
@@ -466,6 +468,7 @@ model Simulacao {
   lead            Lead?                      @relation(fields: [leadId], references: [id])
   titular         Titular?                   @relation(fields: [titularId], references: [id])
   ativo           Ativo?                     @relation(fields: [ativoId], references: [id])
+  referencia      VeiculoReferencia?         @relation(fields: [referenciaId], references: [id])
   parametroVersao VersaoParametrosSimulacao? @relation(fields: [parametroVersaoId], references: [id])
   ofertas         Oferta[]
   proposta        Proposta?
@@ -616,7 +619,15 @@ model Proposta {
   id               String             @id @default(cuid())
   simulacaoId      String?            @unique
   titularId        String
-  ativoId          String
+  // Doc 02 §31 (03/11): a proposta tem um ativo do estoque OU um veículo de
+  // referência (FIPE) — nunca os dois até a atribuição. Aprovada sem ativo =
+  // lista de espera.
+  ativoId          String?
+  referenciaId     String?
+  veiculoAtribuidoEm   DateTime? // operador vinculou um ativo real à proposta da fila
+  veiculoConferidoEm   DateTime? // analista confirmou o carro real (§31.4 passo 4)
+  veiculoConferidoPorId String?
+  conferenciaVeiculo   Json? // proposta de ajuste (parcela nova etc.) — não sobrescreve até confirmar
   modalidade       ModalidadeContrato @default(COMPRA_PARCELADA)
   valorEntrada     Decimal            @db.Decimal(12, 2)
   prazoSemanas     Int
@@ -637,7 +648,9 @@ model Proposta {
 
   simulacao      Simulacao?          @relation(fields: [simulacaoId], references: [id])
   titular        Titular             @relation(fields: [titularId], references: [id])
-  ativo          Ativo               @relation(fields: [ativoId], references: [id])
+  ativo          Ativo?              @relation(fields: [ativoId], references: [id])
+  referencia     VeiculoReferencia?  @relation(fields: [referenciaId], references: [id])
+  ativosReservados Ativo[]           @relation("ReservaAtivo")
   vinculos       VinculoPapel[]
   documentos     DocumentoProposta[]
   parecer        Parecer?
@@ -709,6 +722,29 @@ model Parecer {
 // Modelos — camada do ativo e capital
 // ============================================================
 
+// Veículo de REFERÊNCIA (doc 02 §31.1, decisão Luís 03/11): descrição com preço
+// FIPE congelado no dia, para aprovar a pessoa ANTES de ter o carro no estoque.
+// Não é ativo: sem placa, sem status, fora da frota. Nasce na simulação, é
+// copiada para a proposta e fica no histórico depois que o carro real entra.
+model VeiculoReferencia {
+  id             String   @id @default(cuid())
+  marca          String
+  modelo         String // modelo FIPE completo (ex.: "HB20 Comfort 1.0 Flex 12V Mec.")
+  anoModelo      Int
+  combustivel    String?
+  fipeCodigo     String?
+  valorFipe      Decimal  @db.Decimal(12, 2)
+  fipeReferencia String // "outubro de 2026"
+  consultadoEm   DateTime @default(now())
+
+  simulacoes Simulacao[]
+  propostas  Proposta[]
+
+  createdAt DateTime @default(now())
+
+  @@map("veiculos_referencia")
+}
+
 model Ativo {
   id                   String           @id @default(cuid())
   tipo                 TipoAtivo        @default(VEICULO)
@@ -734,6 +770,10 @@ model Ativo {
   pacoteOfertaId       String? // vínculo opcional a pacote/oferta genérica (legado PopHub)
   ofertaFixaId         String? // oferta fixa desenhada (Doc 2 §4-A.3) — seletor no cadastro
   status               StatusAtivo      @default(DISPONIVEL)
+  // Reserva (doc 02 §31.4): ativo preso a uma proposta aprovada da lista de
+  // espera até a conferência/formalização; cai sozinha ao cancelar/devolver.
+  reservadoPropostaId  String?
+  reservadoEm          DateTime?
   // Controle de frota (doc 02 sec.25.1, decisão Luís 20/09): o status já muda
   // SOZINHO com o contrato; o que a operação anota à mão é uma observação
   // livre (usada sobretudo nos veículos disponíveis — ex.: "na oficina").
@@ -747,6 +787,7 @@ model Ativo {
   origemCapital    OrigemCapital?
   estruturaJuridica EstruturaJuridica?   @relation(fields: [estruturaJuridicaId], references: [id])
   ofertaFixa       OfertaFixa?           @relation(fields: [ofertaFixaId], references: [id])
+  reservadoProposta Proposta?            @relation("ReservaAtivo", fields: [reservadoPropostaId], references: [id])
   lancamentosCusto LancamentoCustoAtivo[]
   documentos       AtivoDocumento[]
   ocorrencias        OcorrenciaVeiculo[] // multas, IPVA, licenciamento (doc 02 sec.25.2)

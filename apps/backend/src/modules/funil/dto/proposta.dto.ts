@@ -28,6 +28,15 @@ export const criarPropostaSchema = z.object({
 });
 export type CriarPropostaDto = z.infer<typeof criarPropostaSchema>;
 
+// Lista de espera (doc 02 §31.4): atribuir um ativo do estoque e conferir o carro real.
+export const atribuirVeiculoSchema = z.object({ ativoId: z.string().min(1) });
+export type AtribuirVeiculoDto = z.infer<typeof atribuirVeiculoSchema>;
+export const conferirVeiculoSchema = z.object({
+  confirmar: z.boolean(),
+  observacao: z.string().trim().max(500).optional(),
+});
+export type ConferirVeiculoDto = z.infer<typeof conferirVeiculoSchema>;
+
 // 7.5 — transição de status no Kanban (movimentos livres válidos).
 export const patchStatusPropostaSchema = z.object({
   status: z.enum(['pendente', 'em_analise', 'em_formalizacao', 'cancelada']),

@@ -6,8 +6,10 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { rotuloAtivo, inicioHojeBrasilUTC } from '@azit/utils';
+import { Prisma, RoleUsuario } from '@prisma/client';
+import { randomUUID } from 'crypto';
+import * as bcrypt from 'bcryptjs';
+import { rotuloAtivo, rotuloVeiculoProposta, inicioHojeBrasilUTC } from '@azit/utils';
 import { VezAprovacao } from '@azit/types';
 import { PrismaService } from '../../database/prisma.service';
 import { AlcadaService } from '../alcada/alcada.service';
@@ -250,6 +252,80 @@ export class AprovacaoService {
     });
     this.logger.log(`Aprovação ${aprovacaoId} (${aprovacao.tipoOperacao}) APROVADA e efetivada`);
     return { status: 'aprovada', efetivada: true, mensagem };
+  }
+
+  // FERRAMENTA DE TESTE (homolog, 08/11/2026 — Luís: "não quero logar em vários
+  // usuários para aprovar a proposta"). Registra a(s) aprovação(ões) que faltam
+  // em nome de OUTROS usuários com alçada, passando pela mesma `decidir` — a
+  // segregação continua valendo (nunca o solicitante, nunca quem já decidiu) e
+  // a trilha mostra quem "aprovou". Só existe fora da produção (DevOnlyGuard).
+  async aprovarComoTeste(aprovacaoId: string, parecer?: string) {
+    const aprovacao = await this.prisma.db.aprovacao.findFirst({
+      where: { id: aprovacaoId },
+      include: { decisoes: true },
+    });
+    if (!aprovacao) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Solicitação não encontrada' });
+    if (aprovacao.status !== 'PENDENTE') {
+      throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: 'Solicitação já foi decidida' });
+    }
+    const excluidos = new Set([aprovacao.solicitanteId, ...aprovacao.decisoes.map((d) => d.usuarioId)]);
+    const candidatos = await this.prisma.db.usuario.findMany({
+      where: { deletedAt: null, ativo: true, id: { notIn: [...excluidos] }, roles: { some: { role: { in: ['ADMIN', 'DIRETOR', 'APROVADOR'] } } } },
+      include: { roles: true },
+      orderBy: { nome: 'asc' },
+    });
+    // Administrador primeiro (alçada ilimitada), depois diretor, depois aprovador.
+    const peso = (u: { roles: { role: string }[] }) =>
+      u.roles.some((r) => r.role === 'ADMIN') ? 0 : u.roles.some((r) => r.role === 'DIRETOR') ? 1 : 2;
+    candidatos.sort((a, b) => peso(a) - peso(b));
+    const texto = parecer?.trim() || 'Aprovação registrada pela ferramenta de teste do homolog';
+    const aprovaram: string[] = [];
+    type ResultadoDecisao = Awaited<ReturnType<AprovacaoService['decidir']>>;
+    const estado: { ultimo: ResultadoDecisao | null } = { ultimo: null };
+    const tentar = async (u: { id: string; nome: string }) => {
+      try {
+        estado.ultimo = await this.decidir(aprovacaoId, u.id, 'aprovar', texto);
+        aprovaram.push(u.nome);
+        return true;
+      } catch (e) {
+        if (e instanceof ForbiddenException) return false; // sem alçada para o valor: tenta o próximo
+        throw e;
+      }
+    };
+    const pendente = () => !estado.ultimo || estado.ultimo.status === 'pendente';
+    for (const u of candidatos) {
+      await tentar(u);
+      if (!pendente()) break;
+    }
+    // Ninguém (ou ninguém suficiente) com alçada: cria aprovadores de teste até
+    // completar — no máximo 3. Com TODOS os papéis (a alçada é por papel × tipo
+    // de operação: assim cobre qualquer célula da matriz) e sem senha utilizável.
+    // Se a matriz não tem NENHUMA alçada para este tipo, usuário novo não resolve.
+    if (pendente()) {
+      const celulas = await this.prisma.db.alcada.count({ where: { tipoOperacao: aprovacao.tipoOperacao, ativo: true } });
+      if (celulas === 0) {
+        throw new UnprocessableEntityException({
+          erro: 'sem_alcada_configurada',
+          mensagem: `Nenhum papel tem alçada configurada para "${aprovacao.tipoOperacao}" — configure a matriz de alçadas antes`,
+        });
+      }
+    }
+    for (let n = 1; pendente() && n <= 3; n++) {
+      const criado = await this.prisma.db.usuario.create({
+        data: {
+          nome: `Aprovador de teste ${n} (homolog)`,
+          email: `aprovador.teste.${Date.now()}.${n}@homolog.azitmove.com.br`,
+          senhaHash: await bcrypt.hash(randomUUID(), 10),
+          roles: { create: ['ADMIN', 'DIRETOR', 'APROVADOR', 'FINANCEIRO', 'OPERADOR'].map((role) => ({ role: role as RoleUsuario })) },
+        },
+      });
+      await tentar(criado);
+    }
+    if (!estado.ultimo) {
+      throw new UnprocessableEntityException({ erro: 'sem_aprovador', mensagem: 'Nenhum outro usuário com alçada para este valor' });
+    }
+    this.logger.warn(`[teste] Aprovação ${aprovacaoId} decidida pela ferramenta de teste em nome de: ${aprovaram.join(', ')}`);
+    return { ...estado.ultimo, aprovadoPor: aprovaram };
   }
 
   // Cancela solicitações pendentes de uma referência (ex: operação retirada pelo solicitante).
@@ -570,6 +646,7 @@ export class AprovacaoService {
             valorParcela: true,
             frequencia: true,
             ativo: { select: { descricao: true, placa: true, quilometragemEntrada: true, anoFabricacao: true, anoModelo: true, _count: { select: { contratosCredito: true } } } },
+            referencia: { select: { marca: true, modelo: true, anoModelo: true } },
           },
         },
         participantes: {
@@ -583,7 +660,7 @@ export class AprovacaoService {
       mapa.set(a.id, {
         analiseId: a.id,
         propostaId: a.propostaId,
-        ativo: rotuloAtivo(a.proposta.ativo),
+        ativo: rotuloVeiculoProposta(a.proposta),
         valorParcela: this.cent(a.proposta.valorParcela),
         frequencia: a.proposta.frequencia ? a.proposta.frequencia.toLowerCase() : null,
         rendaDeclarada: p?.rendaDeclarada ? this.cent(p.rendaDeclarada) : null,
