@@ -854,11 +854,15 @@ só em Encerrado por quitação).
 - O Asaas calcula e aplica automaticamente no momento do pagamento
 - O sistema recalcula internamente para conciliação e breakdown
 
+> **Evolução §32 (2026-11-10):** para faturas emitidas no modelo Fatura Azit, quem calcula e aplica o encargo é a **Azit** (base = saldo nominal remanescente, multa única); o gateway só cobra o valor enviado. Faturas antigas seguem como acima até liquidar (`modeloEncargo`).
+
 ### 7.3 Ordem de Imputação do Pagamento
 Quando o valor pago é insuficiente para cobrir todos os itens, a aplicação segue:
 1. **Encargo** — multa e juros de atraso
 2. **Serviço** — itens recorrentes (proteção, rastreador, taxa)
 3. **Principal** — amortização do parcelamento do veículo
+
+> **Evolução §32.5 (2026-11-10):** a ordem acima passa a ser **parâmetro** (cascata FAT003: encargos → proteção → acessórios → principal, com rateio proporcional dentro do nível) e cada pagamento registra o que quitou (`PagamentoFatura`/`AlocacaoPagamento`).
 
 **Base do "pagamento insuficiente" (correção 02/10).** O devido da fatura é a soma do valor nominal das parcelas mais os itens cobrados **além** da parcela (intermediária da entrada, serviço recorrente sem parcela). A proteção veicular que aparece como linha própria na fatura **já está dentro do valor nominal da parcela** — a linha é só a composição exibida ao cliente — e por isso nunca é somada de novo. Somá-la duas vezes fazia o pagamento exato parecer parcial e a fatura não baixava (caso real: fatura de R$ 1.096,64 paga integralmente no Asaas e mantida em aberto no sistema).
 
@@ -2780,6 +2784,8 @@ mesmo ato em que a cobrança é criada (`AsaasService.criarCobranca`, ponto úni
 pela leitura da cobrança quando estiver vazio (faturas emitidas antes desta decisão e cobranças
 migradas do legado, §26). O link nunca é montado à mão pelo sistema.
 
+> **Evolução §32.7 (2026-11-10):** com a Fatura Azit, o link das mensagens passa a ser a **página pública da fatura** (`fatura.azitmove.com.br/<token>`), não mais o `invoiceUrl` do Asaas; e-mail entra como canal dos mesmos momentos. O `asaasInvoiceUrl` fica só para faturas antigas.
+
 ### 28.3 Canal, consentimento e ambientes
 
 - Mesmo cliente da Meta, mesma trava de números autorizados fora de produção e mesma chave geral
@@ -3029,3 +3035,183 @@ análise iguais; (4) bloco Veículo no dossiê (toda proposta); (5) tela Lista d
 veículo + conferência do analista + notificação; (6) ativos reservados fora da simulação; guarda
 na formalização. Marco de validação: lead sem carro aprovado, carro cadastrado, atribuído,
 conferido e contrato gerado — ponta a ponta em homolog.
+
+---
+
+## 32. Fatura Azit — página pública da fatura, encargo pela Azit e pagamento parcial (decisão Luís, 2026-11-09/10)
+
+Fonte: documento interno **"Módulo de Faturamento e Cobrança — Azit Hub V1.0"** (código FAT,
+02/11/2026) + decisões do Luís em 09–10/11 sobre o protótipo (artefato *Fatura Azit*, cinco
+cenários). Onde o FAT e este doc divergem, vale o que está aqui; o FAT fica como referência de
+origem.
+
+### 32.1 O que muda e o que não muda
+
+| Tema | FAT v1.0 pedia | Decisão (Luís) |
+|---|---|---|
+| Página da fatura | Página web pública "Fatura Azit" com itens, PIX/QR, PDF, status ao vivo | **Sim.** Substitui a página do Asaas (`invoiceUrl`) em tudo que vai ao cliente |
+| Régua | D-5/D-1 preventivos; D+1/3/5/10/15 | **Não.** Fica a nossa: lembretes §28 (D-2, D0) e POP §23 a partir do D+1; bloqueio pela Regra 6 |
+| Papel do Asaas | Passivo: gera PIX e devolve webhook | **Sim.** O Azit calcula encargo e saldo; o Asaas só emite a cobrança do valor que o Azit manda. Troca de plataforma será estudada — o gateway fica atrás de uma interface, nada da regra conhece o Asaas |
+| Pagamento parcial | Cliente digita valor livre, mínimo R$ 200 e/ou 35% | **Parcial com mínimo de 50% do saldo** (parâmetro). Valor livre, não |
+| Cascata de baixa | Lista ordenada parametrizável + rateio proporcional no nível | **Sim** (substitui a ordem fixa do §7.3) |
+| Crédito do cliente (pagamento a maior) | Carteira de crédito abatida na próxima fatura | **Depois.** Fora desta entrega; a sobra é só exibida |
+| E-mail | Canal da régua junto com WhatsApp | **Sim**, entra como canal |
+| Itens "Principal, Comissão, Proteção, Acordos" | — | "Comissão" era exemplo do FAT. Os itens são os da fatura real (§32.3) |
+
+O que **não** muda: Regra 1 (Asaas executa, Azit controla — agora com menos no Asaas), Regra 4
+(webhook assíncrono), Regra 7 (status e encargo calculados, não gravados), Regra 15 (fuso),
+Regra 16 (encargo e cascata numa função só, em `packages/utils`), §27.2 (só produto é linha).
+
+### 32.2 A página pública
+
+- Endereço `fatura.azitmove.com.br/<token>`. **Token da fatura**: longo, aleatório, gerado na
+  emissão (`Fatura.tokenPublico`), dá acesso só àquela fatura, sem login, e **não expira**: em
+  aberto mostra a cobrança; paga, vira comprovante. Não há "gerar novo link" na operação; só o
+  administrador regenera (vazamento), e o link antigo passa a responder "fatura indisponível".
+- **É a primeira página pública do sistema.** O SPA continua 100% autenticado (doc 04). A Fatura
+  Azit é um **app mínimo separado**, servido pelo mesmo backend por rotas públicas próprias:
+  `GET /publico/faturas/:token` (projeção só com o que a página mostra — primeiro nome do
+  titular, nº da fatura, conta, itens, recebidos, saldo, PIX) e
+  `POST /publico/faturas/:token/pagar-parcial`. Nenhuma rota do app autenticado é exposta e o
+  domínio público não compartilha sessão com o `app`. Limite de requisições por token e por IP.
+- **"Tempo real" significa:** a página é montada a cada abertura a partir do banco (nada é
+  arquivo gerado); encargo é calculado pelo dia de hoje no fuso do Brasil; pagamento entra pelo
+  webhook e aparece ao recarregar; com a página aberta, ela consulta o saldo a cada ~30 s e muda
+  sozinha para *Paga*.
+- **Blocos, nesta ordem** (protótipo aprovado 10/11): cabeçalho navy com marca, nº da fatura e
+  conta, saudação pelo primeiro nome, situação (Em aberto / Vence hoje / Vencida / Paga
+  parcialmente / Paga), valor grande (total, ou "saldo a pagar hoje" quando já houve parcial) e
+  vencimento; **Valores já recebidos** (só se houver — cada pagamento expande e mostra o que
+  aquele valor quitou); **Itens da fatura** (linhas do §32.3, encargos no fim, total de hoje);
+  **Pagar com PIX** (QR + copia-e-cola do saldo, botão Copiar); ações **Pagar outro valor** e
+  **Exportar PDF**; rodapé com contrato, WhatsApp da Azit e aviso de saldo ao vivo. Paga: caixa
+  verde de confirmação + comprovante em PDF.
+- Nomes que o cliente lê (vocabulário 24/10, sem "juros"/"taxa"): **"Multa por atraso"** e
+  **"Atualização por dias de atraso"**, com a frase de apoio "calculada só sobre o saldo que
+  falta pagar". Multa já quitada aparece como "R$ 0,00 (quitada)".
+
+### 32.3 Itens da fatura — de onde vêm as linhas
+
+A página **não monta produto**: ela renderiza os `ItemFatura` da fatura, classificados pela
+mesma função que a carteira usa (`chaveProdutoItemFatura`, §27.2, Regra 16). Em concreto:
+
+- `PRINCIPAL` da parcela do veículo → **Compra Parcelada — <modelo>**, "Parcela n de N";
+- `SERVICO` **Proteção veicular** → **linha própria**, como já é gravado desde 18/08 (a parcela
+  que embute proteção gera DOIS itens: PRINCIPAL = nominal − proteção, SERVICO = proteção). Na
+  página ela aparece separada, com seu valor, nunca "incluída" no texto da parcela. Para o total
+  devido vale o §7.3: a soma dos itens é o nominal da parcela — a proteção não é somada de novo;
+- `PRINCIPAL` de contrato de reembolso → **Reembolso Parcelado — <objeto>**;
+- cota de item de origem ACORDO → **Acordo de pagamento**, "Parcela n de N";
+- `INTERMEDIARIA` → parte da Compra Parcelada, linha "Entrada — parcela intermediária";
+- outros `SERVICO` do Catálogo (Taxa de boleto e PIX, Clube) → linha própria pelo nome;
+- **encargo** não é item gravado: é linha calculada na hora (§32.4).
+
+Fatura de contrato migrado do legado (§26) segue a mesma regra sobre os itens que tem.
+
+### 32.4 Encargo calculado pela Azit (evolução do §7.2)
+
+- Fórmula continua a do §7.2 (`calcularEncargoAtraso`, uma só, em `packages/utils`), com os
+  percentuais vindos do contrato como hoje. O que muda é **quem aplica**: a Azit calcula e **manda o
+  valor exato** para a cobrança; a cobrança no gateway nasce **sem** multa/juros nativos.
+- **Base = saldo nominal remanescente** da fatura (RFAT-04 do FAT): o que já foi amortizado em
+  parcial não gera encargo novo.
+- **Multa única** (RFAT-05): 2% sobre o saldo nominal no primeiro cálculo em atraso; quitada num
+  parcial, não volta. A atualização diária continua sobre o que resta.
+- Quando o dia vira (ou um parcial muda o saldo), o valor da cobrança no gateway é **atualizado
+  para o total de hoje** — pelo mesmo job diário do §28 e no ato do parcial. O que o cliente vê na
+  página e o que o PIX cobra são sempre o mesmo número.
+- Conciliação: a "Opção 2" atual (excedente pago = encargo do Asaas) **deixa de valer** para
+  faturas emitidas neste modelo; o encargo passa a ser alocado pela cascata (§32.5) e fica
+  registrado por pagamento. Faturas antigas (cobrança com encargo nativo) continuam no modelo
+  antigo até liquidar — a fatura carrega qual modelo usa (`modeloEncargo`).
+
+### 32.5 Cascata de baixa parametrizável e rateio (substitui a ordem fixa do §7.3)
+
+- Parâmetro **FAT003**, lista ordenada editável em Configurações › Faturamento, padrão:
+  **1º Encargos** (multa, atualização) → **2º Proteção veicular** → **3º Acessórios** (cotas de
+  acordo, Reembolso Parcelado, outros serviços) → **4º Principal** (parcela do veículo,
+  intermediária). Sem `if` de ordem no código: o motor percorre a lista.
+- **Rateio proporcional no nível** (RFAT-03): se o dinheiro acaba no meio de um nível, cada item
+  daquele nível recebe na proporção do seu saldo. Último item do nível absorve o centavo.
+- Cada pagamento gera `PagamentoFatura` (valor, data, origem: gateway/conferência) e suas
+  `AlocacaoPagamento` (item ou encargo, valor, nível) — é isso que a página mostra em "o que este
+  valor quitou" e que a ficha do titular mostra ao operador. Parcela coberta por inteiro é baixada
+  como hoje; coberta em parte fica em aberto com o alocado registrado.
+- Pagamento acima do saldo: a sobra fica **registrada** no `PagamentoFatura` (`valorExcedente`) e
+  aparece na página como informação. Virar crédito é fase posterior; nada é criado agora.
+
+### 32.6 Pagamento parcial com mínimo
+
+- Botão **"Pagar outro valor"** só em fatura em aberto. Mínimo = **50% do saldo a pagar hoje**
+  (parâmetro **FAT004**, percentual; piso em reais **pendente**, ver 32.10). Acima do saldo não
+  aceita ("para pagar tudo use o total"). Atalhos 50% / 75% / total.
+- Confirmado, o Azit **atualiza o valor da cobrança no gateway** para o valor escolhido e
+  redesenha o QR. Recebido o webhook, aplica a cascata; a cobrança volta a ser atualizada para o
+  **saldo remanescente** (mesmo link, mesma cobrança) para o cliente pagar o resto.
+- Quantidade de parciais por fatura: **livre até quitar** como padrão provisório (Regra 12);
+  pendência 32.10 para teto.
+- Situação da fatura com parcial: continua pelo cálculo de runtime (Regra 7) — `vencida` ou
+  `em aberto` conforme a data, com `valorPago` parcial; a página rotula "Paga parcialmente".
+
+### 32.7 Como a fatura chega ao cliente — e como o operador manda
+
+- **Automático:** o link da Fatura Azit entra no lugar do `invoiceUrl` no §28 (D-2 e D0) e na
+  1ª notificação da POP (§23). **E-mail** passa a ser canal dos mesmos momentos, com o mesmo texto
+  e o mesmo link, quando o titular tem e-mail; o "sem dobro" do §28 vale para os dois canais.
+- **Manual, pelo operador** (pedido Luís 10/11): o link é atributo da fatura, logo aparece onde a
+  fatura aparece:
+  - **Ficha do titular › fatura** (lugar principal): **Copiar link** e **Enviar pelo WhatsApp** —
+    abre `wa.me/<telefone do titular>` com a mensagem pronta (nome, valor, vencimento, link); sai
+    do aparelho do operador e **não depende da Meta**. Fica registrado na fatura "link enviado por
+    <usuário> em <data>" (`EnvioLinkFatura`, sem prova de entrega). Na lista de faturas da ficha,
+    "Copiar link" como ação de linha.
+  - **Caso de cobrança (POP)**, no dossiê, para a fatura em atraso — mesmas duas ações.
+  - **Carteira**: não repete a ação; leva à ficha.
+  - Com o lembrete automático ligado para o titular, a tela avisa "lembrete automático sai no
+    D-2/D0" antes do envio manual.
+
+### 32.8 Parâmetros (Configurações › Faturamento)
+
+| Código | Parâmetro | Padrão provisório |
+|---|---|---|
+| FAT001 | Multa por atraso | 2% (vem do contrato; parâmetro é o padrão de novos contratos) |
+| FAT002 | Atualização por dia de atraso | 1% a.m. pro-rata (idem) |
+| FAT003 | Cascata de baixa | Encargos → Proteção → Acessórios → Principal |
+| FAT004 | Mínimo do pagamento parcial | 50% do saldo de hoje |
+| FAT007 | Pagamento a maior | Só registrar (crédito desligado) |
+
+FAT005/FAT006 (régua do FAT) **não existem**: a régua é a do §28/§23.
+
+### 32.9 Modelo de dados (resumo)
+
+`Fatura.tokenPublico` (único), `Fatura.modeloEncargo` (ASAAS_NATIVO | AZIT), `PagamentoFatura`
+(faturaId, valor, data, origem, gatewayPaymentId, valorExcedente), `AlocacaoPagamento`
+(pagamentoId, itemFaturaId | encargo, tipoEncargo, valor, nivel), `EnvioLinkFatura` (faturaId,
+usuarioId, canal, data), `ParametroFaturamento` (versões, com cascata em JSON ordenado). O
+`asaasInvoiceUrl` do §28.2 **não é mais necessário** no fluxo novo (fica para faturas antigas).
+
+### 32.10 Pendências (decisão do Luís antes da fase correspondente)
+
+1. Piso em reais para o parcial (além dos 50%)? — F3.
+2. Teto de parciais por fatura? — F3.
+3. Texto das mensagens (WhatsApp manual, e-mail, lembretes com o link novo) — jurídico/V4.
+4. Crédito do cliente: estrutura contábil — fase posterior (FAT pendência 1).
+5. Como a proteção reage a parcial que não a cobre (cenário C do FAT: "pode ser suspensa") —
+   hoje a proteção é operada pela Azit; decidir se parcial sem cobrir a proteção gera aviso ou
+   nada. Até lá: só aviso na ficha.
+
+### 32.11 Ordem de construção e homologação
+
+- **F1 — Página + link:** token na fatura, app público, projeção da fatura (itens pelo §32.3),
+  PIX do saldo, PDF, situação ao vivo, Copiar link / Enviar pelo WhatsApp na ficha, link no §28 e
+  na 1ª da POP. Encargo ainda calculado como hoje para exibir. Marco: cliente abre, paga o total
+  pelo QR, página vira comprovante; operador manda o link pela ficha.
+- **F2 — Encargo pela Azit + cascata:** `modeloEncargo` AZIT para faturas novas, cobrança sem
+  encargo nativo, atualização diária do valor, `PagamentoFatura`/`AlocacaoPagamento`, cascata
+  parametrizável com rateio, "Valores já recebidos". Marco: cenários A, B, C e D do FAT reproduzidos
+  em homolog com valores conferidos à mão.
+- **F3 — Parcial com mínimo:** botão, validação, atualização da cobrança, saldo remanescente.
+  Marco: dois parciais e a quitação, com encargo só sobre o resto.
+- **F4 — E-mail** como canal da régua. **F5 — Crédito do cliente** (quando a pendência 4 fechar).
+
+Nada disso altera a régua, o bloqueio (Regra 6) ou a POP; só o **link** que vai nas mensagens.
