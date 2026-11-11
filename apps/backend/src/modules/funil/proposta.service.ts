@@ -435,6 +435,9 @@ export class PropostaService {
     await this.prisma.db.vinculoPapel.create({
       data: { propostaId, titularId, papel: dto.papel.toUpperCase() as PapelTitular },
     });
+    // Análise já aberta: o novo papel entra como participante e recebe suas
+    // consultas (10/11/2026) — antes ficava fora da análise.
+    await this.analise.sincronizarParticipantes(propostaId);
     return this.detalhe(propostaId);
   }
 

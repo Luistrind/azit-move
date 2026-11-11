@@ -19,9 +19,10 @@ export class ResumoAnaliseProcessor extends WorkerHost {
   ) {
     super();
   }
-  async process(job: Job<{ analiseId: string }>) {
+  async process(job: Job<{ analiseId: string; titularId?: string }>) {
     if (job.name === 'consultar') {
-      await this.analise.consultarBiroCamada2Todas(job.data.analiseId, {});
+      // Sem titularId: todos os participantes; com: só o que entrou depois (10/11).
+      await this.analise.consultarBiroCamada2Todas(job.data.analiseId, job.data.titularId ? { titularId: job.data.titularId } : {});
       this.logger.log(`consultas automáticas da análise ${job.data.analiseId} concluídas — resumo enfileirado`);
       return { resultado: 'consultas_concluidas' };
     }
