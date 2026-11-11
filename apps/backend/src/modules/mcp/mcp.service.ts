@@ -128,7 +128,7 @@ export class McpAzitService {
         });
         const indiceDocs = insumos.documentos.map(
           (d) =>
-            `• "${d.nome}" (${d.tipoDeclarado} · ${d.media}) — ${d.textoExtraido ? `texto de ${d.textoExtraido.length} chars` : 'sem texto'}${d.paginasImagem.length ? ` + ${d.paginasImagem.length} página(s) renderizada(s)` : ''} — use obter_documento("${d.nome}")`,
+            `• "${d.nome}" (${d.tipoDeclarado} · ${d.media}) — ${d.textoExtraido ? `texto de ${d.textoExtraido.length.toLocaleString('pt-BR')} chars${partesDe(d.textoExtraido) > 1 ? ` em ${partesDe(d.textoExtraido)} partes (parte=1…${partesDe(d.textoExtraido)})` : ''}` : 'sem texto'}${d.paginasImagem.length ? ` + ${d.paginasImagem.length} página(s) renderizada(s)` : ''} — use obter_documento("${d.nome}")`,
         );
         return {
           content: [
@@ -189,15 +189,17 @@ export class McpAzitService {
     registrar(
       'obter_documento',
       {
-        title: 'Obter o conteúdo de UM documento anexado',
+        title: 'Obter o conteúdo de UM documento anexado (em partes)',
         description:
-          'Retorna o conteúdo de um documento anexado da análise (um por chamada): texto extraído do PDF e/ou as páginas renderizadas como imagem (CNH-e, digitalizados). Use o nome exatamente como listado no índice do dossiê.',
+          'Retorna o conteúdo de um documento anexado da análise (um por chamada): texto INTEGRAL extraído do PDF e/ou as páginas renderizadas como imagem (CNH-e, digitalizados). Use o nome exatamente como listado no índice do dossiê. ' +
+          'Cada chamada devolve no máximo ~100 mil caracteres de texto: o cabeçalho diz "parte i de N" — se N > 1, chame de novo com parte=2, 3… até a última antes de concluir qualquer leitura (extratos longos têm os lançamentos espalhados por todas as partes). As imagens vêm só na parte 1.',
         inputSchema: {
           analiseId: z.string().min(1).describe('id da análise'),
           nome: z.string().min(1).describe('nome do arquivo, como no índice do dossiê'),
+          parte: z.number().int().min(1).optional().describe('qual parte do texto (1 = primeira; default 1)'),
         },
       },
-      async ({ analiseId, nome }: { analiseId: string; nome: string }) => {
+      async ({ analiseId, nome, parte }: { analiseId: string; nome: string; parte?: number }) => {
         const d = await this.assistente.lerDocumento(analiseId, nome);
         if (!d) return { content: [{ type: 'text', text: `Documento "${nome}" não encontrado na análise ${analiseId} — confira o nome exato no dossiê.` }], isError: true };
         const content: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[] = [];
@@ -205,11 +207,19 @@ export class McpAzitService {
           content.push({ type: 'image', data: d.base64, mimeType: d.media });
           content.push({ type: 'text', text: `(A imagem acima é o anexo "${d.nome}", tipo declarado: ${d.tipoDeclarado}.)` });
         } else {
+          const total = d.textoExtraido ? partesDe(d.textoExtraido) : 1;
+          const i = Math.min(Math.max(1, parte ?? 1), total);
           if (d.textoExtraido) {
-            content.push({ type: 'text', text: `===== ANEXO "${d.nome}" (PDF · ${d.tipoDeclarado}) — texto extraído =====\n${d.textoExtraido}\n===== fim =====` });
+            const trecho = d.textoExtraido.slice((i - 1) * TAMANHO_PARTE, i * TAMANHO_PARTE);
+            const cabecalho =
+              `===== ANEXO "${d.nome}" (PDF · ${d.tipoDeclarado}) — texto extraído · ${d.textoExtraido.length.toLocaleString('pt-BR')} chars · parte ${i} de ${total}` +
+              (total > 1 ? (i < total ? ` — continue com parte=${i + 1}` : ' — última parte') : '') +
+              ' =====';
+            content.push({ type: 'text', text: `${cabecalho}\n${trecho}\n===== fim da parte ${i} de ${total} =====` });
           }
-          for (const pagina of d.paginasImagem) content.push({ type: 'image', data: pagina, mimeType: 'image/png' });
-          if (d.paginasImagem.length > 0) {
+          // Imagens só na primeira parte (repetir em cada parte estouraria a resposta).
+          if (i === 1) for (const pagina of d.paginasImagem) content.push({ type: 'image', data: pagina, mimeType: 'image/png' });
+          if (i === 1 && d.paginasImagem.length > 0) {
             content.push({ type: 'text', text: `(${d.paginasImagem.length} página(s) renderizada(s) do anexo "${d.nome}"${d.textoExtraido ? ' — o texto extraído era curto; os dados podem estar na imagem' : ''}.)` });
           }
           if (!d.textoExtraido && d.paginasImagem.length === 0) {
@@ -271,6 +281,7 @@ export class McpAzitService {
 
 // ---------- payload bruto em partes ----------
 const TAMANHO_PARTE = 100_000;
+const partesDe = (texto: string) => Math.max(1, Math.ceil(texto.length / TAMANHO_PARTE));
 const TEXTO_MAX = 400;
 const LISTA_MAX = 5;
 // Listas que carregam o volume dos processos na BigData (andamentos, petições,
