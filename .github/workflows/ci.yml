@@ -56,3 +56,6 @@ jobs:
 
       - name: Tipos do frontend
         run: pnpm --filter frontend typecheck
+
+      - name: Tipos da Fatura Azit (página pública)
+        run: pnpm --filter fatura typecheck

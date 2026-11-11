@@ -61,7 +61,7 @@ etapa "1/5 Backup antes da publicação"
 bash deploy/backup.sh "$STACK" "pre-$TAG" || { erro "Backup falhou — publicação ABORTADA (nada mudou)."; exit 1; }
 
 etapa "2/5 Imagens da release $TAG"
-if docker image inspect "azit-backend:$TAG" >/dev/null 2>&1 && docker image inspect "azit-frontend:$TAG" >/dev/null 2>&1; then
+if docker image inspect "azit-backend:$TAG" >/dev/null 2>&1 && docker image inspect "azit-frontend:$TAG" >/dev/null 2>&1 && docker image inspect "azit-fatura:$TAG" >/dev/null 2>&1; then
   ok "Imagens de $TAG já existem (rollback/re-publicação) — build dispensado"
 else
   preparar_worktree "$WT" "$TAG"
@@ -71,10 +71,15 @@ else
     --build-arg VITE_API_URL=https://api.azitmove.com.br \
     --build-arg VITE_AMBIENTE=producao \
     -f "$WT/apps/frontend/Dockerfile" "$WT"
+  # Fatura Azit (doc 02 §32.2): página pública da fatura, imagem própria.
+  docker build -t "azit-fatura:$TAG" \
+    --build-arg VITE_API_URL=https://api.azitmove.com.br \
+    -f "$WT/apps/fatura/Dockerfile" "$WT"
 fi
 # :latest acompanha a release publicada (o up.sh/stack usa :latest).
 docker tag "azit-backend:$TAG" azit-backend:latest
 docker tag "azit-frontend:$TAG" azit-frontend:latest
+docker tag "azit-fatura:$TAG" azit-fatura:latest
 
 etapa "3/5 Atualizando os serviços"
 docker service update --force --quiet --image "azit-backend:$TAG" "${STACK}_backend" >/dev/null
@@ -86,10 +91,18 @@ migrar "$CID"
 
 docker service update --force --quiet --image "azit-frontend:$TAG" "${STACK}_frontend" >/dev/null
 ok "Frontend $TAG no ar"
+# Serviço novo entra pelo stack deploy (1ª vez) e depois pelo update, como os outros.
+if docker service inspect "${STACK}_fatura" >/dev/null 2>&1; then
+  docker service update --force --quiet --image "azit-fatura:$TAG" "${STACK}_fatura" >/dev/null
+else
+  docker stack deploy -c deploy/azit-stack.swarm.yml "$STACK" >/dev/null
+fi
+ok "Fatura Azit $TAG no ar"
 
 etapa "5/5 Saúde"
 checar_saude https://api.azitmove.com.br/api/v1/health
 checar_saude https://app.azitmove.com.br/
+checar_saude https://fatura.azitmove.com.br/ || aviso "fatura.azitmove.com.br ainda não responde — DNS/certificado (1ª subida)."
 
 mkdir -p "$BACKUP_ROOT"
 echo "$(date '+%Y-%m-%d %H:%M') $TAG $(git -C "$REPO_DIR" rev-parse --short "$TAG^{commit}")" >> "$REGISTRO"

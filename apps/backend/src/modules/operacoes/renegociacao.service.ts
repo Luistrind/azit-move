@@ -23,6 +23,7 @@ import { AsaasService } from '../asaas/asaas.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 import { parcelaParaApi } from '../contrato/contrato.mapper';
+import { novoTokenFatura } from '../cobranca/fatura-link';
 
 const reais = (c: number) => centavosParaReaisString(c);
 const cent = (d: Prisma.Decimal | null): number =>
@@ -891,6 +892,7 @@ export class RenegociacaoService implements OnModuleInit {
             data: {
               contaId: acordo.contaId,
               numero: seqFatura,
+              tokenPublico: novoTokenFatura(),
               periodoReferencia: dataVenc,
               dataFechamento: new Date(venc - 5 * DIA_MS),
               dataVencimento: dataVenc,

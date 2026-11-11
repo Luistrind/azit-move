@@ -3085,6 +3085,16 @@ Regra 16 (encargo e cascata numa função só, em `packages/utils`), §27.2 (só
   titular, nº da fatura, conta, itens, recebidos, saldo, PIX) e
   `POST /publico/faturas/:token/pagar-parcial`. Nenhuma rota do app autenticado é exposta e o
   domínio público não compartilha sessão com o `app`. Limite de requisições por token e por IP.
+- **Dados pessoais na página (decisão Luís 2026-11-11):** qualquer pessoa com o link abre a página, então
+  ela mostra só **primeiro nome**, **placa do veículo** e **CPF mascarado** (`***.456.789-**`). Nunca
+  endereço, telefone, e-mail ou CPF completo. A projeção pública exclui esses campos na origem.
+- **Fatura do modelo antigo (`modeloEncargo = ASAAS_NATIVO`) na F1 (decisão Luís 2026-11-11):** enquanto
+  o encargo é nativo do Asaas, o **total da página é o valor da cobrança no Asaas** (é o que o PIX
+  cobra); a conta nossa (§7.2) serve só para compor as linhas de encargo. A partir da F2, nas faturas
+  AZIT, inverte: o total é o nosso e o Asaas recebe o valor.
+- **Domínio (decisão Luís 2026-11-11):** `fatura.azitmove.com.br` em produção (DNS → EasyPanel, pelo
+  Luís). Em homolog, subdomínio provisório do mesmo padrão (`fatura-hml.azitmove.com.br`); em dev, porta
+  local do app. O endereço-base é parâmetro de ambiente do backend (`FATURA_PUBLICA_URL`), nunca montado à mão.
 - **"Tempo real" significa:** a página é montada a cada abertura a partir do banco (nada é
   arquivo gerado); encargo é calculado pelo dia de hoje no fuso do Brasil; pagamento entra pelo
   webhook e aparece ao recarregar; com a página aberta, ela consulta o saldo a cada ~30 s e muda
@@ -3217,6 +3227,17 @@ usuarioId, canal, data), `ParametroFaturamento` (versões, com cascata em JSON o
   PIX do saldo, PDF, situação ao vivo, Copiar link / Enviar pelo WhatsApp na ficha, link no §28 e
   na 1ª da POP. Encargo ainda calculado como hoje para exibir. Marco: cliente abre, paga o total
   pelo QR, página vira comprovante; operador manda o link pela ficha.
+  > **Construída em 2026-11-11 (branch `feat/fatura-azit`)**: `Fatura.tokenPublico` (64 hex,
+  > gerado por `novoTokenFatura` nos três pontos de emissão; migração preenche o histórico),
+  > `Fatura.modeloEncargo` (ASAAS_NATIVO por padrão), `EnvioLinkFatura`; rotas públicas
+  > `GET /publico/faturas/:token`, `/:token/situacao` (polling) e `/:token/pdf`, com limite por
+  > IP/token em memória; app `apps/fatura` (Vite + React, serviço `fatura` no Swarm, imagem
+  > `azit-fatura`); ações na ficha do titular (linha + modal) e no caso de cobrança da régua
+  > (`LinkFaturaAcoes`). O total da página no modelo ASAAS_NATIVO vem do payload PIX da
+  > cobrança (campo 54) quando o Asaas responde; senão, da conta nossa.
+  > **Pendente desta fase, por dependência:** o link no §28 (lembretes ainda não construídos) e
+  > na 1ª da POP (§23, branch `feat/notificacoes-cobranca`, não mergeada) entra quando essas
+  > peças chegarem à main — a mensagem-base está em `mensagemLinkFatura`.
 - **F2 — Encargo pela Azit + cascata:** `modeloEncargo` AZIT para faturas novas, cobrança sem
   encargo nativo, atualização diária do valor, `PagamentoFatura`/`AlocacaoPagamento`, cascata
   parametrizável com rateio, "Valores já recebidos". Marco: cenários A, B, C e D do FAT reproduzidos

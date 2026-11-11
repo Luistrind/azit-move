@@ -23,6 +23,7 @@ import {
   periodicidadeParaPrisma,
   chavePrisma,
 } from './contrato.mapper';
+import { novoTokenFatura } from '../cobranca/fatura-link';
 
 // Cliente de transação do Prisma ESTENDIDO (soft-delete) — tipo do `tx` no $transaction.
 type TxEstendido = Omit<
@@ -460,6 +461,7 @@ export class ContratoService {
           data: {
             contaId: p.contaId,
             numero: seqFatura,
+            tokenPublico: novoTokenFatura(),
             periodoReferencia: venc,
             dataFechamento: fechamento,
             dataVencimento: venc,

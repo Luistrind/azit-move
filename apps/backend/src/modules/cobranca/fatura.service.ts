@@ -3,7 +3,9 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { calcularEncargoAtraso, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, dataCalendarioUTC, diasAtrasoCalendario, DIA_MS, FUSO_NEGOCIO, inicioDiaUTC, somarDiasISO } from '@azit/utils';
+import { calcularEncargoAtraso, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, dataCalendarioUTC, diasAtrasoCalendario, DIA_MS, FUSO_NEGOCIO, inicioDiaUTC, somarDiasISO, situacaoFaturaRuntime } from '@azit/utils';
+import { ConfigService } from '@nestjs/config';
+import { mensagemLinkFatura, montarLinkFatura, whatsappParaWaMe } from './fatura-link';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
@@ -51,6 +53,7 @@ export class FaturaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly asaas: AsaasService,
+    private readonly config: ConfigService,
     private readonly notificacao: NotificacaoService,
     @InjectQueue(QUEUE_NAMES.GERAR_COBRANCA_ASAAS)
     private readonly filaCobranca: Queue,
@@ -557,6 +560,7 @@ export class FaturaService {
     id: string; numero: number; periodoReferencia: Date; dataVencimento: Date; dataFechamento: Date | null;
     dataPagamento: Date | null; status: string; valorTotal: Prisma.Decimal; valorPago: Prisma.Decimal | null;
     asaasChargeId: string | null;
+    tokenPublico?: string | null;
     itensFatura: { descricao: string; tipo: string; valor: Prisma.Decimal; credor: string }[];
   }) {
     // Fuso do negócio (correção 30/08): "hoje" em America/Sao_Paulo comparado
@@ -565,10 +569,8 @@ export class FaturaService {
     const hojeStr = dataHojeBrasil();
     const vencStr = dataCalendarioUTC(f.dataVencimento);
     const statusReal = f.status.toLowerCase();
-    let situacao = statusReal;
-    if (f.status === 'ABERTA' || f.status === 'FECHADA') {
-      situacao = vencStr < hojeStr ? 'vencida' : vencStr === hojeStr ? 'vence_hoje' : 'em_aberto';
-    }
+    // UMA função para a situação (utils) — a página pública usa a mesma.
+    const situacao = situacaoFaturaRuntime(f.status, vencStr, hojeStr);
     return {
       id: f.id,
       numero: f.numero,
@@ -583,6 +585,8 @@ export class FaturaService {
       // Visível na tela (correção 08/09): fatura fechada SEM cobrança no Asaas
       // é um estado de exceção que o operador precisa enxergar e resolver.
       temCobrancaAsaas: !!f.asaasChargeId,
+      // Fatura Azit (doc 02 §32.7): o link é atributo da fatura — aparece onde ela aparece.
+      linkPublico: this.linkPublico(f.tokenPublico),
       itens: f.itensFatura.map((it) => ({
         descricao: it.descricao,
         tipo: it.tipo.toLowerCase(),
@@ -624,14 +628,54 @@ export class FaturaService {
       where: { id: faturaId },
       include: {
         itensFatura: { orderBy: { tipo: 'asc' } },
-        conta: { include: { titular: { select: { id: true, nome: true } } } },
+        conta: { include: { titular: { select: { id: true, nome: true, whatsapp: true } } } },
         parcelas: { include: { contrato: { select: { taxaMultaAtraso: true, taxaJurosAtraso: true } } } },
+        enviosLink: { orderBy: { createdAt: 'desc' }, take: 20, include: { usuario: { select: { nome: true } } } },
       },
     });
     if (!f) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Fatura não encontrada' });
     const encargoAtual =
       f.status === 'FECHADA' && !f.asaasChargeId ? this.encargoAteHoje(f.parcelas) : 0;
-    return { ...this.mapearFatura(f), titular: f.conta.titular, encargoAtual };
+    const base = this.mapearFatura(f);
+    // Fatura Azit (doc 02 §32.7): link, WhatsApp do titular (para o wa.me) e a
+    // mensagem pronta — o texto é montado aqui, uma vez, não na tela.
+    const link = base.linkPublico;
+    const mensagemWhatsapp = link
+      ? mensagemLinkFatura({ nomeTitular: f.conta.titular.nome, numero: f.numero, vencimentoISO: dataCalendarioUTC(f.dataVencimento), valorCentavos: cent(f.valorTotal) + encargoAtual, situacao: base.situacao, link })
+      : null;
+    return {
+      ...base,
+      titular: { id: f.conta.titular.id, nome: f.conta.titular.nome },
+      encargoAtual,
+      whatsappTitular: whatsappParaWaMe(f.conta.titular.whatsapp),
+      mensagemWhatsapp,
+      enviosLink: f.enviosLink.map((e) => ({ id: e.id, canal: e.canal.toLowerCase(), usuario: e.usuario.nome, em: e.createdAt.toISOString() })),
+    };
+  }
+
+  private linkPublico(token: string | null | undefined): string | null {
+    return montarLinkFatura(this.config.get<string>('faturaPublicaUrl') ?? '', token);
+  }
+
+  // Registra o envio MANUAL do link pelo operador (doc 02 §32.7): "link enviado
+  // por <usuário> em <data>", sem prova de entrega. Copiar também registra — é o
+  // rastro de que o cliente recebeu o link por algum canal.
+  async registrarEnvioLink(faturaId: string, usuarioId: string, canal: 'whatsapp' | 'copia') {
+    const f = await this.prisma.db.fatura.findFirst({
+      where: { id: faturaId, deletedAt: null },
+      include: { conta: { include: { titular: { select: { whatsapp: true } } } } },
+    });
+    if (!f) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Fatura não encontrada' });
+    if (!f.tokenPublico) throw new UnprocessableEntityException({ erro: 'sem_link', mensagem: 'Esta fatura ainda não tem link público.' });
+    await this.prisma.db.envioLinkFatura.create({
+      data: {
+        faturaId,
+        usuarioId,
+        canal: canal === 'whatsapp' ? 'WHATSAPP' : 'COPIA',
+        destino: canal === 'whatsapp' ? whatsappParaWaMe(f.conta.titular.whatsapp) : null,
+      },
+    });
+    return this.detalheFatura(faturaId);
   }
 
   private encargoAteHoje(

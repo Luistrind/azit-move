@@ -8,6 +8,7 @@ import { Modal } from '../components/Modal';
 import { ModalConfirmacao } from '../components/ModalConfirmacao';
 import { RenegociacaoWizard } from '../components/RenegociacaoWizard';
 import { Botao } from '../components/Botao';
+import { LinkFaturaAcoes } from '../components/LinkFaturaAcoes';
 import { CartaoIndicador, type TomIndicador } from '../components/CartaoIndicador';
 import { REGUA_STAGE_COLORS } from '../config/statusColors';
 import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
@@ -238,6 +239,8 @@ function CasoModal({ item, onClose, onRenegociar }: { item: ReguaItem; onClose: 
                     {f.itens.map((it) => `${it.display} (${it.contratoNumero})`).join(', ')}
                     {f.encargosMora > 0 && ` · encargos de mora ${formatCurrency(f.encargosMora)}`}
                   </div>
+                  {/* Fatura Azit (doc 02 §32.7): no caso de cobrança o operador manda o link da fatura em atraso. */}
+                  <div className="mt-[6px]"><LinkFaturaAcoes faturaId={f.faturaId} compacto /></div>
                 </div>
               ))}
             </div>

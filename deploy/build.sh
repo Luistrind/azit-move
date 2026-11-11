@@ -10,6 +10,9 @@ docker build -t azit-backend:latest -f apps/backend/Dockerfile .
 echo "==> Build frontend (VITE_API_URL=https://api.azitmove.com.br)"
 docker build -t azit-frontend:latest --build-arg VITE_API_URL=https://api.azitmove.com.br -f apps/frontend/Dockerfile .
 
+echo "==> Build fatura (página pública da Fatura Azit)"
+docker build -t azit-fatura:latest --build-arg VITE_API_URL=https://api.azitmove.com.br -f apps/fatura/Dockerfile .
+
 echo "==> Imagens geradas:"
 docker images | grep azit || true
 echo "==> BUILD OK"

@@ -26,6 +26,7 @@ import { Tabela } from '../components/Tabela';
 import { Botao } from '../components/Botao';
 import { Bloco } from '../components/Bloco';
 import { Secao } from '../components/Secao';
+import { LinkFaturaAcoes } from '../components/LinkFaturaAcoes';
 
 // Layout v2 (doc 03 §11): a ficha do titular (hub da conta) em Secaos — uma
 // coluna no celular, duas no desktop —, relacionamento em Bloco com Leitura,
@@ -547,7 +548,13 @@ export function TitularDetalhePage() {
             chave={(f) => f.id}
             carregando={faturas.isLoading}
             vazio="Nenhuma fatura."
-            acoes={(f) => <Botao variante="fantasma" tamanho="sm" onClick={() => setFaturaSel(f.id)}>Detalhe</Botao>}
+            acoes={(f) => (
+              <span className="inline-flex items-center gap-[6px]">
+                {/* Fatura Azit (doc 02 §32.7): link público como ação de linha — só em fatura que o cliente ainda paga. */}
+                {f.linkPublico && f.status !== 'paga' && f.status !== 'paga_em_atraso' && f.status !== 'novada' && f.status !== 'rescindida' && <LinkFaturaAcoes faturaId={f.id} compacto />}
+                <Botao variante="fantasma" tamanho="sm" onClick={() => setFaturaSel(f.id)}>Detalhe</Botao>
+              </span>
+            )}
           />
         )}
       </Secao>
@@ -578,6 +585,9 @@ export function TitularDetalhePage() {
               <span>Total {faturaDet.data.valorPago > 0 ? `· pago ${formatCurrency(faturaDet.data.valorPago)}` : ''}</span>
               <span className="tabular-nums">{formatCurrency(faturaDet.data.valorTotal)}</span>
             </div>
+
+            {/* Fatura Azit (doc 02 §32.7): lugar principal do link — copiar ou mandar pelo WhatsApp. */}
+            <LinkFaturaAcoes faturaId={faturaDet.data.id} />
 
             {faturaDet.data.temCobrancaAsaas && faturaDet.data.status !== 'paga' && faturaDet.data.status !== 'paga_em_atraso' && (
               <div className="flex flex-wrap items-center gap-[8px] border-t pt-[10px] text-[12px]" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>

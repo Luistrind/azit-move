@@ -203,6 +203,20 @@ enum StatusFatura {
   RESCINDIDA // fatura só deste contrato, extinta pela rescisão (doc 02 §29, 04/11)
 }
 
+// Fatura Azit (doc 02 §32.4): quem aplica o encargo de atraso desta fatura.
+// ASAAS_NATIVO = cobrança nasce com multa/juros do Asaas (modelo até a F1);
+// AZIT = a Azit calcula e manda o valor exato ao gateway (a partir da F2).
+enum ModeloEncargoFatura {
+  ASAAS_NATIVO
+  AZIT
+}
+
+// Canal pelo qual o operador mandou o link da Fatura Azit (doc 02 §32.7).
+enum CanalEnvioLinkFatura {
+  WHATSAPP
+  COPIA
+}
+
 enum TipoItemFatura {
   PRINCIPAL
   INTERMEDIARIA // parcela-balão da entrada parcelada
@@ -1229,11 +1243,18 @@ model Fatura {
   status            StatusFatura @default(ABERTA)
   asaasChargeId     String?
   acordoId          String?
+  // Fatura Azit (doc 02 §32.2): token longo e aleatório da página pública
+  // fatura.azitmove.com.br/<token>. Gerado na emissão (novoTokenFatura), não
+  // expira; só o administrador regenera. Nullable só pelo histórico anterior
+  // à migração (que o preenche) — toda fatura nova nasce com token.
+  tokenPublico      String?             @unique
+  modeloEncargo     ModeloEncargoFatura @default(ASAAS_NATIVO)
 
   conta       Conta        @relation(fields: [contaId], references: [id])
   itensFatura ItemFatura[]
   parcelas    Parcela[]
   acordo      Acordo?      @relation(fields: [acordoId], references: [id])
+  enviosLink  EnvioLinkFatura[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1244,6 +1265,25 @@ model Fatura {
   @@index([dataVencimento])
   @@index([asaasChargeId])
   @@map("faturas")
+}
+
+// Registro de envio MANUAL do link da Fatura Azit pelo operador (doc 02 §32.7):
+// "link enviado por <usuário> em <data>", sem prova de entrega (sai do aparelho
+// do operador via wa.me ou pela área de transferência).
+model EnvioLinkFatura {
+  id        String               @id @default(cuid())
+  faturaId  String
+  usuarioId String
+  canal     CanalEnvioLinkFatura
+  destino   String? // WhatsApp usado (dígitos), quando canal = WHATSAPP
+
+  fatura  Fatura  @relation(fields: [faturaId], references: [id])
+  usuario Usuario @relation("EnvioLinkFaturaUsuario", fields: [usuarioId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([faturaId])
+  @@map("envios_link_fatura")
 }
 
 model LancamentoConta {
@@ -1644,6 +1684,7 @@ model Usuario {
   complementosRespondidos AprovacaoComplemento[] @relation("ComplementoRespondidoPor")
 
   permissoesArea PermissaoUsuarioArea[]
+  enviosLinkFatura EnvioLinkFatura[] @relation("EnvioLinkFaturaUsuario")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

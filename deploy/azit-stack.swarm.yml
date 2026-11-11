@@ -41,6 +41,9 @@ services:
       NODE_ENV: production
       PORT: "3001"
       FRONTEND_URL: https://app.azitmove.com.br
+      # Fatura Azit (doc 02 §32.2): endereço-base da página pública da fatura (CORS + montagem do link).
+      FATURA_PUBLICA_URL: https://fatura.azitmove.com.br
+      AZIT_WHATSAPP_ATENDIMENTO: ${AZIT_WHATSAPP_ATENDIMENTO:-}
       DATABASE_URL: postgresql://azit:${POSTGRES_PASSWORD}@azit-db:5432/azit?schema=public
       REDIS_URL: redis://azit-redis:6379
       JWT_SECRET: ${JWT_SECRET}
@@ -97,6 +100,23 @@ services:
         - traefik.http.routers.azit-web.tls=true
         - traefik.http.routers.azit-web.tls.certresolver=letsencryptresolver
         - traefik.http.services.azit-web.loadbalancer.server.port=80
+
+  # Fatura Azit — página pública da fatura (doc 02 §32.2). App mínimo separado:
+  # não compartilha sessão com o app; só fala com /api/v1/publico/* do backend.
+  fatura:
+    image: azit-fatura:latest
+    networks: [PopCarrosNet]
+    deploy:
+      replicas: 1
+      restart_policy: { condition: any }
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=PopCarrosNet
+        - traefik.http.routers.azit-fatura.entrypoints=websecure
+        - traefik.http.routers.azit-fatura.rule=Host(`fatura.azitmove.com.br`)
+        - traefik.http.routers.azit-fatura.tls=true
+        - traefik.http.routers.azit-fatura.tls.certresolver=letsencryptresolver
+        - traefik.http.services.azit-fatura.loadbalancer.server.port=80
 
 networks:
   PopCarrosNet:

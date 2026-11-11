@@ -25,7 +25,10 @@ docker build -t azit-frontend:hml \
   --build-arg VITE_API_URL=https://api-hml.azitmove.com.br \
   --build-arg VITE_AMBIENTE=homologacao \
   -f "$WT/apps/frontend/Dockerfile" "$WT"
-ok "Imagens azit-backend:hml e azit-frontend:hml prontas"
+docker build -t azit-fatura:hml \
+  --build-arg VITE_API_URL=https://api-hml.azitmove.com.br \
+  -f "$WT/apps/fatura/Dockerfile" "$WT"
+ok "Imagens azit-backend:hml, azit-frontend:hml e azit-fatura:hml prontas"
 
 etapa "3/5 Stack $STACK"
 docker stack deploy -c "$WT/deploy/azit-hml-stack.swarm.yml" "$STACK"
@@ -33,6 +36,7 @@ docker stack deploy -c "$WT/deploy/azit-hml-stack.swarm.yml" "$STACK"
 if docker service inspect "${STACK}_backend" >/dev/null 2>&1; then
   docker service update --force --quiet --image azit-backend:hml "${STACK}_backend" >/dev/null
   docker service update --force --quiet --image azit-frontend:hml "${STACK}_frontend" >/dev/null
+  docker service inspect "${STACK}_fatura" >/dev/null 2>&1 && docker service update --force --quiet --image azit-fatura:hml "${STACK}_fatura" >/dev/null
 fi
 CID=$(aguardar_servico "${STACK}_backend")
 DBCID=$(aguardar_servico "${STACK}_azit-db")

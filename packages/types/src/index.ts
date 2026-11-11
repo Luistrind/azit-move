@@ -28,5 +28,6 @@ export * from './entities/contrato-credito';
 export * from './entities/item-contratado';
 export * from './entities/parcela';
 export * from './entities/fatura';
+export * from './entities/fatura-publica';
 export * from './entities/recebivel';
 export * from './entities/acordo';

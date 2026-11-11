@@ -41,6 +41,8 @@ services:
       AMBIENTE: homologacao
       PORT: "3001"
       FRONTEND_URL: https://hml.azitmove.com.br
+      FATURA_PUBLICA_URL: https://fatura-hml.azitmove.com.br
+      AZIT_WHATSAPP_ATENDIMENTO: ${AZIT_WHATSAPP_ATENDIMENTO:-}
       DATABASE_URL: postgresql://azit:${POSTGRES_PASSWORD}@azit-db:5432/azit?schema=public
       REDIS_URL: redis://azit-redis:6379
       JWT_SECRET: ${JWT_SECRET}
@@ -89,6 +91,21 @@ services:
         - traefik.http.routers.azit-hml-web.tls=true
         - traefik.http.routers.azit-hml-web.tls.certresolver=letsencryptresolver
         - traefik.http.services.azit-hml-web.loadbalancer.server.port=80
+
+  fatura:
+    image: azit-fatura:hml
+    networks: [PopCarrosNet]
+    deploy:
+      replicas: 1
+      restart_policy: { condition: any }
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=PopCarrosNet
+        - traefik.http.routers.azit-hml-fatura.entrypoints=websecure
+        - traefik.http.routers.azit-hml-fatura.rule=Host(`fatura-hml.azitmove.com.br`)
+        - traefik.http.routers.azit-hml-fatura.tls=true
+        - traefik.http.routers.azit-hml-fatura.tls.certresolver=letsencryptresolver
+        - traefik.http.services.azit-hml-fatura.loadbalancer.server.port=80
 
 networks:
   PopCarrosNet:

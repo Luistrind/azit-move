@@ -4,14 +4,32 @@
     {
       "name": "frontend",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "frontend", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "frontend",
+        "dev"
+      ],
       "port": 3000
     },
     {
       "name": "backend",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "backend", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "backend",
+        "dev"
+      ],
       "port": 3001
+    },
+    {
+      "name": "fatura",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "fatura",
+        "dev"
+      ],
+      "port": 3002
     }
   ]
 }

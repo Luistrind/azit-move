@@ -19,11 +19,15 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const port = configService.get<number>('port', 3001);
   const frontendUrl = configService.get<string>('frontendUrl');
+  // Fatura Azit (doc 02 §32.2): o mini-app público chama só /publico/*, mas o
+  // navegador exige a origem liberada no CORS.
+  const faturaPublicaUrl = configService.get<string>('faturaPublicaUrl');
+  const origens = [...new Set([frontendUrl, faturaPublicaUrl].filter((o): o is string => !!o))];
 
   // Métodos explícitos: o default do adapter não incluía PATCH/DELETE, e o
   // preflight do navegador bloqueava essas operações (curl não faz preflight).
   app.enableCors({
-    origin: frontendUrl,
+    origin: origens,
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   });

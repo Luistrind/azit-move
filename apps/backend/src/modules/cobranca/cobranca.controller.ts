@@ -17,6 +17,7 @@ import { Queue } from 'bullmq';
 import { RoleUsuario } from '@prisma/client';
 import { cobrancaAsaasPaga, dataHojeBrasil, dataCalendarioUTC } from '@azit/utils';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { PrismaService } from '../../database/prisma.service';
 import { FaturaService, eventoConciliacaoDe, type CobrancaAsaasAoVivo } from './fatura.service';
@@ -32,6 +33,18 @@ export class CobrancaController {
     @InjectQueue(QUEUE_NAMES.PAGAMENTO_RECEBIDO)
     private readonly filaRecebido: Queue,
   ) {}
+
+  // Fatura Azit (doc 02 §32.7): o operador copiou o link ou abriu o WhatsApp
+  // com a mensagem pronta — fica registrado na fatura (sem prova de entrega).
+  @Post('faturas/:id/envios-link')
+  @HttpCode(201)
+  registrarEnvioLink(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(z.object({ canal: z.enum(['whatsapp', 'copia']) }))) dto: { canal: 'whatsapp' | 'copia' },
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.fatura.registrarEnvioLink(id, user.id, dto.canal);
+  }
 
   // 4.9 — Extrato do contrato (eventos conciliados).
   @Get('contratos/:id/extrato')

@@ -135,8 +135,25 @@ export function calcularEncargoAtraso(
   taxaMultaPercent = 2,
   taxaJurosMensalPercent = 1,
 ): number {
-  if (diasAtraso <= 0) return 0;
+  return detalharEncargoAtraso(valor, diasAtraso, taxaMultaPercent, taxaJurosMensalPercent).total;
+}
+
+// A MESMA conta, aberta em duas linhas (Fatura Azit, doc 02 §32.2): o cliente lê
+// "Multa por atraso" e "Atualização por dias de atraso". A fórmula é uma só
+// (Regra 16); quem precisa do total chama calcularEncargoAtraso.
+export interface EncargoAtrasoDetalhado {
+  multa: number;
+  atualizacao: number;
+  total: number;
+}
+export function detalharEncargoAtraso(
+  valor: number,
+  diasAtraso: number,
+  taxaMultaPercent = 2,
+  taxaJurosMensalPercent = 1,
+): EncargoAtrasoDetalhado {
+  if (diasAtraso <= 0) return { multa: 0, atualizacao: 0, total: 0 };
   const multa = valor * (taxaMultaPercent / 100);
-  const juros = valor * (taxaJurosMensalPercent / 100 / 30) * diasAtraso;
-  return multa + juros;
+  const atualizacao = valor * (taxaJurosMensalPercent / 100 / 30) * diasAtraso;
+  return { multa, atualizacao, total: multa + atualizacao };
 }

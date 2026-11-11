@@ -7,6 +7,12 @@ export interface AppConfig {
   ambiente: 'producao' | 'homologacao' | 'desenvolvimento';
   port: number;
   frontendUrl: string;
+  // Fatura Azit (doc 02 §32.2): endereço-base da página pública da fatura
+  // (fatura.azitmove.com.br); o link é SEMPRE montado a partir daqui.
+  faturaPublicaUrl: string;
+  // WhatsApp de atendimento mostrado no rodapé da fatura (provisório até a
+  // central de parâmetros da empresa ter o campo).
+  atendimentoWhatsapp: string;
   databaseUrl: string;
   redisUrl: string;
   jwt: { secret: string; accessExpiresIn: string; refreshExpiresInDays: number };
@@ -29,6 +35,8 @@ export default (): AppConfig => ({
         : 'desenvolvimento',
   port: parseInt(process.env.PORT ?? '3001', 10),
   frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:3000',
+  faturaPublicaUrl: process.env.FATURA_PUBLICA_URL ?? 'http://localhost:3002',
+  atendimentoWhatsapp: process.env.AZIT_WHATSAPP_ATENDIMENTO ?? '',
   databaseUrl: process.env.DATABASE_URL ?? '',
   redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
   jwt: {

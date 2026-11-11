@@ -152,6 +152,14 @@ export class AsaasLeituraService {
     return this.todasAsPaginas<AssinaturaAsaas>(`/subscriptions?customer=${customerId}`);
   }
 
+  // QR Code / copia-e-cola PIX de uma cobrança (GET /payments/{id}/pixQrCode).
+  // Usado pela Fatura Azit (doc 02 §32.2): o payload carrega o valor que o PIX
+  // cobra hoje — no modelo ASAAS_NATIVO é o total que a página mostra.
+  async pixQrCode(chargeId: string): Promise<{ encodedImage?: string; payload: string; expirationDate?: string | null } | null> {
+    if (this.simulado) return null;
+    return this.requisicao('GET', `/payments/${chargeId}/pixQrCode`);
+  }
+
   async listarCobrancas(customerId: string): Promise<CobrancaAsaasLida[]> {
     if (this.simulado) return BASE_SIMULADA.cobrancas.filter((c) => c.customer === customerId);
     return this.todasAsPaginas<CobrancaAsaasLida>(`/payments?customer=${customerId}`);

@@ -13,6 +13,7 @@ import { FaturaService, eventoConciliacaoDe, type CobrancaAsaasAoVivo } from '..
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { FipeService, type ConsultaFipe } from '../fipe/fipe.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
+import { novoTokenFatura } from '../cobranca/fatura-link';
 
 // ============================================================
 // Migração do legado — F3 (doc 02 §26.5, §26.8, §26.9): o caso VALIDADO vira
@@ -366,6 +367,7 @@ export class LegadoMigracaoService {
           data: {
             contaId: conta.id,
             numero: numeroFatura++,
+            tokenPublico: novoTokenFatura(),
             periodoReferencia: d(f.vencimento),
             dataFechamento: d(somarDiasISO(f.vencimento, -5)),
             dataVencimento: d(f.vencimento),

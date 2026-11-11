@@ -21,7 +21,16 @@ export interface Fatura {
   valorPago: number;
   // false em fatura FECHADA = a cobrança automática falhou (estado de exceção).
   temCobrancaAsaas: boolean;
+  // Fatura Azit (doc 02 §32.7): link público da fatura (fatura.azitmove.com.br/<token>).
+  linkPublico: string | null;
   itens: FaturaItem[];
+}
+
+export interface EnvioLinkFatura {
+  id: string;
+  canal: 'whatsapp' | 'copia';
+  usuario: string;
+  em: string; // ISO
 }
 
 export interface FaturaDetalhe extends Fatura {
@@ -29,6 +38,11 @@ export interface FaturaDetalhe extends Fatura {
   // Encargo de atraso corrido até hoje (centavos) — só vem quando a fatura está
   // fechada SEM cobrança no Asaas, para a decisão de reemissão.
   encargoAtual: number;
+  // Fatura Azit (doc 02 §32.7): WhatsApp do titular (dígitos c/ DDI, para o
+  // wa.me), mensagem pronta montada pelo backend e os envios manuais já feitos.
+  whatsappTitular: string | null;
+  mensagemWhatsapp: string | null;
+  enviosLink: EnvioLinkFatura[];
 }
 
 // Lançamento avulso da conta (doc 02 §4-A.3, revisão 30/08): entrada de contrato
@@ -74,6 +88,12 @@ export const faturaService = {
   // criar cobrança pelo painel do Asaas (sem externalReference não concilia).
   async gerarCobranca(faturaId: string, body: { vencimento?: string; incluirEncargo?: boolean }): Promise<{ chargeId: string; valorCobrado: number; vencimento: string; encargoIncluido: number }> {
     const { data } = await api.post(`/api/v1/faturas/${faturaId}/gerar-cobranca`, body);
+    return data;
+  },
+  // Fatura Azit (doc 02 §32.7): registra que o operador copiou o link ou abriu o
+  // WhatsApp com a mensagem — devolve o detalhe atualizado (com os envios).
+  async registrarEnvioLink(faturaId: string, canal: 'whatsapp' | 'copia'): Promise<FaturaDetalhe> {
+    const { data } = await api.post(`/api/v1/faturas/${faturaId}/envios-link`, { canal });
     return data;
   },
   // Consulta a cobrança no Asaas e, se paga, reprocessa a conciliação (02/10).
