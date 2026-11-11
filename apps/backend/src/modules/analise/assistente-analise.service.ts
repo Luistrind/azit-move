@@ -164,7 +164,10 @@ export class AssistenteAnaliseService {
           try {
             const r = await parser.getText();
             const texto = (r.text ?? '').trim();
-            if (texto.length >= 80) textoExtraido = texto.slice(0, 50_000);
+            // Texto INTEIRO (correção 11/11, extrato Nubank de 53 páginas da
+            // Grace: o corte em 50 mil deixava o analista sem metade dos
+            // lançamentos). Quem entrega ao claude.ai pagina (obter_documento, parte=N).
+            if (texto.length >= 80) textoExtraido = texto;
             // Texto CURTO é suspeito de boilerplate (caso real da CNH-e do
             // Vinicius, 14/09: a camada de texto só tinha o aviso do Assinador
             // Serpro — os DADOS estão na imagem). Abaixo do limiar, renderiza
