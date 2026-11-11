@@ -139,7 +139,7 @@ export class AnaliseService implements OnModuleInit {
   // 14/09: sem botão — o resumo do assistente nasce COMPLETO de uma vez).
   // Roda no worker: são 7 chamadas de birô e o envio da proposta não espera.
   // O job de consultas dispara o resumo ao final (consultarBiroCamada2Todas).
-  async dispararConsultasEResumo(analiseId: string) {
+  async dispararConsultasEResumo(analiseId: string, titularId?: string) {
     try {
       // jobId fixo (sem ':' — o BullMQ recusa): a fila recusa um 'consultar'
       // repetido da mesma análise enquanto o primeiro existir. A marca
@@ -147,8 +147,12 @@ export class AnaliseService implements OnModuleInit {
       // fila falhar, a análise não fica marcada sem consulta nenhuma — e é ela,
       // não a contagem de consultas, que impede um segundo disparo depois.
       await this.assistente.marcarGerando(analiseId);
-      await this.filaResumo.add('consultar', { analiseId }, { jobId: `consultar-${analiseId}`, removeOnComplete: true, attempts: 2 });
-      await this.prisma.db.analiseCadastro.update({ where: { id: analiseId }, data: { consultasAutomaticasEm: new Date() } });
+      await this.filaResumo.add(
+        'consultar',
+        { analiseId, titularId },
+        { jobId: titularId ? `consultar-${analiseId}-${titularId}` : `consultar-${analiseId}`, removeOnComplete: true, attempts: 2 },
+      );
+      if (!titularId) await this.prisma.db.analiseCadastro.update({ where: { id: analiseId }, data: { consultasAutomaticasEm: new Date() } });
     } catch (e) {
       console.error(`dispararConsultasEResumo(${analiseId}): ${(e as Error).message}`);
     }
@@ -390,33 +394,54 @@ export class AnaliseService implements OnModuleInit {
     }
   }
 
-  // Repetir a consulta da Camada 1 NO BIRÔ, sob demanda do analista (caso do
-  // alerta "indisponível/simulada — repetir na análise", ou proposta criada
-  // antes das credenciais). Consome franquia quando as credenciais são reais.
-  async repetirCamada1(analiseId: string, usuarioId?: string) {
-    const a = await this.carregar(analiseId);
-    this.garantirNaoFinal(a.status);
-    const principal = a.participantes.find((p) => p.papel === 'COMPRADOR_PRINCIPAL');
-    if (!principal) {
-      throw new UnprocessableEntityException({ erro: 'sem_principal', mensagem: 'Análise sem comprador principal' });
+  // Vínculo (2º comprador / garantidor) adicionado à proposta DEPOIS de a análise
+  // existir: entra como participante e recebe suas consultas (Camada 1 + 2ª camada)
+  // pela fila — antes ficava fora da análise (correção 10/11/2026, caso Vinicius/Antonio).
+  async sincronizarParticipantes(propostaId: string): Promise<number> {
+    const an = await this.prisma.db.analiseCadastro.findFirst({
+      where: { propostaId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, status: true, participantes: { select: { titularId: true } } },
+    });
+    if (!an || FINAIS.includes(an.status)) return 0;
+    const vinculos = await this.prisma.db.vinculoPapel.findMany({ where: { propostaId }, select: { titularId: true, papel: true } });
+    const existentes = new Set(an.participantes.map((p) => p.titularId));
+    let novos = 0;
+    for (const v of vinculos) {
+      if (existentes.has(v.titularId)) continue;
+      await this.prisma.db.participanteAnalise.create({ data: { analiseId: an.id, titularId: v.titularId, papel: v.papel } });
+      existentes.add(v.titularId);
+      novos += 1;
+      await this.dispararConsultasEResumo(an.id, v.titularId);
     }
-    const titular = await this.prisma.db.titular.findFirst({
-      where: { id: principal.titularId },
-      select: { cpfCnpj: true },
-    });
+    return novos;
+  }
+
+  // Camada 1 de um participante que ainda não a tem na trilha (2º comprador e
+  // garantidor nunca passam pelo envio da proposta, que só consulta o titular).
+  private async garantirCamada1(
+    analiseId: string,
+    a: Awaited<ReturnType<AnaliseService['carregar']>>,
+    titularId: string,
+    usuarioId?: string,
+  ) {
+    if (a.consultas.some((c) => c.titularId === titularId && c.tipo === 'CAMADA1')) return;
+    const titular = await this.prisma.db.titular.findFirst({ where: { id: titularId }, select: { cpfCnpj: true } });
     const r = await this.camada1.avaliar(titular?.cpfCnpj ?? '');
-    // Atualiza o cache da proposta (a trilha oficial é a ConsultaExterna abaixo).
-    await this.prisma.db.proposta.update({
-      where: { id: a.propostaId },
-      data: {
-        camada1Status: r.status,
-        camada1Resultado: JSON.parse(JSON.stringify(r)) as Prisma.InputJsonValue,
-      },
-    });
+    await this.registrarCamada1(analiseId, titularId, r, 'Camada 1 do participante (consulta automática)', usuarioId);
+  }
+
+  private registrarCamada1(
+    analiseId: string,
+    titularId: string,
+    r: Awaited<ReturnType<Camada1Service['avaliar']>>,
+    resumo: string,
+    usuarioId?: string,
+  ) {
     return this.registrarConsulta(
       analiseId,
       {
-        titularId: principal.titularId,
+        titularId,
         tipo: 'camada1',
         fornecedor: r.dados?.simulado ? 'BigDataCorp (simulado)' : 'BigDataCorp',
         protocolo: r.dados?.protocolo ?? undefined,
@@ -436,12 +461,38 @@ export class AnaliseService implements OnModuleInit {
           processosComoReu: r.dados?.processosComoReu ?? null,
           nomeOficial: r.dados?.nomeOficial ?? null,
           dataNascimento: r.dados?.dataNascimento ?? null,
-          resumo: 'Camada 1 repetida pelo analista',
+          resumo,
           bruto: r.bruto ?? null,
         },
       },
       usuarioId,
     );
+  }
+
+  // Repetir a consulta da Camada 1 NO BIRÔ, sob demanda do analista (caso do
+  // alerta "indisponível/simulada — repetir na análise", ou proposta criada
+  // antes das credenciais). Consome franquia quando as credenciais são reais.
+  // Todos os participantes (decisão Luís 10/11/2026): principal, 2º comprador e
+  // garantidor. O cache da proposta (camada1Status/Resultado) é só do principal.
+  async repetirCamada1(analiseId: string, usuarioId?: string) {
+    const a = await this.carregar(analiseId);
+    this.garantirNaoFinal(a.status);
+    if (!a.participantes.some((p) => p.papel === 'COMPRADOR_PRINCIPAL')) {
+      throw new UnprocessableEntityException({ erro: 'sem_principal', mensagem: 'Análise sem comprador principal' });
+    }
+    let ultima: Awaited<ReturnType<AnaliseService['registrarConsulta']>> | null = null;
+    for (const p of a.participantes) {
+      const titular = await this.prisma.db.titular.findFirst({ where: { id: p.titularId }, select: { cpfCnpj: true } });
+      const r = await this.camada1.avaliar(titular?.cpfCnpj ?? '');
+      if (p.papel === 'COMPRADOR_PRINCIPAL') {
+        await this.prisma.db.proposta.update({
+          where: { id: a.propostaId },
+          data: { camada1Status: r.status, camada1Resultado: JSON.parse(JSON.stringify(r)) as Prisma.InputJsonValue },
+        });
+      }
+      ultima = await this.registrarCamada1(analiseId, p.titularId, r, 'Camada 1 repetida pelo analista', usuarioId);
+    }
+    return ultima;
   }
 
   // Camada 2 PELO SISTEMA (decisão 08/08: a BigDataCorp É o marketplace — score
@@ -588,13 +639,31 @@ export class AnaliseService implements OnModuleInit {
   // consultas manuais, cada uma registrada separadamente como hoje. Consulta
   // já CONCLUÍDA e válida (com os dados que a política consome) é PULADA —
   // repetir consulta paga sem necessidade é custo jogado fora.
+  // Sem titularId: TODOS os participantes — comprador principal, 2º comprador e
+  // garantidor (decisão Luís 10/11/2026, caso Vinicius/Antonio: o 2º comprador
+  // ficava sem consulta nenhuma porque o disparo só mirava o principal). Cada
+  // participante ganha a Camada 1 na trilha, se ainda não tem, e as 7 da 2ª camada.
   async consultarBiroCamada2Todas(analiseId: string, dto: { titularId?: string }, usuarioId?: string) {
     const a = await this.carregar(analiseId);
     this.garantirNaoFinal(a.status);
-    const alvo = dto.titularId
-      ? a.participantes.find((p) => p.titularId === dto.titularId)
-      : a.participantes.find((p) => p.papel === 'COMPRADOR_PRINCIPAL');
-    if (!alvo) throw new UnprocessableEntityException({ erro: 'participante_invalido', mensagem: 'Participante não encontrado na análise' });
+    const alvos = dto.titularId ? a.participantes.filter((p) => p.titularId === dto.titularId) : a.participantes;
+    if (alvos.length === 0) throw new UnprocessableEntityException({ erro: 'participante_invalido', mensagem: 'Participante não encontrado na análise' });
+    for (const alvo of alvos) {
+      await this.garantirCamada1(analiseId, a, alvo.titularId, usuarioId);
+      await this.consultarCamada2DoParticipante(analiseId, a, alvo.titularId, usuarioId);
+    }
+    // Consultas completas → regenera o resumo do assistente com tudo (14/09).
+    await this.dispararResumoIa(analiseId);
+    return this.dossie(analiseId);
+  }
+
+  private async consultarCamada2DoParticipante(
+    analiseId: string,
+    a: Awaited<ReturnType<AnaliseService['carregar']>>,
+    titularId: string,
+    usuarioId?: string,
+  ) {
+    const alvo = { titularId };
 
     const TIPOS: { chave: 'score_quod' | 'restritivos' | 'boavista_score' | 'score_positivo' | 'distribuicao_processos' | 'processos' | 'kyc'; enumDb: string }[] = [
       { chave: 'score_quod', enumDb: 'SCORE_QUOD' },
@@ -627,9 +696,6 @@ export class AnaliseService implements OnModuleInit {
       if (jaValida(t.enumDb)) continue;
       await this.consultarBiroCamada2(analiseId, { tipo: t.chave, titularId: alvo.titularId }, usuarioId);
     }
-    // Consultas completas → regenera o resumo do assistente com tudo (14/09).
-    await this.dispararResumoIa(analiseId);
-    return this.dossie(analiseId);
   }
 
   // Consultas de birô vinculadas ao CADASTRO do cliente (decisão 09/08): tudo
@@ -764,7 +830,8 @@ export class AnaliseService implements OnModuleInit {
         anexadoEm: doc.dataAnexo.toISOString(),
       })),
       consultas: a.consultas.map((c) => ({
-        id: c.id, titularId: c.titularId, tipo: c.tipo, fornecedor: c.fornecedor, protocolo: c.protocolo,
+        id: c.id, titularId: c.titularId, titularNome: a.participantes.find((p) => p.titularId === c.titularId)?.titular.nome ?? null,
+        tipo: c.tipo, fornecedor: c.fornecedor, protocolo: c.protocolo,
         dataConsulta: c.dataConsulta, situacao: c.situacao, motivoFalha: c.motivoFalha, tentativas: c.tentativas,
         resultado: c.resultado, valida: this.consultaValida(c.dataConsulta, a.parametroVersao.validadeConsultaDias),
       })),
@@ -1458,7 +1525,11 @@ export class AnaliseService implements OnModuleInit {
         if (r) {
           data.rendaApurada = reais(r.centavos);
           const quando = resumo.geradoEm ? formatarInstanteBR(new Date(resumo.geradoEm)) : formatarInstanteBR(new Date());
-          origens.rendaApuradaOrigem = `apurada pela IA em ${quando} (relatório do assistente: "${r.trecho}"${r.aproximado ? ' — valor arredondado no relatório, confira' : ''})`;
+          const avisos = [
+            r.aproximado ? 'valor arredondado no relatório, confira' : null,
+            r.meses < 3 ? `média de ${r.meses} ${r.meses === 1 ? 'mês' : 'meses'}, não de 3 — confira` : null,
+          ].filter(Boolean);
+          origens.rendaApuradaOrigem = `apurada pela IA em ${quando} (relatório do assistente: "${r.trecho}"${avisos.length ? ` — ${avisos.join('; ')}` : ''})`;
           rendaMudou = true;
         }
       }

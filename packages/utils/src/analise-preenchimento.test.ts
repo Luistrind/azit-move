@@ -78,6 +78,14 @@ Resumo objetivo: R$ 7,8 mil/mês | 1 apontamento | sem protestos.`;
 
   it('sem média legível (renda não apurada, texto vazio, valor absurdo) devolve null', () => {
     expect(extrairRendaMediaRelatorio('Renda bruta: não identificada. Média 3M: não calculável — renda não apurada.')).toBeNull();
+  });
+
+  it('lê a Média 2M (relatório com só dois meses de renda — caso 10/11/2026) e informa os meses', () => {
+    const r = extrairRendaMediaRelatorio('Renda: ago/26 R$ 6,5 mil | set/26 R$ 2,1 mil (possível período parcial) | out/26 não documentado. Média 2M: R$ 4,3 mil/mês (só ago, mês completo: R$ 6,5 mil).');
+    expect(r?.centavos).toBe(430_000);
+    expect(r?.meses).toBe(2);
+    expect(r?.aproximado).toBe(true);
+    expect(extrairRendaMediaRelatorio(RELATORIO)?.meses).toBe(3);
     expect(extrairRendaMediaRelatorio('')).toBeNull();
     expect(extrairRendaMediaRelatorio(null)).toBeNull();
     expect(extrairRendaMediaRelatorio('Média 3M: R$ 12/mês')).toBeNull();
