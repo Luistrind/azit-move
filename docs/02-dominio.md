@@ -1458,6 +1458,13 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 > sem chave, aviso claro — nunca buraco). Consulta **KYC** (PEP/sanções/óbito — dataset
 > `kyc` da Plataforma, franquia) entrou na 2ª camada (7 consultas automáticas).
 >
+> **Todos os participantes são consultados (decisão Luís 2026-11-10, caso Vinicius/Antonio):**
+> comprador principal, 2º comprador **e garantidor** recebem a Camada 1 na trilha e as 7 consultas
+> da 2ª camada — no disparo automático, no botão da tela e no "Repetir Camada 1". Até então só o
+> principal era consultado (a análise do 2º comprador era julgada sem birô). Vínculo adicionado à
+> proposta DEPOIS de a análise existir entra como participante e recebe suas consultas pela fila.
+> O cache `camada1Status/Resultado` da proposta continua sendo só do principal.
+>
 > **Connector MCP para o claude.ai (14/09, decisão Luís — custo coberto pela assinatura
 > Max dele):** endpoint `POST /api/v1/mcp/:secret` (Streamable HTTP stateless, SDK oficial
 > MCP) com 4 ferramentas: `listar_analises`, `obter_prompt_relatorio` (o mesmo prompt do
@@ -1522,6 +1529,10 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 >    relatório ou sem média legível, o campo fica vazio como antes. Consumidores de `rendaApurada`
 >    (comprometimento, agregados `rendaApuradaTotal`, Central de Aprovações) não mudam — leem o
 >    mesmo campo.
+>    **Média de menos de 3 meses (2026-11-10):** quando o relatório só teve 1 ou 2 meses de renda
+>    ele escreve "Média 2M" — também é lida, e a origem avisa "média de 2 meses, não de 3 — confira".
+>    A renda do 2º comprador e do garantidor **não** vem do relatório (que é do principal): o
+>    analista informa.
 > 3. **Identidade validada ← Camada 1.** Consulta CONCLUÍDA e real (não simulada) com CPF em
 >    situação aceita (`SITUACOES_CPF_ACEITAS`, a mesma lista da Camada 1), sem indicação de óbito e
 >    nome oficial igual ao cadastrado (sem acento/caixa — `identidadeConfereCamada1`). Qualquer

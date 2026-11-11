@@ -44,6 +44,9 @@ export interface RendaMediaRelatorio {
   centavos: number;
   // "R$ 10,5 mil" (forma compacta do WhatsApp) — valor arredondado pelo relatório.
   aproximado: boolean;
+  // Quantos meses entraram na média ("Média 3M" = 3; "Média 2M" = 2). Menos de 3
+  // meses vem marcado na origem para o analista conferir (10/11/2026).
+  meses: number;
   trecho: string;
 }
 
@@ -82,17 +85,20 @@ export function valorBrasileiroParaCentavos(bruto: string, mil: boolean): number
 // Lê a "Média 3M: R$ [valor]/mês" do RELATÓRIO CADASTRAL RESUMIDO (formato do
 // prompt oficial, item 21). Aceita a forma exata e a compacta ("R$ 10,5 mil"),
 // variações de caixa/espaço e um parêntese antes dos dois-pontos ("Média 3M
-// (meses completos): …"). Devolve null quando não há média legível.
+// (meses completos): …"). Quando o relatório só teve 1 ou 2 meses de renda ele
+// escreve "Média 2M" (caso real 10/11/2026) — também é lida, com `meses` para a
+// origem avisar. Devolve null quando não há média legível.
 export function extrairRendaMediaRelatorio(texto: string | null | undefined): RendaMediaRelatorio | null {
   if (!texto) return null;
-  const re = /m[eé]dia\s*3\s*m(?:eses)?\b[^\n:]{0,60}:\s*(?:≈\s*|~\s*|aprox\.?\s*)?R\$\s*([\d.,]+)\s*(mil)?/i;
+  const re = /m[eé]dia\s*([1-9]|1[0-2])\s*m(?:eses)?\b[^\n:]{0,60}:\s*(?:≈\s*|~\s*|aprox\.?\s*)?R\$\s*([\d.,]+)\s*(mil)?/i;
   const m = re.exec(texto);
   if (!m) return null;
-  const bruto = m[1].replace(/[.,]+$/, '');
-  const mil = !!m[2];
+  const meses = Number(m[1]);
+  const bruto = m[2].replace(/[.,]+$/, '');
+  const mil = !!m[3];
   const centavos = valorBrasileiroParaCentavos(bruto, mil);
   if (centavos === null || centavos < RENDA_MIN_CENTAVOS || centavos > RENDA_MAX_CENTAVOS) return null;
-  return { centavos, aproximado: mil, trecho: m[0].replace(/\s+/g, ' ').trim() };
+  return { centavos, aproximado: mil, meses, trecho: m[0].replace(/\s+/g, ' ').trim() };
 }
 
 // --- Processos financeiros/patrimoniais (sugestão de COC-06) ------------------

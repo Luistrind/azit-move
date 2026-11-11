@@ -66,19 +66,25 @@ const CONSULTAS_2A_CAMADA = [
 ] as const;
 
 // Espelha o critério do backend: CONCLUÍDA, dentro da validade e com os dados
-// que a política consome (registro vazio não conta — correção 08/08).
-function birosPendentes(d: DossieAnalise): { label: string; pago: boolean }[] {
-  const titularId = d.participantes.find((p) => p.papel === 'COMPRADOR_PRINCIPAL')?.titularId;
-  return CONSULTAS_2A_CAMADA.filter((t) => {
-    const valida = d.consultas.some((c) => {
-      if (c.titularId !== titularId || c.tipo !== t.enumDb || c.situacao !== 'CONCLUIDA' || !c.valida) return false;
-      const r = (c.resultado ?? {}) as Record<string, unknown>;
-      if (t.enumDb === 'SCORE_QUOD') return typeof r.score === 'number';
-      if (t.enumDb === 'RESTRITIVOS') return typeof r.restritivosFinanceiros === 'number' && typeof r.restritivosNaoFinanceiros === 'number';
-      return true;
-    });
-    return !valida;
-  }).map((t) => ({ label: t.label, pago: t.pago }));
+// que a política consome (registro vazio não conta — correção 08/08). Por
+// PARTICIPANTE (10/11/2026): principal, 2º comprador e garantidor são consultados.
+function birosPendentes(d: DossieAnalise): { titularId: string; nome: string; pendentes: { label: string; pago: boolean }[] }[] {
+  return d.participantes
+    .map((p) => ({
+      titularId: p.titularId,
+      nome: p.nome,
+      pendentes: CONSULTAS_2A_CAMADA.filter((t) => {
+        const valida = d.consultas.some((c) => {
+          if (c.titularId !== p.titularId || c.tipo !== t.enumDb || c.situacao !== 'CONCLUIDA' || !c.valida) return false;
+          const r = (c.resultado ?? {}) as Record<string, unknown>;
+          if (t.enumDb === 'SCORE_QUOD') return typeof r.score === 'number';
+          if (t.enumDb === 'RESTRITIVOS') return typeof r.restritivosFinanceiros === 'number' && typeof r.restritivosNaoFinanceiros === 'number';
+          return true;
+        });
+        return !valida;
+      }),
+    }))
+    .filter((p) => p.pendentes.length > 0);
 }
 
 // Etapas macro do stepper e a qual etapa cada status pertence.
@@ -438,27 +444,30 @@ export function AnalisePage() {
                   tamanho="sm"
                   disabled={ocupado}
                   onClick={() => {
-                    if (!window.confirm('Repetir a consulta da Camada 1 no birô agora? Consome consultas da franquia (3 datasets).')) return;
+                    if (!window.confirm(`Repetir a consulta da Camada 1 no birô agora para ${d.participantes.length > 1 ? `os ${d.participantes.length} participantes` : 'o comprador'}? Consome consultas da franquia (3 datasets por pessoa).`)) return;
                     void acao(() => analiseService.repetirCamada1(d.id), 'Consulta da Camada 1 repetida no birô.');
                   }}
                 >
                   Repetir Camada 1 no birô
                 </Botao>
                 {(() => {
-                  const pend = birosPendentes(d);
-                  if (pend.length === 0) return null;
+                  const porParticipante = birosPendentes(d);
+                  const total = porParticipante.reduce((s, p) => s + p.pendentes.length, 0);
+                  if (total === 0) return null;
                   return (
                     <Botao
                       variante="secundaria"
                       tamanho="sm"
                       disabled={ocupado}
                       onClick={() => {
-                        const linhas = pend.map((t) => `• ${t.label}${t.pago ? ' (paga)' : ' (franquia)'}`).join('\n');
-                        if (!window.confirm(`Repetir as consultas pendentes/falhas agora?\n\n${linhas}\n\nAs consultas disparam sozinhas no envio para análise — este botão é só para repetir o que ficou pendente. As pagas saem via Marketplace (fora da franquia); consultas já válidas não são repetidas.`)) return;
+                        const linhas = porParticipante
+                          .map((p) => `${p.nome}:\n${p.pendentes.map((t) => `  • ${t.label}${t.pago ? ' (paga)' : ' (franquia)'}`).join('\n')}`)
+                          .join('\n\n');
+                        if (!window.confirm(`Repetir as consultas pendentes/falhas agora?\n\n${linhas}\n\nAs consultas disparam sozinhas no envio para análise, para todos os participantes — este botão é só para repetir o que ficou pendente. As pagas saem via Marketplace (fora da franquia); consultas já válidas não são repetidas.`)) return;
                         void acao(() => analiseService.consultarBiroTodas(d.id), 'Consultas de birô disparadas — resultados registrados abaixo.');
                       }}
                     >
-                      Consultar birôs ({pend.length} pendente{pend.length > 1 ? 's' : ''})
+                      Consultar birôs ({total} pendente{total > 1 ? 's' : ''}{porParticipante.length > 1 ? ` · ${porParticipante.length} pessoas` : ''})
                     </Botao>
                   );
                 })()}
@@ -478,6 +487,9 @@ export function AnalisePage() {
                   (c.tipo === 'RESTRITIVOS' && (typeof r.restritivosFinanceiros !== 'number' || typeof r.restritivosNaoFinanceiros !== 'number')));
               return (
                 <div key={c.id} className="py-[8px] text-[12px] first:pt-0" style={{ borderTop: '1px solid var(--border-light)', color: 'var(--text-body)' }}>
+                  {d.participantes.length > 1 && c.titularNome && (
+                    <span className="mr-[6px] rounded-full px-[8px] py-[1px] text-[11px] font-bold" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>{c.titularNome.split(' ')[0]}</span>
+                  )}
                   <b style={{ color: 'var(--text-primary)' }}>{TIPO_CONSULTA_LABEL[c.tipo] ?? c.tipo}</b> · {c.fornecedor} {c.protocolo && `· ${c.protocolo}`} · {instanteBR(c.dataConsulta)} ·
                   {c.situacao === 'FALHA' ? <span style={{ color: 'var(--danger-fg)' }}> falhou ({c.motivoFalha}) · tentativa {c.tentativas}</span> : c.valida ? ' válida' : <span style={{ color: 'var(--warn-fg)' }}> vencida (mais de 30 dias)</span>}
                   {c.resultado && ` · ${resumoResultado(c.resultado)}`}
@@ -681,7 +693,7 @@ function Participante({ d, p, ocupado, acao, final }: { d: DossieAnalise; p: Par
             {campo === 'rendaApurada' && (
               <Origem
                 texto={p.rendaApuradaOrigem}
-                vazio={p.rendaApurada === null ? (d.resumoIa?.status === 'concluido' ? 'o resumo do assistente não trouxe a "Média 3M" — informe a renda apurada' : 'vem preenchida quando o resumo do assistente traz a "Média 3M"; sem resumo, informe') : null}
+                vazio={p.rendaApurada === null ? (p.papel !== 'COMPRADOR_PRINCIPAL' ? 'informe a renda apurada (o relatório do assistente só traz a média do comprador principal)' : d.resumoIa?.status === 'concluido' ? 'o resumo do assistente não trouxe uma "Média 3M"/"Média 2M" legível — informe a renda apurada' : 'vem preenchida quando o resumo do assistente traz a "Média 3M" (ou 2M, marcada); sem resumo, informe') : null}
               />
             )}
             {campo === 'rendaApurada' && (atual as number | null) !== null && !final && (
