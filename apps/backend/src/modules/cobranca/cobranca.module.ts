@@ -4,6 +4,7 @@ import { QUEUE_NAMES } from '../queues/queues.module';
 import { FaturaService } from './fatura.service';
 import { WebhookController } from './webhook.controller';
 import { CobrancaController } from './cobranca.controller';
+import { ConferenciaAsaasService } from './conferencia-asaas.service';
 import {
   PagamentoRecebidoProcessor,
   PagamentoVencidoProcessor,
@@ -30,6 +31,7 @@ import {
   controllers: [WebhookController, CobrancaController],
   providers: [
     FaturaService,
+    ConferenciaAsaasService,
     PagamentoRecebidoProcessor,
     PagamentoVencidoProcessor,
     FecharFaturaProcessor,

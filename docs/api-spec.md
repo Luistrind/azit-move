@@ -1238,6 +1238,50 @@ data-calendário no fuso do negócio.
 o que entrou, `faturas` = recebimentos (faturas + entradas), `maisAntiga` = primeiro pagamento,
 `ultimoPagamento` = último.
 
+### 4.2-A Conferência Asaas × sistema (doc 02 §27.9, 12/11/2026)
+
+Faturas ABERTA/FECHADA com `asaasChargeId` e vencimento em `[de, ate]`, lidas uma a uma no Asaas.
+Sem `de`: desde o início; sem `ate`: até ontem (fuso Brasil) — tudo que está vencido. Só leitura;
+nada é alterado no Asaas. ADMIN/OPERADOR. Lotes pequenos + cache de 60 s por cobrança.
+
+`GET /api/v1/cobranca/conferencia-asaas?de=2026-11-01&ate=2026-11-11`
+
+```json
+{
+  "periodo": { "de": "2026-11-01", "ate": "2026-11-11" },
+  "hoje": "2026-11-12",
+  "consultadoEm": "2026-11-12T12:40:03.120Z",
+  "ambiente": "producao",
+  "total": 42,
+  "porClassificacao": { "paga_no_asaas": 5, "removida_no_asaas": 2, "estornada_no_asaas": 0, "vencimento_diferente": 0, "valor_diferente": 0, "ok": 35 },
+  "falhas": [],
+  "linhas": [
+    {
+      "faturaId": "fat_…", "numero": 7, "contaId": "conta_…", "titularId": "tit_…", "titular": "Antônio Silva",
+      "statusAqui": "FECHADA", "situacaoAqui": "vencida", "vencimentoAqui": "2026-11-05", "valorAqui": 99700,
+      "asaasChargeId": "pay_…",
+      "asaas": { "id": "pay_…", "status": "RECEIVED", "vencimento": "2026-11-05", "valor": 99700, "valorOriginal": null, "dataPagamento": "2026-11-06", "deleted": false, "invoiceUrl": "https://www.asaas.com/i/…" },
+      "classificacao": "paga_no_asaas"
+    }
+  ]
+}
+```
+
+`asaas: null` = o Asaas respondeu 404 (→ `removida_no_asaas`). `falhas[]` = cobranças que não deu
+para ler (rede/5xx) — ficam fora de `linhas` e de `total`. Valores em centavos; datas calendário.
+
+`POST /api/v1/cobranca/conferencia-asaas/:faturaId/reconciliar` → **202**
+
+Só para `paga_no_asaas` (relê a cobrança ao vivo). Enfileira o MESMO job `conciliar` da fila
+`pagamento-recebido` que o webhook geraria:
+
+```json
+{ "enfileirado": true, "statusAsaas": "RECEIVED", "job": { "faturaId": "fat_…", "paymentDate": "2026-11-06", "dueDate": "2026-11-05", "valor": 99700 } }
+```
+
+Erros 422: `fatura_nao_aberta`, `sem_cobranca`, `asaas_simulado`, `nao_paga_no_asaas`
+(com `classificacao` e `statusAsaas`). 404: `nao_encontrado`.
+
 Valores em centavos. 400 `validacao` para datas fora de `YYYY-MM-DD`/`YYYY-MM` ou `de > ate`.
 
 `GET /api/v1/contas/carteira/resumo` (doc 02 §27.8) →

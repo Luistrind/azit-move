@@ -2750,6 +2750,51 @@ visão geral ("Abrir na Carteira" → `?situacao=em_atraso`). Mudanças na grade
 API: `GET /contas/carteira/resumo` → `{ contas, contasEmAtraso, contasBloqueadas, contratosAtivos,
 valorSobGestaoPresente, valorSobGestaoNominal, valorEmAtraso }` (centavos).
 
+### 27.9 Conferência Asaas × sistema das faturas em aberto (2026-11-12)
+
+Contexto: em 12/11 a Carteira mostrava **42** faturas vencidas em novembro (todas FECHADA, todas
+com cobrança emitida) e o painel do Asaas, **35** cobranças vencidas no mesmo filtro. As 7 a mais
+eram cobranças já pagas lá e ainda abertas aqui (webhook perdido ou não conciliado) ou alteradas /
+removidas no painel. Não havia como enxergar isso sem abrir o Asaas cobrança por cobrança.
+
+**O que é.** Uma leitura lado a lado, só leitura por padrão: as faturas **em aberto aqui**
+(ABERTA/FECHADA, com `asaasChargeId`, vencimento no período — sem período, tudo que está vencido até
+ontem, fuso Brasil) são lidas uma a uma no Asaas (`GET /payments/{id}`, pelo `AsaasLeituraService`,
+em lotes pequenos, com cache de 60 s) e cada linha recebe UMA classificação, calculada em
+`@azit/utils` (`classificarConferenciaAsaas`, Regra 16):
+
+| classificação | significa | ação |
+|---|---|---|
+| `ok` | aberta nos dois lados, mesmo vencimento e valor | nenhuma (linhas recolhidas na tela) |
+| `paga_no_asaas` | Asaas registra o recebimento (RECEIVED, CONFIRMED, RECEIVED_IN_CASH, DUNNING_RECEIVED); aqui segue aberta | **Reconciliar** |
+| `removida_no_asaas` | 404, `deleted` ou DELETED — a cobrança não existe mais | decidir: reemitir (§7.3) ou tratar |
+| `estornada_no_asaas` | REFUNDED / REFUND_* / CHARGEBACK_* — o dinheiro voltou ou está em disputa; a fatura continua devida, mas essa cobrança não serve mais | decidir |
+| `vencimento_diferente` | aberta nos dois, mas o vencimento foi alterado no painel | sinalizar (muda raia e régua) |
+| `valor_diferente` | aberta nos dois, mas o valor foi alterado no painel | sinalizar |
+
+Ordem de precedência: removida → estornada → paga → vencimento → valor → ok (vencimento antes de
+valor porque é o que muda a raia). Status desconhecido do Asaas é tratado como "em aberto".
+`estornada_no_asaas` não estava no pedido original: entrou porque juntar estorno em "removida" ou
+em "ok" esconderia a situação — **decisão de modelagem a validar com o Luís**.
+
+**Reconciliar.** Só para `paga_no_asaas`. Lê a cobrança **ao vivo** (sem cache), confirma a
+classificação e enfileira o **MESMO** job `conciliar` da fila `pagamento-recebido` que o webhook
+geraria (`eventoConciliacaoDe`: `paymentDate = clientPaymentDate ?? paymentDate ?? confirmedDate`,
+`valor = value` pago em centavos), respondendo **202**. Nunca marca paga de forma síncrona (Regra
+4) e **nada é alterado no Asaas** (Regra 1). É a generalização, em lista, do "Conferir pagamento no
+Asaas" de uma fatura (§7.3).
+
+**Tela.** Carteira › cartão **Vencidas** › "Conferir com o Asaas": modal com cliente, fatura
+(nº + id da cobrança), vencimento e valor nos dois lados (o do Asaas só aparece quando difere),
+situação aqui, situação no Asaas (rótulo + status cru + data do pagamento), classificação com cor
+de `statusColors.ts` (`CONFERENCIA_ASAAS_COLORS`), botão **Reconciliar** só nas linhas
+`paga_no_asaas`, com confirmação que mostra data e valor que serão conciliados. Linhas `ok`
+recolhidas por padrão; cobranças que não deu para ler (rede, 5xx) aparecem à parte como "sem
+leitura", nunca como "removida".
+
+API: `GET /cobranca/conferencia-asaas?de&ate` e `POST /cobranca/conferencia-asaas/:faturaId/reconciliar`
+(ADMIN/OPERADOR). Detalhe em `api-spec.md` §4.2-A.
+
 
 ---
 
