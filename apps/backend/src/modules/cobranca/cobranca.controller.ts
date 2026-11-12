@@ -22,6 +22,9 @@ import { PrismaService } from '../../database/prisma.service';
 import { FaturaService, eventoConciliacaoDe, type CobrancaAsaasAoVivo } from './fatura.service';
 import { AsaasLeituraService } from '../asaas/asaas-leitura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
+import { ConferenciaAsaasService } from './conferencia-asaas.service';
+
+const DATA_ISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 @Controller()
 export class CobrancaController {
@@ -29,6 +32,7 @@ export class CobrancaController {
     private readonly fatura: FaturaService,
     private readonly prisma: PrismaService,
     private readonly asaasLeitura: AsaasLeituraService,
+    private readonly conferencia: ConferenciaAsaasService,
     @InjectQueue(QUEUE_NAMES.PAGAMENTO_RECEBIDO)
     private readonly filaRecebido: Queue,
   ) {}
@@ -120,6 +124,27 @@ export class CobrancaController {
     if (!cobrancaAsaasPaga(pg.status)) return { enfileirado: false, statusAsaas: pg.status, motivo: 'O Asaas ainda não registra o recebimento desta cobrança' };
     await this.filaRecebido.add('conciliar', eventoConciliacaoDe(fatura.id, pg));
     return { enfileirado: true, statusAsaas: pg.status, motivo: null };
+  }
+
+  // Conferência Asaas × sistema (doc 02 §27.9, 12/11): faturas em aberto aqui com
+  // cobrança emitida, lidas uma a uma no Asaas e classificadas. Só leitura.
+  // Sem `de`/`ate`: tudo que está vencido até ontem (fuso Brasil).
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Get('cobranca/conferencia-asaas')
+  conferenciaAsaas(
+    @Query(new ZodValidationPipe(z.object({ de: DATA_ISO.optional(), ate: DATA_ISO.optional() })))
+    q: { de?: string; ate?: string },
+  ) {
+    return this.conferencia.conferir(q.de, q.ate);
+  }
+
+  // Reconciliar UMA linha `paga_no_asaas`: enfileira o MESMO job `conciliar` do
+  // webhook (Regra 4 — 202, nunca baixa síncrona). Nada é alterado no Asaas.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('cobranca/conferencia-asaas/:faturaId/reconciliar')
+  @HttpCode(202)
+  reconciliarAsaas(@Param('faturaId') faturaId: string) {
+    return this.conferencia.reconciliar(faturaId);
   }
 
   // Dev: simula o pagamento de UMA fatura (o que o cliente paga é a fatura, não a
