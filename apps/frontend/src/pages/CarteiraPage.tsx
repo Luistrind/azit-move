@@ -206,9 +206,9 @@ export function CarteiraPage() {
             if (!trecho) return 'Quando o período começar, a comparação usa o mesmo trecho do mês anterior.';
             const a = atual.data, b = anterior.data;
             if (!a || !b) return 'Carregando…';
-            const dr = variacaoPct(a.recebido.valor, b.recebido.valor), dt = variacaoPct(a.teto.valor, b.teto.valor), dv = variacaoPct(a.vencidas.valor, b.vencidas.valor);
+            const dr = variacaoPct(a.recebido.valor, b.recebido.valor), dt = variacaoPct(a.teto.valor, b.teto.valor);
             const sinal = (d: number | null) => (d === null ? '—' : `${d >= 0 ? '+' : ''}${d}%`);
-            return <>Recebido <b>{sinal(dr)}</b> com teto {sinal(dt)}. {aberto ? 'Vencido não compara: o período anterior teve mais tempo de cobrança.' : `Vencido ${sinal(dv)}.`}</>;
+            return <>Recebido <b>{sinal(dr)}</b> com teto {sinal(dt)}.</>;
           })()}
         >
           {!trecho ? (
@@ -216,12 +216,13 @@ export function CarteiraPage() {
           ) : atual.data && anterior.data ? (
             <div className="flex flex-col">
               {([
-                ['Teto', atual.data.teto.valor, anterior.data.teto.valor, false, false],
-                ['Recebido', atual.data.recebido.valor, anterior.data.recebido.valor, false, false],
-                ['Vencido', atual.data.vencidas.valor, anterior.data.vencidas.valor, true, aberto],
-              ] as [string, number, number, boolean, boolean][]).map(([k, a, b, inverso, nc]) => {
-                const d = nc ? null : variacaoPct(a, b);
-                const tom = d === null || d === 0 ? 'flat' : (d > 0) !== inverso ? 'up' : 'down';
+                // Só teto e recebido (Luís, 12/11): vencido saiu da comparação — o trecho
+                // anterior sempre teve mais tempo de cobrança, a leitura não compara.
+                ['Teto', atual.data.teto.valor, anterior.data.teto.valor],
+                ['Recebido', atual.data.recebido.valor, anterior.data.recebido.valor],
+              ] as [string, number, number][]).map(([k, a, b]) => {
+                const d = variacaoPct(a, b);
+                const tom = d === null || d === 0 ? 'flat' : d > 0 ? 'up' : 'down';
                 const cor = tom === 'up' ? VISAO_ESTADO_COLORS.recebidas : tom === 'down' ? VISAO_ESTADO_COLORS.vencidas : null;
                 return (
                   <div key={k} className="grid grid-cols-[1fr_1fr_auto] items-center gap-x-[10px] gap-y-[2px] py-[8px] text-[13px] sm:grid-cols-[1.1fr_1fr_1fr_auto]" style={{ borderBottom: '1px solid var(--border-light)' }}>
@@ -230,10 +231,9 @@ export function CarteiraPage() {
                     <span className="font-display font-semibold tabular-nums" style={{ color: 'var(--text-primary)' }}>{semCentavos(b)}<small className="block text-[10.5px] font-normal uppercase tracking-[0.08em]" style={{ color: 'var(--text-muted)' }}>antes</small></span>
                     <span
                       className="justify-self-end whitespace-nowrap rounded-full px-[8px] py-[2px] text-[12px] font-semibold"
-                      title={nc ? 'não comparável: o período anterior teve mais tempo de cobrança' : undefined}
                       style={cor ? { background: cor.soft, color: cor.fg } : { background: 'var(--surface-muted)', color: 'var(--text-body)' }}
                     >
-                      {d === null ? (nc ? 'n/c' : '—') : `${d > 0 ? '↑' : d < 0 ? '↓' : '='} ${Math.abs(d)}%`}
+                      {d === null ? '—' : `${d > 0 ? '↑' : d < 0 ? '↓' : '='} ${Math.abs(d)}%`}
                     </span>
                   </div>
                 );
