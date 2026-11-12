@@ -29,14 +29,14 @@ WHERE f."deletedAt" IS NULL
 ORDER BY t.nome, f."dataVencimento", f.numero;
 
 \echo
-\echo '=== B) Quanto isso pesa por mês: soma do valor pago das faturas "a mais" (a segunda de cada par), por mês de pagamento ==='
+\echo '=== B) Soma da SEGUNDA fatura de cada par, por mês de pagamento (achado 12/11: a segunda é a INTERMEDIÁRIA da entrada diluída, dinheiro real da mesma cobrança — conta a mais só em QUANTIDADE de faturas, não em valor) ==='
 WITH dup AS (
   SELECT "asaasChargeId", MIN(numero) AS primeira FROM faturas
   WHERE "deletedAt" IS NULL AND "asaasChargeId" IS NOT NULL
   GROUP BY 1 HAVING COUNT(*) > 1
 )
 SELECT to_char(f."dataPagamento", 'YYYY-MM') AS mes_pagamento, to_char(f."dataVencimento", 'YYYY-MM') AS mes_vencimento,
-       COUNT(*) AS faturas_a_mais, SUM(COALESCE(f."valorPago", f."valorTotal")) AS recebido_em_dobro, SUM(f."valorTotal") AS teto_em_dobro
+       COUNT(*) AS faturas_a_mais, SUM(COALESCE(f."valorPago", f."valorTotal")) AS valor_segunda_fatura, SUM(f."valorTotal") AS face_segunda_fatura
 FROM faturas f
 JOIN dup d ON d."asaasChargeId" = f."asaasChargeId" AND f.numero <> d.primeira
 WHERE f."deletedAt" IS NULL
