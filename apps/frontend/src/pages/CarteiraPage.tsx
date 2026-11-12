@@ -20,6 +20,7 @@ import { SeletorPeriodo, intervaloDoPeriodo, rotuloDoPeriodo, type PeriodoSeleci
 import { GraficoBarrasEmpilhadas, type CategoriaEmpilhada } from '../components/GraficoBarrasEmpilhadas';
 import { PRODUTO_SLOT_COLORS, VISAO_ESTADO_COLORS, VIZ_NEUTRAL } from '../config/statusColors';
 import { hojeBrasilISO } from '../lib/datas';
+import { ConferenciaAsaasModal } from './CarteiraConferenciaAsaas';
 
 // Carteira (doc 02 §27, 30/10/2026): teto, vencidas e a vencer por VENCIMENTO;
 // Recebido é CAIXA — tudo que entrou no período pela data do pagamento (faturas
@@ -50,6 +51,9 @@ export function CarteiraPage() {
   const [sel, setSel] = useState<PeriodoSelecionado>({ modo: 'mes', anoMes: mesHoje });
   const [lista, setLista] = useState<EstadoVisao | null>(null);
   const [listaToda, setListaToda] = useState(false);
+  // Conferência Asaas × sistema (doc 02 §27.9): aberta pela lista de vencidas,
+  // sobre o mesmo recorte dela — vencimento no período e já vencido (até ontem).
+  const [conferindo, setConferindo] = useState(false);
 
   const periodo = intervaloDoPeriodo(sel, hoje);
   const rotulo = rotuloDoPeriodo(sel, hoje);
@@ -157,10 +161,26 @@ export function CarteiraPage() {
                     <span>
                       <b style={{ color: 'var(--text-primary)' }}>{VISAO_ESTADO_COLORS[lista].rotulo}</b> · {clientes.data ? plural(clientes.data.length, 'cliente', 'clientes') : '…'} · {rotulo}
                     </span>
-                    <button type="button" onClick={() => abrirNaCarteira(lista === 'vencidas' ? 'em_atraso' : lista === 'recebidas' ? 'em_dia' : '')} className="text-[12.5px] font-semibold" style={{ color: 'var(--accent)' }}>
-                      Abrir na Carteira →
-                    </button>
+                    <span className="flex flex-wrap items-center gap-[14px]">
+                      {lista === 'vencidas' ? (
+                        <button type="button" onClick={() => setConferindo(true)} className="text-[12.5px] font-semibold" style={{ color: 'var(--accent)' }}>
+                          Conferir com o Asaas
+                        </button>
+                      ) : null}
+                      <button type="button" onClick={() => abrirNaCarteira(lista === 'vencidas' ? 'em_atraso' : lista === 'recebidas' ? 'em_dia' : '')} className="text-[12.5px] font-semibold" style={{ color: 'var(--accent)' }}>
+                        Abrir na Carteira →
+                      </button>
+                    </span>
                   </div>
+                  {lista === 'vencidas' ? (
+                    <ConferenciaAsaasModal
+                      open={conferindo}
+                      onClose={() => setConferindo(false)}
+                      de={periodo.de}
+                      ate={periodo.ate < hoje ? periodo.ate : somarDiasISO(hoje, -1)}
+                      rotulo={rotulo}
+                    />
+                  ) : null}
                   {(listaToda ? clientes.data ?? [] : (clientes.data ?? []).slice(0, 8)).map((c) => {
                     const dias = Math.max(0, diasCalendarioEntre(c.maisAntiga, hoje));
                     const tomDias = dias >= 30 ? 'bad' : dias >= 3 ? 'warn' : 'neutro';

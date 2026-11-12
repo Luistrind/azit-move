@@ -258,6 +258,45 @@ export const CONCILIACAO_LINHA_COLORS: Record<string, StatusColor> = {
   futura: { bg: 'var(--surface-muted)', fg: 'var(--text-body)' },
   valor_diverge: { bg: 'var(--purple-bg)', fg: 'var(--purple-fg)' },
 };
+// Conferência Asaas × sistema (doc 02 §27.9, 12/11/2026). Chaves = classificação
+// que o backend devolve (`classificarConferenciaAsaas`, @azit/utils). Verde só
+// no `ok`; `paga_no_asaas` é a única com ação (Reconciliar) e por isso é INFO,
+// não "boa" — o dinheiro entrou mas aqui ainda está em aberto.
+export const CONFERENCIA_ASAAS_COLORS: Record<string, StatusColor> = {
+  ok: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  paga_no_asaas: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  removida_no_asaas: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  estornada_no_asaas: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  vencimento_diferente: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  valor_diferente: { bg: 'var(--purple-bg)', fg: 'var(--purple-fg)' },
+};
+export const CONFERENCIA_ASAAS_LABEL: Record<string, string> = {
+  ok: 'Conferida',
+  paga_no_asaas: 'Paga no Asaas',
+  removida_no_asaas: 'Removida no Asaas',
+  estornada_no_asaas: 'Estornada no Asaas',
+  vencimento_diferente: 'Vencimento diferente',
+  valor_diferente: 'Valor diferente',
+};
+// Status da COBRANÇA como o Asaas devolve (rótulo em português; a chave crua
+// aparece ao lado para quem for conferir no painel).
+export const COBRANCA_ASAAS_STATUS_LABEL: Record<string, string> = {
+  PENDING: 'Aguardando pagamento',
+  OVERDUE: 'Vencida',
+  RECEIVED: 'Recebida',
+  CONFIRMED: 'Confirmada',
+  RECEIVED_IN_CASH: 'Recebida em dinheiro',
+  DUNNING_REQUESTED: 'Em negativação',
+  DUNNING_RECEIVED: 'Recuperada por negativação',
+  AWAITING_RISK_ANALYSIS: 'Em análise de risco',
+  REFUNDED: 'Estornada',
+  REFUND_REQUESTED: 'Estorno solicitado',
+  REFUND_IN_PROGRESS: 'Estorno em andamento',
+  CHARGEBACK_REQUESTED: 'Chargeback solicitado',
+  CHARGEBACK_DISPUTE: 'Chargeback em disputa',
+  AWAITING_CHARGEBACK_REVERSAL: 'Aguardando reversão de chargeback',
+  DELETED: 'Removida',
+};
 // Confiança da linha (doc 02 §26.14): alta = nada a fazer; média = conferir; baixa = decidir.
 export const CONFIANCA_LINHA_COLORS: Record<string, StatusColor> = {
   alta: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
