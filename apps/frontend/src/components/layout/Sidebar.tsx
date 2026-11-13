@@ -252,14 +252,20 @@ export function Sidebar() {
         >
           {iniciais(usuario?.nome ?? 'Azit')}
         </div>
-        <div className="min-w-0 flex-1 leading-tight">
+        {/* Minha conta (doc 06 v1.1 §2.5): meus acessos e "encerrar todas as sessões". */}
+        <NavLink
+          to="/minha-conta"
+          title="Minha conta — meus acessos e sessões"
+          className="min-w-0 flex-1 rounded-[8px] px-[4px] py-[2px] leading-tight hover:bg-[rgba(255,255,255,.06)]"
+          style={({ isActive }) => (isActive ? { background: 'rgba(255,255,255,.08)' } : undefined)}
+        >
           <div className="truncate text-[12.5px] font-semibold">
             {usuario?.nome ?? 'Operador Azit'}
           </div>
           <div className="truncate text-[11px]" style={{ color: 'var(--accent)' }}>
             {usuario?.roles?.join(' · ') ?? 'Console operacional'}
           </div>
-        </div>
+        </NavLink>
         <button
           onClick={onLogout}
           title="Sair"

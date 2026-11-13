@@ -41,6 +41,7 @@ import { IntegracoesPage } from './pages/IntegracoesPage';
 import { OcorrenciasPage } from './pages/OcorrenciasPage';
 import { MigracaoLegadoPage } from './pages/MigracaoLegadoPage';
 import { MigracaoLegadoCasoPage } from './pages/MigracaoLegadoCasoPage';
+import { MinhaContaPage } from './pages/MinhaContaPage';
 
 // Rotas client-side — Doc 4 §5.1. /login é pública; o restante é protegido pela sessão.
 //
@@ -71,6 +72,8 @@ export const router = createBrowserRouter([
         element: <RotaPorArea />,
         children: [
           { index: true, element: <InicioPage /> },
+          // Minha conta (doc 06 v1.1 §2.5): sem área — apoio a qualquer usuário autenticado.
+          rota('minha-conta', <MinhaContaPage />),
 
           // Comercial (funil: atendimento → simulação → proposta → formalização)
           rota('atendimento', <AtendimentoPage />, COMERCIAL),

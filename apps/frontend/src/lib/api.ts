@@ -42,7 +42,7 @@ api.interceptors.response.use(
       _retry?: boolean;
     };
     const url = original?.url ?? '';
-    const ehRotaAuth = url.includes('/auth/login') || url.includes('/auth/refresh');
+    const ehRotaAuth = url.includes('/auth/login') || url.includes('/auth/google') || url.includes('/auth/refresh');
 
     if (error.response?.status === 401 && original && !original._retry && !ehRotaAuth) {
       original._retry = true;

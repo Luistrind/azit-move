@@ -386,3 +386,16 @@ export const VISAO_ESTADO_COLORS: Record<'recebidas' | 'vencidas' | 'a_vencer', 
 };
 export const PRODUTO_SLOT_COLORS: string[] = ['var(--viz-p1)', 'var(--viz-p2)', 'var(--viz-p3)', 'var(--viz-p4)', 'var(--viz-p5)', 'var(--viz-p6)'];
 export const VIZ_NEUTRAL = 'var(--viz-neutral)';
+
+// Registro de acessos e entrada do usuário (doc 06 v1.1 §2.5) — chaves são os
+// rótulos de @azit/types (ROTULO_RESULTADO_ACESSO / ROTULO_ENTRADA_USUARIO).
+export const ACESSO_RESULTADO_COLORS: Record<string, StatusColor> = {
+  Entrou: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  Falhou: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+};
+export const ENTRADA_USUARIO_COLORS: Record<string, StatusColor> = {
+  'Google vinculado': { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  'Google pendente': { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
+  'Senha ligada': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  'Senha desligada': { bg: 'var(--surface-input)', fg: 'var(--text-muted)' },
+};
