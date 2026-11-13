@@ -1,25 +1,29 @@
 # Doc 6 — Autenticação e Permissões
 ## Azit Move V3
 
-**Versão:** 1.0  
-**Data:** jun/2025  
+**Versão:** 1.1  
+**Data:** jun/2025 · revisão nov/2026  
 **Status:** Aprovado para implementação (V1: autenticação interna; titular: desenhada, implementação futura)
+
+> **Revisão 1.1 (decisões Luís, 12/11/2026):** (a) entrada do usuário interno passa a ser pela **conta Google do Workspace** (domínios `azit.com.br` e `azitmove.com.br`, mesmas caixas), senha vira reserva **desligada por padrão** e liberada por usuário pelo Admin (§2); (b) a **área de trabalho** (doc 02 §16) passa a ser **autorização de verdade**, checada na API e nas rotas da tela, não só no menu (§5.4, §7.5); (c) **alertas por e-mail** sobre as notificações dirigidas a um usuário: aprovação esperando por ele e retorno das solicitações dele (§12); (d) limite de tentativas, bloqueio temporário e **registro de acessos** (§2.5, §11.3). As seções alteradas trazem a marca *(v1.1)*.
 
 ---
 
 ## Sumário
 
 1. Visão geral — dois mundos de identidade
-2. Autenticação do Usuário interno
+2. Autenticação do Usuário interno *(v1.1: Google + senha opcional)*
 3. Estratégia de tokens
 4. Payload do JWT
-5. Roles e RBAC
+5. Roles e RBAC *(v1.1: §5.4 áreas de trabalho)*
 6. Alçadas de aprovação
-7. Guards e proteção de rotas
+7. Guards e proteção de rotas *(v1.1: §7.5 AreaGuard)*
 8. Autenticação do Titular (desenho — implementação futura)
-9. Modelos de dados
-10. Fluxos de autenticação
-11. Notas de implementação e segurança
+9. Modelos de dados *(v1.1)*
+10. Fluxos de autenticação *(v1.1)*
+11. Notas de implementação e segurança *(v1.1)*
+12. Alertas por e-mail *(v1.1)*
+13. Mapa módulo → área *(v1.1)*
 
 ---
 
@@ -29,7 +33,7 @@ O sistema tem **dois mecanismos de identidade distintos**, cada um único no seu
 
 | Mundo | Quem | Como autentica | Acessa |
 |---|---|---|---|
-| **Interno** | Funcionário (Usuario) | email + senha | Console operacional |
+| **Interno** | Funcionário (Usuario) | conta Google do Workspace (`azit.com.br` / `azitmove.com.br`); senha só se o Admin liberar *(v1.1)* | Console operacional |
 | **Externo** | Pessoa (Titular) | identidade própria (futura) | A própria conta |
 
 **Usuario interno** acessa o console operacional. Tem múltiplos roles que se somam (RBAC). É o foco da implementação do V1.
@@ -42,23 +46,50 @@ O sistema tem **dois mecanismos de identidade distintos**, cada um único no seu
 
 ## 2. Autenticação do Usuário interno
 
-O Usuario representa um funcionário da Azit (operação, financeiro, direção). Autentica com **email + senha**.
+O Usuario representa um funcionário da Azit (operação, financeiro, direção). Desde a v1.1 autentica com a **conta Google do Workspace da empresa**; a senha própria do sistema existe só como reserva, desligada por padrão.
 
-### 2.1 Credenciais
+> **Por quê (decisão Luís, 12/11/2026).** Toda a equipe tem conta no Workspace e ninguém de fora do domínio usa o sistema. Entrando pelo Google, senha, segundo fator, bloqueio de conta e desligamento de funcionário passam a ser administrados num lugar só: desativou a conta Google, o acesso ao Hub morre junto. Manter um segundo esquema de senha e segundo fator dentro do sistema duplicaria o trabalho sem ganho. O que continua nosso: quem existe no Hub, quais áreas vê, limite de tentativas e registro de acessos.
 
-- **Identificador:** email (único no sistema)
-- **Senha:** armazenada como hash, nunca em texto puro
-- **Algoritmo de hash:** bcrypt com cost factor 12 (ou argon2id, se disponível no ambiente)
-- O campo no banco é `senhaHash` — o nome reforça que nunca se guarda a senha em si
+### 2.1 Identidade
 
-### 2.2 Fluxo de login
+- **Identificador:** e-mail do Workspace, único no sistema.
+- **Dois domínios, mesmas caixas:** `azit.com.br` e `azitmove.com.br` são a mesma conta Google (domínio e alias). O vínculo entre a conta Google e o Usuario é pela **parte local do e-mail**, aceitando qualquer um dos dois domínios: `joao@azit.com.br` e `joao@azitmove.com.br` são o mesmo usuário. O e-mail gravado no cadastro é o que o Admin digitou; a comparação normaliza (minúsculas, domínio em `DOMINIOS_WORKSPACE`, constante única em `packages/utils`).
+- **Vínculo estável:** no primeiro acesso pelo Google o sistema grava o `sub` do Google (`googleSub`, identificador imutável da conta). Dali em diante o acesso exige e-mail **e** `sub` iguais. Se uma conta Google for apagada e o mesmo e-mail recriado no Workspace, o `sub` muda e o acesso é negado até o Admin "religar" o vínculo em Usuários e permissões (ação auditada). Isso impede que um e-mail reaproveitado herde o acesso do dono anterior.
+- **Nenhuma conta nasce no login.** Conta Google válida do domínio que não corresponde a um Usuario ativo recebe a mesma resposta genérica de falha. Criar usuário continua sendo ação do Admin.
 
-1. Usuário envia email + senha para `POST /api/v1/auth/login`
-2. Sistema busca o usuário pelo email
-3. Compara a senha com o hash armazenado (bcrypt.compare)
-4. Se válido e o usuário está ativo: gera access token + refresh token
-5. Retorna ambos ao cliente
-6. Se inválido: resposta genérica `401` sem revelar se foi email ou senha que falhou
+### 2.2 Entrar com Google
+
+Fluxo com o botão oficial do Google (Google Identity Services) e **ID token** verificado no backend. Não usamos o fluxo de autorização com escopos: o sistema não lê nada da conta do usuário, só confirma quem ele é.
+
+1. Tela de login mostra o botão "Entrar com Google". O usuário escolhe a conta do Workspace.
+2. O Google devolve ao navegador um ID token (JWT assinado pelo Google).
+3. O navegador envia o token para `POST /api/v1/auth/google` (rota pública).
+4. O backend valida o token com a biblioteca oficial do Google: assinatura, `aud` igual ao nosso client id, `iss` do Google, `exp`, `email_verified = true`.
+5. Confere o domínio: o claim `hd` **e** o domínio do e-mail precisam estar em `DOMINIOS_WORKSPACE`. Conta pessoal `@gmail.com` ou de outro Workspace é recusada.
+6. Localiza o Usuario pela parte local do e-mail, ativo e não excluído. Confere ou grava o `googleSub` (§2.1).
+7. Emite **os mesmos** access token e refresh token da §3. O resto do sistema não sabe por onde o usuário entrou.
+8. Registra o acesso (§2.5). Falha em qualquer passo: `401` genérico e registro do motivo só no log de acessos, nunca na resposta.
+
+Configuração: `GOOGLE_CLIENT_ID` no backend e no frontend (o id do cliente OAuth é público por natureza; não há client secret neste fluxo). O cliente OAuth é criado no Google Cloud da empresa, tipo "aplicativo Web", com as origens autorizadas de homolog e produção. Sem `GOOGLE_CLIENT_ID` configurado o botão não aparece e o sistema avisa na tela de Integrações.
+
+### 2.3 Senha como reserva (desligada por padrão)
+
+- Cada Usuario tem `permiteSenha` (padrão `false`). **Só o Admin** liga ou desliga, em Usuários e permissões, e a mudança é auditada com motivo.
+- Com `permiteSenha = false`, `POST /auth/login` responde o mesmo `401` genérico de credencial inválida, sem dizer que a senha está desligada.
+- Para que serve: pane do Workspace, conta de serviço de teste em homolog, ou um caso excepcional que o Admin decidir. Não é a porta normal.
+- Senha, quando existe: definida pelo Admin, mínimo **10 caracteres**, hash bcrypt (cost 12 em produção). `senhaHash` passa a ser opcional no modelo: usuário que nunca teve senha não tem hash.
+- Não existe "esqueci a senha". A recuperação é entrar pelo Google; se a senha de reserva se perdeu, o Admin redefine.
+
+### 2.4 Tela de login
+
+Botão "Entrar com Google" em destaque. O formulário de e-mail e senha fica recolhido atrás de um link discreto ("entrar com senha"), e só funciona para quem tem `permiteSenha`. Mensagem de erro é sempre a mesma: "Não foi possível entrar. Confira a conta usada ou fale com o administrador."
+
+### 2.5 Limite de tentativas, bloqueio e registro de acessos
+
+- **Limite por IP:** 10 tentativas por minuto nas rotas `POST /auth/login` e `POST /auth/google`. Acima disso, `429`.
+- **Bloqueio temporário por usuário (só senha):** 10 falhas seguidas bloqueiam a entrada por senha daquele usuário por 15 minutos. A entrada pelo Google não é bloqueada por isso (o Google já protege a conta). O bloqueio não é revelado na resposta.
+- **Registro de acessos (`AcessoUsuario`, §9):** toda tentativa, com sucesso ou não, grava forma (`GOOGLE` | `SENHA` | `REFRESH`), resultado, motivo da falha (interno), IP, agente e horário no fuso do Brasil. Fica visível em Usuários e permissões (últimos acessos de cada usuário) e o próprio usuário vê os seus em "Minha conta".
+- **Encerrar todas as sessões:** botão no cadastro do usuário (Admin) e em "Minha conta" que revoga todos os refresh tokens; em até 15 minutos o acesso cai em todos os dispositivos (§3.1).
 
 ---
 
@@ -155,6 +186,21 @@ No schema, isso é a tabela de junção `UsuarioRole` (muitos-para-muitos) — v
 
 O papel é calculado a partir do conteúdo da conta, nunca armazenado como um role no token do titular.
 
+### 5.4 Áreas de trabalho são autorização, não só menu *(v1.1)*
+
+O doc 02 §16 define o modelo em dois níveis: **papel → áreas padrão** (matriz papel × área, editável) **± exceções por usuário**. As áreas são as da navegação (Comercial, Análise de cadastro, Contratos, Carteira e cobrança, Financeiro administrativo, Pessoas, Ativos e frota, Capital e investimento, Produtos, Aprovações, Configurações).
+
+**Problema encontrado em 12/11/2026 (Luís):** analista sem a área Análise de cadastro entrava na tela de análise. Causa: a área só era consultada pelo menu lateral, pelo sino e pelo Início. As rotas da tela não checavam nada e a API checava só papel, onde `OPERADOR` é aceito em quase tudo. A área era decoração.
+
+**Regra a partir da v1.1:**
+
+1. **A área é a unidade de autorização de acesso.** Cada módulo da API declara a(s) área(s) a que pertence (§7.5, mapa na §13). Quem não tem a área recebe `403 acesso_negado`, mesmo que tenha o papel.
+2. **Papel continua valendo para o que é dele:** alçadas e decisão de aprovação (`APROVADOR`, `DIRETOR`), administração (`ADMIN`), execução financeira (`FINANCEIRO`). Dentro de uma área, ação sensível pode continuar exigindo papel: os dois guards se somam.
+3. **Rotas da tela declaram a área.** O roteador do frontend carrega a área de cada rota e redireciona para a página "Sem acesso a esta área" quando o usuário não a tem. Links entre telas (proposta → análise, contrato → carteira) aparecem desabilitados com a explicação em vez de abrir e falhar.
+4. **Uma conta só.** A função que calcula as áreas efetivas de um usuário (papéis × matriz ± exceções) existe **uma vez** no backend (`PermissoesService.areasEfetivas`) e é usada pelo guard, pelo sino, pelo Início e por `GET /me/areas`. Hoje está escrita três vezes; consolidar faz parte do bloco.
+5. **Área não vai no token.** Como o limite de alçada (§4.1), a área muda por ação do Admin e precisa valer na hora. O guard consulta o banco com cache curto em memória (60 s) invalidado em toda mutação de usuário, matriz ou exceção.
+6. **Rota sem área é exceção declarada.** Módulos de apoio que servem a qualquer usuário autenticado (sessão, sino, Início, preferências, consulta FIPE) levam `@AreaLivre()` com justificativa no código. Controller sem nenhum dos dois decorators falha no boot: ninguém esquece de classificar.
+
 ---
 
 ## 6. Alçadas de aprovação
@@ -215,7 +261,7 @@ Decorator `@Public()` marca rotas que dispensam autenticação:
 async login(@Body() dto: LoginDto) { ... }
 ```
 
-Rotas públicas no V1: `POST /auth/login`, `POST /auth/refresh`, e o webhook do Asaas (que usa validação de assinatura própria, não JWT).
+Rotas públicas no V1: `POST /auth/login`, `POST /auth/refresh`, e o webhook do Asaas (que usa validação de assinatura própria, não JWT). *(v1.1)* Entram `POST /auth/google` (§2.2) e as rotas `/publico` da Fatura Azit (doc 02 §32, autenticadas por token da própria fatura).
 
 ### 7.3 RolesGuard
 
@@ -232,6 +278,31 @@ A verificação é por **interseção**: o usuário precisa ter pelo menos um do
 ### 7.4 Webhook do Asaas
 
 O endpoint de webhook não usa JWT — usa validação da assinatura do Asaas (`ASAAS_WEBHOOK_SECRET`). É autenticação de origem, não de usuário. Ver Doc da API.
+
+### 7.5 AreaGuard *(v1.1)*
+
+Guard global que roda depois do `JwtAuthGuard` e antes do `RolesGuard`. Lê o decorator `@Area()` da classe (ou do método, que sobrepõe) e nega quem não tem nenhuma das áreas listadas:
+
+```typescript
+@Area(AreaSistema.ANALISE_CADASTRO)
+@Controller()
+export class AnaliseController { ... }
+
+// Módulo compartilhado por duas áreas: basta ter uma.
+@Area(AreaSistema.COMERCIAL, AreaSistema.PESSOAS)
+@Controller('titulares')
+export class TitularController { ... }
+
+// Apoio a qualquer usuário autenticado — exceção explícita.
+@AreaLivre('sessão do próprio usuário')
+@Controller('auth')
+export class AuthController { ... }
+```
+
+- Áreas efetivas vêm de `PermissoesService.areasEfetivas(usuarioId)` (§5.4, item 4), nunca do token.
+- Resposta: `403 { erro: 'acesso_negado', area: 'ANALISE_CADASTRO' }`. A tela usa o campo `area` para mostrar "Sem acesso à área Análise de cadastro — peça ao administrador".
+- `ADMIN` **não** é curinga de área: Admin tem as áreas que a matriz lhe dá (por padrão, todas). Se o Admin retirar uma área de si mesmo, perde o acesso a ela como qualquer um; isso é desejado para testar permissões.
+- Controller sem `@Area` nem `@AreaLivre` derruba o boot com a lista dos faltantes. Teste automatizado percorre todos os controllers e falha se algum ficar sem classificação.
 
 ---
 
@@ -298,12 +369,34 @@ model Usuario {
   id            String        @id @default(cuid())
   nome          String
   email         String        @unique
-  senhaHash     String
+  senhaHash     String?       // (v1.1) opcional: quem nunca teve senha não tem hash
+  permiteSenha  Boolean       @default(false) // (v1.1) entrada por senha liberada pelo Admin
+  googleSub     String?       @unique         // (v1.1) id imutável da conta Google, gravado no 1º acesso
   ativo         Boolean       @default(true)
   roles         UsuarioRole[]
   refreshTokens RefreshToken[]
+  acessos       AcessoUsuario[]            // (v1.1)
   // ...
 }
+
+// (v1.1) Registro de acessos — toda tentativa, com ou sem sucesso (§2.5).
+model AcessoUsuario {
+  id         String   @id @default(cuid())
+  usuarioId  String?  // null quando o e-mail não corresponde a ninguém (fica só o emailTentado)
+  emailTentado String
+  forma      FormaAcesso   // GOOGLE | SENHA | REFRESH
+  sucesso    Boolean
+  motivo     String?  // interno: dominio_invalido, sub_divergente, senha_desligada, bloqueado, senha_invalida…
+  ip         String?
+  agente     String?
+  em         DateTime @default(now())
+  usuario    Usuario? @relation(fields: [usuarioId], references: [id])
+  @@index([usuarioId, em])
+  @@index([emailTentado, em])
+}
+
+// (v1.1) Preferência de alerta por e-mail (§12) — por usuário, padrão ligado.
+// Entra como chave em `Usuario.preferencias` (Json já existente): { "emailAlertas": true }.
 
 model UsuarioRole {
   usuarioId String
@@ -348,15 +441,33 @@ Quando a autenticação do titular for implementada, ela ganha entidade própria
 
 ## 10. Fluxos de autenticação
 
-### 10.1 Login interno
+### 10.1 Login interno pelo Google *(v1.1 — caminho normal)*
+
+```
+POST /api/v1/auth/google
+  body: { credential }            ← ID token emitido pelo Google ao navegador
+  → valida assinatura, aud, iss, exp, email_verified
+  → hd e domínio do e-mail ∈ DOMINIOS_WORKSPACE (azit.com.br, azitmove.com.br)
+  → localiza Usuario ativo pela parte local do e-mail
+  → googleSub: grava no 1º acesso; nos seguintes exige igualdade
+  → gera access token (15min) + refresh token (7d), persiste o refresh
+  → registra AcessoUsuario { forma: GOOGLE, sucesso: true }
+  → retorna { accessToken, refreshToken, usuario: { id, nome, roles } }
+  falha em qualquer passo → 401 genérico + AcessoUsuario { sucesso: false, motivo }
+```
+
+### 10.1-A Login interno por senha (reserva, só com `permiteSenha`)
 
 ```
 POST /api/v1/auth/login
   body: { email, senha }
-  → valida credenciais
+  → limite por IP (429) e bloqueio temporário do usuário (10 falhas / 15 min)
+  → Usuario ativo, permiteSenha = true, senhaHash presente
+  → bcrypt.compare
   → gera access token (15min) + refresh token (7d)
-  → persiste refresh token no banco
+  → registra AcessoUsuario { forma: SENHA, … }
   → retorna { accessToken, refreshToken, usuario: { id, nome, roles } }
+  qualquer falha (inclusive permiteSenha = false) → o MESMO 401 genérico
 ```
 
 ### 10.2 Requisição autenticada
@@ -366,6 +477,7 @@ GET /api/v1/contratos-credito
   header: Authorization: Bearer <access_token>
   → JwtAuthGuard valida o token
   → popula request.user = { id, roles }
+  → AreaGuard (v1.1) confere a área do módulo contra as áreas efetivas do usuário (banco, cache 60 s)
   → RolesGuard verifica roles se a rota exige
   → controller executa
 ```
@@ -410,10 +522,13 @@ POST /api/v1/acordos/:id/aprovar
 
 ### 11.3 Proteções obrigatórias
 
-- **Rate limiting** no endpoint de login (evitar brute force) — sugestão: 5 tentativas por minuto por IP
-- **Resposta genérica** em falha de login — não revelar se email existe ou se foi a senha
+- **Rate limiting** nas rotas de entrada (`/auth/login`, `/auth/google`): 10 tentativas por minuto por IP → `429`. *(v1.1: estava previsto desde a v1.0 e não havia sido implementado; entra no bloco de login.)*
+- **Bloqueio temporário por usuário** na entrada por senha: 10 falhas seguidas → 15 minutos (§2.5).
+- **Resposta genérica** em falha de login — não revelar se email existe, se a senha está desligada ou se foi a senha
+- **Registro de acessos** de toda tentativa (§2.5) — o motivo real fica no registro, nunca na resposta
 - **HTTPS obrigatório** em produção — tokens nunca trafegam em texto claro
 - **CORS** restrito ao domínio do frontend (já configurado no `main.ts` do Doc 4)
+- **ID token do Google só é aceito com `aud` igual ao nosso `GOOGLE_CLIENT_ID`** — token emitido para outro aplicativo é recusado mesmo sendo do nosso domínio
 
 ### 11.4 Revogação e logout
 
@@ -425,14 +540,95 @@ POST /api/v1/acordos/:id/aprovar
 
 | Item | V1 |
 |---|---|
-| Autenticação Usuario interno (login, refresh, logout) | ✅ Implementar |
-| RBAC com múltiplos roles | ✅ Implementar |
-| Guards (JwtAuthGuard, RolesGuard) | ✅ Implementar |
-| Estrutura de alçada configurável | ⏳ Esqueleto; regras com Vicente |
+| Autenticação Usuario interno (login, refresh, logout) | ✅ Em produção |
+| RBAC com múltiplos roles | ✅ Em produção |
+| Guards (JwtAuthGuard, RolesGuard) | ✅ Em produção |
+| Estrutura de alçada configurável | ✅ Em produção (matriz papel × operação, doc 02 §7.9) |
 | Autenticação do Titular | 📐 Desenhada; implementação futura |
 | Telas dos módulos cliente/investidor | 📐 Fora do V1 (Doc 3) |
 
+### 11.6 Blocos da revisão 1.1 (ordem decidida com Luís, 12/11/2026)
+
+| Bloco | Conteúdo | Por que nesta ordem |
+|---|---|---|
+| **1. Áreas como autorização** | `PermissoesService.areasEfetivas` única; `AreaGuard` + `@Area`/`@AreaLivre` em todos os controllers (mapa §13); rotas da tela com área e página "Sem acesso"; links entre áreas desabilitados; teste que cobre todos os controllers | Fecha o furo aberto hoje (analista entrando na análise). Não depende de nada externo. |
+| **2. Entrar com Google + senha opcional** | `POST /auth/google`; `googleSub`, `permiteSenha`, `senhaHash` opcional; liga/desliga por usuário no Admin; rate limit; bloqueio temporário; `AcessoUsuario` com tela (últimos acessos, encerrar sessões); tela de login nova | Depende do cliente OAuth criado pelo Luís no Google Cloud da empresa. Migração: usuários existentes continuam com `permiteSenha = false`; o Admin liga para si antes do deploy em produção, como rede de segurança, e desliga depois de entrar pelo Google. |
+| **3. Alertas por e-mail** | §12: remetente, fila, eventos, preferência por usuário, tela | Depende do mesmo projeto Google (conta de serviço) e das notificações dirigidas já existentes. Serve também à Fatura Azit (doc 02 §32). |
+
+Cada bloco é uma branch, um homolog e uma tag. Nenhum vai para produção sem validação do Luís no homolog.
+
 ---
 
-*Doc 6 — Autenticação e Permissões · Azit Move V3 · v1.0 · jun/2025*
+## 12. Alertas por e-mail *(v1.1)*
+
+> **Decisão Luís, 12/11/2026.** O sistema avisa por e-mail quando alguém tem **aprovação esperando por ele** ou quando **uma solicitação dele teve retorno**. Hoje isso só aparece no sino, e quem não está com o Hub aberto não fica sabendo.
+
+### 12.1 O que o e-mail é, e o que não é
+
+- O e-mail é um **segundo canal da notificação interna** já existente (doc 02 §16.1). Não há um sistema de e-mail à parte: a mesma `Notificacao` que acende o sino dispara o e-mail quando é **dirigida a um usuário** e o tipo está na lista da §12.2.
+- Notificação **por área** (ex.: "nova aprovação na área Aprovações") ou **geral** (falha de job) **não** vira e-mail. E-mail para a área inteira vira ruído e é ignorado em uma semana.
+- O e-mail **não substitui** a fila de trabalho (Início e Central de Aprovações). Ele leva a pessoa até lá.
+
+### 12.2 Eventos que geram e-mail
+
+| Evento | Destinatário | Assunto (modelo) |
+|---|---|---|
+| Aprovação criada ou escalada | cada usuário que **pode decidir** aquela operação pela matriz de alçada (doc 02 §7.9), excluído o solicitante | "Aprovação esperando por você: {operação}" |
+| Pedido de complemento | solicitante | "Pediram complemento na sua solicitação: {operação}" |
+| Complemento respondido | quem pediu o complemento | "Responderam o complemento: {operação}" |
+| Decisão tomada (aprovada / não aprovada / recomendada / escalada) | solicitante | "Sua solicitação foi {decisão}: {operação}" |
+
+Os destinatários de "pode decidir" saem da mesma função que a Central usa para listar o que cada um pode aprovar; **não** é "todo mundo com a área Aprovações".
+
+### 12.3 Regras
+
+1. **Sem dados pessoais do cliente no e-mail.** O e-mail sai do perímetro do sistema (caixa, celular, encaminhamento). Vai: tipo de operação, valor quando houver, quem solicitou, data e o **link** para o ocorrido. **Não vai** nome, CPF, telefone nem placa do cliente. Quem quiser detalhe clica e entra autenticado. Mesma lógica da Regra 14.
+2. **Um e-mail por evento por destinatário**, nunca repetição. Se a pessoa já decidiu ou já leu a notificação antes do envio sair da fila, o e-mail é descartado.
+3. **Assíncrono, sempre.** O evento grava a notificação e enfileira o e-mail (BullMQ, fila `email`, 3 tentativas com espera crescente). Falha de envio nunca derruba a operação que o gerou e aparece como notificação de falha de sistema.
+4. **Preferência por usuário:** "Receber alertas por e-mail", ligada por padrão, em "Minha conta". Desligar não desliga o sino.
+5. **Horário:** envio imediato. Alerta de aprovação é trabalho, não cobrança; não há janela de horário como no POP de cobrança (doc 02 §28).
+6. **Idioma e tom:** português, curto, sem termos financeiros vedados (ver memória de vocabulário): "Compra Parcelada", "Reembolso Parcelado", nunca "financiamento".
+
+### 12.4 Envio
+
+- **Remetente:** uma caixa do próprio Workspace (nome a definir pelo Luís, sugestão `hub@azitmove.com.br`), enviando pela **API do Gmail com conta de serviço e delegação de domínio**, no mesmo projeto Google Cloud do login. Sem fornecedor terceiro, sem custo, SPF e DKIM já são os do Workspace. Limite do Gmail (2.000 envios/dia por caixa) está muito acima do volume de aprovações.
+- **Configuração:** `EMAIL_REMETENTE` e o JSON da conta de serviço em segredo do ambiente (`GOOGLE_SERVICE_ACCOUNT_JSON`), nunca no repositório. Sem configuração, a fila registra "e-mail não configurado" e segue: o sino continua funcionando.
+- **Modelo de e-mail:** um modelo só, texto com um botão "Abrir no Hub". Sem HTML pesado, sem imagem externa.
+- **Rastro:** cada envio grava em `Notificacao` o horário em que o e-mail saiu (`emailEnviadoEm`) e, em falha definitiva, o motivo. Visível na auditoria da notificação.
+- **Fatura Azit (doc 02 §32)** usa o mesmo serviço de envio e a mesma fila, com remetente e modelo próprios. Essa é a razão de o serviço de e-mail nascer genérico (`EmailService.enviar({ para, assunto, corpo, origem })`) e não dentro do módulo de notificação.
+
+---
+
+## 13. Mapa módulo → área *(v1.1)*
+
+Ponto de partida para o bloco 1. A implementação confirma módulo a módulo; divergência é sinalizada neste doc antes do commit.
+
+| Módulo (API) | Área(s) |
+|---|---|
+| `funil` (lead, simulação, proposta, formalização), `simulador`, `originacao`, `fipe` | COMERCIAL |
+| `analise`, `bureau`, `dossie` | ANALISE_CADASTRO |
+| `contrato`, `assinatura` | CONTRATOS |
+| `conta` (carteira), `cobranca` (faturas, régua, conferência), `operacoes` (renegociação, rescisão), `migracao-legado` | CARTEIRA_COBRANCA |
+| `contas-pagar`, `centro-custo` | FINANCEIRO_ADMINISTRATIVO |
+| `titular` | COMERCIAL **ou** PESSOAS (atendimento cria e lê titular; Pessoas administra) |
+| `ativo`, `frota` | ATIVOS_FROTA |
+| `capital`, `investimento`, `origem-capital` | CAPITAL_INVESTIMENTO |
+| `catalogo`, `produto` | PRODUTOS |
+| `aprovacao`, `alcada` (leitura) | APROVACOES |
+| `usuarios`, `alcada` (edição), `integracoes`, `catalogo` de parâmetros, configuração do simulador | CONFIGURACOES |
+| `auth`, `notificacao`, `inicio`, `usuarios/me/*`, `health` | `@AreaLivre` (sessão e apoio do próprio usuário) |
+| `cobranca/webhook`, `/publico` (Fatura Azit), `mcp` | fora do JWT (autenticação própria, §7.4) |
+
+Regra de desempate: quando uma rota serve a duas áreas, lista as duas (basta ter uma). Quando um endpoint de **leitura** é usado por telas de várias áreas (ex.: ficha do titular aberta a partir da carteira), ele entra com todas as áreas que o consomem; a **escrita** fica só com a área dona.
+
+---
+
+### Histórico de versões
+
+| Versão | Data | O que mudou |
+|---|---|---|
+| 1.0 | jun/2025 | Documento original: dois mundos de identidade, tokens, RBAC, alçadas, guards, titular (desenho) |
+| 1.1 | 12/11/2026 | Entrar com Google (dois domínios), senha opcional por usuário, limite de tentativas e registro de acessos (§2, §10, §11.3); área de trabalho como autorização na API e na tela, `AreaGuard` e mapa módulo → área (§5.4, §7.5, §13); alertas por e-mail sobre notificações dirigidas (§12); ordem dos blocos (§11.6). Decisões Luís. |
+
+*Doc 6 — Autenticação e Permissões · Azit Move V3 · v1.1 · nov/2026*
 *Documentos relacionados: Doc 2 — Spec de Domínio · Doc 4 — Setup · Doc 5 — Prisma Schema*
