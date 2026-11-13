@@ -64,6 +64,10 @@ export function LoginPage() {
     : config.isError
       ? (import.meta.env.VITE_GOOGLE_CLIENT_ID || null)
       : undefined; // ainda carregando
+  // "entrar com senha" só aparece se EXISTE alguém com a senha liberada (feedback
+  // Luís, 13/11: se o usuário não pode fazer, a opção não aparece). Com a API fora
+  // do ar a tela mostra o link: sem ele não haveria caminho nenhum para tentar.
+  const senhaDisponivel = config.data ? config.data.senhaDisponivel : config.isError;
 
   const entrar = useCallback(
     (resp: Awaited<ReturnType<typeof authService.login>>) => {
@@ -172,7 +176,7 @@ export function LoginPage() {
             )}
             {googlePronto === 'falhou' && (
               <div className="rounded-[10px] px-[12px] py-[8px] text-[12px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-fg)' }}>
-                Não foi possível carregar o botão do Google. Confira a conexão ou use "entrar com senha".
+                Não foi possível carregar o botão do Google. Confira a conexão{senhaDisponivel ? ' ou use "entrar com senha"' : ' e tente de novo'}.
               </div>
             )}
           </div>
@@ -190,7 +194,7 @@ export function LoginPage() {
 
         {/* Senha de reserva — recolhida (doc 06 §2.4) */}
         <div className="mt-[18px] text-center">
-          {!comSenha ? (
+          {!senhaDisponivel ? null : !comSenha ? (
             <button
               type="button"
               onClick={() => setComSenha(true)}

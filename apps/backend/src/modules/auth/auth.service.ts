@@ -74,8 +74,15 @@ export class AuthService {
 
   // O que a tela de login precisa saber antes de qualquer credencial: se há
   // client id do Google neste ambiente (o id é público — doc 06 §2.2).
-  configPublica(): { googleClientId: string | null } {
-    return { googleClientId: this.google.clientId() };
+  // `senhaDisponivel` (feedback Luís, 13/11, homolog): a tela só oferece "entrar
+  // com senha" se EXISTE alguém ativo com a senha liberada. Antes de se
+  // identificar ninguém sabe quem é o usuário, e perguntar o e-mail para decidir
+  // entregaria quais contas aceitam senha (§11.3) — por isso a regra é global:
+  // ninguém pode → a opção não aparece; alguém pode → aparece para todos, e a
+  // falha continua genérica.
+  async configPublica(): Promise<{ googleClientId: string | null; senhaDisponivel: boolean }> {
+    const comSenha = await this.prisma.db.usuario.count({ where: { permiteSenha: true, ativo: true } });
+    return { googleClientId: this.google.clientId(), senhaDisponivel: comSenha > 0 };
   }
 
   // Falha de entrada: SEMPRE o mesmo 401 (doc 06 §2.4, §11.3).

@@ -17,7 +17,7 @@ describe('LoginThrottlerGuard (10 por minuto por IP)', () => {
     login: jest.fn(async () => { throw new UnauthorizedException({ erro: 'credenciais_invalidas', mensagem: MENSAGEM_FALHA_ENTRADA }); }),
     loginGoogle: jest.fn(async () => { throw new UnauthorizedException({ erro: 'credenciais_invalidas', mensagem: MENSAGEM_FALHA_ENTRADA }); }),
     refresh: jest.fn(async () => { throw new UnauthorizedException({ erro: 'refresh_invalido', mensagem: 'x' }); }),
-    configPublica: () => ({ googleClientId: null }),
+    configPublica: async () => ({ googleClientId: null, senhaDisponivel: true }),
   };
 
   beforeAll(async () => {

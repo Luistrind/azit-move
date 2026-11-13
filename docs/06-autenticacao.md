@@ -84,6 +84,8 @@ Configuração: `GOOGLE_CLIENT_ID` no backend e no frontend (o id do cliente OAu
 
 Botão "Entrar com Google" em destaque. O formulário de e-mail e senha fica recolhido atrás de um link discreto ("entrar com senha"), e só funciona para quem tem `permiteSenha`. Mensagem de erro é sempre a mesma: "Não foi possível entrar. Confira a conta usada ou fale com o administrador."
 
+> **Ajuste 13/11/2026 (homolog, feedback Luís): se ninguém pode, a opção não aparece.** `GET /auth/config` devolve `senhaDisponivel` = existe usuário ativo com `permiteSenha`. Com `false`, o link "entrar com senha" não é renderizado. A regra é global, não por e-mail, de propósito: antes de se identificar a tela não sabe quem é o usuário, e perguntar o e-mail para decidir revelaria quais contas aceitam senha (§11.3). Em produção, com todos no Google, a tela mostra só o botão do Google.
+
 ### 2.5 Limite de tentativas, bloqueio e registro de acessos
 
 - **Limite por IP:** 10 tentativas por minuto nas rotas `POST /auth/login` e `POST /auth/google`. Acima disso, `429`.

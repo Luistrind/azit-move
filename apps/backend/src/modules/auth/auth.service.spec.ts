@@ -33,7 +33,7 @@ function montar(opts: { usuario?: ReturnType<typeof usuario> | null; identidade?
   const acessoCreate = jest.fn().mockResolvedValue({});
   const prisma = {
     db: {
-      usuario: { findFirst, update },
+      usuario: { findFirst, update, count: jest.fn().mockResolvedValue(1) },
       refreshToken: { create: jest.fn().mockResolvedValue({}), update: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 2 }), findUnique: jest.fn(), count: jest.fn() },
       acessoUsuario: { create: acessoCreate, findMany: jest.fn().mockResolvedValue([]) },
     },
@@ -73,7 +73,7 @@ describe('AuthService — entrar com Google (doc 06 §2.2)', () => {
     const m = montar({ configurado: false });
     await expect(m.service.loginGoogle('tok', m.ctx)).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(m.acessoCreate).not.toHaveBeenCalled();
-    expect(m.service.configPublica()).toEqual({ googleClientId: null });
+    await expect(m.service.configPublica()).resolves.toEqual({ googleClientId: null, senhaDisponivel: true });
   });
 
   it('token inválido → 401 genérico, motivo token_invalido no registro, sem e-mail', async () => {

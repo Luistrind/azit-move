@@ -826,7 +826,8 @@ real fica só no registro de acessos (`acessos_usuario`).
 #### GET `/api/v1/auth/config`
 O que a tela de login precisa antes de qualquer credencial.
 ```json
-{ "googleClientId": "43681993535-….apps.googleusercontent.com" }   // null = botão do Google não aparece
+{ "googleClientId": "43681993535-….apps.googleusercontent.com",   // null = botão do Google não aparece
+  "senhaDisponivel": true }                                        // false = ninguém ativo com permiteSenha → "entrar com senha" não aparece
 ```
 
 #### POST `/api/v1/auth/google` — entrar com Google (caminho normal)

@@ -30,8 +30,10 @@ export const authService = {
   // O que a tela de login precisa antes de qualquer credencial: o client id do
   // Google deste ambiente (null = botão não aparece). Preferida sobre o
   // VITE_GOOGLE_CLIENT_ID de build para o mesmo build servir hml e prod.
-  async config(): Promise<{ googleClientId: string | null }> {
-    const { data } = await api.get<{ googleClientId: string | null }>('/api/v1/auth/config');
+  // `senhaDisponivel`: existe alguém ativo com senha liberada? Se não, a tela
+  // nem oferece "entrar com senha" (regra: não mostrar o que não dá para fazer).
+  async config(): Promise<{ googleClientId: string | null; senhaDisponivel: boolean }> {
+    const { data } = await api.get<{ googleClientId: string | null; senhaDisponivel: boolean }>('/api/v1/auth/config');
     return data;
   },
 
