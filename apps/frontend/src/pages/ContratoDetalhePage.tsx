@@ -18,7 +18,7 @@ import {
 import { reguaService } from '../services/regua.service';
 import { BlocoRescisao, ModalRescisao } from '../components/RescisaoContrato';
 import { BlocoDossies, ModalDossie } from '../components/DossieContrato';
-import { usePodeRole, ROLE_OPERACAO, ROLE_REAJUSTE, mensagemErro } from '../lib/permissoes';
+import { usePodeRole, ROLE_OPERACAO, ROLE_REAJUSTE, mensagemErro, useIrParaArea } from '../lib/permissoes';
 import { reaisParaCentavos, numeroBR } from '../lib/valor';
 import { Metrica } from '../components/Metrica';
 import { BlocoAssinaturaDigital } from '../components/BlocoAssinaturaDigital';
@@ -28,6 +28,7 @@ import { Chips } from '../components/Chips';
 import { Botao } from '../components/Botao';
 import { Bloco } from '../components/Bloco';
 import { Secao } from '../components/Secao';
+import { AreaSistema } from '@azit/types';
 
 // Layout v2 (doc 03 §11): header navy com Metrica escura, resumo em Bloco com
 // Leitura, abas em Chips, cronograma/extrato em Tabela responsiva (celular =
@@ -42,6 +43,7 @@ function fmtData(iso: string): string {
 export function ContratoDetalhePage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
+  const irParaArea = useIrParaArea();
   const queryClient = useQueryClient();
   const pode = usePodeRole();
   const podeOperar = pode(ROLE_OPERACAO);
@@ -261,7 +263,7 @@ export function ContratoDetalhePage() {
       )}
       <button
         type="button"
-        onClick={() => navigate('/carteira')}
+        onClick={() => irParaArea(AreaSistema.CARTEIRA_COBRANCA, '/carteira')}
         className="self-start text-[12px] font-semibold"
         style={{ color: 'var(--text-body)' }}
       >

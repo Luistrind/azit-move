@@ -6,7 +6,7 @@ import {
   nomeArea,
   nomePapel,
 } from '../services/usuario.service';
-import { mensagemErro, usePodeRole } from '../lib/permissoes';
+import { mensagemErro, usePodeRole, QUERY_ME_AREAS } from '../lib/permissoes';
 import { useAuthStore } from '../stores/authStore';
 import { Botao } from '../components/Botao';
 import { Chips } from '../components/Chips';
@@ -262,6 +262,8 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
 
   async function recarregar() {
     await queryClient.invalidateQueries({ queryKey: ['usuario-permissoes', usuario.id] });
+    // Se a exceção foi no próprio usuário, menu/rotas/links refletem na hora.
+    await queryClient.invalidateQueries({ queryKey: QUERY_ME_AREAS });
     onMudou();
   }
 
@@ -428,6 +430,8 @@ function MatrizPermissoes() {
       await usuarioService.salvarCelula({ papel, area, permitido });
       await queryClient.invalidateQueries({ queryKey: ['permissoes-matriz'] });
       await queryClient.invalidateQueries({ queryKey: ['usuarios'] });
+      // A matriz vale para quem está logado também: menu/rotas/links refletem na hora.
+      await queryClient.invalidateQueries({ queryKey: QUERY_ME_AREAS });
     } catch (e) {
       window.alert(mensagemErro(e));
     } finally {

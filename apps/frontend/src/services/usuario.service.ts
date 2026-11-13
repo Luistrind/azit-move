@@ -85,19 +85,8 @@ export const usuarioService = {
 };
 
 // Nomes por extenso em tela — nunca siglas/códigos internos (decisão 2026-08, Luís).
-export const NOME_AREA: Record<string, string> = {
-  COMERCIAL: 'Comercial',
-  FINANCEIRO_ADMINISTRATIVO: 'Financeiro administrativo',
-  ANALISE_CADASTRO: 'Análise de cadastro',
-  CONTRATOS: 'Contratos',
-  CARTEIRA_COBRANCA: 'Carteira e cobrança',
-  PESSOAS: 'Pessoas',
-  ATIVOS_FROTA: 'Ativos e frota',
-  CAPITAL_INVESTIMENTO: 'Capital e investimento',
-  PRODUTOS: 'Produtos',
-  APROVACOES: 'Aprovações',
-  CONFIGURACOES: 'Configurações',
-};
+// Fonte única em @azit/types: a API usa os mesmos nomes no 403 por área (doc 06 §7.5).
+export { NOME_AREA, nomeArea } from '@azit/types';
 
 export const NOME_PAPEL: Record<string, string> = {
   ADMIN: 'Administrador',
@@ -107,9 +96,6 @@ export const NOME_PAPEL: Record<string, string> = {
   FINANCEIRO: 'Financeiro',
 };
 
-export function nomeArea(area: string): string {
-  return NOME_AREA[area] ?? area;
-}
 export function nomePapel(papel: string): string {
   return NOME_PAPEL[papel] ?? papel;
 }

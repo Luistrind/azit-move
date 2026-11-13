@@ -14,6 +14,8 @@ import { toast } from '../components/Toast';
 import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
 import { dataBR } from '../lib/datas';
 import type { StatusColor } from '../config/statusColors';
+import { LinkArea } from '../components/LinkArea';
+import { AreaSistema } from '@azit/types';
 
 // Lista de espera (doc 02 §31.3–29.4, decisão Luís 03/11): propostas APROVADAS
 // por modelo de REFERÊNCIA (FIPE) enquanto não havia carro no estoque. Ordem:
@@ -189,7 +191,7 @@ export function ListaEsperaPage() {
           <div className="flex flex-wrap gap-[6px]">
             <Link to={`/propostas/${p.id}`} className="flex h-[30px] items-center px-[8px] text-[12px] font-semibold hover:underline" style={{ color: 'var(--accent)' }}>Proposta</Link>
             {p.analiseId && (
-              <Link to={`/analises/${p.analiseId}`} className="flex h-[30px] items-center px-[8px] text-[12px] font-semibold hover:underline" style={{ color: 'var(--accent)' }}>Dossiê</Link>
+              <LinkArea area={AreaSistema.ANALISE_CADASTRO} to={`/analises/${p.analiseId}`} className="flex h-[30px] items-center px-[8px] text-[12px] font-semibold hover:underline" style={{ color: 'var(--accent)' }}>Dossiê</LinkArea>
             )}
             {podeOperar && (p.situacao === 'na_fila' || p.situacao === 'expirada') && (
               <Botao variante="primaria" tamanho="sm" onClick={() => setAlvo(p)} disabled={ocupado}>Atribuir veículo</Botao>

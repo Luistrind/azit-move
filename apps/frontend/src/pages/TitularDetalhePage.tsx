@@ -11,7 +11,7 @@ import { financeiroService } from '../services/financeiro.service';
 import { catalogoService } from '../services/catalogo.service';
 import { reguaService } from '../services/regua.service';
 import { reaisParaCentavos } from '../lib/valor';
-import { mensagemErro, usePodeRole, ROLE_OPERACAO } from '../lib/permissoes';
+import { mensagemErro, usePodeRole, ROLE_OPERACAO, AREAS_ROTA_CONTRATO, useIrParaArea } from '../lib/permissoes';
 import { StatusBadge } from '../components/StatusBadge';
 import { Modal } from '../components/Modal';
 import { BotaoVerRetorno } from '../components/RetornoBiro';
@@ -59,6 +59,7 @@ const PAGE = 8;
 export function TitularDetalhePage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
+  const irParaArea = useIrParaArea();
   const queryClient = useQueryClient();
   const [pagina, setPagina] = useState(1);
   // Faturas NOVADAS (extintas pela novação) ficam fora do histórico por padrão (13/10).
@@ -437,7 +438,7 @@ export function TitularDetalhePage() {
           ]}
           linhas={contratosCredito}
           chave={(c) => c.id}
-          onClick={(c) => navigate(`/contratos/${c.id}`)}
+          onClick={(c) => irParaArea(AREAS_ROTA_CONTRATO, `/contratos/${c.id}`)}
           vazio="Nenhum contrato vinculado."
         />
       </Secao>
