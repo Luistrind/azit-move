@@ -1,10 +1,12 @@
 import { Controller, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ReguaService } from './regua.service';
+import { Area } from '../../common/decorators/area.decorator';
 
+@Area(AreaSistema.CARTEIRA_COBRANCA)
 @Controller()
 export class ReguaController {
   constructor(private readonly regua: ReguaService) {}

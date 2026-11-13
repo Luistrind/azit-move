@@ -15,7 +15,9 @@ import {
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { loginSchema, LoginDto } from './dto/login.dto';
 import { refreshSchema, RefreshDto } from './dto/refresh.dto';
+import { AreaLivre } from '../../common/decorators/area.decorator';
 
+@AreaLivre('sessão do próprio usuário (login, refresh, logout, me) — doc 06 §5.4 item 6')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}

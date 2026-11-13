@@ -1,10 +1,11 @@
 import { Body, Controller, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
-import { RoleUsuario, StatusAnalise } from '@prisma/client';
+import { AreaSistema, RoleUsuario, StatusAnalise } from '@prisma/client';
 import { z } from 'zod';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AnaliseService } from './analise.service';
+import { Area, AREAS_FICHA_TITULAR } from '../../common/decorators/area.decorator';
 
 // Papéis (RACI do Processo §4, provisório do permissionamento):
 // atendente/analista = ADMIN/OPERADOR; COCAD (decisões superiores) = ADMIN/APROVADOR/DIRETOR.
@@ -74,11 +75,13 @@ const naoAprovarSchema = z.object({
   justificativa: z.string().min(10),
 });
 
+@Area(AreaSistema.ANALISE_CADASTRO)
 @Controller()
 export class AnaliseController {
   constructor(private readonly analise: AnaliseService) {}
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Area(AreaSistema.ANALISE_CADASTRO, AreaSistema.COMERCIAL)
   @Post('propostas/:propostaId/analise')
   @HttpCode(201)
   iniciar(@Param('propostaId') propostaId: string, @CurrentUser() user: UsuarioAutenticado) {
@@ -90,6 +93,7 @@ export class AnaliseController {
     return this.analise.listar();
   }
 
+  @Area(AreaSistema.ANALISE_CADASTRO, AreaSistema.APROVACOES)
   @Get('analises/:id')
   dossie(@Param('id') id: string) {
     return this.analise.dossie(id);
@@ -146,6 +150,7 @@ export class AnaliseController {
 
   // Consultas de birô da PESSOA (decisão 09/08): histórico completo na ficha
   // do titular — leitura para qualquer autenticado.
+  @Area(AreaSistema.ANALISE_CADASTRO, ...AREAS_FICHA_TITULAR)
   @Get('titulares/:id/consultas-biro')
   consultasDoTitular(@Param('id') id: string) {
     return this.analise.consultasDoTitular(id);

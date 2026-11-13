@@ -1,5 +1,6 @@
 import {
   PrismaClient,
+  AreaSistema,
   RoleUsuario,
   TipoPessoa,
   TipoAtivo,
@@ -53,6 +54,55 @@ async function seedUsuarios() {
     }
   }
   console.log(`   Usuários (senha azit123): admin = TODOS os papéis; demais 1 papel`);
+}
+
+// Matriz papel × área (doc 02 §16, doc 06 §5.4 v1.1). Desde o bloco 1 da v1.1 a
+// área é AUTORIZAÇÃO: sem linha na matriz ninguém (nem o Admin) acessa nada. Por
+// isso o seed garante um padrão quando a matriz está VAZIA (banco novo / homolog
+// recriado) e NÃO toca numa matriz já editada pelo Admin (produção).
+//
+// PLACEHOLDER (Regra 12): padrão provisório, substituível pelo Admin na tela
+// Usuários e permissões. Reflete o uso real de 12/11: o analista tem papel
+// OPERADOR e recebe Análise de cadastro por EXCEÇÃO — por isso OPERADOR não
+// carrega essa área por padrão (é o cenário do roteiro de homolog).
+const TODAS_AREAS = Object.values(AreaSistema);
+const MATRIZ_PADRAO: Record<RoleUsuario, AreaSistema[]> = {
+  ADMIN: TODAS_AREAS,
+  DIRETOR: TODAS_AREAS,
+  APROVADOR: [
+    AreaSistema.APROVACOES,
+    AreaSistema.ANALISE_CADASTRO,
+    AreaSistema.COMERCIAL,
+    AreaSistema.CONTRATOS,
+    AreaSistema.CARTEIRA_COBRANCA,
+  ],
+  OPERADOR: [
+    AreaSistema.COMERCIAL,
+    AreaSistema.CONTRATOS,
+    AreaSistema.CARTEIRA_COBRANCA,
+    AreaSistema.PESSOAS,
+    AreaSistema.ATIVOS_FROTA,
+    AreaSistema.PRODUTOS,
+  ],
+  FINANCEIRO: [
+    AreaSistema.FINANCEIRO_ADMINISTRATIVO,
+    AreaSistema.CARTEIRA_COBRANCA,
+    AreaSistema.CONTRATOS,
+    AreaSistema.PESSOAS,
+  ],
+};
+
+async function seedMatrizAreas() {
+  const existentes = await prisma.permissaoPapelArea.count();
+  if (existentes > 0) {
+    console.log(`   Matriz papel × área: já tem ${existentes} células — preservada (editada pelo Admin)`);
+    return;
+  }
+  const celulas = TODOS_PAPEIS.flatMap((papel) =>
+    TODAS_AREAS.map((area) => ({ papel, area, permitido: MATRIZ_PADRAO[papel].includes(area) })),
+  );
+  await prisma.permissaoPapelArea.createMany({ data: celulas, skipDuplicates: true });
+  console.log(`   Matriz papel × área: padrão provisório semeado (${celulas.length} células; matriz estava vazia)`);
 }
 
 // Titulares fictícios + conta de cada um (1:1).
@@ -587,6 +637,7 @@ async function seedProdutos() {
 
 async function main() {
   await seedUsuarios();
+  await seedMatrizAreas();
   await seedAlcadas();
   await seedProdutos();
   await seedDadosBase();

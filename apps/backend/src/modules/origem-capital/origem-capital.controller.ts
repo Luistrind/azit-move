@@ -7,7 +7,7 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { OrigemCapitalService } from './origem-capital.service';
@@ -19,8 +19,10 @@ import {
   atualizarOrigemCapitalSchema,
   AtualizarOrigemCapitalDto,
 } from './dto/atualizar-origem-capital.dto';
+import { Area } from '../../common/decorators/area.decorator';
 
 // Sub-recurso 1:1 do Ativo (Doc 2 §4.5).
+@Area(AreaSistema.ATIVOS_FROTA, AreaSistema.CAPITAL_INVESTIMENTO)
 @Controller('ativos/:ativoId/origem-capital')
 export class OrigemCapitalController {
   constructor(private readonly service: OrigemCapitalService) {}

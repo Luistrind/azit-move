@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AreaSistema, RoleUsuario, TipoNotificacao } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { PermissoesService } from '../permissoes/permissoes.service';
 
 // Sino com destinatário e leitura INDIVIDUAL (doc 02 §16.1, decisão 07/09):
 // notificação endereça um usuário direto OU uma área (matriz papel×área do §16);
@@ -20,7 +21,10 @@ export interface EmitirNotificacao {
 export class NotificacaoService {
   private readonly logger = new Logger(NotificacaoService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissoes: PermissoesService,
+  ) {}
 
   // Emite sem propagar erro — notificação nunca derruba o fluxo de negócio.
   // Compat: aceita a assinatura antiga (titulo, corpo?, rota?) e a nova (objeto).
@@ -45,7 +49,7 @@ export class NotificacaoService {
 
   // Visíveis ao usuário: endereçadas a ele + da(s) sua(s) área(s) + gerais.
   async listar(usuarioId: string, limite = 30) {
-    const areas = await this.areasEfetivas(usuarioId);
+    const areas = await this.permissoes.areasEfetivas(usuarioId);
     const visivel = {
       OR: [
         { usuarioId },
@@ -89,7 +93,7 @@ export class NotificacaoService {
   }
 
   async marcarTodasLidas(usuarioId: string) {
-    const areas = await this.areasEfetivas(usuarioId);
+    const areas = await this.permissoes.areasEfetivas(usuarioId);
     const pendentes = await this.prisma.db.notificacao.findMany({
       where: {
         OR: [
@@ -108,25 +112,5 @@ export class NotificacaoService {
       });
     }
     return { ok: true, marcadas: pendentes.length };
-  }
-
-  // Mesma resolução de áreas do Início/Usuários (união dos papéis ± exceções).
-  private async areasEfetivas(usuarioId: string): Promise<Set<AreaSistema>> {
-    const usuario = await this.prisma.db.usuario.findFirst({
-      where: { id: usuarioId },
-      include: { roles: true, permissoesArea: true },
-    });
-    const areas = new Set<AreaSistema>();
-    if (!usuario) return areas;
-    const papeis = usuario.roles.map((r) => r.role as RoleUsuario);
-    const matriz = await this.prisma.db.permissaoPapelArea.findMany();
-    for (const m of matriz) {
-      if (m.permitido && papeis.includes(m.papel)) areas.add(m.area);
-    }
-    for (const e of usuario.permissoesArea) {
-      if (e.concedida) areas.add(e.area);
-      else areas.delete(e.area);
-    }
-    return areas;
   }
 }

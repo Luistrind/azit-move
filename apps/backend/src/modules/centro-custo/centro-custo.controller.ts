@@ -1,8 +1,10 @@
+import { AreaSistema } from '@prisma/client';
 import { Body, Controller, Delete, Get, HttpCode, Param, Post } from '@nestjs/common';
 import { z } from 'zod';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { CentroCustoService } from './centro-custo.service';
+import { Area } from '../../common/decorators/area.decorator';
 
 const lancamentoSchema = z.object({
   tipo: z.string().trim().min(2), // manutencao | documentacao | seguro | franquia | outro...
@@ -13,6 +15,7 @@ const lancamentoSchema = z.object({
 type LancamentoBody = z.infer<typeof lancamentoSchema>;
 
 // Centro de custo (Doc 2 §4.4-A): visão por veículo + crédito avulso agregado.
+@Area(AreaSistema.ATIVOS_FROTA, AreaSistema.FINANCEIRO_ADMINISTRATIVO)
 @Controller('centros-custo')
 export class CentroCustoController {
   constructor(private readonly centro: CentroCustoService) {}

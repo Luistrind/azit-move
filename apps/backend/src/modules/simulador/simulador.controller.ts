@@ -1,11 +1,12 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { z } from 'zod';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ParametrosService } from './parametros.service';
 import { OfertaFixaService } from './oferta-fixa.service';
+import { Area } from '../../common/decorators/area.decorator';
 
 const frequenciaSchema = z.enum(['mensal', 'quinzenal', 'semanal']);
 
@@ -51,6 +52,7 @@ type AtualizarOfertaFixaBody = z.infer<typeof atualizarOfertaFixaSchema>;
 
 // Configuração do simulador (Doc 2 §4-A.2/4-A.3): parâmetros versionados e
 // ofertas fixas. Leitura livre (telas); escrita restrita a ADMIN/DIRETOR.
+@Area(AreaSistema.CONFIGURACOES)
 @Controller('simulador')
 export class SimuladorController {
   constructor(
@@ -77,6 +79,7 @@ export class SimuladorController {
     return this.parametros.criarVersao(dto, user.id);
   }
 
+  @Area(AreaSistema.CONFIGURACOES, AreaSistema.ATIVOS_FROTA)
   @Get('ofertas-fixas')
   ofertasFixas() {
     return this.ofertaFixa.listar();

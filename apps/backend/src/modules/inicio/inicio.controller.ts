@@ -3,6 +3,8 @@ import { AreaSistema, RoleUsuario, StatusAnalise } from '@prisma/client';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { inicioHojeBrasilUTC, formatarDiaBR } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
+import { PermissoesService } from '../permissoes/permissoes.service';
+import { AreaLivre } from '../../common/decorators/area.decorator';
 
 // Tela Início (proposta UX §4.3): fila de trabalho do papel logado.
 // Cada bloco pertence a uma área do sistema; o usuário só recebe os blocos
@@ -29,13 +31,17 @@ interface BlocoFila {
   itens: ItemFila[];
 }
 
+@AreaLivre('fila de trabalho do próprio usuário, já filtrada pelas suas áreas — doc 06 §5.4 item 6')
 @Controller()
 export class InicioController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissoes: PermissoesService,
+  ) {}
 
   @Get('inicio/fila')
   async fila(@CurrentUser() user: UsuarioAutenticado): Promise<{ blocos: BlocoFila[] }> {
-    const areas = await this.areasEfetivas(user.id);
+    const areas = await this.permissoes.areasEfetivas(user.id);
     const blocos: BlocoFila[] = [];
 
     if (areas.has(AreaSistema.APROVACOES)) {
@@ -183,25 +189,5 @@ export class InicioController {
     }
 
     return { blocos };
-  }
-
-  // Mesma resolução de áreas do módulo de usuários (união dos papéis ± exceções).
-  private async areasEfetivas(usuarioId: string): Promise<Set<AreaSistema>> {
-    const usuario = await this.prisma.db.usuario.findFirst({
-      where: { id: usuarioId },
-      include: { roles: true, permissoesArea: true },
-    });
-    const areas = new Set<AreaSistema>();
-    if (!usuario) return areas;
-    const papeis = usuario.roles.map((r) => r.role as RoleUsuario);
-    const matriz = await this.prisma.db.permissaoPapelArea.findMany();
-    for (const m of matriz) {
-      if (m.permitido && papeis.includes(m.papel)) areas.add(m.area);
-    }
-    for (const e of usuario.permissoesArea) {
-      if (e.concedida) areas.add(e.area);
-      else areas.delete(e.area);
-    }
-    return areas;
   }
 }

@@ -1,3 +1,4 @@
+import { AreaSistema } from '@prisma/client';
 import { Body, Controller, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
@@ -5,6 +6,7 @@ import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AprovacaoService } from './aprovacao.service';
 import { AprovacaoDossieService } from './aprovacao-dossie.service';
+import { Area } from '../../common/decorators/area.decorator';
 
 const decidirSchema = z.object({
   decisao: z.enum(['aprovar', 'recomendar', 'reprovar']),
@@ -18,6 +20,7 @@ const respostaSchema = z.object({ resposta: z.string().trim().min(2, 'Escreva a 
 
 // Central de aprovações (Doc 2 §7.9-A). Quem pode o quê é decidido pela alçada no
 // service (não por @Roles): qualquer usuário vê a fila; aprovar/reprovar exige alçada.
+@Area(AreaSistema.APROVACOES)
 @Controller('aprovacoes')
 export class AprovacaoController {
   constructor(

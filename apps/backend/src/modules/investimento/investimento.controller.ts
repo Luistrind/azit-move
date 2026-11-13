@@ -7,7 +7,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { InvestimentoService } from './investimento.service';
@@ -17,7 +17,9 @@ import {
   listarInvestimentosSchema,
   ListarInvestimentosDto,
 } from './dto/investimento.dto';
+import { Area, AREAS_FICHA_TITULAR } from '../../common/decorators/area.decorator';
 
+@Area(AreaSistema.CAPITAL_INVESTIMENTO)
 @Controller()
 export class InvestimentoController {
   constructor(private readonly investimento: InvestimentoService) {}
@@ -42,12 +44,14 @@ export class InvestimentoController {
     return this.investimento.buscarPorId(id);
   }
 
+  @Area(AreaSistema.CAPITAL_INVESTIMENTO, ...AREAS_FICHA_TITULAR)
   @Get('titulares/:id/contratos-investimento')
   porTitular(@Param('id') id: string) {
     return this.investimento.porTitular(id);
   }
 
   // Visão consolidada da conta (os dois lados — banco digital).
+  @Area(AreaSistema.CAPITAL_INVESTIMENTO, ...AREAS_FICHA_TITULAR)
   @Get('contas/:id/visao-geral')
   visaoGeral(@Param('id') id: string) {
     return this.investimento.visaoGeral(id);

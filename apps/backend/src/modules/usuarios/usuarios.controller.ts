@@ -6,10 +6,14 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { PrismaService } from '../../database/prisma.service';
+import { PermissoesService } from '../permissoes/permissoes.service';
+import { Area, AreaLivre } from '../../common/decorators/area.decorator';
 
 // Gestão de Usuários e Permissões por Área (doc 02 §16).
 // Papel carrega as áreas do seu domínio (matriz papel×área, editável);
 // exceções por usuário concedem/revogam áreas específicas com motivo.
+// A conta das áreas efetivas vive em PermissoesService (única — doc 06 §5.4);
+// toda mutação aqui invalida o cache dela para a área valer na hora.
 
 const preferenciasSchema = z.object({
   ordemInicio: z.array(z.string().max(60)).max(30).optional(),
@@ -42,24 +46,31 @@ const excecaoSchema = z.object({
   motivo: z.string().optional(),
 });
 
+@Area(AreaSistema.CONFIGURACOES)
 @Controller()
 export class UsuariosController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissoes: PermissoesService,
+  ) {}
 
   // Áreas efetivas do usuário logado (frontend monta o menu com isto — UX-1).
+  @AreaLivre('áreas do próprio usuário (monta o menu)')
   @Get('me/areas')
   async minhasAreas(@CurrentUser() user: UsuarioAutenticado) {
-    return { areas: await this.areasEfetivas(user.id) };
+    return { areas: [...(await this.permissoes.areasEfetivas(user.id))] };
   }
 
   // Preferências de interface do PRÓPRIO usuário (16/09) — ordem dos cards
   // do Início. Merge raso: cada chave enviada substitui só ela.
+  @AreaLivre('preferências do próprio usuário')
   @Get('me/preferencias')
   async minhasPreferencias(@CurrentUser() user: UsuarioAutenticado) {
     const u = await this.prisma.db.usuario.findFirst({ where: { id: user.id }, select: { preferencias: true } });
     return (u?.preferencias as Record<string, unknown> | null) ?? {};
   }
 
+  @AreaLivre('preferências do próprio usuário')
   @Put('me/preferencias')
   @HttpCode(200)
   async salvarPreferencias(
@@ -93,7 +104,7 @@ export class UsuariosController {
         ativo: u.ativo,
         papeis: u.roles.map((r) => r.role),
         excecoes: u.permissoesArea.map((p) => ({ area: p.area, concedida: p.concedida, motivo: p.motivo })),
-        areasEfetivas: this.resolver(u.roles.map((r) => r.role), u.permissoesArea, matriz),
+        areasEfetivas: this.permissoes.resolver(u.roles.map((r) => r.role), u.permissoesArea, matriz),
       })),
     );
   }
@@ -143,6 +154,7 @@ export class UsuariosController {
       await this.prisma.db.usuarioRole.deleteMany({ where: { usuarioId: id } });
       await this.prisma.db.usuarioRole.createMany({ data: dto.papeis.map((role) => ({ usuarioId: id, role })) });
     }
+    this.permissoes.invalidar(id);
     await this.auditar(user.id, 'usuario_alterado', id,
       { nome: antes?.nome, ativo: antes?.ativo, papeis: antes?.roles.map((r) => r.role) },
       { nome: dto.nome, ativo: dto.ativo, papeis: dto.papeis });
@@ -188,6 +200,7 @@ export class UsuariosController {
       await tx.refreshToken.updateMany({ where: { usuarioId: id, revogado: false }, data: { revogado: true } });
       await tx.permissaoUsuarioArea.deleteMany({ where: { usuarioId: id } });
     });
+    this.permissoes.invalidar(id);
     await this.auditar(user.id, 'usuario_excluido', id, { nome: alvo.nome, email: alvo.email, ativo: alvo.ativo, papeis }, { deletedAt: agora.toISOString() });
     return { resultado: 'ok' };
   }
@@ -218,6 +231,7 @@ export class UsuariosController {
       update: { permitido: dto.permitido },
       create: { papel: dto.papel, area: dto.area, permitido: dto.permitido },
     });
+    this.permissoes.invalidar(); // matriz mudou: todo mundo recalcula
     await this.auditar(user.id, 'permissao_papel_area_alterada', `${dto.papel}:${dto.area}`,
       { permitido: anterior?.permitido ?? false }, { permitido: dto.permitido });
     return { resultado: 'ok' };
@@ -236,8 +250,8 @@ export class UsuariosController {
     return {
       papeis: usuario.roles.map((r) => r.role),
       excecoes: usuario.permissoesArea.map((p) => ({ area: p.area, concedida: p.concedida, motivo: p.motivo })),
-      areasDoPapel: this.resolver(usuario.roles.map((r) => r.role), [], matriz),
-      areasEfetivas: this.resolver(usuario.roles.map((r) => r.role), usuario.permissoesArea, matriz),
+      areasDoPapel: this.permissoes.resolver(usuario.roles.map((r) => r.role), [], matriz),
+      areasEfetivas: this.permissoes.resolver(usuario.roles.map((r) => r.role), usuario.permissoesArea, matriz),
     };
   }
 
@@ -260,7 +274,8 @@ export class UsuariosController {
       await this.auditar(user.id, 'permissao_usuario_excecao_definida', id, undefined,
         { area: dto.area, concedida: dto.concedida, motivo: dto.motivo });
     }
-    return { areasEfetivas: await this.areasEfetivas(id) };
+    this.permissoes.invalidar(id);
+    return { areasEfetivas: [...(await this.permissoes.areasEfetivas(id))] };
   }
 
   // --- internos ---
@@ -281,32 +296,6 @@ export class UsuariosController {
     if (outros === 0) {
       throw new BadRequestException({ erro: 'ultimo_admin', mensagem: 'Este é o único administrador ativo — conceda o papel a outro usuário antes' });
     }
-  }
-
-  private resolver(
-    papeis: RoleUsuario[],
-    excecoes: { area: AreaSistema; concedida: boolean }[],
-    matriz: { papel: RoleUsuario; area: AreaSistema; permitido: boolean }[],
-  ): AreaSistema[] {
-    const areas = new Set<AreaSistema>();
-    for (const m of matriz) {
-      if (m.permitido && papeis.includes(m.papel)) areas.add(m.area);
-    }
-    for (const e of excecoes) {
-      if (e.concedida) areas.add(e.area);
-      else areas.delete(e.area);
-    }
-    return [...areas];
-  }
-
-  private async areasEfetivas(usuarioId: string): Promise<AreaSistema[]> {
-    const usuario = await this.prisma.db.usuario.findFirst({
-      where: { id: usuarioId },
-      include: { roles: true, permissoesArea: true },
-    });
-    if (!usuario) return [];
-    const matriz = await this.prisma.db.permissaoPapelArea.findMany();
-    return this.resolver(usuario.roles.map((r) => r.role), usuario.permissoesArea, matriz);
   }
 
   private async auditar(usuarioId: string, acao: string, entidadeId: string, antes?: unknown, depois?: unknown) {

@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { dataHojeBrasil } from '@azit/utils';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
@@ -40,7 +40,9 @@ import {
   devolucaoRescisaoSchema,
   DevolucaoRescisaoBody,
 } from './dto/operacoes.dto';
+import { Area, AREAS_CONTRATO, AREAS_FICHA_TITULAR } from '../../common/decorators/area.decorator';
 
+@Area(AreaSistema.CARTEIRA_COBRANCA)
 @Controller()
 export class OperacoesController {
   constructor(
@@ -56,6 +58,7 @@ export class OperacoesController {
 
   // --- Renegociação (6.2–6.5) — CONTA-cêntrica (Doc 2 §7.7): a inadimplência é da
   // conta; o acordo cobre as parcelas em atraso de todos os contratos do titular.
+  @Area(AreaSistema.CARTEIRA_COBRANCA, ...AREAS_FICHA_TITULAR)
   @Get('contas/:id/renegociacao/elegivel')
   elegivelConta(@Param('id') id: string) {
     return this.renegociacao.elegiveisConta(id);
@@ -63,6 +66,7 @@ export class OperacoesController {
 
   // Prévia do acordo (RAP031 — números do servidor): motor do Catálogo quando o
   // produto acordo_pagamento está ATIVO; senão, placeholder de divisão simples.
+  @Area(AreaSistema.CARTEIRA_COBRANCA, ...AREAS_FICHA_TITULAR)
   @Post('contas/:id/renegociacao/simular')
   @HttpCode(200)
   simularRenegociacao(
@@ -99,6 +103,7 @@ export class OperacoesController {
 
   // Detalhe do acordo (tela Renegociações, 21/10): parcelas cobertas com a
   // composição da fatura, entrada, cotas novas com situação, snapshot e trilha.
+  @Area(AreaSistema.CARTEIRA_COBRANCA, AreaSistema.APROVACOES)
   @Get('acordos/:id')
   acordo(@Param('id') id: string) {
     return this.renegociacao.detalhar(id);
@@ -122,6 +127,7 @@ export class OperacoesController {
   // F1 (doc adaptações A7 passos 1–2, 13/09): decomposição do saldo da conta
   // por produto — parte do veículo (Contrato 1) × demais produtos (Contrato 2).
   // Insumo da simulação; explode faturas em aberto e acordos via snapshots.
+  @Area(AreaSistema.CARTEIRA_COBRANCA, AreaSistema.APROVACOES, ...AREAS_FICHA_TITULAR)
   @Get('contas/:id/novacao/decomposicao')
   decomposicaoNovacao(@Param('id') id: string) {
     return this.novacaoDecomposicao.decomporConta(id);
@@ -129,6 +135,7 @@ export class OperacoesController {
 
   // Simulação da proposta (A7 passos 3-4): parcela única do relacionamento,
   // fase do Contrato 2 primeiro + fatura de transição + fase do veículo.
+  @Area(AreaSistema.CARTEIRA_COBRANCA, ...AREAS_FICHA_TITULAR)
   @Post('contas/:id/novacao/simular')
   @HttpCode(200)
   simularNovacao(
@@ -145,6 +152,7 @@ export class OperacoesController {
 
   // Detalhe da novação (21/10): origens liquidadas, decomposição congelada no
   // snapshot, contratos novos com assinatura e cronograma, recebimento, trilha.
+  @Area(AreaSistema.CARTEIRA_COBRANCA, AreaSistema.APROVACOES)
   @Get('novacoes/:id')
   novacaoDetalhe(@Param('id') id: string) {
     return this.novacao.detalhar(id);
@@ -194,6 +202,7 @@ export class OperacoesController {
   }
 
   // --- Quitação antecipada (6.7) ---
+  @Area(...AREAS_CONTRATO)
   @Post('contratos/:id/quitacao/simular')
   @HttpCode(200)
   simularQuitacao(
@@ -204,6 +213,7 @@ export class OperacoesController {
   }
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Area(AreaSistema.CARTEIRA_COBRANCA, AreaSistema.CONTRATOS)
   @Post('contratos/:id/quitacao')
   @HttpCode(200)
   quitar(
@@ -216,6 +226,7 @@ export class OperacoesController {
 
   // --- Sinistro (6.7) ---
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Area(AreaSistema.CARTEIRA_COBRANCA, AreaSistema.CONTRATOS)
   @Post('contratos/:id/sinistro')
   @HttpCode(200)
   registrarSinistro(
@@ -227,6 +238,7 @@ export class OperacoesController {
   }
 
   // --- Reajuste IPCA (6.8) ---
+  @Area(...AREAS_CONTRATO)
   @Get('contratos/:id/reajustes')
   reajustes(@Param('id') id: string) {
     return this.reajuste.listar(id);
@@ -234,6 +246,7 @@ export class OperacoesController {
 
   // Propõe o reajuste — aprovação e aplicação acontecem via motor (§7.9-A).
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Area(AreaSistema.CARTEIRA_COBRANCA, AreaSistema.CONTRATOS)
   @Post('contratos/:id/reajuste')
   @HttpCode(201)
   gerarReajuste(
@@ -246,6 +259,7 @@ export class OperacoesController {
 
   // --- Rescisão por inadimplência (doc 02 §29, 04/11) ---
   // Prévia do acerto (20% do principal pago × parcelas vencidas até a data-base).
+  @Area(...AREAS_CONTRATO)
   @Get('contratos/:id/rescisao/previa')
   previaRescisao(@Param('id') id: string, @Query('dataBase') dataBase?: string) {
     return this.rescisao.previa(id, dataBase || undefined);
@@ -253,6 +267,7 @@ export class OperacoesController {
 
   // Pede a rescisão — aprovação (1 aprovador) e efetivação via motor (§7.9-A).
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Area(AreaSistema.CARTEIRA_COBRANCA, AreaSistema.CONTRATOS)
   @Post('contratos/:id/rescisao')
   @HttpCode(201)
   solicitarRescisao(
@@ -263,6 +278,7 @@ export class OperacoesController {
     return this.rescisao.solicitar(id, dto, user.id);
   }
 
+  @Area(...AREAS_CONTRATO)
   @Get('contratos/:id/rescisoes')
   rescisoes(@Param('id') id: string) {
     return this.rescisao.listarDoContrato(id);
@@ -270,6 +286,7 @@ export class OperacoesController {
 
   // Devolução ao cliente registrada (placeholder: pagamento fora do sistema).
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.FINANCEIRO)
+  @Area(AreaSistema.CARTEIRA_COBRANCA, AreaSistema.CONTRATOS)
   @Post('rescisoes/:id/devolucao')
   @HttpCode(200)
   registrarDevolucao(

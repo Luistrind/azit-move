@@ -36,16 +36,20 @@ import { AssinaturaModule } from './modules/assinatura/assinatura.module';
 import { DossieModule } from './modules/dossie/dossie.module';
 import { FrotaModule } from './modules/frota/frota.module';
 import { MigracaoLegadoModule } from './modules/migracao-legado/migracao-legado.module';
+import { PermissoesModule } from './modules/permissoes/permissoes.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { AreaGuard } from './common/guards/area.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
-// Módulo raiz. Guards globais: JwtAuthGuard autentica todas as rotas (exceto @Public)
-// e RolesGuard autoriza por role quando a rota usa @Roles (Doc 6 §7).
+// Módulo raiz. Guards globais, NESTA ordem (Doc 6 §7): JwtAuthGuard autentica todas
+// as rotas (exceto @Public); AreaGuard autoriza pela área de trabalho declarada em
+// @Area/@AreaLivre (v1.1, §7.5); RolesGuard autoriza por papel quando a rota usa @Roles.
 @Module({
   imports: [
     ConfigModule,
     ScheduleModule.forRoot(),
     DatabaseModule,
+    PermissoesModule,
     QueuesModule,
     HealthModule,
     AuthModule,
@@ -82,6 +86,7 @@ import { RolesGuard } from './common/guards/roles.guard';
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: AreaGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })
