@@ -7,8 +7,14 @@ cd "$(dirname "$0")/.."
 echo "==> Build backend"
 docker build -t azit-backend:latest -f apps/backend/Dockerfile .
 
-echo "==> Build frontend (VITE_API_URL=https://api.azitmove.com.br)"
-docker build -t azit-frontend:latest --build-arg VITE_API_URL=https://api.azitmove.com.br -f apps/frontend/Dockerfile .
+# VITE_GOOGLE_CLIENT_ID (doc 06 v1.1 §2.2): reserva de build time — a tela prefere
+# GET /auth/config do backend. Lê de deploy/stack.env se existir.
+GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-$(grep -E '^GOOGLE_CLIENT_ID=' deploy/stack.env 2>/dev/null | cut -d= -f2- || true)}"
+echo "==> Build frontend (VITE_API_URL=https://api.azitmove.com.br; VITE_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:0:12}…)"
+docker build -t azit-frontend:latest \
+  --build-arg VITE_API_URL=https://api.azitmove.com.br \
+  --build-arg VITE_GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID}" \
+  -f apps/frontend/Dockerfile .
 
 echo "==> Imagens geradas:"
 docker images | grep azit || true

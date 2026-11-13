@@ -1,5 +1,6 @@
 import {
   PrismaClient,
+  AreaSistema,
   RoleUsuario,
   TipoPessoa,
   TipoAtivo,
@@ -28,12 +29,17 @@ const TODOS_PAPEIS: RoleUsuario[] = [
   RoleUsuario.OPERADOR,
   RoleUsuario.FINANCEIRO,
 ];
-const USUARIOS: { nome: string; email: string; roles: RoleUsuario[] }[] = [
-  { nome: 'Administrador Azit', email: 'admin@azit.com.br', roles: TODOS_PAPEIS },
-  { nome: 'Diretoria Azit', email: 'diretor@azit.com.br', roles: [RoleUsuario.DIRETOR] },
-  { nome: 'Aprovador Azit', email: 'aprovador@azit.com.br', roles: [RoleUsuario.APROVADOR] },
-  { nome: 'Operador Azit', email: 'operador@azit.com.br', roles: [RoleUsuario.OPERADOR] },
-  { nome: 'Financeiro Azit', email: 'financeiro@azit.com.br', roles: [RoleUsuario.FINANCEIRO] },
+// (doc 06 v1.1 §2.3, 13/11/2026) Senha é reserva DESLIGADA por padrão; nos cinco
+// usuários de teste o seed LIGA permiteSenha (homolog continua entrando com azit123).
+// O Luís entra pelo Google: cadastro ADMIN SEM senha (o vínculo com a conta Google
+// é pela parte local do e-mail — luis@azit.com.br ≡ luis@azitmove.com.br).
+const USUARIOS: { nome: string; email: string; roles: RoleUsuario[]; permiteSenha: boolean }[] = [
+  { nome: 'Luís', email: 'luis@azit.com.br', roles: [RoleUsuario.ADMIN, RoleUsuario.DIRETOR], permiteSenha: false },
+  { nome: 'Administrador Azit', email: 'admin@azit.com.br', roles: TODOS_PAPEIS, permiteSenha: true },
+  { nome: 'Diretoria Azit', email: 'diretor@azit.com.br', roles: [RoleUsuario.DIRETOR], permiteSenha: true },
+  { nome: 'Aprovador Azit', email: 'aprovador@azit.com.br', roles: [RoleUsuario.APROVADOR], permiteSenha: true },
+  { nome: 'Operador Azit', email: 'operador@azit.com.br', roles: [RoleUsuario.OPERADOR], permiteSenha: true },
+  { nome: 'Financeiro Azit', email: 'financeiro@azit.com.br', roles: [RoleUsuario.FINANCEIRO], permiteSenha: true },
 ];
 
 async function seedUsuarios() {
@@ -41,8 +47,8 @@ async function seedUsuarios() {
   for (const u of USUARIOS) {
     const usuario = await prisma.usuario.upsert({
       where: { email: u.email },
-      update: { senhaHash, ativo: true, nome: u.nome },
-      create: { nome: u.nome, email: u.email, senhaHash },
+      update: { senhaHash: u.permiteSenha ? senhaHash : null, permiteSenha: u.permiteSenha, ativo: true, nome: u.nome },
+      create: { nome: u.nome, email: u.email, senhaHash: u.permiteSenha ? senhaHash : null, permiteSenha: u.permiteSenha },
     });
     for (const role of u.roles) {
       await prisma.usuarioRole.upsert({
@@ -52,7 +58,56 @@ async function seedUsuarios() {
       });
     }
   }
-  console.log(`   Usuários (senha azit123): admin = TODOS os papéis; demais 1 papel`);
+  console.log(`   Usuários: admin = TODOS os papéis; demais 1 papel; senha azit123 LIGADA nos 5 de teste; luis@azit.com.br = ADMIN só pelo Google`);
+}
+
+// Matriz papel × área (doc 02 §16, doc 06 §5.4 v1.1). Desde o bloco 1 da v1.1 a
+// área é AUTORIZAÇÃO: sem linha na matriz ninguém (nem o Admin) acessa nada. Por
+// isso o seed garante um padrão quando a matriz está VAZIA (banco novo / homolog
+// recriado) e NÃO toca numa matriz já editada pelo Admin (produção).
+//
+// PLACEHOLDER (Regra 12): padrão provisório, substituível pelo Admin na tela
+// Usuários e permissões. Reflete o uso real de 12/11: o analista tem papel
+// OPERADOR e recebe Análise de cadastro por EXCEÇÃO — por isso OPERADOR não
+// carrega essa área por padrão (é o cenário do roteiro de homolog).
+const TODAS_AREAS = Object.values(AreaSistema);
+const MATRIZ_PADRAO: Record<RoleUsuario, AreaSistema[]> = {
+  ADMIN: TODAS_AREAS,
+  DIRETOR: TODAS_AREAS,
+  APROVADOR: [
+    AreaSistema.APROVACOES,
+    AreaSistema.ANALISE_CADASTRO,
+    AreaSistema.COMERCIAL,
+    AreaSistema.CONTRATOS,
+    AreaSistema.CARTEIRA_COBRANCA,
+  ],
+  OPERADOR: [
+    AreaSistema.COMERCIAL,
+    AreaSistema.CONTRATOS,
+    AreaSistema.CARTEIRA_COBRANCA,
+    AreaSistema.PESSOAS,
+    AreaSistema.ATIVOS_FROTA,
+    AreaSistema.PRODUTOS,
+  ],
+  FINANCEIRO: [
+    AreaSistema.FINANCEIRO_ADMINISTRATIVO,
+    AreaSistema.CARTEIRA_COBRANCA,
+    AreaSistema.CONTRATOS,
+    AreaSistema.PESSOAS,
+  ],
+};
+
+async function seedMatrizAreas() {
+  const existentes = await prisma.permissaoPapelArea.count();
+  if (existentes > 0) {
+    console.log(`   Matriz papel × área: já tem ${existentes} células — preservada (editada pelo Admin)`);
+    return;
+  }
+  const celulas = TODOS_PAPEIS.flatMap((papel) =>
+    TODAS_AREAS.map((area) => ({ papel, area, permitido: MATRIZ_PADRAO[papel].includes(area) })),
+  );
+  await prisma.permissaoPapelArea.createMany({ data: celulas, skipDuplicates: true });
+  console.log(`   Matriz papel × área: padrão provisório semeado (${celulas.length} células; matriz estava vazia)`);
 }
 
 // Titulares fictícios + conta de cada um (1:1).
@@ -587,6 +642,7 @@ async function seedProdutos() {
 
 async function main() {
   await seedUsuarios();
+  await seedMatrizAreas();
   await seedAlcadas();
   await seedProdutos();
   await seedDadosBase();

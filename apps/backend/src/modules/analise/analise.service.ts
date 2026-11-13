@@ -9,6 +9,7 @@ import {
   adicionarDiasUteis,
   DIA_MS,
   FUSO_NEGOCIO,
+  dataHojeBrasil,
   avaliarAnaliseCadastro,
   AnaliseInput,
   ParticipanteAnaliseInput,
@@ -1356,7 +1357,7 @@ export class AnaliseService implements OnModuleInit {
   }) {
     if (p.ativo) {
       const a = p.ativo;
-      const anoAtual = new Date().getFullYear();
+      const anoAtual = Number(dataHojeBrasil().slice(0, 4)); // ano no fuso do negócio (Regra 15)
       // Contratos ANTERIORES à proposta em análise: tudo que o ativo já teve.
       const anteriores = a.contratosCredito.map((c) => ({
         id: c.id,

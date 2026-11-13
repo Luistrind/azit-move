@@ -10,7 +10,7 @@ import {
   Query,
   StreamableFile,
 } from '@nestjs/common';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { z } from 'zod';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
@@ -20,6 +20,7 @@ import { AtivoDocumentoService } from './ativo-documento.service';
 import { criarAtivoSchema, CriarAtivoDto } from './dto/criar-ativo.dto';
 import { atualizarAtivoSchema, AtualizarAtivoDto } from './dto/atualizar-ativo.dto';
 import { listarAtivosSchema, ListarAtivosDto } from './dto/listar-ativos.dto';
+import { Area } from '../../common/decorators/area.decorator';
 
 const anexarDocSchema = z.object({
   tipo: z.enum(['crlv', 'nota_fiscal', 'laudo', 'outro']).default('outro'),
@@ -28,6 +29,7 @@ const anexarDocSchema = z.object({
 });
 type AnexarDocBody = z.infer<typeof anexarDocSchema>;
 
+@Area(AreaSistema.ATIVOS_FROTA)
 @Controller('ativos')
 export class AtivoController {
   constructor(
@@ -42,6 +44,7 @@ export class AtivoController {
     return this.ativoService.criar(dto);
   }
 
+  @Area(AreaSistema.ATIVOS_FROTA, AreaSistema.COMERCIAL, AreaSistema.CAPITAL_INVESTIMENTO)
   @Get()
   listar(
     @Query(new ZodValidationPipe(listarAtivosSchema)) filtros: ListarAtivosDto,
@@ -50,12 +53,14 @@ export class AtivoController {
   }
 
   // Busca por chassi ou placa exatos. Declarada antes de :id para não colidir.
+  @Area(AreaSistema.ATIVOS_FROTA, AreaSistema.COMERCIAL, AreaSistema.CAPITAL_INVESTIMENTO)
   @Get('buscar')
   buscar(@Query('chassi') chassi?: string, @Query('placa') placa?: string) {
     return this.ativoService.buscarPorIdentificador({ chassi, placa });
   }
 
   // --- Central de documentos do veículo (Doc 2 §4.4-A) ---
+  @Area(AreaSistema.ATIVOS_FROTA, AreaSistema.COMERCIAL, AreaSistema.CAPITAL_INVESTIMENTO)
   @Get(':id/documentos')
   documentosDoAtivo(@Param('id') id: string) {
     return this.documentos.listar(id);
@@ -72,6 +77,7 @@ export class AtivoController {
     return this.documentos.anexar(id, dto, user.id);
   }
 
+  @Area(AreaSistema.ATIVOS_FROTA, AreaSistema.COMERCIAL, AreaSistema.CAPITAL_INVESTIMENTO)
   @Get('documentos/:docId/download')
   async baixarDocumento(@Param('docId') docId: string): Promise<StreamableFile> {
     const { nome, buffer } = await this.documentos.arquivo(docId);
@@ -84,6 +90,7 @@ export class AtivoController {
     return this.documentos.remover(docId);
   }
 
+  @Area(AreaSistema.ATIVOS_FROTA, AreaSistema.COMERCIAL, AreaSistema.CAPITAL_INVESTIMENTO)
   @Get(':id')
   buscarPorId(@Param('id') id: string) {
     return this.ativoService.buscarPorId(id);

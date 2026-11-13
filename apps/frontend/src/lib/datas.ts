@@ -94,3 +94,11 @@ export function tempoRelativo(iso: string): string {
   const [, m, d] = diaBrasil(new Date(iso)).split('-');
   return `${d}/${m}`;
 }
+
+// INSTANTE → 'DD/MM/YYYY HH:mm' no fuso do negócio (registro de acessos, auditoria).
+export function instanteHoraBR(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('pt-BR', {
+    timeZone: FUSO_NEGOCIO, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}

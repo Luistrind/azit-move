@@ -60,6 +60,9 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5}
       MCP_SECRET: ${MCP_SECRET:-}
+      # Entrar com Google (doc 06 v1.1 §2.2): o MESMO cliente OAuth da produção
+      # (origem hml já autorizada). Vazio = botão do Google não aparece no login.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     volumes:
       - azit_uploads:/app/apps/backend/uploads
     networks: [azit_internal, PopCarrosNet]

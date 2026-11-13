@@ -1,10 +1,11 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
-import { ClassificacaoTitular, Prisma, RoleUsuario, TipoEstruturaJuridica } from '@prisma/client';
+import { AreaSistema, ClassificacaoTitular, Prisma, RoleUsuario, TipoEstruturaJuridica } from '@prisma/client';
 import { z } from 'zod';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { PrismaService } from '../../database/prisma.service';
+import { Area } from '../../common/decorators/area.decorator';
 
 // Pessoas/classificações + camada de capital (doc 02 §15, reunião 18/07).
 // Estrutura jurídica = placeholder funcional (jurídico com Cláudio/Sebastião).
@@ -33,12 +34,14 @@ const classificacaoSchema = z.object({
 
 const cent = (d: Prisma.Decimal | null): number | null => (d !== null ? Math.round(Number(d.toString()) * 100) : null);
 
+@Area(AreaSistema.CAPITAL_INVESTIMENTO)
 @Controller()
 export class CapitalController {
   constructor(private readonly prisma: PrismaService) {}
 
   // --- Classificações do titular (visões filtradas do cadastro único) ---
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Area(AreaSistema.PESSOAS, AreaSistema.CAPITAL_INVESTIMENTO)
   @Post('titulares/:id/classificacoes')
   @HttpCode(201)
   async classificar(
@@ -58,6 +61,7 @@ export class CapitalController {
   }
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Area(AreaSistema.PESSOAS, AreaSistema.CAPITAL_INVESTIMENTO)
   @Delete('titulares/:id/classificacoes/:classificacao')
   @HttpCode(204)
   async desclassificar(
@@ -73,12 +77,14 @@ export class CapitalController {
     });
   }
 
+  @Area(AreaSistema.PESSOAS, AreaSistema.CAPITAL_INVESTIMENTO)
   @Get('titulares/:id/classificacoes')
   listarClassificacoes(@Param('id') titularId: string) {
     return this.prisma.db.titularClassificacao.findMany({ where: { titularId } });
   }
 
   // Visão filtrada: titulares por classificação (aba Investidores/Fornecedores/Parceiros).
+  @Area(AreaSistema.PESSOAS, AreaSistema.CAPITAL_INVESTIMENTO)
   @Get('pessoas')
   async pessoas(@Query('classificacao') classificacao?: string) {
     const where = classificacao
@@ -100,6 +106,7 @@ export class CapitalController {
   }
 
   // --- Estruturas jurídicas (SPE/fundo por rodada) ---
+  @Area(AreaSistema.CAPITAL_INVESTIMENTO, AreaSistema.ATIVOS_FROTA, AreaSistema.PRODUTOS, AreaSistema.FINANCEIRO_ADMINISTRATIVO)
   @Get('estruturas')
   async listarEstruturas() {
     const es = await this.prisma.db.estruturaJuridica.findMany({

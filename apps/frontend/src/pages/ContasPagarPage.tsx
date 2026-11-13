@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   financeiroService,
@@ -18,7 +17,7 @@ import { Botao } from '../components/Botao';
 import { Tabela, type Coluna } from '../components/Tabela';
 import { CONTAS_PAGAR_STATUS_COLORS } from '../config/statusColors';
 import { hojeBrasilISO } from '../lib/datas';
-import { mensagemErro } from '../lib/permissoes';
+import { mensagemErro, AREAS_ROTA_FICHA_TITULAR, useIrParaArea } from '../lib/permissoes';
 
 // Contas a Pagar (doc 02 §18) — fila antes de ficha: abas por momento do fluxo,
 // ação da etapa sempre visível, modais com contexto. Nada de sigla em tela.
@@ -165,7 +164,7 @@ export function ContasPagarPage() {
 // ---------------------------------------------------------------------------
 
 function ListaTitulos({ titulos, carregando, onMudou }: { titulos: TituloPagarApi[]; carregando: boolean; onMudou: () => Promise<void> }) {
-  const navigate = useNavigate();
+  const irParaArea = useIrParaArea();
   const [acao, setAcao] = useState<null | { tipo: 'devolver' | 'bloquear' | 'cancelar' | 'reabrir' | 'pagar' | 'conciliar'; titulo: TituloPagarApi }>(null);
   const [ocupado, setOcupado] = useState(false);
 
@@ -196,7 +195,7 @@ function ListaTitulos({ titulos, carregando, onMudou }: { titulos: TituloPagarAp
           {t.origemReembolso && (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); navigate(`/titulares/${t.origemReembolso!.titularId}`); }}
+              onClick={(e) => { e.stopPropagation(); irParaArea(AREAS_ROTA_FICHA_TITULAR, `/titulares/${t.origemReembolso!.titularId}`); }}
               className="rounded-full px-[8px] py-[1px] text-[10.5px] font-bold"
               style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}
               title={`Desembolso do Reembolso Parcelado — contrato ${t.origemReembolso.contratoNumero}. Clique para abrir a ficha do cliente.`}

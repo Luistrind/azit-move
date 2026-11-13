@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, StreamableFile, UseGuards } from '@nestjs/common';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
@@ -39,9 +39,11 @@ import {
   conferirVeiculoSchema,
   ConferirVeiculoDto,
 } from './dto/proposta.dto';
+import { Area, AREAS_CONTRATO } from '../../common/decorators/area.decorator';
 
 // Bloco 7 — Funil de originação nativa (Lead → Simulação → Proposta → ...).
 // Operação interna (ADMIN/OPERADOR). O dado nasce na tela, não via API externa.
+@Area(AreaSistema.COMERCIAL)
 @Controller()
 export class FunilController {
   constructor(
@@ -137,6 +139,7 @@ export class FunilController {
 
   // Conferência do carro real pela análise (confirmar) ou devolução à fila.
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.APROVADOR, RoleUsuario.DIRETOR)
+  @Area(AreaSistema.COMERCIAL, AreaSistema.ANALISE_CADASTRO)
   @Post('propostas/:id/conferir-veiculo')
   @HttpCode(200)
   conferirVeiculo(
@@ -201,6 +204,7 @@ export class FunilController {
   }
 
   // Remove documento anexado por engano (fase de anexo — pedido 14/09).
+  @Area(AreaSistema.COMERCIAL, AreaSistema.ANALISE_CADASTRO)
   @Delete('propostas/:id/documentos/:docId')
   removerDocumento(
     @Param('id') id: string,
@@ -211,6 +215,7 @@ export class FunilController {
   }
 
   // Download do arquivo anexado.
+  @Area(AreaSistema.COMERCIAL, AreaSistema.ANALISE_CADASTRO, AreaSistema.PESSOAS)
   @Get('propostas/documentos/:docId/download')
   async baixarDocumento(@Param('docId') docId: string): Promise<StreamableFile> {
     const { nome, buffer } = await this.proposta.arquivoDocumento(docId);
@@ -275,6 +280,7 @@ export class FunilController {
   }
 
   // --- Assinatura (titular + Azit) e status do contrato ---
+  @Area(AreaSistema.COMERCIAL, ...AREAS_CONTRATO)
   @Get('contratos/:id/status-formalizacao')
   statusContrato(@Param('id') id: string) {
     return this.formalizacao.statusContrato(id);

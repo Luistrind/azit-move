@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   diasCalendarioEntre,
   formatCurrency,
@@ -21,6 +21,8 @@ import { GraficoBarrasEmpilhadas, type CategoriaEmpilhada } from '../components/
 import { PRODUTO_SLOT_COLORS, VISAO_ESTADO_COLORS, VIZ_NEUTRAL } from '../config/statusColors';
 import { hojeBrasilISO } from '../lib/datas';
 import { ConferenciaAsaasModal } from './CarteiraConferenciaAsaas';
+import { LinkArea } from '../components/LinkArea';
+import { AREAS_ROTA_FICHA_TITULAR } from '../lib/permissoes';
 
 // Carteira (doc 02 §27, 30/10/2026): teto, vencidas e a vencer por VENCIMENTO;
 // Recebido é CAIXA — tudo que entrou no período pela data do pagamento (faturas
@@ -187,7 +189,7 @@ export function CarteiraPage() {
                     return (
                       <div key={c.contaId} className="grid grid-cols-[1fr_auto] items-center gap-x-[12px] py-[8px] text-[12.5px]" style={{ borderBottom: '1px solid var(--border-light)' }}>
                         <div className="min-w-0">
-                          <Link to={`/titulares/${c.titularId}`} className="block truncate font-semibold" style={{ color: 'var(--text-primary)' }}>{c.titular}</Link>
+                          <LinkArea area={AREAS_ROTA_FICHA_TITULAR} to={`/titulares/${c.titularId}`} className="block truncate font-semibold" style={{ color: 'var(--text-primary)' }}>{c.titular}</LinkArea>
                           <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                             {lista === 'recebidas'
                               ? `${plural(c.faturas, 'recebimento', 'recebimentos')} · último pagamento ${ddmm(c.ultimoPagamento ?? c.maisAntiga)}`

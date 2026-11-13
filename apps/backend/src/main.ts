@@ -13,7 +13,10 @@ async function bootstrap() {
     // bodyLimit: o padrão do Fastify é 1 MB — foto de celular em base64 passa disso e
     // voltava 413 sem mensagem ("Operação não permitida", caso real 22/09). Os PDFs
     // de contrato do legado (16 páginas assinadas) também passam de 1 MB.
-    new FastifyAdapter({ logger: true, bodyLimit: 30 * 1024 * 1024 }),
+    // trustProxy (13/11, doc 06 §2.5): atrás do Traefik/Swarm o req.ip era o IP do
+    // proxy — o limite por IP e o registro de acessos precisam do IP do cliente
+    // (X-Forwarded-For). O backend não é exposto fora da rede do Swarm.
+    new FastifyAdapter({ logger: true, bodyLimit: 30 * 1024 * 1024, trustProxy: true }),
   );
 
   const configService = app.get(ConfigService);

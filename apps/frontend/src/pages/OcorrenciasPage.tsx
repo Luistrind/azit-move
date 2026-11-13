@@ -5,10 +5,11 @@ import { rotuloAtivo, formatCurrency } from '@azit/utils';
 import { frotaService as svc, type Ocorrencia, type ResumoImportacao } from '../services/frota.service';
 import { Modal } from '../components/Modal';
 import { toast } from '../components/Toast';
-import { mensagemErro, usePodeRole, ROLE_OPERACAO } from '../lib/permissoes';
+import { mensagemErro, usePodeRole, ROLE_OPERACAO, AREAS_ROTA_CONTRATO } from '../lib/permissoes';
 import { OCORRENCIA_STATUS_COLORS, RESPONSAVEL_OCORRENCIA_COLORS } from '../config/statusColors';
 import { Chips } from '../components/Chips';
 import { Botao } from '../components/Botao';
+import { LinkArea } from '../components/LinkArea';
 
 // Multas e pendências (doc 02 §25.2/§25.3). É um KANBAN porque cada desfecho é
 // TRATATIVA MANUAL (decisão Luís 20/09) — ao contrário da frota, que é lista,
@@ -230,7 +231,7 @@ export function OcorrenciasPage() {
               {detalhe.orgao && <span>Órgão: <b style={{ color: 'var(--text-primary)' }}>{detalhe.orgao}</b></span>}
               {detalhe.prazoIndicacao && <span>Indicação até: <b className="tabular-nums" style={{ color: 'var(--text-primary)' }}>{dataBR(detalhe.prazoIndicacao)}</b></span>}
               {detalhe.contrato && (
-                <span>Cliente: <Link to={`/contratos/${detalhe.contrato.id}`} className="font-bold hover:underline" style={{ color: 'var(--text-primary)' }}>{detalhe.contrato.titular.nome}</Link></span>
+                <span>Cliente: <LinkArea area={AREAS_ROTA_CONTRATO} to={`/contratos/${detalhe.contrato.id}`} className="font-bold hover:underline" style={{ color: 'var(--text-primary)' }}>{detalhe.contrato.titular.nome}</LinkArea></span>
               )}
             </div>
             {detalhe.descricao && <div style={{ color: 'var(--text-muted)' }}>{detalhe.descricao}</div>}

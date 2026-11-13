@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { cobrancaAsaasPaga, dataHojeBrasil, dataCalendarioUTC } from '@azit/utils';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
@@ -23,9 +23,11 @@ import { FaturaService, eventoConciliacaoDe, type CobrancaAsaasAoVivo } from './
 import { AsaasLeituraService } from '../asaas/asaas-leitura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { ConferenciaAsaasService } from './conferencia-asaas.service';
+import { Area, AREAS_CONTRATO, AREAS_FICHA_TITULAR } from '../../common/decorators/area.decorator';
 
 const DATA_ISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
+@Area(AreaSistema.CARTEIRA_COBRANCA)
 @Controller()
 export class CobrancaController {
   constructor(
@@ -38,12 +40,14 @@ export class CobrancaController {
   ) {}
 
   // 4.9 — Extrato do contrato (eventos conciliados).
+  @Area(...AREAS_CONTRATO)
   @Get('contratos/:id/extrato')
   extrato(@Param('id') id: string) {
     return this.fatura.extrato(id);
   }
 
   // Visão de faturas do cliente (por conta), paginada — agrega itens de vários contratos.
+  @Area(AreaSistema.CARTEIRA_COBRANCA, ...AREAS_FICHA_TITULAR)
   @Get('contas/:contaId/faturas')
   faturas(
     @Param('contaId') contaId: string,
@@ -55,12 +59,14 @@ export class CobrancaController {
   }
 
   // Lançamentos avulsos da conta (entradas de contrato/acordo — doc 02 §4-A.3, 30/08).
+  @Area(AreaSistema.CARTEIRA_COBRANCA, ...AREAS_FICHA_TITULAR)
   @Get('contas/:contaId/lancamentos')
   lancamentos(@Param('contaId') contaId: string) {
     return this.fatura.lancamentosDaConta(contaId);
   }
 
   // Detalhe de uma fatura (composição + datas + valores).
+  @Area(AreaSistema.CARTEIRA_COBRANCA, ...AREAS_FICHA_TITULAR)
   @Get('faturas/:id')
   detalheFatura(@Param('id') id: string) {
     return this.fatura.detalheFatura(id);

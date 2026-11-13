@@ -1,10 +1,12 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { OriginacaoService } from './originacao.service';
 import { originarSchema, OriginarDto } from './dto/originar.dto';
+import { Area } from '../../common/decorators/area.decorator';
 
+@Area(AreaSistema.COMERCIAL)
 @Controller('contratos')
 export class OriginacaoController {
   constructor(private readonly originacao: OriginacaoService) {}

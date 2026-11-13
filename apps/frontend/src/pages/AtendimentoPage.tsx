@@ -12,8 +12,9 @@ import {
 import { titularService, Titular } from '../services/titular.service';
 import { buscarCep } from '../lib/cep';
 import { mascararCpf, mascararTelefone, mascararDinheiro, dinheiroParaCentavos, somenteDigitos } from '../lib/mascaras';
-import { mensagemErro } from '../lib/permissoes';
+import { mensagemErro, useIrParaArea } from '../lib/permissoes';
 import { Botao } from '../components/Botao';
+import { AreaSistema } from '@azit/types';
 
 // UX-2 — Modo balcão (proposta UX §4.1): atendimento + simulação mobile-primeiro,
 // para usar NA FRENTE do cliente. Passos em tela cheia, cards grandes, sem tabela.
@@ -77,6 +78,7 @@ type Passo = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 'reprovada';
 
 export function AtendimentoPage() {
   const navigate = useNavigate();
+  const irParaArea = useIrParaArea();
   const [searchParams] = useSearchParams();
   const [passo, setPasso] = useState<Passo>(1);
   const [erro, setErro] = useState<string | null>(null);
@@ -192,7 +194,7 @@ export function AtendimentoPage() {
   async function continuarTriagem() {
     setErro(null);
     if (produto === 'protecao_veicular') {
-      navigate('/protecao');
+      irParaArea(AreaSistema.PRODUTOS, '/protecao');
       return;
     }
     if (produto === 'reembolso_parcelado') {

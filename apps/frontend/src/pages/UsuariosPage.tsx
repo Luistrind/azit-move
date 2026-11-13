@@ -1,21 +1,35 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ROTULO_ENTRADA_USUARIO } from '@azit/types';
+import { SENHA_MINIMO_CARACTERES, ehEmailWorkspace } from '@azit/utils';
 import {
   usuarioService,
   UsuarioInterno,
   nomeArea,
   nomePapel,
 } from '../services/usuario.service';
-import { mensagemErro, usePodeRole } from '../lib/permissoes';
+import { mensagemErro, usePodeRole, QUERY_ME_AREAS } from '../lib/permissoes';
+import { colunasAcesso } from '../lib/acessos';
+import { instanteHoraBR } from '../lib/datas';
+import { ENTRADA_USUARIO_COLORS } from '../config/statusColors';
 import { useAuthStore } from '../stores/authStore';
 import { Botao } from '../components/Botao';
 import { Chips } from '../components/Chips';
 import { Secao } from '../components/Secao';
+import { StatusBadge } from '../components/StatusBadge';
+import { Modal } from '../components/Modal';
+import { ModalConfirmacao } from '../components/ModalConfirmacao';
 import { Tabela, type Coluna } from '../components/Tabela';
+import { toast } from '../components/Toast';
 
 // Gestão de Usuários (doc 02 §16): criação de usuários internos, matriz papel × área
 // (o papel carrega as permissões do seu domínio) e exceções específicas por usuário.
 // Layout v2 (doc 03 §11): lista em <Tabela>, abas em <Chips>, botões em <Botao>.
+//
+// Entrada (doc 06 v1.1 §2, 13/11/2026): a porta normal é a conta Google do
+// Workspace; a senha é reserva DESLIGADA por padrão. Aqui o Admin liga/desliga
+// "permite senha" (com motivo, auditado), redefine a senha de reserva (mín. 10),
+// religa a conta Google, encerra todas as sessões e vê os últimos acessos.
 
 const inputCls = 'h-[32px] rounded-[10px] px-[10px] text-[12.5px]';
 const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' } as const;
@@ -32,7 +46,8 @@ export function UsuariosPage() {
         <h1 className="font-display text-[20px] font-bold" style={{ color: 'var(--text-primary)' }}>Usuários e permissões</h1>
         <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
           O papel do usuário carrega as áreas do sistema que ele acessa (matriz abaixo). Exceções por
-          usuário concedem ou retiram áreas específicas sem mudar o papel. Toda alteração é auditada.
+          usuário concedem ou retiram áreas específicas sem mudar o papel. A entrada é pela conta Google
+          da Azit; a senha é reserva, ligada por usuário. Toda alteração é auditada.
         </p>
       </div>
 
@@ -56,7 +71,7 @@ export function UsuariosPage() {
 }
 
 // ------------------------------------------------------------------
-// Aba 1 — usuários: lista, criação, edição, senha e exceções por usuário
+// Aba 1 — usuários: lista, criação, edição, entrada (Google/senha) e exceções
 // ------------------------------------------------------------------
 
 function ListaUsuarios({ onMudou }: { onMudou: () => void }) {
@@ -64,6 +79,7 @@ function ListaUsuarios({ onMudou }: { onMudou: () => void }) {
   const [criando, setCriando] = useState(false);
   const [abertoId, setAbertoId] = useState<string | null>(null);
   const [ocupadoId, setOcupadoId] = useState<string | null>(null);
+  const [excluindo, setExcluindo] = useState<UsuarioInterno | null>(null);
   const meuId = useAuthStore((s) => s.usuario?.id);
   const pode = usePodeRole();
   const souAdmin = pode(['ADMIN']);
@@ -71,20 +87,17 @@ function ListaUsuarios({ onMudou }: { onMudou: () => void }) {
   // Exclusão (07/11): só administrador, nunca a si mesmo. O backend ainda impede
   // excluir o último administrador ativo. Exclusão é lógica: o histórico fica.
   async function excluir(usuario: UsuarioInterno) {
-    const ok = window.confirm(
-      `Excluir o usuário ${usuario.nome} (${usuario.email})?\n\nO acesso é cortado na hora e o usuário some da lista. ` +
-        'O que ele fez no sistema (aprovações, decisões, auditoria) continua registrado em nome dele.',
-    );
-    if (!ok) return;
     setOcupadoId(usuario.id);
     try {
       await usuarioService.excluir(usuario.id);
       if (abertoId === usuario.id) setAbertoId(null);
+      toast.sucesso(`Usuário ${usuario.nome} excluído.`);
       onMudou();
     } catch (e) {
-      window.alert(mensagemErro(e));
+      toast.erro(mensagemErro(e));
     } finally {
       setOcupadoId(null);
+      setExcluindo(null);
     }
   }
 
@@ -94,7 +107,7 @@ function ListaUsuarios({ onMudou }: { onMudou: () => void }) {
       await usuarioService.atualizar(usuario.id, { ativo: !usuario.ativo });
       onMudou();
     } catch (e) {
-      window.alert(mensagemErro(e));
+      toast.erro(mensagemErro(e));
     } finally {
       setOcupadoId(null);
     }
@@ -121,6 +134,22 @@ function ListaUsuarios({ onMudou }: { onMudou: () => void }) {
         </span>
       ),
     },
+    {
+      // Entrada (doc 06 v1.1 §2): Google vinculado no 1º acesso; senha só se o Admin ligou.
+      chave: 'entrada',
+      titulo: 'Entrada',
+      render: (u) => (
+        <span className="flex flex-wrap gap-[4px]">
+          {ehEmailWorkspace(u.email) ? (
+            <StatusBadge label={u.googleVinculado ? ROTULO_ENTRADA_USUARIO.googleVinculado : ROTULO_ENTRADA_USUARIO.googlePendente} colors={ENTRADA_USUARIO_COLORS} />
+          ) : (
+            <span className="text-[11px]" style={{ color: 'var(--text-muted)' }} title="E-mail fora dos domínios da Azit: não entra pelo Google">sem Google</span>
+          )}
+          {u.permiteSenha && <StatusBadge label={ROTULO_ENTRADA_USUARIO.senhaLigada} colors={ENTRADA_USUARIO_COLORS} />}
+        </span>
+      ),
+    },
+    { chave: 'ultimo', titulo: 'Último acesso', render: (u) => instanteHoraBR(u.ultimoAcessoEm), classe: 'tabular-nums' },
     {
       chave: 'situacao',
       titulo: 'Situação',
@@ -158,7 +187,7 @@ function ListaUsuarios({ onMudou }: { onMudou: () => void }) {
         linhas={lista}
         chave={(u) => u.id}
         carregando={usuarios.isLoading || !usuarios.data}
-        larguraMinima={720}
+        larguraMinima={900}
         vazio="Nenhum usuário interno cadastrado."
         acoes={(u) => (
           <>
@@ -169,7 +198,7 @@ function ListaUsuarios({ onMudou }: { onMudou: () => void }) {
               {u.ativo ? 'Desativar' : 'Reativar'}
             </Botao>
             {souAdmin && u.id !== meuId && (
-              <Botao tamanho="sm" variante="perigo" onClick={() => void excluir(u)} disabled={ocupadoId === u.id}>
+              <Botao tamanho="sm" variante="perigo" onClick={() => setExcluindo(u)} disabled={ocupadoId === u.id}>
                 Excluir
               </Botao>
             )}
@@ -188,27 +217,44 @@ function ListaUsuarios({ onMudou }: { onMudou: () => void }) {
           </Secao>
         </div>
       )}
+
+      <ModalConfirmacao
+        open={!!excluindo}
+        titulo="Excluir usuário"
+        confirmar="Excluir usuário"
+        carregando={!!excluindo && ocupadoId === excluindo.id}
+        onConfirmar={() => excluindo && void excluir(excluindo)}
+        onCancelar={() => setExcluindo(null)}
+      >
+        Excluir <b>{excluindo?.nome}</b> ({excluindo?.email})? O acesso é cortado na hora e o usuário some da lista.
+        O que ele fez no sistema (aprovações, decisões, auditoria) continua registrado em nome dele.
+      </ModalConfirmacao>
     </div>
   );
 }
 
 function FormNovoUsuario({ onCriado }: { onCriado: () => void }) {
+  const souAdmin = usePodeRole()(['ADMIN']);
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
+  const [permiteSenha, setPermiteSenha] = useState(false);
   const [senha, setSenha] = useState('');
   const [papeis, setPapeis] = useState<string[]>(['OPERADOR']);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
+  const foraDoWorkspace = email.includes('@') && !ehEmailWorkspace(email);
+
   async function criar() {
     setErro(null);
     if (nome.trim().length < 3) return setErro('Informe o nome completo.');
     if (!email.includes('@')) return setErro('Informe um e-mail válido.');
-    if (senha.length < 6) return setErro('A senha precisa de pelo menos 6 caracteres.');
+    if (permiteSenha && senha.length < SENHA_MINIMO_CARACTERES) return setErro(`A senha de reserva precisa de pelo menos ${SENHA_MINIMO_CARACTERES} caracteres.`);
     if (papeis.length === 0) return setErro('Selecione pelo menos um papel.');
     setSalvando(true);
     try {
-      await usuarioService.criar({ nome: nome.trim(), email: email.trim(), senha, papeis });
+      await usuarioService.criar({ nome: nome.trim(), email: email.trim(), papeis, permiteSenha, senha: permiteSenha ? senha : undefined });
+      toast.sucesso(permiteSenha ? 'Usuário criado com senha de reserva.' : 'Usuário criado — entra pela conta Google da Azit.');
       onCriado();
     } catch (e) {
       setErro(mensagemErro(e));
@@ -221,18 +267,29 @@ function FormNovoUsuario({ onCriado }: { onCriado: () => void }) {
     <div className="rounded-card p-[16px]" style={cardStyle}>
       <Secao titulo="Novo usuário interno">
         <div className="flex flex-col gap-[12px]">
-          <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-2">
             <Campo rotulo="Nome completo">
               <input value={nome} onChange={(e) => setNome(e.target.value)} className={`${inputCls} w-full`} style={inputStyle} />
             </Campo>
-            <Campo rotulo="E-mail de acesso">
-              <input value={email} onChange={(e) => setEmail(e.target.value)} className={`${inputCls} w-full`} style={inputStyle} />
-            </Campo>
-            <Campo rotulo="Senha inicial">
-              <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} className={`${inputCls} w-full`} style={inputStyle} />
+            <Campo rotulo="E-mail do Workspace (azit.com.br / azitmove.com.br)">
+              <input value={email} onChange={(e) => setEmail(e.target.value)} className={`${inputCls} w-full`} style={inputStyle} placeholder="nome@azit.com.br" />
             </Campo>
           </div>
+          <div className="text-[11.5px]" style={{ color: foraDoWorkspace ? 'var(--warn-fg)' : 'var(--text-muted)' }}>
+            {foraDoWorkspace
+              ? 'Este e-mail está fora dos domínios da Azit: a pessoa NÃO vai conseguir entrar pelo Google — só com senha de reserva.'
+              : 'A pessoa entra com a conta Google deste e-mail (os dois domínios são a mesma caixa). Nenhuma senha é necessária.'}
+          </div>
           <SeletorPapeis valor={papeis} onChange={setPapeis} />
+          <label className="flex items-center gap-[8px] text-[12.5px]" style={{ color: 'var(--text-primary)', opacity: souAdmin ? 1 : 0.5 }} title={souAdmin ? undefined : 'Só um administrador libera a entrada por senha'}>
+            <input type="checkbox" checked={permiteSenha} disabled={!souAdmin} onChange={(e) => setPermiteSenha(e.target.checked)} />
+            Permitir entrada por senha (reserva — só em caso excepcional)
+          </label>
+          {permiteSenha && (
+            <Campo rotulo={`Senha inicial (mínimo ${SENHA_MINIMO_CARACTERES} caracteres)`}>
+              <input type="password" autoComplete="new-password" value={senha} onChange={(e) => setSenha(e.target.value)} className={`${inputCls} w-full sm:w-[260px]`} style={inputStyle} />
+            </Campo>
+          )}
           {erro && (
             <div className="rounded-[10px] p-[8px] text-[12px]" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>{erro}</div>
           )}
@@ -247,21 +304,26 @@ function FormNovoUsuario({ onCriado }: { onCriado: () => void }) {
   );
 }
 
-// Painel expandido: papéis, senha e exceções de área do usuário.
+// Painel expandido: nome, papéis, entrada (Google/senha/sessões), últimos acessos e exceções de área.
 function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou: () => void }) {
   const permissoes = useQuery({
     queryKey: ['usuario-permissoes', usuario.id],
     queryFn: () => usuarioService.permissoes(usuario.id),
   });
   const queryClient = useQueryClient();
+  const souAdmin = usePodeRole()(['ADMIN']);
+  const meuId = useAuthStore((s) => s.usuario?.id);
   const [papeis, setPapeis] = useState<string[]>(usuario.papeis);
   const [nome, setNome] = useState(usuario.nome);
   const [novaSenha, setNovaSenha] = useState('');
   const [motivo, setMotivo] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
+  const [painel, setPainel] = useState<'areas' | 'acessos'>('areas');
 
   async function recarregar() {
     await queryClient.invalidateQueries({ queryKey: ['usuario-permissoes', usuario.id] });
+    // Se a exceção foi no próprio usuário, menu/rotas/links refletem na hora.
+    await queryClient.invalidateQueries({ queryKey: QUERY_ME_AREAS });
     onMudou();
   }
 
@@ -295,11 +357,12 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
 
   async function redefinirSenha() {
     setMsg(null);
-    if (novaSenha.length < 6) return setMsg('A senha precisa de pelo menos 6 caracteres.');
+    if (novaSenha.length < SENHA_MINIMO_CARACTERES) return setMsg(`A senha de reserva precisa de pelo menos ${SENHA_MINIMO_CARACTERES} caracteres.`);
     try {
       await usuarioService.redefinirSenha(usuario.id, novaSenha);
       setNovaSenha('');
-      setMsg('Senha redefinida.');
+      setMsg('Senha de reserva redefinida.');
+      onMudou();
     } catch (e) {
       setMsg(mensagemErro(e));
     }
@@ -329,21 +392,40 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
         </Campo>
         <Botao tamanho="sm" variante="secundaria" onClick={() => void salvarNome()} disabled={nome.trim() === usuario.nome}>Salvar nome</Botao>
       </div>
-      <div className="flex flex-wrap items-end gap-[16px]">
-        <div className="flex flex-col gap-[6px]">
-          <SeletorPapeis valor={papeis} onChange={setPapeis} />
-          <div>
-            <Botao tamanho="sm" variante="secundaria" onClick={() => void salvarPapeis()}>Salvar papéis</Botao>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-end gap-[8px]">
-          <Campo rotulo="Nova senha">
-            <input type="password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} className={`${inputCls} w-full sm:w-[160px]`} style={{ ...inputStyle, background: 'var(--surface)' }} />
-          </Campo>
-          <Botao tamanho="sm" variante="secundaria" onClick={() => void redefinirSenha()}>Redefinir senha</Botao>
+      <div className="flex flex-col gap-[6px]">
+        <SeletorPapeis valor={papeis} onChange={setPapeis} />
+        <div>
+          <Botao tamanho="sm" variante="secundaria" onClick={() => void salvarPapeis()}>Salvar papéis</Botao>
         </div>
       </div>
 
+      <EntradaUsuario usuario={usuario} souAdmin={souAdmin} ehEu={usuario.id === meuId} onMudou={onMudou} setMsg={setMsg}>
+        {usuario.permiteSenha && (
+          <div className="flex flex-wrap items-end gap-[8px]">
+            <Campo rotulo={`Nova senha de reserva (mín. ${SENHA_MINIMO_CARACTERES})`}>
+              <input type="password" autoComplete="new-password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} className={`${inputCls} w-full sm:w-[200px]`} style={{ ...inputStyle, background: 'var(--surface)' }} />
+            </Campo>
+            <Botao tamanho="sm" variante="secundaria" onClick={() => void redefinirSenha()}>
+              {usuario.temSenha ? 'Redefinir senha' : 'Definir senha'}
+            </Botao>
+          </div>
+        )}
+      </EntradaUsuario>
+
+      <Chips
+        todos={null}
+        tamanho="sm"
+        itens={[
+          { chave: 'areas', rotulo: 'Acesso por área' },
+          { chave: 'acessos', rotulo: 'Últimos acessos' },
+        ]}
+        valor={painel}
+        onChange={(k) => setPainel((k as 'areas' | 'acessos') ?? 'areas')}
+      />
+
+      {painel === 'acessos' ? (
+        <AcessosUsuario usuarioId={usuario.id} />
+      ) : (
       <Secao titulo="Acesso por área">
         <div className="mb-[8px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
           "Padrão do papel" segue a matriz de permissões. Conceder ou retirar cria uma exceção só para
@@ -404,11 +486,163 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
           </div>
         )}
       </Secao>
+      )}
 
       {msg && (
         <div className="rounded-[10px] p-[8px] text-[12px]" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}>{msg}</div>
       )}
     </div>
+  );
+}
+
+// Entrada no sistema (doc 06 v1.1 §2): Google vinculado/pendente + religar; senha
+// de reserva liga/desliga com motivo (modal); encerrar todas as sessões.
+function EntradaUsuario({
+  usuario, souAdmin, ehEu, onMudou, setMsg, children,
+}: {
+  usuario: UsuarioInterno; souAdmin: boolean; ehEu: boolean; onMudou: () => void; setMsg: (m: string | null) => void; children?: React.ReactNode;
+}) {
+  const [modalSenha, setModalSenha] = useState(false);
+  const [motivoSenha, setMotivoSenha] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [confirmacao, setConfirmacao] = useState<'religar' | 'sessoes' | null>(null);
+  const entraPeloGoogle = ehEmailWorkspace(usuario.email);
+
+  async function alternarPermiteSenha() {
+    if (motivoSenha.trim().length < 5) return;
+    setSalvando(true);
+    try {
+      const r = await usuarioService.definirPermiteSenha(usuario.id, { permiteSenha: !usuario.permiteSenha, motivo: motivoSenha.trim() });
+      setModalSenha(false);
+      setMotivoSenha('');
+      if (r.permiteSenha && !r.temSenha) {
+        toast.info('Entrada por senha ligada — este usuário ainda não tem senha: defina uma abaixo.');
+      } else {
+        toast.sucesso(r.permiteSenha ? 'Entrada por senha ligada.' : 'Entrada por senha desligada.');
+      }
+      onMudou();
+    } catch (e) {
+      setMsg(mensagemErro(e));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function confirmar() {
+    setSalvando(true);
+    try {
+      if (confirmacao === 'religar') {
+        await usuarioService.religarGoogle(usuario.id);
+        toast.sucesso('Vínculo com a conta Google zerado — o próximo acesso dele grava a conta atual.');
+      } else if (confirmacao === 'sessoes') {
+        const r = await usuarioService.encerrarSessoes(usuario.id);
+        toast.sucesso(`${r.encerradas} sessão${r.encerradas === 1 ? '' : 'ões'} encerrada${r.encerradas === 1 ? '' : 's'} — cai em até 15 minutos em todos os dispositivos.`);
+      }
+      onMudou();
+    } catch (e) {
+      setMsg(mensagemErro(e));
+    } finally {
+      setSalvando(false);
+      setConfirmacao(null);
+    }
+  }
+
+  return (
+    <Secao titulo="Entrada no sistema">
+      <div className="flex flex-col gap-[10px] rounded-[10px] p-[10px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="flex flex-wrap items-center gap-[8px]">
+          {entraPeloGoogle ? (
+            <StatusBadge label={usuario.googleVinculado ? ROTULO_ENTRADA_USUARIO.googleVinculado : ROTULO_ENTRADA_USUARIO.googlePendente} colors={ENTRADA_USUARIO_COLORS} />
+          ) : (
+            <span className="text-[11.5px]" style={{ color: 'var(--warn-fg)' }}>E-mail fora dos domínios da Azit: não entra pelo Google.</span>
+          )}
+          <span className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+            {entraPeloGoogle
+              ? usuario.googleVinculado
+                ? 'A conta Google foi vinculada no primeiro acesso. Se o e-mail foi recriado no Workspace, religue.'
+                : 'A conta Google é vinculada no primeiro acesso pelo botão do Google.'
+              : ''}
+          </span>
+          {souAdmin && entraPeloGoogle && usuario.googleVinculado && (
+            <Botao tamanho="sm" variante="secundaria" onClick={() => setConfirmacao('religar')}>Religar conta Google</Botao>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-[8px]">
+          <StatusBadge label={usuario.permiteSenha ? ROTULO_ENTRADA_USUARIO.senhaLigada : ROTULO_ENTRADA_USUARIO.senhaDesligada} colors={ENTRADA_USUARIO_COLORS} />
+          <span className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+            {usuario.permiteSenha
+              ? usuario.temSenha ? 'Entra por senha de reserva além do Google.' : 'Ligada, mas ainda SEM senha definida — defina abaixo.'
+              : 'Senha desligada (padrão): só entra pelo Google.'}
+          </span>
+          {souAdmin && (
+            <Botao tamanho="sm" variante={usuario.permiteSenha ? 'perigo' : 'secundaria'} onClick={() => setModalSenha(true)}>
+              {usuario.permiteSenha ? 'Desligar senha' : 'Ligar senha'}
+            </Botao>
+          )}
+        </div>
+        {children}
+
+        <div className="flex flex-wrap items-center gap-[8px]">
+          <span className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+            Suspeita de acesso indevido ou troca de aparelho: encerre as sessões; em até 15 min ele precisa entrar de novo em todo lugar.
+          </span>
+          <Botao tamanho="sm" variante="perigo" onClick={() => setConfirmacao('sessoes')}>
+            {ehEu ? 'Encerrar minhas sessões' : 'Encerrar todas as sessões'}
+          </Botao>
+        </div>
+      </div>
+
+      <Modal open={modalSenha} onClose={() => setModalSenha(false)} title={usuario.permiteSenha ? 'Desligar entrada por senha' : 'Ligar entrada por senha'} largura={440}>
+        <div className="flex flex-col gap-[12px]">
+          <div className="text-[13px] leading-relaxed" style={{ color: 'var(--text-body)' }}>
+            {usuario.permiteSenha
+              ? <>A senha de reserva de <b>{usuario.nome}</b> deixa de funcionar; ele continua entrando pelo Google. O motivo fica na auditoria.</>
+              : <>A senha é uma <b>reserva</b> (pane do Workspace, conta de teste, caso excepcional) — não é a porta normal. Diga por que está ligando para <b>{usuario.nome}</b>; fica na auditoria.</>}
+          </div>
+          <Campo rotulo="Motivo (obrigatório)">
+            <input value={motivoSenha} onChange={(e) => setMotivoSenha(e.target.value)} className={`${inputCls} w-full`} style={inputStyle} autoFocus placeholder="ex.: conta de serviço do homolog; Workspace fora do ar" />
+          </Campo>
+          <div className="flex flex-col-reverse gap-[8px] sm:flex-row sm:justify-end">
+            <Botao variante="secundaria" onClick={() => setModalSenha(false)} disabled={salvando}>Cancelar</Botao>
+            <Botao variante={usuario.permiteSenha ? 'perigo' : 'primaria'} onClick={() => void alternarPermiteSenha()} carregando={salvando} disabled={motivoSenha.trim().length < 5}>
+              {usuario.permiteSenha ? 'Desligar senha' : 'Ligar senha'}
+            </Botao>
+          </div>
+        </div>
+      </Modal>
+
+      <ModalConfirmacao
+        open={confirmacao !== null}
+        titulo={confirmacao === 'religar' ? 'Religar conta Google' : 'Encerrar todas as sessões'}
+        confirmar={confirmacao === 'religar' ? 'Religar' : 'Encerrar sessões'}
+        variante={confirmacao === 'religar' ? 'primaria' : 'perigo'}
+        carregando={salvando}
+        onConfirmar={() => void confirmar()}
+        onCancelar={() => setConfirmacao(null)}
+      >
+        {confirmacao === 'religar'
+          ? <>O vínculo atual de <b>{usuario.nome}</b> com a conta Google é apagado e as sessões dele encerradas. No próximo acesso pelo Google, a conta usada passa a ser a vinculada. Só faça isso se o e-mail foi recriado no Workspace.</>
+          : <>Todas as sessões de <b>{usuario.nome}</b> serão encerradas; em até 15 minutos ele precisa entrar de novo em todos os dispositivos.{ehEu ? ' Isto inclui a sua sessão atual.' : ''}</>}
+      </ModalConfirmacao>
+    </Secao>
+  );
+}
+
+// Últimos acessos do usuário (doc 06 §2.5) — com o motivo interno (visão do Admin).
+function AcessosUsuario({ usuarioId }: { usuarioId: string }) {
+  const dados = useQuery({ queryKey: ['usuario-acessos', usuarioId], queryFn: () => usuarioService.acessos(usuarioId) });
+  return (
+    <Secao titulo="Últimos acessos" tag={dados.data ? `${dados.data.sessoesAtivas} sessão${dados.data.sessoesAtivas === 1 ? '' : 'ões'} válida${dados.data.sessoesAtivas === 1 ? '' : 's'} · últimas 50 tentativas` : undefined}>
+      <Tabela
+        colunas={colunasAcesso({ comMotivo: true })}
+        linhas={dados.data?.acessos ?? []}
+        chave={(a) => a.id}
+        carregando={dados.isLoading}
+        larguraMinima={760}
+        vazio={dados.isError ? mensagemErro(dados.error) : 'Nenhum acesso registrado ainda.'}
+      />
+    </Secao>
   );
 }
 
@@ -428,8 +662,11 @@ function MatrizPermissoes() {
       await usuarioService.salvarCelula({ papel, area, permitido });
       await queryClient.invalidateQueries({ queryKey: ['permissoes-matriz'] });
       await queryClient.invalidateQueries({ queryKey: ['usuarios'] });
+      // A matriz vale para quem está logado também: menu/rotas/links refletem na hora.
+      await queryClient.invalidateQueries({ queryKey: QUERY_ME_AREAS });
     } catch (e) {
-      window.alert(mensagemErro(e));
+      // Inclui o 422 do auto-bloqueio (doc 06 §13.3): "deixaria o sistema sem administrador com Configurações".
+      toast.erro(mensagemErro(e));
     } finally {
       setSalvando(null);
     }
@@ -465,7 +702,8 @@ function MatrizPermissoes() {
     <div className="flex flex-col gap-[10px]">
       <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
         Marque as áreas que cada papel acessa por padrão. A alteração vale para todos os usuários do
-        papel, exceto onde houver exceção individual.
+        papel, exceto onde houver exceção individual. O sistema nunca fica sem um administrador ativo com
+        a área Configurações — a alteração que causaria isso é recusada.
       </div>
       <Tabela
         colunas={colunas}

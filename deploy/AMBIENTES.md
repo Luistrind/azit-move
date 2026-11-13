@@ -68,6 +68,46 @@ bash deploy/deploy-prod.sh v1.0.0
 
 ---
 
+**1.5 Google Cloud — entrar com Google (doc 06 v1.1 §2.2)** — feito em 12/11/2026 pelo Luís com o Claude, conta `luis@azit.com.br`:
+
+- Projeto `azit-hub` (nome "Azit Hub"), dentro da organização do Workspace; tela de permissão OAuth com público **Interno** (só contas `azit.com.br` / `azitmove.com.br` conseguem entrar, já do lado do Google).
+- Cliente OAuth **Azit Hub Web** (tipo aplicativo da Web). O fluxo é de ID token (botão do Google no navegador), então só o **client id** é usado; a chave secreta do cliente não é usada e não deve ser copiada para lugar nenhum.
+- `GOOGLE_CLIENT_ID=43681993535-8orbgnirmtc7p3lbu5ov0f2hvfp46g58.apps.googleusercontent.com` (é público por natureza; vai no backend como variável e no frontend como `VITE_GOOGLE_CLIENT_ID`, em build time como o `VITE_API_URL`). O mesmo cliente serve homolog e produção.
+- Origens JavaScript autorizadas: `https://app.azitmove.com.br`, `https://hml.azitmove.com.br`, `http://localhost:3000`. Sem URIs de redirecionamento (não há fluxo de servidor).
+- Onde mexer: https://console.cloud.google.com/auth/clients?project=azit-hub (mudança de domínio ou porta local exige acrescentar a origem lá; pode levar alguns minutos para valer).
+- O bloco 3 (alertas por e-mail, doc 06 §12) usa este MESMO projeto para a conta de serviço do Gmail; a chave dela é segredo e entra só no `stack.env` do servidor.
+
+**1.6 Bloco 2 do doc 06 v1.1 — entrar com Google (13/11/2026): o que muda no servidor e a ordem de migração**
+
+Variáveis (o id é público; o valor está em 1.5):
+
+```bash
+# uma vez, no servidor — os init-env*.sh já escrevem isso em arquivo NOVO; em arquivo existente, acrescente:
+echo 'GOOGLE_CLIENT_ID=43681993535-8orbgnirmtc7p3lbu5ov0f2hvfp46g58.apps.googleusercontent.com' >> /opt/azit/deploy/stack-hml.env
+echo 'GOOGLE_CLIENT_ID=43681993535-8orbgnirmtc7p3lbu5ov0f2hvfp46g58.apps.googleusercontent.com' >> /opt/azit/deploy/stack.env
+```
+
+- Backend lê `GOOGLE_CLIENT_ID` (stacks swarm já passam `${GOOGLE_CLIENT_ID:-}`); sem ela `POST /auth/google` responde 503 e o botão não aparece (a tela consulta `GET /auth/config`). Confira em Configurações › Integrações › "Google — entrada no sistema".
+- Frontend recebe `VITE_GOOGLE_CLIENT_ID` como build-arg (build.sh, deploy-hml.sh, deploy-prod.sh) — é só reserva; a fonte preferida é o backend, então o mesmo build serve hml e prod.
+- O backend sobe com `trustProxy: true` (IP real atrás do Traefik, para o limite de 10 tentativas/min por IP e o registro de acessos).
+
+Migração do banco (roda no deploy, aditiva): `senhaHash` vira opcional, `permiteSenha` nasce `false` para TODOS os usuários existentes, `googleSub` nulo, tabela `acessos_usuario`.
+
+**Homolog** — `bash deploy/deploy-hml.sh origin/feat/acesso-areas-google-email`. O seed (só banco vazio) liga `permiteSenha` nos cinco usuários de teste (`azit123` continua valendo) e cria `luis@azit.com.br` como ADMIN sem senha. Em banco de homolog JÁ EXISTENTE o seed não roda: entre com `admin@azit.com.br`… — **atenção:** após a migração o `admin@` também fica com `permiteSenha=false`. Antes do deploy-hml, ligue no banco de homolog para os usuários de teste:
+
+```bash
+docker exec $(docker ps -qf name=azit-hml_azit-db) psql -U azit -d azit -c "update usuarios set \"permiteSenha\"=true where email in ('admin@azit.com.br','diretor@azit.com.br','aprovador@azit.com.br','operador@azit.com.br','financeiro@azit.com.br');"
+```
+
+(se a coluna ainda não existir, rode DEPOIS do deploy — o comando é idempotente). E cadastre o Luís como usuário do homolog (Usuários e permissões › Novo usuário, e-mail `luis@azit.com.br`, papel Administrador, sem senha) se ele não existir — o roteiro de teste do Google precisa disso.
+
+**Produção** — ordem obrigatória (doc 06 §11.6, bloco 2):
+1. ANTES do deploy, com a versão atual no ar, nada muda: todos entram por senha.
+2. Logo após o deploy, todo mundo fica com `permiteSenha=false` — ninguém entra por senha, só pelo Google. **Rede de segurança:** antes de publicar, garanta que o Luís existe como usuário com e-mail do Workspace (`luis@azit.com.br` ou `luis@azitmove.com.br`) e papel Administrador. Se quiser a senha como reserva durante a virada, ligue-a para o próprio usuário pelo banco logo após a migração (`update usuarios set "permiteSenha"=true where email='luis@azit.com.br';`) e desligue pela tela depois de entrar pelo Google.
+3. Para cada colaborador: confira em Usuários e permissões que o e-mail cadastrado é o do Workspace (a parte local é o que vale; `@azit.com.br` e `@azitmove.com.br` são a mesma caixa). Quem tiver e-mail de fora do domínio não entra pelo Google — corrija o e-mail ou ligue a senha com motivo.
+4. Senha de reserva só por exceção, ligada por usuário em Usuários e permissões (auditada com motivo).
+
+---
 ## 2. Dia a dia — do seu computador até a produção
 
 A regra é uma só: **na produção só entra o que foi testado no homolog.** O

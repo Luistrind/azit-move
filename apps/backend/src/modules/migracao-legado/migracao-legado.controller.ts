@@ -1,16 +1,18 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { MigracaoLegadoService } from './migracao-legado.service';
 import { LegadoConciliacaoService } from './legado-conciliacao.service';
 import { LegadoMigracaoService } from './legado-migracao.service';
+import { Area } from '../../common/decorators/area.decorator';
 
 type Resposta = { header: (k: string, v: string) => Resposta; send: (b: Buffer) => void };
 
 // Bancada de migração do legado (doc 02 §26). Quem opera: quem vai ao PopHub
 // buscar o contrato e conciliar — operação, diretoria e financeiro.
 @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR, RoleUsuario.OPERADOR, RoleUsuario.FINANCEIRO)
+@Area(AreaSistema.CARTEIRA_COBRANCA)
 @Controller('migracao-legado')
 export class MigracaoLegadoController {
   constructor(

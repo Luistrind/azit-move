@@ -1,12 +1,14 @@
 import { Body, Controller, Get, HttpCode, Post, Put } from '@nestjs/common';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { IntegracoesService } from './integracoes.service';
+import { Area } from '../../common/decorators/area.decorator';
 
 // Central de integrações (decisão Luís 15/09) — tela Configurações >
 // Integrações. Segredos são WRITE-ONLY: o GET devolve só status mascarado.
 @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+@Area(AreaSistema.CONFIGURACOES)
 @Controller('integracoes')
 export class IntegracoesController {
   constructor(private readonly service: IntegracoesService) {}

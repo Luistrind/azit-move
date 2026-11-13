@@ -4,8 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../stores/authStore';
 import { authService } from '../../services/auth.service';
 import { aprovacaoService } from '../../services/aprovacao.service';
-import { usuarioService } from '../../services/usuario.service';
 import { queryClient } from '../../lib/queryClient';
+import { AreaSistema } from '@azit/types';
+import { temAlgumaArea, useMinhasAreas } from '../../lib/permissoes';
 
 // Sidebar 236px navy — Doc 3 §7.2. Logo (fallback bloco âmbar "a" até o SVG oficial),
 // nav e footer de usuário. Os itens reais entram conforme as telas dos blocos seguintes.
@@ -19,12 +20,12 @@ function iniciais(nome: string): string {
 
 // Menu por áreas de trabalho (proposta UX §3): cada grupo é uma área do sistema
 // e só aparece se o usuário tem a área (matriz papel×área ± exceções — GET /me/areas).
-type GrupoNav = { area: string | null; titulo: string; itens: NavItemDef[] };
+type GrupoNav = { area: AreaSistema | null; titulo: string; itens: NavItemDef[] };
 
 const GRUPOS_NAV: GrupoNav[] = [
   { area: null, titulo: '', itens: [{ to: '/', label: 'Início' }] },
   {
-    area: 'COMERCIAL',
+    area: AreaSistema.COMERCIAL,
     titulo: 'Comercial',
     itens: [
       { to: '/atendimento', label: 'Novo atendimento' },
@@ -34,12 +35,12 @@ const GRUPOS_NAV: GrupoNav[] = [
     ],
   },
   {
-    area: 'ANALISE_CADASTRO',
+    area: AreaSistema.ANALISE_CADASTRO,
     titulo: 'Análise de cadastro',
     itens: [{ to: '/analises', label: 'Análises' }],
   },
   {
-    area: 'CARTEIRA_COBRANCA',
+    area: AreaSistema.CARTEIRA_COBRANCA,
     titulo: 'Carteira e cobrança',
     itens: [
       { to: '/carteira', label: 'Carteira' },
@@ -50,7 +51,7 @@ const GRUPOS_NAV: GrupoNav[] = [
     ],
   },
   {
-    area: 'FINANCEIRO_ADMINISTRATIVO',
+    area: AreaSistema.FINANCEIRO_ADMINISTRATIVO,
     titulo: 'Financeiro administrativo',
     itens: [
       { to: '/contas-a-pagar', label: 'Contas a pagar' },
@@ -59,7 +60,7 @@ const GRUPOS_NAV: GrupoNav[] = [
     ],
   },
   {
-    area: 'PESSOAS',
+    area: AreaSistema.PESSOAS,
     titulo: 'Pessoas',
     itens: [
       { to: '/titulares', label: 'Titulares' },
@@ -67,7 +68,7 @@ const GRUPOS_NAV: GrupoNav[] = [
     ],
   },
   {
-    area: 'ATIVOS_FROTA',
+    area: AreaSistema.ATIVOS_FROTA,
     titulo: 'Ativos e frota',
     itens: [
       { to: '/ativos', label: 'Frota e estoque' },
@@ -76,12 +77,12 @@ const GRUPOS_NAV: GrupoNav[] = [
     ],
   },
   {
-    area: 'CAPITAL_INVESTIMENTO',
+    area: AreaSistema.CAPITAL_INVESTIMENTO,
     titulo: 'Capital e investimento',
     itens: [{ to: '/estruturas', label: 'Estruturas jurídicas' }],
   },
   {
-    area: 'PRODUTOS',
+    area: AreaSistema.PRODUTOS,
     titulo: 'Produtos',
     itens: [
       { to: '/catalogo', label: 'Catálogo de produtos' },
@@ -90,12 +91,12 @@ const GRUPOS_NAV: GrupoNav[] = [
     ],
   },
   {
-    area: 'APROVACOES',
+    area: AreaSistema.APROVACOES,
     titulo: 'Aprovações',
     itens: [{ to: '/aprovacoes', label: 'Aprovações' }],
   },
   {
-    area: 'CONFIGURACOES',
+    area: AreaSistema.CONFIGURACOES,
     titulo: 'Configuração',
     itens: [
       { to: '/configuracoes/alcadas', label: 'Alçadas' },
@@ -145,24 +146,20 @@ export function Sidebar() {
   const ativa = (to: string) => (to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(`${to}/`));
   const usuario = useAuthStore((s) => s.usuario);
   const limpar = useAuthStore((s) => s.limpar);
-  // Badge de aprovações pendentes (atualiza a cada 60s).
+  // Áreas efetivas do usuário (matriz papel×área ± exceções — GET /me/areas). UMA
+  // query, compartilhada com o roteador (RotaPorArea) e os links entre áreas.
+  // Enquanto carrega, mostra só o Início — evita piscar itens que serão removidos.
+  const { areas } = useMinhasAreas();
+  // Badge de aprovações pendentes (atualiza a cada 60s) — só para quem tem a área,
+  // senão a API responde 403 a cada minuto.
   const contagem = useQuery({
     queryKey: ['aprovacoes-contagem'],
     queryFn: () => aprovacaoService.contagem(),
     refetchInterval: 60_000,
+    enabled: temAlgumaArea(areas, AreaSistema.APROVACOES),
   });
   const pendentes = contagem.data ?? 0;
-  // Áreas efetivas do usuário (matriz papel×área ± exceções). Enquanto carrega,
-  // mostra só o Início — evita piscar itens que serão removidos.
-  const areasQuery = useQuery({
-    queryKey: ['me-areas'],
-    queryFn: () => usuarioService.minhasAreas(),
-    staleTime: 5 * 60_000,
-  });
-  const areas = areasQuery.data;
-  const grupos = GRUPOS_NAV.filter(
-    (g) => g.area === null || (areas ? areas.includes(g.area) : false),
-  );
+  const grupos = GRUPOS_NAV.filter((g) => g.area === null || temAlgumaArea(areas, g.area));
 
   async function onLogout() {
     await authService.logout();
@@ -255,14 +252,20 @@ export function Sidebar() {
         >
           {iniciais(usuario?.nome ?? 'Azit')}
         </div>
-        <div className="min-w-0 flex-1 leading-tight">
+        {/* Minha conta (doc 06 v1.1 §2.5): meus acessos e "encerrar todas as sessões". */}
+        <NavLink
+          to="/minha-conta"
+          title="Minha conta — meus acessos e sessões"
+          className="min-w-0 flex-1 rounded-[8px] px-[4px] py-[2px] leading-tight hover:bg-[rgba(255,255,255,.06)]"
+          style={({ isActive }) => (isActive ? { background: 'rgba(255,255,255,.08)' } : undefined)}
+        >
           <div className="truncate text-[12.5px] font-semibold">
             {usuario?.nome ?? 'Operador Azit'}
           </div>
           <div className="truncate text-[11px]" style={{ color: 'var(--accent)' }}>
             {usuario?.roles?.join(' · ') ?? 'Console operacional'}
           </div>
-        </div>
+        </NavLink>
         <button
           onClick={onLogout}
           title="Sair"

@@ -22,7 +22,7 @@ import {
 } from '../components/renegociacao/AcordoBlocos';
 import { OrigensNovacao, DecomposicaoNovacao, ContratosNovacao, RecebimentoNovacao } from '../components/renegociacao/NovacaoBlocos';
 import { ACORDO_STATUS_COLORS, NOVACAO_STATUS_COLORS, TOM_DOSSIE_FG } from '../config/statusColors';
-import { usePodeRole, ROLE_RENEGOCIACAO, ROLE_NOVACAO, mensagemErro } from '../lib/permissoes';
+import { usePodeRole, ROLE_RENEGOCIACAO, ROLE_NOVACAO, mensagemErro, AREAS_ROTA_FICHA_TITULAR, useIrParaArea } from '../lib/permissoes';
 import { toast } from '../components/Toast';
 import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 
@@ -64,6 +64,7 @@ const card = { background: 'var(--surface)', border: '1px solid var(--border)' }
 // detalhe abre embaixo do próprio cartão, como um dossiê) — só com tokens.
 export function AcordosPage() {
   const navigate = useNavigate();
+  const irParaArea = useIrParaArea();
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const pode = usePodeRole();
@@ -206,7 +207,7 @@ export function AcordosPage() {
                   a={a}
                   aberto={aberto === `acordo:${a.id}`}
                   onAlternar={() => alternar(`acordo:${a.id}`)}
-                  onTitular={() => navigate(`/titulares/${a.titularId}`)}
+                  onTitular={() => irParaArea(AREAS_ROTA_FICHA_TITULAR, `/titulares/${a.titularId}`)}
                   onContrato={(id) => navigate(`/contratos/${id}`)}
                   acaoDev={
                     (a.status === 'aguardando_entrada' || a.status === 'rascunho') && podeRenegociar && FERRAMENTAS_TESTE ? (
@@ -237,7 +238,7 @@ export function AcordosPage() {
                   nv={nv}
                   aberto={aberto === `novacao:${nv.id}`}
                   onAlternar={() => alternar(`novacao:${nv.id}`)}
-                  onTitular={() => navigate(`/titulares/${nv.titularId}`)}
+                  onTitular={() => irParaArea(AREAS_ROTA_FICHA_TITULAR, `/titulares/${nv.titularId}`)}
                   onContrato={(id) => navigate(`/contratos/${id}`)}
                   podeEditar={podeNovar}
                   onAlterada={refetch}

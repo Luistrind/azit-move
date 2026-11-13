@@ -10,9 +10,10 @@ import { RenegociacaoWizard } from '../components/RenegociacaoWizard';
 import { Botao } from '../components/Botao';
 import { CartaoIndicador, type TomIndicador } from '../components/CartaoIndicador';
 import { REGUA_STAGE_COLORS } from '../config/statusColors';
-import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
+import { usePodeRole, ROLE_OPERACAO, mensagemErro, AREAS_ROTA_FICHA_TITULAR } from '../lib/permissoes';
 import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 import { dataBR } from '../lib/datas';
+import { BotaoArea } from '../components/BotaoArea';
 
 // Kanban por RAIAS de atraso (decisão Luís 31/10, doc 02 §7.6): "Vence hoje",
 // vencida até 7 / 14 / 21 / 30 / 60 dias e mais de 60 — a coluna por dia (1…7,
@@ -249,9 +250,9 @@ function CasoModal({ item, onClose, onRenegociar }: { item: ReguaItem; onClose: 
         )}
 
         <div className="flex flex-wrap justify-end gap-[8px] pt-[4px]">
-          <Botao variante="secundaria" onClick={() => navigate(`/titulares/${eleg.data?.titularId ?? ''}`)} disabled={!eleg.data}>
+          <BotaoArea area={AREAS_ROTA_FICHA_TITULAR} variante="secundaria" onClick={() => navigate(`/titulares/${eleg.data?.titularId ?? ''}`)} disabled={!eleg.data}>
             Abrir ficha do titular
-          </Botao>
+          </BotaoArea>
           <Botao variante="primaria" onClick={onRenegociar} disabled={faturas.length === 0}>
             Renegociar atraso
           </Botao>

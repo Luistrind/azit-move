@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
 import { contaService } from '../services/conta.service';
 import { CartaoIndicador } from '../components/CartaoIndicador';
 import { CONTA_SITUACAO_COLORS, CONTA_SITUACAO_LABEL } from '../config/statusColors';
+import { AREAS_ROTA_FICHA_TITULAR, useIrParaArea } from '../lib/permissoes';
 
 // Clientes da carteira (doc 02 §27.8, decisão Luís 30/10): a grade TITULAR-cêntrica
 // de sempre (posição consolidada por conta — o contrato é o drill-down na ficha),
@@ -16,7 +17,7 @@ const SITUACOES = ['em_dia', 'em_atraso', 'em_acordo', 'bloqueada'] as const;
 const pct = (a: number, b: number) => (b ? Math.round((100 * a) / b) : 0);
 
 export function CarteiraClientesPage() {
-  const navigate = useNavigate();
+  const irParaArea = useIrParaArea();
   const [params, setParams] = useSearchParams();
   const filtro = params.get('situacao');
   const [busca, setBusca] = useState('');
@@ -93,7 +94,7 @@ export function CarteiraClientesPage() {
         {lista.map((c) => {
           const s = situacaoDe(c.situacao);
           return (
-            <button key={c.contaId} type="button" onClick={() => navigate(`/titulares/${c.titularId}`)} className="rounded-card p-[14px] text-left" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+            <button key={c.contaId} type="button" onClick={() => irParaArea(AREAS_ROTA_FICHA_TITULAR, `/titulares/${c.titularId}`)} className="rounded-card p-[14px] text-left" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
               <div className="flex items-start justify-between gap-[8px]">
                 <div className="min-w-0">
                   <div className="truncate text-[13.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>{c.titular}</div>
@@ -135,7 +136,7 @@ export function CarteiraClientesPage() {
             {lista.map((c) => {
               const s = situacaoDe(c.situacao);
               return (
-                <tr key={c.contaId} onClick={() => navigate(`/titulares/${c.titularId}`)} className="cursor-pointer transition-colors hover:bg-[var(--surface-muted)]" style={{ borderBottom: '1px solid var(--border-light)' }}>
+                <tr key={c.contaId} onClick={() => irParaArea(AREAS_ROTA_FICHA_TITULAR, `/titulares/${c.titularId}`)} className="cursor-pointer transition-colors hover:bg-[var(--surface-muted)]" style={{ borderBottom: '1px solid var(--border-light)' }}>
                   <td className="px-[18px] py-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>{c.titular}</td>
                   <td className="px-[18px] py-[13px] tabular-nums" style={{ color: 'var(--text-body)' }}>{c.cpfCnpj}</td>
                   <td className="px-[18px] py-[13px] text-center tabular-nums" style={{ color: 'var(--text-body)' }}>{c.contratosAtivos}</td>

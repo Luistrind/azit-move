@@ -7,7 +7,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -16,7 +16,9 @@ import {
   listarContratosSchema,
   ListarContratosDto,
 } from './dto/listar-contratos.dto';
+import { Area, AREAS_CONTRATO } from '../../common/decorators/area.decorator';
 
+@Area(...AREAS_CONTRATO)
 @Controller('contratos')
 export class ContratoController {
   constructor(private readonly contratoService: ContratoService) {}

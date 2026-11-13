@@ -24,7 +24,9 @@ docker build -t azit-backend:hml -f "$WT/apps/backend/Dockerfile" "$WT"
 docker build -t azit-frontend:hml \
   --build-arg VITE_API_URL=https://api-hml.azitmove.com.br \
   --build-arg VITE_AMBIENTE=homologacao \
+  --build-arg VITE_GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}" \
   -f "$WT/apps/frontend/Dockerfile" "$WT"
+[ -n "${GOOGLE_CLIENT_ID:-}" ] || aviso "GOOGLE_CLIENT_ID ausente em deploy/stack-hml.env — o botão 'Entrar com Google' NÃO vai aparecer (doc 06 §2.2; valor em deploy/AMBIENTES.md §1.5)"
 ok "Imagens azit-backend:hml e azit-frontend:hml prontas"
 
 etapa "3/5 Stack $STACK"

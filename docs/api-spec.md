@@ -818,6 +818,54 @@ Atualiza dados do ativo (ex: quilometragem, status).
 
 ---
 
+### 4.10 Autenticação e acessos *(doc 06 v1.1 §2, §10 — bloco 2, 13/11/2026)*
+
+Rotas públicas (`@Public`, `@AreaLivre`). Toda falha de entrada responde o **mesmo** 401 (§5), e o motivo
+real fica só no registro de acessos (`acessos_usuario`).
+
+#### GET `/api/v1/auth/config`
+O que a tela de login precisa antes de qualquer credencial.
+```json
+{ "googleClientId": "43681993535-….apps.googleusercontent.com",   // null = botão do Google não aparece
+  "senhaDisponivel": true }                                        // false = ninguém ativo com permiteSenha → "entrar com senha" não aparece
+```
+
+#### POST `/api/v1/auth/google` — entrar com Google (caminho normal)
+Limite por IP: 10/min → 429. **Body:** `{ "credential": "<ID token do Google Identity Services>" }`.
+Valida assinatura/`aud`/`iss`/`exp`/`email_verified`; `hd` e domínio do e-mail em `DOMINIOS_WORKSPACE`;
+localiza o Usuario ativo pela **parte local** do e-mail; grava `googleSub` no 1º acesso e exige igualdade depois.
+**Resposta (200):** a mesma do login por senha — `{ accessToken, refreshToken, usuario: { id, nome, email, roles } }`.
+Sem `GOOGLE_CLIENT_ID` no ambiente: `503 google_nao_configurado`.
+
+#### POST `/api/v1/auth/login` — entrar por senha (reserva, só com `permiteSenha`)
+Limite por IP: 10/min → 429. Bloqueio temporário por usuário: 10 falhas seguidas → 15 min (não revelado).
+**Body:** `{ email, senha }` — o e-mail também aceita os dois domínios do Workspace.
+
+#### POST `/api/v1/auth/refresh` · POST `/api/v1/auth/logout` · GET `/api/v1/auth/me`
+Inalterados; falha de refresh registra acesso `REFRESH` sem sucesso.
+
+#### Minha conta (autenticado, `@AreaLivre`)
+- `GET /api/v1/me/acessos` → `{ acessos: Acesso[50], sessoesAtivas, entrada: { permiteSenha, googleVinculado, email } }`
+- `POST /api/v1/me/encerrar-sessoes` → `{ encerradas }` (revoga todos os refresh tokens do próprio usuário)
+
+```json
+// Acesso
+{ "id": "…", "forma": "GOOGLE|SENHA|REFRESH", "sucesso": true, "motivo": null,
+  "ip": "203.0.113.10", "agente": "Mozilla/5.0 …", "em": "2026-11-13T11:02:33.000Z" }
+```
+
+#### Usuários e permissões (área CONFIGURACOES)
+- `GET /api/v1/usuarios` — cada linha agora traz `permiteSenha`, `temSenha`, `googleVinculado`, `ultimoAcessoEm`.
+- `POST /api/v1/usuarios` — `{ nome, email, papeis, permiteSenha?: false, senha? }`: senha só vai (e é exigida, mín. 10) quando `permiteSenha` for `true`; só ADMIN liga; recusa a mesma caixa do Workspace nos dois domínios (`400 email_em_uso`).
+- `PATCH /api/v1/usuarios/:id/permite-senha` (ADMIN) — `{ permiteSenha, motivo }` (motivo ≥ 5 caracteres) → `{ permiteSenha, temSenha }`; auditoria `usuario_permite_senha_alterado` com antes/depois.
+- `POST /api/v1/usuarios/:id/senha` — `{ senha }` (mín. 10); `422 senha_desligada` se `permiteSenha` estiver desligado.
+- `POST /api/v1/usuarios/:id/religar-google` (ADMIN) — zera `googleSub` e encerra as sessões; auditoria `usuario_google_religado`.
+- `POST /api/v1/usuarios/:id/encerrar-sessoes` → `{ encerradas }`; auditoria `usuario_sessoes_encerradas`.
+- `GET /api/v1/usuarios/:id/acessos` → `{ acessos: Acesso[50], sessoesAtivas }` (com o motivo interno).
+- Auto-bloqueio (doc 06 §13.3): `PUT /permissoes/matriz`, `PUT /usuarios/:id/permissoes`, `PATCH /usuarios/:id` (papéis/ativo) e `DELETE /usuarios/:id` respondem `422 sem_admin_configuracoes` quando a mudança deixaria o sistema sem administrador ativo com a área Configurações.
+
+---
+
 ## 5. Modelos de Erro
 
 ### Erros de Validação — 400 Bad Request
@@ -830,6 +878,48 @@ Atualiza dados do ativo (ex: quilometragem, status).
     { "campo": "ativo.chassi", "mensagem": "Campo obrigatório" }
   ]
 }
+```
+
+### Sem Acesso à Área — 403 Forbidden *(doc 06 §7.5, v1.1)*
+Toda rota autenticada pertence a uma ou mais áreas de trabalho (`@Area`, mapa no doc 06 §13). Quem não
+tem nenhuma delas recebe este corpo, qualquer que seja o papel. `area` é a área dona da rota (código do
+enum `AreaSistema`); `mensagem` já traz o nome por extenso (`NOME_AREA` de `@azit/types`). O frontend
+trata no interceptor do axios e mostra "Sem acesso à área X — peça ao administrador".
+```json
+{
+  "erro": "acesso_negado",
+  "mensagem": "Sem acesso à área Análise de cadastro",
+  "area": "ANALISE_CADASTRO"
+}
+```
+O mesmo `erro: "acesso_negado"` **sem** `area` continua sendo a negação por papel (`@Roles`, doc 06 §7.3):
+`{ "erro": "acesso_negado", "mensagem": "Você não tem permissão para esta operação" }`.
+
+### Falha de entrada — 401 Unauthorized *(doc 06 v1.1 §2.4, §11.3)*
+Uma resposta só para `POST /auth/login` e `POST /auth/google`, qualquer que seja a causa (e-mail inexistente,
+senha errada, senha desligada, conta fora do domínio, conta Google divergente, usuário inativo, bloqueio
+temporário). O motivo fica no registro de acessos, visível ao Admin em Usuários e permissões.
+```json
+{ "erro": "credenciais_invalidas", "mensagem": "Não foi possível entrar. Confira a conta usada ou fale com o administrador." }
+```
+
+### Muitas tentativas — 429 Too Many Requests *(doc 06 v1.1 §2.5)*
+Limite por IP nas rotas de entrada: 10 por minuto em cada uma (`/auth/login`, `/auth/google`).
+```json
+{ "erro": "muitas_tentativas", "mensagem": "Muitas tentativas de entrada. Aguarde um minuto e tente de novo." }
+```
+
+### Regra que não pode ser quebrada — 422 Unprocessable Entity
+Mudança válida na forma, mas que violaria uma invariante do sistema. Casos: `sem_admin_configuracoes`
+(auto-bloqueio, doc 06 §13.3) e `senha_desligada` (redefinir senha de quem não tem a entrada por senha ligada).
+```json
+{ "erro": "sem_admin_configuracoes", "mensagem": "Esta alteração deixaria o sistema sem administrador ativo com a área Configurações — conceda a área (ou o papel) a outro usuário antes" }
+```
+
+### Integração não configurada — 503 Service Unavailable
+`POST /auth/google` sem `GOOGLE_CLIENT_ID` no ambiente (a tela nem mostra o botão — `GET /auth/config` devolve `googleClientId: null`).
+```json
+{ "erro": "google_nao_configurado", "mensagem": "Entrada pelo Google não configurada neste ambiente" }
 ```
 
 ### Recurso Não Encontrado — 404 Not Found

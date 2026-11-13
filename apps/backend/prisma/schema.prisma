@@ -1628,7 +1628,14 @@ model Usuario {
   id        String  @id @default(cuid())
   nome      String
   email     String  @unique
-  senhaHash String
+  // (doc 06 v1.1 §2.3) Senha é RESERVA, desligada por padrão: quem nunca teve
+  // senha não tem hash; só o Admin liga `permiteSenha` (auditado, com motivo).
+  senhaHash    String?
+  permiteSenha Boolean @default(false)
+  // (doc 06 v1.1 §2.1) `sub` imutável da conta Google, gravado no 1º acesso e
+  // exigido igual dali em diante; e-mail reaproveitado no Workspace não herda o
+  // acesso. Zerado pelo Admin ("religar conta Google").
+  googleSub String? @unique
   ativo     Boolean @default(true)
   // Preferências de interface do próprio usuário (16/09): ex. ordem dos cards
   // da tela Início — acompanha o usuário em qualquer computador.
@@ -1644,6 +1651,7 @@ model Usuario {
   complementosRespondidos AprovacaoComplemento[] @relation("ComplementoRespondidoPor")
 
   permissoesArea PermissaoUsuarioArea[]
+  acessos        AcessoUsuario[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1651,6 +1659,36 @@ model Usuario {
 
   @@index([email])
   @@map("usuarios")
+}
+
+// Por onde o usuário entrou (doc 06 v1.1 §2.5 / §9).
+enum FormaAcesso {
+  GOOGLE
+  SENHA
+  REFRESH
+}
+
+// Registro de acessos (doc 06 v1.1 §2.5, §9): TODA tentativa de entrada, com ou
+// sem sucesso. O motivo da falha fica SÓ aqui (a resposta HTTP é genérica).
+// `usuarioId` nulo = e-mail que não corresponde a ninguém; `emailTentado` nulo
+// = falha de refresh com token desconhecido (não há e-mail para registrar —
+// divergência anotada no doc 06 §9). REFRESH só é gravado em falha (§10.3).
+model AcessoUsuario {
+  id           String      @id @default(cuid())
+  usuarioId    String?
+  emailTentado String?
+  forma        FormaAcesso
+  sucesso      Boolean
+  motivo       String? // interno: dominio_invalido, sub_divergente, senha_desligada, bloqueado, senha_invalida…
+  ip           String?
+  agente       String?
+  em           DateTime    @default(now())
+
+  usuario Usuario? @relation(fields: [usuarioId], references: [id])
+
+  @@index([usuarioId, em])
+  @@index([emailTentado, em])
+  @@map("acessos_usuario")
 }
 
 model UsuarioRole {

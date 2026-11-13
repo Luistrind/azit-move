@@ -1,14 +1,17 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ProdutoService } from './produto.service';
 import { criarProdutoSchema, CriarProdutoBody, atualizarProdutoSchema, AtualizarProdutoBody } from './produto.dto';
+import { Area } from '../../common/decorators/area.decorator';
 
+@Area(AreaSistema.PRODUTOS)
 @Controller('produtos')
 export class ProdutoController {
   constructor(private readonly produto: ProdutoService) {}
 
+  @Area(AreaSistema.PRODUTOS, AreaSistema.COMERCIAL)
   @Get()
   listar() {
     return this.produto.listar();

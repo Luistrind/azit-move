@@ -1599,6 +1599,26 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 >   (→ solicitante), contrato assinado/ativado, entrada de acordo paga/efetivada,
 >   acordo expirado, falha de job.
 
+### 16.2 Acesso, área como autorização e alertas por e-mail — decisão 2026-11-12 (Luís)
+
+> Detalhe técnico no doc 06 v1.1 (§2, §5.4, §7.5, §12, §13). O que é regra de domínio:
+> - **Área de trabalho é autorização, não só menu.** Quem não tem a área não acessa as
+>   telas nem a API daquela área, qualquer que seja o papel. Papel segue valendo para
+>   alçada, aprovação, administração e execução financeira. (Achado 12/11: analista sem a
+>   área Análise de cadastro entrava na tela, porque a área só filtrava o menu.)
+> - **Entrada do usuário interno é pela conta Google do Workspace**, domínios
+>   `azit.com.br` e `azitmove.com.br` (mesmas caixas). Nenhum usuário nasce no login: o
+>   Admin cadastra, o Google autentica. **Senha é reserva desligada por padrão**, ligada
+>   por usuário só pelo Admin, com motivo auditado. Toda tentativa de acesso fica
+>   registrada e visível.
+> - **Alerta por e-mail** é segundo canal da notificação **dirigida a um usuário**
+>   (aprovação esperando por ele; retorno de solicitação dele). Notificação por área ou
+>   geral não vira e-mail. O e-mail **não carrega dado pessoal do cliente** (mesma
+>   lógica da Regra 14): operação, valor, solicitante e link. Preferência por usuário,
+>   ligada por padrão.
+> - Ordem de construção: áreas → login Google → e-mail (doc 06 §11.6), cada bloco com
+>   homolog e tag próprios.
+
 ---
 
 ## 17. Catálogo de Produtos — Produto, Variante e Versão (F1 da Gestão de Produtos)
