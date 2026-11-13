@@ -9,6 +9,7 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { GoogleIdTokenVerificador, VERIFICADOR_GOOGLE } from './google-verificador';
 import { LoginThrottlerGuard } from './login-throttler.guard';
+import { ControleBloqueioSenha } from './bloqueio-senha';
 
 // Autenticação do usuário interno (doc 06 v1.1): Google (caminho normal) e
 // senha de reserva. O ThrottlerModule fica AQUI (não é global): só as rotas de
@@ -34,6 +35,11 @@ import { LoginThrottlerGuard } from './login-throttler.guard';
     JwtStrategy,
     LoginThrottlerGuard,
     { provide: VERIFICADOR_GOOGLE, useClass: GoogleIdTokenVerificador },
+    // Contador de bloqueio por senha (§2.5). Fábrica, não `useClass`: o construtor
+    // recebe relógio e limites (injetáveis só nos testes), que o Nest não resolveria.
+    // Faltou no 1º deploy do bloco 2 (homolog 13/11): o backend não subia por
+    // dependência não resolvida — auth.module.spec.ts compila o módulo para pegar isso.
+    { provide: ControleBloqueioSenha, useFactory: () => new ControleBloqueioSenha() },
   ],
   exports: [AuthService],
 })
