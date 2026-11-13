@@ -832,6 +832,21 @@ Atualiza dados do ativo (ex: quilometragem, status).
 }
 ```
 
+### Sem Acesso à Área — 403 Forbidden *(doc 06 §7.5, v1.1)*
+Toda rota autenticada pertence a uma ou mais áreas de trabalho (`@Area`, mapa no doc 06 §13). Quem não
+tem nenhuma delas recebe este corpo, qualquer que seja o papel. `area` é a área dona da rota (código do
+enum `AreaSistema`); `mensagem` já traz o nome por extenso (`NOME_AREA` de `@azit/types`). O frontend
+trata no interceptor do axios e mostra "Sem acesso à área X — peça ao administrador".
+```json
+{
+  "erro": "acesso_negado",
+  "mensagem": "Sem acesso à área Análise de cadastro",
+  "area": "ANALISE_CADASTRO"
+}
+```
+O mesmo `erro: "acesso_negado"` **sem** `area` continua sendo a negação por papel (`@Roles`, doc 06 §7.3):
+`{ "erro": "acesso_negado", "mensagem": "Você não tem permissão para esta operação" }`.
+
 ### Recurso Não Encontrado — 404 Not Found
 ```json
 {

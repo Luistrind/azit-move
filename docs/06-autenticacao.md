@@ -300,7 +300,7 @@ export class AuthController { ... }
 ```
 
 - Áreas efetivas vêm de `PermissoesService.areasEfetivas(usuarioId)` (§5.4, item 4), nunca do token.
-- Resposta: `403 { erro: 'acesso_negado', area: 'ANALISE_CADASTRO' }`. A tela usa o campo `area` para mostrar "Sem acesso à área Análise de cadastro — peça ao administrador".
+- Resposta: `403 { erro: 'acesso_negado', mensagem: 'Sem acesso à área Análise de cadastro', area: 'ANALISE_CADASTRO' }` (formato no api-spec §5). A tela usa o campo `area` para mostrar "Sem acesso à área Análise de cadastro — peça ao administrador"; o nome por extenso vem de `NOME_AREA` em `@azit/types`, fonte única da API e da tela.
 - `ADMIN` **não** é curinga de área: Admin tem as áreas que a matriz lhe dá (por padrão, todas). Se o Admin retirar uma área de si mesmo, perde o acesso a ela como qualquer um; isso é desejado para testar permissões.
 - Controller sem `@Area` nem `@AreaLivre` derruba o boot com a lista dos faltantes. Teste automatizado percorre todos os controllers e falha se algum ficar sem classificação.
 
@@ -601,25 +601,79 @@ Os destinatários de "pode decidir" saem da mesma função que a Central usa par
 
 ## 13. Mapa módulo → área *(v1.1)*
 
-Ponto de partida para o bloco 1. A implementação confirma módulo a módulo; divergência é sinalizada neste doc antes do commit.
+> **Estado: APLICADO no bloco 1 (13/11/2026).** A tabela abaixo é o que está nos controllers
+> (`@Area` / `@AreaLivre`) e nas rotas do frontend (`handle.area` em `router.tsx`). O ponto de
+> partida da v1.1 está no histórico do git (commit e821009); o que mudou dele para cá está em
+> **13.2 Divergências**, decididas pelo uso real e sinalizadas aqui — não resolvidas em silêncio.
+>
+> Regra de desempate (mantida): rota que serve a duas áreas lista as duas (basta ter uma); um
+> endpoint de **leitura** usado por telas de várias áreas entra com todas as áreas que o consomem,
+> e a **primeira** listada é a área dona (é ela que vai no `area` do 403); a **escrita** fica só com
+> a área dona. Os dois conjuntos compartilhados têm nome único no código, para backend e frontend
+> não divergirem:
+>
+> - `AREAS_CONTRATO` = CONTRATOS, CARTEIRA_COBRANCA, COMERCIAL — detalhe do contrato (`/contratos/:id`).
+> - `AREAS_FICHA_TITULAR` = PESSOAS, COMERCIAL — ficha do titular (`/titulares/:id`).
 
-| Módulo (API) | Área(s) |
-|---|---|
-| `funil` (lead, simulação, proposta, formalização), `simulador`, `originacao`, `fipe` | COMERCIAL |
-| `analise`, `bureau`, `dossie` | ANALISE_CADASTRO |
-| `contrato`, `assinatura` | CONTRATOS |
-| `conta` (carteira), `cobranca` (faturas, régua, conferência), `operacoes` (renegociação, rescisão), `migracao-legado` | CARTEIRA_COBRANCA |
-| `contas-pagar`, `centro-custo` | FINANCEIRO_ADMINISTRATIVO |
-| `titular` | COMERCIAL **ou** PESSOAS (atendimento cria e lê titular; Pessoas administra) |
-| `ativo`, `frota` | ATIVOS_FROTA |
-| `capital`, `investimento`, `origem-capital` | CAPITAL_INVESTIMENTO |
-| `catalogo`, `produto` | PRODUTOS |
-| `aprovacao`, `alcada` (leitura) | APROVACOES |
-| `usuarios`, `alcada` (edição), `integracoes`, `catalogo` de parâmetros, configuração do simulador | CONFIGURACOES |
-| `auth`, `notificacao`, `inicio`, `usuarios/me/*`, `health` | `@AreaLivre` (sessão e apoio do próprio usuário) |
-| `cobranca/webhook`, `/publico` (Fatura Azit), `mcp` | fora do JWT (autenticação própria, §7.4) |
+### 13.1 Mapa aplicado
 
-Regra de desempate: quando uma rota serve a duas áreas, lista as duas (basta ter uma). Quando um endpoint de **leitura** é usado por telas de várias áreas (ex.: ficha do titular aberta a partir da carteira), ele entra com todas as áreas que o consomem; a **escrita** fica só com a área dona.
+| Módulo (API) | Área da classe | Exceções por rota (método sobrepõe classe) |
+|---|---|---|
+| `funil` (leads, simulações, propostas, formalização, ativação), `originacao` | COMERCIAL | `POST propostas/:id/conferir-veiculo` e `DELETE propostas/:id/documentos/:docId` + ANALISE_CADASTRO (a análise confere o veículo e limpa documento — doc 02 §31); `GET propostas/documentos/:docId/download` + ANALISE_CADASTRO, PESSOAS (ficha baixa anexos); `GET contratos/:id/status-formalizacao` + `AREAS_CONTRATO` (bloco de assinatura no detalhe do contrato) |
+| `fipe` | `@AreaLivre` | tabela de referência pública, sem dado do negócio (§5.4 item 6) |
+| `analise` | ANALISE_CADASTRO | `POST propostas/:id/analise` (ponte proposta → análise, idempotente) + COMERCIAL; `GET analises/:id` + APROVACOES (dossiê COCAD na Central); `GET titulares/:id/consultas-biro` + `AREAS_FICHA_TITULAR` |
+| `dossie` (dossiê para judicialização, doc 02 §30) | `AREAS_CONTRATO` | `POST empresa/contrato-social` → CONFIGURACOES; `GET empresa/parametros` e `GET empresa/contrato-social/pdf` → CONFIGURACOES + `AREAS_CONTRATO` |
+| `contrato` | `AREAS_CONTRATO` | — (inclui `cancelar` e `transferencia-efetivada`; ver 13.2) |
+| `assinatura` (ZapSign) | `AREAS_CONTRATO` | `GET/POST assinatura/parametros` → CONFIGURACOES; `POST webhooks/zapsign` `@Public` |
+| `conta` (carteira) | CARTEIRA_COBRANCA | `GET contas/:id`, `GET contas/por-titular/:titularId` + `AREAS_FICHA_TITULAR` |
+| `cobranca` (faturas, cobranças, conferência Asaas) | CARTEIRA_COBRANCA | `GET contratos/:id/extrato` → `AREAS_CONTRATO`; `GET contas/:id/faturas`, `GET contas/:id/lancamentos`, `GET faturas/:id` + `AREAS_FICHA_TITULAR`; `POST webhooks/asaas` `@Public` |
+| `regua` | CARTEIRA_COBRANCA | — |
+| `operacoes` (renegociação, novação, quitação, sinistro, reajuste, rescisão) | CARTEIRA_COBRANCA | `GET acordos/:id`, `GET novacoes/:id` + APROVACOES (dossiê da aprovação); `GET contas/:id/renegociacao/elegivel`, `POST …/renegociacao/simular`, `POST …/novacao/simular` + `AREAS_FICHA_TITULAR`; `GET contas/:id/novacao/decomposicao` + APROVACOES + `AREAS_FICHA_TITULAR`; prévias/listas do contrato (`quitacao/simular`, `reajustes`, `rescisao/previa`, `rescisoes`) → `AREAS_CONTRATO`; escritas do contrato (`quitacao`, `sinistro`, `reajuste`, `rescisao`, `rescisoes/:id/devolucao`) → CARTEIRA_COBRANCA, CONTRATOS |
+| `migracao-legado` | CARTEIRA_COBRANCA | — |
+| `credito` (crédito avulso / Reembolso Parcelado na ficha) | COMERCIAL, PESSOAS, CARTEIRA_COBRANCA | — (não constava no mapa inicial) |
+| `contas-pagar` (`/financeiro`) | FINANCEIRO_ADMINISTRATIVO | `GET fornecedores`, `POST fornecedores` + `AREAS_FICHA_TITULAR` (a ficha cadastra o fornecedor ao contratar Reembolso Parcelado) |
+| `centro-custo` (custo por ativo) | ATIVOS_FROTA, FINANCEIRO_ADMINISTRATIVO | — |
+| `titular` | PESSOAS, COMERCIAL | `GET titulares`, `GET titulares/buscar` + CAPITAL_INVESTIMENTO (vincular investidor à estrutura) |
+| `ativo` | ATIVOS_FROTA | leituras (`GET`, `buscar`, `:id`, `:id/documentos`, `documentos/:id/download`) + COMERCIAL, CAPITAL_INVESTIMENTO |
+| `frota` (ocorrências) | ATIVOS_FROTA | — |
+| `origem-capital` | ATIVOS_FROTA, CAPITAL_INVESTIMENTO | — |
+| `capital` (estruturas jurídicas, pessoas classificadas) | CAPITAL_INVESTIMENTO | `GET pessoas`, `GET/POST/DELETE titulares/:id/classificacoes` → PESSOAS, CAPITAL_INVESTIMENTO (tela Pessoas); `GET estruturas` + ATIVOS_FROTA, PRODUTOS, FINANCEIRO_ADMINISTRATIVO (listas de vínculo) |
+| `investimento` | CAPITAL_INVESTIMENTO | `GET titulares/:id/contratos-investimento`, `GET contas/:id/visao-geral` + `AREAS_FICHA_TITULAR` |
+| `catalogo` | PRODUTOS | `GET catalogo/avulsos` + `AREAS_FICHA_TITULAR`, CARTEIRA_COBRANCA (modal "+ Contratar" da ficha) |
+| `produto` (itens avulsos de contrato) | PRODUTOS | `GET produtos` + COMERCIAL (carrinho de itens da proposta) |
+| `aprovacao` | APROVACOES | — (quem decide continua sendo a alçada, no service) |
+| `alcada` | APROVACOES, CONFIGURACOES (leitura) | `PUT alcadas`, `POST/PUT alcadas/operacoes…` → CONFIGURACOES |
+| `simulador` (parâmetros, ofertas fixas) | CONFIGURACOES | `GET simulador/ofertas-fixas` + ATIVOS_FROTA (tela de ativos mostra a oferta vinculada) |
+| `usuarios`, `permissoes/matriz` | CONFIGURACOES | `GET me/areas`, `GET/PUT me/preferencias` `@AreaLivre` |
+| `integracoes` | CONFIGURACOES | — |
+| `auth`, `notificacao`, `inicio` | `@AreaLivre` | sessão, sino e fila de trabalho do próprio usuário |
+| `health`, `webhooks/*`, `mcp` | `@Public` (fora do JWT) | autenticação própria (§7.4); `/publico` da Fatura Azit ainda não está nesta branch |
+
+**Rotas da tela (`router.tsx`, `handle.area`)** — mesmo mapa: `/atendimento`, `/simulacoes`, `/propostas(/:id)`,
+`/lista-espera` → COMERCIAL · `/analises(/:id)` → ANALISE_CADASTRO · `/carteira`, `/carteira/clientes`, `/regua`,
+`/acordos`, `/migracao-legado(/:id)` → CARTEIRA_COBRANCA · `/contratos/:id` → `AREAS_CONTRATO` · `/titulares`,
+`/pessoas` → PESSOAS · `/titulares/:id` → `AREAS_FICHA_TITULAR` · `/contas-a-pagar`, `/fornecedores-financeiro`,
+`/financeiro-configuracao` → FINANCEIRO_ADMINISTRATIVO · `/ativos`, `/frota/ocorrencias` → ATIVOS_FROTA ·
+`/centros-custo` → ATIVOS_FROTA ou FINANCEIRO_ADMINISTRATIVO · `/estruturas` → CAPITAL_INVESTIMENTO · `/produtos`,
+`/catalogo`, `/protecao` → PRODUTOS · `/aprovacoes(/:id)` → APROVACOES · `/configuracoes/*` → CONFIGURACOES ·
+`/` (Início) e `/login` sem área.
+
+### 13.2 Divergências em relação ao mapa inicial (decididas pelo uso real; a confirmar com o Luís)
+
+1. **`dossie` não é análise.** O mapa inicial o punha em ANALISE_CADASTRO; o módulo é o dossiê para judicialização do contrato (doc 02 §30), gerado no detalhe do contrato, e os documentos da empresa (contrato social) são Configuração. Classificado assim.
+2. **Não existe tela nem item de menu "Contratos".** O detalhe do contrato é aberto a partir da carteira (régua, acordos, clientes, migração), do funil (formalização → contrato) e da ficha. Por isso toda leitura de contrato — e também `cancelar` e `transferencia-efetivada` — ficou em `AREAS_CONTRATO` (CONTRATOS, CARTEIRA_COBRANCA, COMERCIAL). A área CONTRATOS continua na matriz como "dona" (é a primeira), mas hoje ninguém precisa dela sozinha. **Decisão pendente:** criar o item de menu "Contratos" (lista de contratos) ou absorver a área em Carteira e cobrança.
+3. **`centro-custo`** estava só em FINANCEIRO_ADMINISTRATIVO; a tela "Custo por ativo" fica no grupo Ativos e frota. Ficou com as duas.
+4. **`capital` tem duas telas de áreas diferentes:** Pessoas (`/pessoas`, classificação de investidor/fornecedor/parceiro) e Estruturas jurídicas (Capital). As rotas de pessoas/classificações receberam PESSOAS; estruturas ficaram em Capital.
+5. **`fipe`**: o §13 inicial dizia COMERCIAL e o §5.4 item 6 dizia "apoio". Prevaleceu o §5.4 (`@AreaLivre`): é tabela pública de referência, não dado do negócio.
+6. **"`catalogo` de parâmetros → CONFIGURACOES" não existe como módulo separado**: o catálogo inteiro (produto, variante, versão) fica em PRODUTOS, onde está a tela. A configuração do simulador (parâmetros versionados, ofertas fixas) é CONFIGURACOES, como previsto.
+7. **Escrita compartilhada em dois pontos**, contra a regra "escrita só da área dona", porque a tela da outra área depende dela: `POST /financeiro/fornecedores` (a ficha cadastra o fornecedor ao contratar Reembolso Parcelado) e `POST /propostas/:id/analise` (a proposta abre a análise). Anotado; se o Luís preferir, viram botões desabilitados para quem não tem a área dona.
+8. **`credito`** (crédito avulso) não constava no mapa; é operado na ficha do titular → COMERCIAL, PESSOAS, CARTEIRA_COBRANCA.
+9. **Carteira → ficha do titular é link entre áreas** (a ficha é PESSOAS/COMERCIAL, como a linha `titular` do mapa). Quem só tem Carteira e cobrança vê o nome do cliente sem link (com o motivo) em Carteira, Clientes da carteira, Conferência Asaas, Régua, Renegociações e Contas a pagar. As leituras que a ficha faz na carteira (faturas, lançamentos, régua, elegibilidade) foram abertas a PESSOAS/COMERCIAL; as **ações** de carteira dentro da ficha (gerar cobrança, conferir pagamento, bloquear, renegociar) continuam exigindo CARTEIRA_COBRANCA e respondem 403 com a área. **Decisão pendente:** se a ficha deve ser também de Carteira e cobrança (hoje é o hub de operações da conta).
+
+### 13.3 Matriz padrão e risco de auto-bloqueio
+
+- **Matriz padrão (placeholder, Regra 12).** A matriz papel × área nunca foi semeada: em banco novo ninguém teria área nenhuma e, com a área valendo como autorização, nem o Admin entraria. O seed passou a semear um padrão provisório **só quando a matriz está vazia** (nunca sobrescreve a matriz editada pelo Admin em produção): ADMIN e DIRETOR com todas; APROVADOR com Aprovações, Análise de cadastro, Comercial, Contratos, Carteira; OPERADOR com Comercial, Contratos, Carteira, Pessoas, Ativos e frota, Produtos (**sem** Análise de cadastro — o analista recebe por exceção, como em produção); FINANCEIRO com Financeiro administrativo, Carteira, Contratos, Pessoas. Editável na tela Usuários e permissões.
+- **Auto-bloqueio.** Como decidido no §7.5, ADMIN não é curinga: se o Admin retirar CONFIGURACOES de si mesmo (pela matriz do papel ADMIN ou por exceção), perde a tela Usuários e permissões e ninguém mais consegue devolver a área pela interface. Nenhuma guarda impede isso hoje. **Proposta a decidir:** espelhar a regra "o sistema nunca fica sem administrador ativo" (`exigirOutroAdmin`) em "nunca fica sem administrador ativo com a área Configurações".
 
 ---
 
@@ -629,6 +683,7 @@ Regra de desempate: quando uma rota serve a duas áreas, lista as duas (basta te
 |---|---|---|
 | 1.0 | jun/2025 | Documento original: dois mundos de identidade, tokens, RBAC, alçadas, guards, titular (desenho) |
 | 1.1 | 12/11/2026 | Entrar com Google (dois domínios), senha opcional por usuário, limite de tentativas e registro de acessos (§2, §10, §11.3); área de trabalho como autorização na API e na tela, `AreaGuard` e mapa módulo → área (§5.4, §7.5, §13); alertas por e-mail sobre notificações dirigidas (§12); ordem dos blocos (§11.6). Decisões Luís. |
+| 1.1.1 | 13/11/2026 | Bloco 1 aplicado: §13 passa a ser o mapa EM VIGOR (13.1), com as divergências do mapa inicial (13.2), a matriz padrão do seed e o risco de auto-bloqueio (13.3); formato do 403 com `mensagem` (§7.5). Aguarda homolog. |
 
 *Doc 6 — Autenticação e Permissões · Azit Move V3 · v1.1 · nov/2026*
 *Documentos relacionados: Doc 2 — Spec de Domínio · Doc 4 — Setup · Doc 5 — Prisma Schema*
