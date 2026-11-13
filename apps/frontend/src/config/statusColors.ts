@@ -399,3 +399,19 @@ export const ENTRADA_USUARIO_COLORS: Record<string, StatusColor> = {
   'Senha ligada': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
   'Senha desligada': { bg: 'var(--surface-input)', fg: 'var(--text-muted)' },
 };
+
+// Alertas por e-mail (doc 06 v1.1 §12) — chaves: ROTULO_EMAIL_NOTIFICACAO e
+// ROTULO_ESTADO_ENVIO_EMAIL de @azit/types.
+export const EMAIL_NOTIFICACAO_COLORS: Record<string, StatusColor> = {
+  'E-mail enviado': { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  'Não enviado': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  'Só no sino': { bg: 'var(--surface-input)', fg: 'var(--text-muted)' },
+};
+export const ENVIO_EMAIL_COLORS: Record<string, StatusColor> = {
+  Enviado: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  Falhou: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  Descartado: { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
+  'Não configurado': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  Aguardando: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  'Tentando de novo': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+};

@@ -10,6 +10,7 @@ import {
 } from '../services/usuario.service';
 import { mensagemErro, usePodeRole, QUERY_ME_AREAS } from '../lib/permissoes';
 import { colunasAcesso } from '../lib/acessos';
+import { colunasAlertaEmail } from '../lib/alertas-email';
 import { instanteHoraBR } from '../lib/datas';
 import { ENTRADA_USUARIO_COLORS } from '../config/statusColors';
 import { useAuthStore } from '../stores/authStore';
@@ -318,7 +319,7 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
   const [novaSenha, setNovaSenha] = useState('');
   const [motivo, setMotivo] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
-  const [painel, setPainel] = useState<'areas' | 'acessos'>('areas');
+  const [painel, setPainel] = useState<'areas' | 'acessos' | 'alertas'>('areas');
 
   async function recarregar() {
     await queryClient.invalidateQueries({ queryKey: ['usuario-permissoes', usuario.id] });
@@ -418,13 +419,16 @@ function PainelUsuario({ usuario, onMudou }: { usuario: UsuarioInterno; onMudou:
         itens={[
           { chave: 'areas', rotulo: 'Acesso por área' },
           { chave: 'acessos', rotulo: 'Últimos acessos' },
+          { chave: 'alertas', rotulo: 'Alertas por e-mail' },
         ]}
         valor={painel}
-        onChange={(k) => setPainel((k as 'areas' | 'acessos') ?? 'areas')}
+        onChange={(k) => setPainel((k as 'areas' | 'acessos' | 'alertas') ?? 'areas')}
       />
 
       {painel === 'acessos' ? (
         <AcessosUsuario usuarioId={usuario.id} />
+      ) : painel === 'alertas' ? (
+        <AlertasEmailUsuario usuarioId={usuario.id} />
       ) : (
       <Secao titulo="Acesso por área">
         <div className="mb-[8px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
@@ -641,6 +645,29 @@ function AcessosUsuario({ usuarioId }: { usuarioId: string }) {
         carregando={dados.isLoading}
         larguraMinima={760}
         vazio={dados.isError ? mensagemErro(dados.error) : 'Nenhum acesso registrado ainda.'}
+      />
+    </Secao>
+  );
+}
+
+// Alertas por e-mail do usuário (doc 06 v1.1 §12.4 — rastro na auditoria): a
+// preferência dele e, por notificação dirigida, "e-mail enviado em" ou o motivo
+// de não ter saído. Mesma <Tabela> genérica das demais listas.
+function AlertasEmailUsuario({ usuarioId }: { usuarioId: string }) {
+  const dados = useQuery({ queryKey: ['usuario-alertas-email', usuarioId], queryFn: () => usuarioService.alertasEmail(usuarioId) });
+  const d = dados.data;
+  return (
+    <Secao
+      titulo="Alertas por e-mail"
+      tag={d ? `${d.email ?? 'sem e-mail'} · preferência ${d.emailAlertas ? 'ligada' : 'DESLIGADA pelo usuário'} · últimas ${d.itens.length} notificações dirigidas` : undefined}
+    >
+      <Tabela
+        colunas={colunasAlertaEmail()}
+        linhas={d?.itens ?? []}
+        chave={(n) => n.id}
+        carregando={dados.isLoading}
+        larguraMinima={720}
+        vazio={dados.isError ? mensagemErro(dados.error) : 'Nenhuma notificação dirigida a este usuário ainda.'}
       />
     </Secao>
   );

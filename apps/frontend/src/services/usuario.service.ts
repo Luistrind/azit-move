@@ -19,6 +19,22 @@ export interface UsuarioInterno {
   ultimoAcessoEm: string | null;
 }
 
+export interface PreferenciasUsuario {
+  ordemInicio?: string[];
+  emailAlertas?: boolean;
+}
+
+// Rastro do alerta por e-mail numa notificação dirigida (doc 06 §12.4).
+export interface AlertaEmailNotificacao {
+  id: string;
+  titulo: string;
+  rota: string | null;
+  em: string;
+  lidaEm: string | null;
+  emailEnviadoEm: string | null;
+  emailFalha: string | null;
+}
+
 export interface ExcecaoArea {
   area: string;
   concedida: boolean;
@@ -43,12 +59,13 @@ export const usuarioService = {
     const { data } = await api.get<{ areas: string[] }>('/api/v1/me/areas');
     return data.areas;
   },
-  // Preferências de interface do próprio usuário (ordem dos cards do Início).
-  async minhasPreferencias(): Promise<{ ordemInicio?: string[] }> {
-    const { data } = await api.get<{ ordemInicio?: string[] }>('/api/v1/me/preferencias');
+  // Preferências do próprio usuário: ordem dos cards do Início e "Receber
+  // alertas por e-mail" (doc 06 v1.1 §12.3 — ausente = ligado).
+  async minhasPreferencias(): Promise<PreferenciasUsuario> {
+    const { data } = await api.get<PreferenciasUsuario>('/api/v1/me/preferencias');
     return data;
   },
-  async salvarPreferencias(prefs: { ordemInicio?: string[] }): Promise<void> {
+  async salvarPreferencias(prefs: PreferenciasUsuario): Promise<void> {
     await api.put('/api/v1/me/preferencias', prefs);
   },
   async listar(): Promise<UsuarioInterno[]> {
@@ -90,6 +107,11 @@ export const usuarioService = {
   },
   async acessos(id: string) {
     const { data } = await api.get<{ acessos: AcessoRegistrado[]; sessoesAtivas: number }>(`/api/v1/usuarios/${id}/acessos`);
+    return data;
+  },
+  // Alertas por e-mail do usuário (Admin): preferência + rastro das últimas notificações dirigidas.
+  async alertasEmail(id: string) {
+    const { data } = await api.get<{ email: string | null; emailAlertas: boolean; itens: AlertaEmailNotificacao[] }>(`/api/v1/usuarios/${id}/alertas-email`);
     return data;
   },
   async matriz(): Promise<MatrizPermissao> {

@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { integracoesService, StatusIntegracoes } from '../services/integracoes.service';
+import { NOME_TRANSPORTE_EMAIL, ROTULO_ESTADO_ENVIO_EMAIL, motivoEmailLegivel } from '@azit/types';
+import { ENVIO_EMAIL_COLORS } from '../config/statusColors';
+import { StatusBadge } from '../components/StatusBadge';
+import { Tabela } from '../components/Tabela';
+import { instanteHoraBR } from '../lib/datas';
 import { toast } from '../components/Toast';
 import { mensagemErro } from '../lib/permissoes';
 import { Botao } from '../components/Botao';
@@ -218,6 +223,83 @@ export function IntegracoesPage() {
           </div>
         </Secao>
       </div>
+
+      <CardEmail />
+    </div>
+  );
+}
+
+// E-mail (Gmail do Workspace — doc 06 v1.1 §12.4): só informa. Remetente e
+// credencial vêm do ambiente do servidor (stack.env); a credencial nunca chega
+// aqui. Lista os últimos envios/falhas da fila `email` (alertas de aprovação e,
+// depois, Fatura Azit).
+function CardEmail() {
+  const status = useQuery({ queryKey: ['integracoes-email'], queryFn: () => integracoesService.statusEmail(), refetchInterval: 30_000 });
+  const e = status.data;
+  return (
+    <div className={card} style={cardStyle}>
+      <Secao
+        titulo="E-mail (Gmail do Workspace)"
+        acao={
+          e ? (
+            <span className="flex flex-wrap gap-[6px]">
+              <span className={pilula}
+                style={e.configurado ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' } : { background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
+                {e.configurado ? 'CONFIGURADO' : 'NÃO CONFIGURADO'}
+              </span>
+              <span className={`${pilula} font-normal`} style={{ background: 'var(--surface-input)', color: 'var(--text-muted)' }}>
+                variáveis do servidor
+              </span>
+            </span>
+          ) : null
+        }
+      >
+        <div className="flex flex-col gap-[8px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
+          {status.isError ? (
+            <div>{mensagemErro(status.error)}</div>
+          ) : (
+            <>
+              <div>
+                Transporte ativo:{' '}
+                <strong style={{ color: 'var(--text-primary)' }}>{e ? (NOME_TRANSPORTE_EMAIL[e.transporte] ?? e.transporte) : '…'}</strong>
+                {e?.descricao ? <span> ({e.descricao})</span> : null}
+                {' '}· remetente:{' '}
+                <code className="rounded-[6px] px-[6px] py-[2px]" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
+                  {e?.remetente ?? 'não definido'}
+                </code>
+                . {e?.configurado
+                  ? 'Os alertas de aprovação dirigidos a um usuário saem por aqui.'
+                  : 'Com EMAIL_TRANSPORTE=nenhum (ou sem EMAIL_REMETENTE) a fila registra "não configurado" e segue — o sino continua funcionando.'}
+                {' '}O caminho escolhido é o relay SMTP do Workspace (sem senha; o IP do servidor é liberado no{' '}
+                {e ? (
+                  <a href={e.console} target="_blank" rel="noreferrer" className="underline" style={{ color: 'var(--info-fg)' }}>Admin do Workspace › Gmail › Roteamento</a>
+                ) : 'Admin do Workspace'}
+                ); a API do Gmail com conta de serviço fica como alternativa. Variáveis do stack.env e passo a passo em deploy/AMBIENTES.md §1.7.
+              </div>
+              <div>
+                O e-mail nunca leva dado pessoal do cliente (só operação, valor, solicitante, data e link). Cada usuário liga ou
+                desliga os próprios alertas em "Minha conta".
+              </div>
+              <Secao titulo="Últimos envios da fila" tag="5 mais recentes · atualiza a cada 30 s">
+                <Tabela
+                  colunas={[
+                    { chave: 'em', titulo: 'Quando', render: (u) => instanteHoraBR(u.em), celular: 'titulo', classe: 'tabular-nums' },
+                    { chave: 'estado', titulo: 'Estado', celular: 'destaque', render: (u) => <StatusBadge label={ROTULO_ESTADO_ENVIO_EMAIL[u.estado]} colors={ENVIO_EMAIL_COLORS} /> },
+                    { chave: 'para', titulo: 'Para', render: (u) => u.para, celular: 'subtitulo' },
+                    { chave: 'assunto', titulo: 'Assunto', render: (u) => u.assunto },
+                    { chave: 'motivo', titulo: 'Motivo / tentativas', render: (u) => `${u.motivo ? motivoEmailLegivel(u.motivo) : ''}${u.tentativas > 1 ? ` (${u.tentativas} tentativas)` : ''}` || '—' },
+                  ]}
+                  linhas={e?.ultimos ?? []}
+                  chave={(u) => u.id}
+                  carregando={status.isLoading}
+                  larguraMinima={720}
+                  vazio="Nenhum e-mail passou pela fila ainda."
+                />
+              </Secao>
+            </>
+          )}
+        </div>
+      </Secao>
     </div>
   );
 }

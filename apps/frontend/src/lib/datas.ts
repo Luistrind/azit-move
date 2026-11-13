@@ -6,7 +6,7 @@
 // (2) `new Date().toISOString().slice(0,10)` devolve a data UTC — depois das
 //     21h (UTC-3) já é amanhã.
 import {
-  dataHojeBrasil, diaBrasil, diaDeColunaMista, diasCalendarioEntre, diaSemanaISO, FUSO_NEGOCIO, isoParaBR,
+  dataHojeBrasil, diaBrasil, diaDeColunaMista, diasCalendarioEntre, diaSemanaISO, formatarInstanteHoraBR, FUSO_NEGOCIO, isoParaBR,
   somarDiasISO as somarDias,
 } from '@azit/utils';
 
@@ -98,7 +98,5 @@ export function tempoRelativo(iso: string): string {
 // INSTANTE → 'DD/MM/YYYY HH:mm' no fuso do negócio (registro de acessos, auditoria).
 export function instanteHoraBR(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString('pt-BR', {
-    timeZone: FUSO_NEGOCIO, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
+  return formatarInstanteHoraBR(new Date(iso));
 }

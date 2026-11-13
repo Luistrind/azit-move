@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ROTULO_ENTRADA_USUARIO } from '@azit/types';
+import { EVENTOS_ALERTA_EMAIL, ROTULO_ENTRADA_USUARIO } from '@azit/types';
 import { authService } from '../services/auth.service';
 import { useAuthStore } from '../stores/authStore';
 import { queryClient } from '../lib/queryClient';
@@ -14,7 +14,8 @@ import { StatusBadge } from '../components/StatusBadge';
 import { Tabela } from '../components/Tabela';
 import { ModalConfirmacao } from '../components/ModalConfirmacao';
 import { toast } from '../components/Toast';
-import { nomePapel } from '../services/usuario.service';
+import { nomePapel, usuarioService } from '../services/usuario.service';
+import { Interruptor } from '../components/Interruptor';
 
 // "Minha conta" (doc 06 v1.1 §2.5): como eu entro no sistema, meus últimos
 // acessos (forma, resultado, IP, dispositivo, quando — no fuso do Brasil) e o
@@ -30,6 +31,24 @@ export function MinhaContaPage() {
   const dados = useQuery({ queryKey: ['me-acessos'], queryFn: () => authService.meusAcessos() });
   const [confirmando, setConfirmando] = useState(false);
   const [encerrando, setEncerrando] = useState(false);
+  // "Receber alertas por e-mail" (doc 06 v1.1 §12.3 item 4): ligado por padrão;
+  // desligar não desliga o sino.
+  const prefs = useQuery({ queryKey: ['me-preferencias'], queryFn: () => usuarioService.minhasPreferencias() });
+  const [salvandoAlertas, setSalvandoAlertas] = useState(false);
+  const emailAlertas = prefs.data?.emailAlertas !== false;
+
+  async function alternarAlertas(ligado: boolean) {
+    setSalvandoAlertas(true);
+    try {
+      await usuarioService.salvarPreferencias({ emailAlertas: ligado });
+      await queryClient.invalidateQueries({ queryKey: ['me-preferencias'] });
+      toast.sucesso(ligado ? 'Alertas por e-mail ligados.' : 'Alertas por e-mail desligados — o sino continua.');
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+    } finally {
+      setSalvandoAlertas(false);
+    }
+  }
 
   async function encerrarSessoes() {
     setEncerrando(true);
@@ -94,6 +113,28 @@ export function MinhaContaPage() {
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
             Encerrar derruba a sessão em todos os dispositivos, inclusive neste — em até 15 minutos ninguém
             mais consegue continuar com os tokens antigos.
+          </div>
+        </Secao>
+      </div>
+
+      <div className="rounded-card p-[16px]" style={cardStyle}>
+        <Secao titulo="Alertas por e-mail" tag={usuario?.email}>
+          <Interruptor
+            ligado={emailAlertas}
+            onChange={(v) => void alternarAlertas(v)}
+            carregando={salvandoAlertas || prefs.isLoading}
+            rotulo="Receber alertas por e-mail"
+            descricao="Só o que é dirigido a você. Desligar não desliga o sino do Hub."
+          />
+          <div className="mt-[10px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
+            O que chega por e-mail:
+            <ul className="mt-[4px] list-disc pl-[18px]">
+              {EVENTOS_ALERTA_EMAIL.map((e) => <li key={e}>{e}</li>)}
+            </ul>
+            <div className="mt-[6px]">
+              O e-mail traz só a operação, o valor, quem solicitou, a data e o link — nunca dados do cliente. Avisos por área
+              (ex.: nova aprovação na área Aprovações) e avisos gerais ficam só no sino.
+            </div>
           </div>
         </Secao>
       </div>
