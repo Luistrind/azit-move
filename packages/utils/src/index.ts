@@ -25,3 +25,4 @@ export * from './carteira-visao';
 export * from './conferencia-asaas';
 export * from './rescisao';
 export * from './lista-espera';
+export * from './acesso';

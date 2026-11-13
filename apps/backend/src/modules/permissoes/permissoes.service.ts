@@ -37,6 +37,34 @@ export function resolverAreas(
   return areas;
 }
 
+// Auto-bloqueio (doc 06 §13.3, aplicado 13/11/2026): o sistema NUNCA fica sem um
+// administrador ATIVO com a área CONFIGURACOES — senão ninguém devolve área
+// nenhuma pela interface. Conta pura sobre um estado (possivelmente simulado):
+// a mutação é aplicada numa cópia e só vai ao banco se a regra continuar valendo.
+export type UsuarioParaGuarda = {
+  id: string;
+  ativo: boolean;
+  deletedAt: Date | null;
+  papeis: RoleUsuario[];
+  excecoes: ExcecaoArea[];
+};
+
+export function haAdminComConfiguracoes(usuarios: UsuarioParaGuarda[], matriz: CelulaMatriz[]): boolean {
+  return usuarios.some(
+    (u) =>
+      u.ativo &&
+      !u.deletedAt &&
+      u.papeis.includes(RoleUsuario.ADMIN) &&
+      resolverAreas(u.papeis, u.excecoes, matriz).has(AreaSistema.CONFIGURACOES),
+  );
+}
+
+export class SemAdminComConfiguracoesError extends Error {
+  constructor() {
+    super('Esta alteração deixaria o sistema sem administrador ativo com a área Configurações — conceda a área (ou o papel) a outro usuário antes');
+  }
+}
+
 @Injectable()
 export class PermissoesService {
   private readonly cache = new Map<string, { areas: Set<AreaSistema>; expiraEm: number }>();
@@ -66,6 +94,33 @@ export class PermissoesService {
   // Mesma conta, para quem já tem matriz e exceções em mãos (lista de usuários).
   resolver(papeis: RoleUsuario[], excecoes: ExcecaoArea[], matriz: CelulaMatriz[]): AreaSistema[] {
     return [...resolverAreas(papeis, excecoes, matriz)];
+  }
+
+  // Guarda do auto-bloqueio (doc 06 §13.3): carrega o estado real, aplica a
+  // mutação pretendida numa CÓPIA (`simular`) e lança se depois dela não sobrar
+  // administrador ativo com CONFIGURACOES. O controller chama antes de gravar.
+  async exigirAdminComConfiguracoes(
+    simular: (estado: { usuarios: UsuarioParaGuarda[]; matriz: CelulaMatriz[] }) => void,
+  ): Promise<void> {
+    const [linhas, matrizDb] = await Promise.all([
+      this.prisma.db.usuario.findMany({
+        where: { deletedAt: null },
+        include: { roles: true, permissoesArea: true },
+      }),
+      this.prisma.db.permissaoPapelArea.findMany(),
+    ]);
+    const estado = {
+      usuarios: linhas.map<UsuarioParaGuarda>((u) => ({
+        id: u.id,
+        ativo: u.ativo,
+        deletedAt: u.deletedAt,
+        papeis: u.roles.map((r) => r.role),
+        excecoes: u.permissoesArea.map((p) => ({ area: p.area, concedida: p.concedida })),
+      })),
+      matriz: matrizDb.map<CelulaMatriz>((m) => ({ papel: m.papel, area: m.area, permitido: m.permitido })),
+    };
+    simular(estado);
+    if (!haAdminComConfiguracoes(estado.usuarios, estado.matriz)) throw new SemAdminComConfiguracoesError();
   }
 
   // Sem usuário = a matriz mudou → todo mundo recalcula.

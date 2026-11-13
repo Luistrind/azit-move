@@ -17,6 +17,9 @@ export interface AppConfig {
   anthropic: { apiKey: string; modelo: string };
   // Connector MCP do claude.ai (14/09): segredo da URL do endpoint.
   mcp: { secret: string };
+  // Entrar com Google (doc 06 v1.1 §2.2): id do cliente OAuth "Azit Hub Web"
+  // (público; não há client secret no fluxo de ID token). Vazio = botão não aparece.
+  google: { clientId: string };
 }
 
 export default (): AppConfig => ({
@@ -53,4 +56,5 @@ export default (): AppConfig => ({
     modelo: process.env.ANTHROPIC_MODEL ?? 'claude-opus-5',
   },
   mcp: { secret: process.env.MCP_SECRET ?? '' },
+  google: { clientId: process.env.GOOGLE_CLIENT_ID ?? '' },
 });

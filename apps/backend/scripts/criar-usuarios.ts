@@ -21,8 +21,9 @@ async function main() {
   for (const u of USUARIOS) {
     const usuario = await prisma.usuario.upsert({
       where: { email: u.email },
-      update: { senhaHash, ativo: true, nome: u.nome },
-      create: { nome: u.nome, email: u.email, senhaHash },
+      // (doc 06 v1.1 §2.3) usuários de TESTE entram por senha: permiteSenha ligado aqui.
+      update: { senhaHash, permiteSenha: true, ativo: true, nome: u.nome },
+      create: { nome: u.nome, email: u.email, senhaHash, permiteSenha: true },
     });
     for (const role of u.roles) {
       await prisma.usuarioRole.upsert({

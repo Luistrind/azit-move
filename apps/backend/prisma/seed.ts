@@ -29,12 +29,17 @@ const TODOS_PAPEIS: RoleUsuario[] = [
   RoleUsuario.OPERADOR,
   RoleUsuario.FINANCEIRO,
 ];
-const USUARIOS: { nome: string; email: string; roles: RoleUsuario[] }[] = [
-  { nome: 'Administrador Azit', email: 'admin@azit.com.br', roles: TODOS_PAPEIS },
-  { nome: 'Diretoria Azit', email: 'diretor@azit.com.br', roles: [RoleUsuario.DIRETOR] },
-  { nome: 'Aprovador Azit', email: 'aprovador@azit.com.br', roles: [RoleUsuario.APROVADOR] },
-  { nome: 'Operador Azit', email: 'operador@azit.com.br', roles: [RoleUsuario.OPERADOR] },
-  { nome: 'Financeiro Azit', email: 'financeiro@azit.com.br', roles: [RoleUsuario.FINANCEIRO] },
+// (doc 06 v1.1 §2.3, 13/11/2026) Senha é reserva DESLIGADA por padrão; nos cinco
+// usuários de teste o seed LIGA permiteSenha (homolog continua entrando com azit123).
+// O Luís entra pelo Google: cadastro ADMIN SEM senha (o vínculo com a conta Google
+// é pela parte local do e-mail — luis@azit.com.br ≡ luis@azitmove.com.br).
+const USUARIOS: { nome: string; email: string; roles: RoleUsuario[]; permiteSenha: boolean }[] = [
+  { nome: 'Luís', email: 'luis@azit.com.br', roles: [RoleUsuario.ADMIN, RoleUsuario.DIRETOR], permiteSenha: false },
+  { nome: 'Administrador Azit', email: 'admin@azit.com.br', roles: TODOS_PAPEIS, permiteSenha: true },
+  { nome: 'Diretoria Azit', email: 'diretor@azit.com.br', roles: [RoleUsuario.DIRETOR], permiteSenha: true },
+  { nome: 'Aprovador Azit', email: 'aprovador@azit.com.br', roles: [RoleUsuario.APROVADOR], permiteSenha: true },
+  { nome: 'Operador Azit', email: 'operador@azit.com.br', roles: [RoleUsuario.OPERADOR], permiteSenha: true },
+  { nome: 'Financeiro Azit', email: 'financeiro@azit.com.br', roles: [RoleUsuario.FINANCEIRO], permiteSenha: true },
 ];
 
 async function seedUsuarios() {
@@ -42,8 +47,8 @@ async function seedUsuarios() {
   for (const u of USUARIOS) {
     const usuario = await prisma.usuario.upsert({
       where: { email: u.email },
-      update: { senhaHash, ativo: true, nome: u.nome },
-      create: { nome: u.nome, email: u.email, senhaHash },
+      update: { senhaHash: u.permiteSenha ? senhaHash : null, permiteSenha: u.permiteSenha, ativo: true, nome: u.nome },
+      create: { nome: u.nome, email: u.email, senhaHash: u.permiteSenha ? senhaHash : null, permiteSenha: u.permiteSenha },
     });
     for (const role of u.roles) {
       await prisma.usuarioRole.upsert({
@@ -53,7 +58,7 @@ async function seedUsuarios() {
       });
     }
   }
-  console.log(`   Usuários (senha azit123): admin = TODOS os papéis; demais 1 papel`);
+  console.log(`   Usuários: admin = TODOS os papéis; demais 1 papel; senha azit123 LIGADA nos 5 de teste; luis@azit.com.br = ADMIN só pelo Google`);
 }
 
 // Matriz papel × área (doc 02 §16, doc 06 §5.4 v1.1). Desde o bloco 1 da v1.1 a

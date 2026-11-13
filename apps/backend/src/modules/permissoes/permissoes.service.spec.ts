@@ -102,3 +102,61 @@ describe('PermissoesService.areasEfetivas', () => {
     expect(findFirst).toHaveBeenCalledTimes(4);
   });
 });
+
+// Auto-bloqueio (doc 06 §13.3, aplicado 13/11/2026): nunca sem administrador
+// ATIVO com a área CONFIGURACOES. Conta pura + guarda com simulação da mutação.
+describe('haAdminComConfiguracoes / exigirAdminComConfiguracoes (doc 06 §13.3)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { haAdminComConfiguracoes, SemAdminComConfiguracoesError } = require('./permissoes.service') as typeof import('./permissoes.service');
+  const MATRIZ_ADMIN = [{ papel: RoleUsuario.ADMIN, area: AreaSistema.CONFIGURACOES, permitido: true }];
+  const admin = (extra: Partial<{ id: string; ativo: boolean; deletedAt: Date | null; papeis: RoleUsuario[]; excecoes: { area: AreaSistema; concedida: boolean }[] }> = {}) => ({
+    id: 'a1', ativo: true, deletedAt: null, papeis: [RoleUsuario.ADMIN], excecoes: [], ...extra,
+  });
+
+  it('admin ativo com a área pela matriz → ok', () => {
+    expect(haAdminComConfiguracoes([admin()], MATRIZ_ADMIN)).toBe(true);
+  });
+
+  it('matriz do ADMIN sem CONFIGURACOES e ninguém por exceção → sem admin', () => {
+    expect(haAdminComConfiguracoes([admin()], [{ ...MATRIZ_ADMIN[0], permitido: false }])).toBe(false);
+    // ...mas um admin com a área por EXCEÇÃO salva
+    expect(haAdminComConfiguracoes([admin({ excecoes: [{ area: AreaSistema.CONFIGURACOES, concedida: true }] })], [{ ...MATRIZ_ADMIN[0], permitido: false }])).toBe(true);
+  });
+
+  it('exceção retirando a área do único admin → sem admin; inativo e excluído não contam; DIRETOR com a área não conta', () => {
+    expect(haAdminComConfiguracoes([admin({ excecoes: [{ area: AreaSistema.CONFIGURACOES, concedida: false }] })], MATRIZ_ADMIN)).toBe(false);
+    expect(haAdminComConfiguracoes([admin({ ativo: false })], MATRIZ_ADMIN)).toBe(false);
+    expect(haAdminComConfiguracoes([admin({ deletedAt: new Date() })], MATRIZ_ADMIN)).toBe(false);
+    expect(haAdminComConfiguracoes([admin({ papeis: [RoleUsuario.DIRETOR] })], [{ papel: RoleUsuario.DIRETOR, area: AreaSistema.CONFIGURACOES, permitido: true }])).toBe(false);
+  });
+
+  it('a guarda aplica a mutação numa cópia e lança só quando ela deixaria o sistema sem admin', async () => {
+    const usuarios = [
+      { id: 'a1', ativo: true, deletedAt: null, roles: [{ role: RoleUsuario.ADMIN }], permissoesArea: [] },
+      { id: 'o1', ativo: true, deletedAt: null, roles: [{ role: RoleUsuario.OPERADOR }], permissoesArea: [] },
+    ];
+    const prisma = {
+      db: {
+        usuario: { findMany: jest.fn().mockResolvedValue(usuarios), findFirst: jest.fn() },
+        permissaoPapelArea: { findMany: jest.fn().mockResolvedValue(MATRIZ_ADMIN) },
+      },
+    };
+    const service = new PermissoesService(prisma as never);
+    // desativar o único admin → lança
+    await expect(service.exigirAdminComConfiguracoes(({ usuarios: us }) => { us.find((u) => u.id === 'a1')!.ativo = false; }))
+      .rejects.toBeInstanceOf(SemAdminComConfiguracoesError);
+    // tirar CONFIGURACOES da matriz do ADMIN → lança
+    await expect(service.exigirAdminComConfiguracoes(({ matriz }) => { matriz[0].permitido = false; }))
+      .rejects.toBeInstanceOf(SemAdminComConfiguracoesError);
+    // desativar o operador → passa
+    await expect(service.exigirAdminComConfiguracoes(({ usuarios: us }) => { us.find((u) => u.id === 'o1')!.ativo = false; }))
+      .resolves.toBeUndefined();
+    // promover o operador a ADMIN e então desativar o a1 → passa (sobra o o1)
+    await expect(service.exigirAdminComConfiguracoes(({ usuarios: us }) => {
+      us.find((u) => u.id === 'o1')!.papeis = [RoleUsuario.ADMIN];
+      us.find((u) => u.id === 'a1')!.ativo = false;
+    })).resolves.toBeUndefined();
+    // o estado real não foi tocado pelas simulações
+    expect(usuarios[0].ativo).toBe(true);
+  });
+});
