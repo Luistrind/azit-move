@@ -68,6 +68,16 @@ bash deploy/deploy-prod.sh v1.0.0
 
 ---
 
+**1.5 Google Cloud — entrar com Google (doc 06 v1.1 §2.2)** — feito em 12/11/2026 pelo Luís com o Claude, conta `luis@azit.com.br`:
+
+- Projeto `azit-hub` (nome "Azit Hub"), dentro da organização do Workspace; tela de permissão OAuth com público **Interno** (só contas `azit.com.br` / `azitmove.com.br` conseguem entrar, já do lado do Google).
+- Cliente OAuth **Azit Hub Web** (tipo aplicativo da Web). O fluxo é de ID token (botão do Google no navegador), então só o **client id** é usado; a chave secreta do cliente não é usada e não deve ser copiada para lugar nenhum.
+- `GOOGLE_CLIENT_ID=43681993535-8orbgnirmtc7p3lbu5ov0f2hvfp46g58.apps.googleusercontent.com` (é público por natureza; vai no backend como variável e no frontend como `VITE_GOOGLE_CLIENT_ID`, em build time como o `VITE_API_URL`). O mesmo cliente serve homolog e produção.
+- Origens JavaScript autorizadas: `https://app.azitmove.com.br`, `https://hml.azitmove.com.br`, `http://localhost:3000`. Sem URIs de redirecionamento (não há fluxo de servidor).
+- Onde mexer: https://console.cloud.google.com/auth/clients?project=azit-hub (mudança de domínio ou porta local exige acrescentar a origem lá; pode levar alguns minutos para valer).
+- O bloco 3 (alertas por e-mail, doc 06 §12) usa este MESMO projeto para a conta de serviço do Gmail; a chave dela é segredo e entra só no `stack.env` do servidor.
+
+---
 ## 2. Dia a dia — do seu computador até a produção
 
 A regra é uma só: **na produção só entra o que foi testado no homolog.** O
