@@ -19,6 +19,7 @@ export * from './enums/role-usuario';
 export * from './enums/area-sistema';
 export * from './enums/aprovacao';
 export * from './enums/acesso';
+export * from './enums/email-alertas';
 
 // Entidades
 export * from './entities/titular';

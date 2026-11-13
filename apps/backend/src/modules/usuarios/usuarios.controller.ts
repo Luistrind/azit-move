@@ -3,6 +3,7 @@ import { AreaSistema, Prisma, RoleUsuario } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { SENHA_MINIMO_CARACTERES, ehEmailWorkspace, variantesEmailWorkspace } from '@azit/utils';
+import { CHAVE_PREFERENCIA_EMAIL_ALERTAS } from '@azit/types';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -10,6 +11,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { PermissoesService, SemAdminComConfiguracoesError, UsuarioParaGuarda } from '../permissoes/permissoes.service';
 import { Area, AreaLivre } from '../../common/decorators/area.decorator';
 import { AuthService } from '../auth/auth.service';
+import { NotificacaoService } from '../notificacao/notificacao.service';
 
 // Gestão de Usuários e Permissões por Área (doc 02 §16).
 // Papel carrega as áreas do seu domínio (matriz papel×área, editável);
@@ -29,6 +31,8 @@ const CUSTO_BCRYPT = 12;
 
 const preferenciasSchema = z.object({
   ordemInicio: z.array(z.string().max(60)).max(30).optional(),
+  // "Receber alertas por e-mail" (doc 06 v1.1 §12.3 item 4) — ausente = ligado.
+  [CHAVE_PREFERENCIA_EMAIL_ALERTAS]: z.boolean().optional(),
 });
 
 // Senha só é obrigatória quando o Admin liga "permite senha" na criação (§2.3).
@@ -74,6 +78,7 @@ export class UsuariosController {
     private readonly prisma: PrismaService,
     private readonly permissoes: PermissoesService,
     private readonly auth: AuthService,
+    private readonly notificacao: NotificacaoService,
   ) {}
 
   // Áreas efetivas do usuário logado (frontend monta o menu com isto — UX-1).
@@ -326,6 +331,15 @@ export class UsuariosController {
   async acessos(@Param('id') id: string) {
     const [acessos, sessoesAtivas] = await Promise.all([this.auth.acessosDoUsuario(id), this.auth.sessoesAtivas(id)]);
     return { acessos, sessoesAtivas };
+  }
+
+  // Alertas por e-mail de um usuário (doc 06 §12.4 — rastro visível na auditoria):
+  // a preferência dele e as últimas notificações dirigidas com "e-mail enviado em"
+  // ou o motivo de não ter saído.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  @Get('usuarios/:id/alertas-email')
+  alertasEmail(@Param('id') id: string) {
+    return this.notificacao.alertasEmailDoUsuario(id);
   }
 
   // Exclusão (Luís, 07/11/2026: "fazer a limpa" nos usuários de produção, inclusive o

@@ -8,6 +8,50 @@ export interface ResultadoAlcada {
   motivo?: string;
 }
 
+// Célula da matriz como vem do banco (limites em REAIS, Decimal).
+export interface CelulaAlcada {
+  papel: string;
+  limiteMinimo: unknown;
+  limiteMaximo: unknown;
+  ilimitado: boolean;
+}
+
+function reaisParaCentavos(v: unknown): number {
+  return Math.round(Number(v?.toString() ?? '0') * 100);
+}
+
+// A CONTA da alçada (Regra 16 — uma só): dados os papéis do usuário e as
+// células ativas do tipo de operação, diz se o valor cabe. Usada por
+// `verificar` (quem está decidindo) e por `usuariosAptos` (quem deve ser
+// avisado — doc 06 §12.2). Vale a alçada mais forte entre os papéis.
+export function avaliarAlcada(papeis: string[], celulas: CelulaAlcada[], valorCentavos: number): ResultadoAlcada {
+  if (papeis.length === 0) {
+    return { aprovado: false, ilimitado: false, limiteMaximo: null, motivo: 'Usuário sem papel definido — não pode aprovar' };
+  }
+  const alcadas = celulas.filter((c) => papeis.includes(c.papel));
+  if (alcadas.some((a) => a.ilimitado)) {
+    return { aprovado: true, ilimitado: true, limiteMaximo: null };
+  }
+  // Decisão 03/08 (Contas a Pagar): a célula tem FAIXA — limite mínimo e
+  // máximo por tipo de aprovação. O valor precisa caber na faixa do papel.
+  const cobre = alcadas
+    .filter((a) => valorCentavos >= reaisParaCentavos(a.limiteMinimo) && valorCentavos <= reaisParaCentavos(a.limiteMaximo))
+    .map((a) => reaisParaCentavos(a.limiteMaximo))
+    .sort((a, b) => a - b)[0];
+  if (cobre !== undefined) {
+    return { aprovado: true, ilimitado: false, limiteMaximo: cobre };
+  }
+  const abaixoDoMinimo = alcadas.some((a) => valorCentavos < reaisParaCentavos(a.limiteMinimo));
+  return {
+    aprovado: false,
+    ilimitado: false,
+    limiteMaximo: null,
+    motivo: abaixoDoMinimo
+      ? 'Valor abaixo da faixa deste papel para este tipo — cabe a um papel de faixa inferior'
+      : 'Operação excede a alçada do papel do usuário para este tipo — requer aprovação superior',
+  };
+}
+
 // Verificação de alçada em runtime (Doc 2 §7.9). Matriz PER PAPEL × tipo de operação,
 // configurável pelo admin (nada hardcoded). O usuário pode ter vários papéis — vale a
 // alçada mais forte entre eles. limiteMaximo é armazenado em REAIS; a API opera em centavos.
@@ -16,7 +60,7 @@ export class AlcadaService {
   constructor(private readonly prisma: PrismaService) {}
 
   private reaisParaCentavos(v: unknown): number {
-    return Math.round(Number(v?.toString() ?? '0') * 100);
+    return reaisParaCentavos(v);
   }
 
   async verificar(
@@ -30,49 +74,28 @@ export class AlcadaService {
         select: { role: true },
       })
     ).map((r) => r.role);
-
-    if (papeis.length === 0) {
-      return {
-        aprovado: false,
-        ilimitado: false,
-        limiteMaximo: null,
-        motivo: 'Usuário sem papel definido — não pode aprovar',
-      };
-    }
-
+    if (papeis.length === 0) return avaliarAlcada([], [], valorCentavos);
     const alcadas = await this.prisma.db.alcada.findMany({
       where: { papel: { in: papeis }, tipoOperacao, ativo: true },
     });
+    return avaliarAlcada(papeis, alcadas, valorCentavos);
+  }
 
-    if (alcadas.some((a) => a.ilimitado)) {
-      return { aprovado: true, ilimitado: true, limiteMaximo: null };
-    }
-
-    // Decisão 03/08 (Contas a Pagar): a célula tem FAIXA — limite mínimo e
-    // máximo por tipo de aprovação. O valor precisa caber na faixa do papel.
-    const cobre = alcadas
-      .filter(
-        (a) =>
-          valorCentavos >= this.reaisParaCentavos(a.limiteMinimo) &&
-          valorCentavos <= this.reaisParaCentavos(a.limiteMaximo),
-      )
-      .map((a) => this.reaisParaCentavos(a.limiteMaximo))
-      .sort((a, b) => a - b)[0];
-
-    if (cobre !== undefined) {
-      return { aprovado: true, ilimitado: false, limiteMaximo: cobre };
-    }
-    const abaixoDoMinimo = alcadas.some(
-      (a) => valorCentavos < this.reaisParaCentavos(a.limiteMinimo),
-    );
-    return {
-      aprovado: false,
-      ilimitado: false,
-      limiteMaximo: null,
-      motivo: abaixoDoMinimo
-        ? 'Valor abaixo da faixa deste papel para este tipo — cabe a um papel de faixa inferior'
-        : 'Operação excede a alçada do papel do usuário para este tipo — requer aprovação superior',
-    };
+  // Quem PODE DECIDIR esta operação neste valor (doc 06 §12.2): usuários ativos
+  // cujos papéis cobrem o valor pela MESMA conta de `verificar`. É a lista de
+  // destinatários de "aprovação esperando por você" — não "todo mundo com a
+  // área Aprovações". O chamador tira o solicitante e quem já decidiu.
+  async usuariosAptos(tipoOperacao: string, valorCentavos: number): Promise<{ id: string; nome: string; email: string }[]> {
+    const celulas = await this.prisma.db.alcada.findMany({ where: { tipoOperacao, ativo: true } });
+    if (celulas.length === 0) return [];
+    const usuarios = await this.prisma.db.usuario.findMany({
+      where: { ativo: true, roles: { some: { role: { in: celulas.map((c) => c.papel) } } } },
+      select: { id: true, nome: true, email: true, roles: { select: { role: true } } },
+      orderBy: { nome: 'asc' },
+    });
+    return usuarios
+      .filter((u) => avaliarAlcada(u.roles.map((r) => r.role), celulas, valorCentavos).aprovado)
+      .map((u) => ({ id: u.id, nome: u.nome, email: u.email }));
   }
 
   // ---- Configuração (admin) --------------------------------------------------

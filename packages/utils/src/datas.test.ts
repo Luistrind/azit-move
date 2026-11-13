@@ -1,10 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import {
   diaBrasil, dataCalendarioUTC, somarDiasISO, partesBrasil, diaSemanaISO, isoParaBR,
-  formatarDiaBR, formatarInstanteBR, inicioDiaUTC, diasAtrasoCalendario, dataHojeBrasil, diaDeColunaMista,
+  formatarDiaBR, formatarInstanteBR, formatarInstanteHoraBR, inicioDiaUTC, diasAtrasoCalendario, dataHojeBrasil, diaDeColunaMista,
 } from './datas';
 
 describe('datas — fuso do negócio (Regra 15)', () => {
+  it('formatarInstanteHoraBR: dia E hora no fuso de Brasília (e-mail de alerta, registro de acessos)', () => {
+    // 13/11/2026 23:05 em Brasília = 14/11/2026 02:05Z — o dia não pode "virar"
+    expect(formatarInstanteHoraBR(new Date('2026-11-14T02:05:00.000Z'))).toBe('13/11/2026 23:05');
+    expect(formatarInstanteHoraBR(new Date('2026-11-13T12:00:00.000Z'))).toBe('13/11/2026 09:00');
+  });
+
   it('diaBrasil: instante entre 21h e 24h de Brasília ainda é o dia de Brasília, não o de UTC', () => {
     // 16/10/2026 23:30 em Brasília = 17/10/2026 02:30Z (caso das órfãs da migração)
     const instante = new Date('2026-10-17T02:30:00.000Z');

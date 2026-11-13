@@ -1039,6 +1039,11 @@ model Notificacao {
   area      AreaSistema? // público por área; null = sem restrição de área
   usuarioId String? // destinatário direto; sobrepõe a área
   createdAt DateTime        @default(now())
+  // Alerta por e-mail (doc 06 v1.1 §12.4 — rastro): quando o e-mail desta
+  // notificação saiu e, se não saiu, por quê (falha definitiva, descarte ou
+  // "não configurado"). Só notificação DIRIGIDA a um usuário vira e-mail.
+  emailEnviadoEm DateTime?
+  emailFalha     String?
 
   leituras NotificacaoLida[]
 

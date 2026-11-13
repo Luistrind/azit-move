@@ -111,6 +111,13 @@ export function formatarInstanteBR(instante: Date): string {
   return isoParaBR(diaBrasil(instante));
 }
 
+// 'DD/MM/YYYY HH:mm' de um INSTANTE no fuso do negócio (registro de acessos,
+// auditoria, e-mail de alerta). ÚNICA função para tela e servidor.
+export function formatarInstanteHoraBR(instante: Date): string {
+  const { dia, hora, minuto } = partesBrasil(instante);
+  return `${isoParaBR(dia)} ${String(hora).padStart(2, '0')}:${String(minuto).padStart(2, '0')}`;
+}
+
 // Diferença em DIAS DE CALENDÁRIO entre duas datas 'YYYY-MM-DD' (b − a).
 export function diasCalendarioEntre(aISO: string, bISO: string): number {
   const [ay, am, ad] = aISO.split('-').map(Number);

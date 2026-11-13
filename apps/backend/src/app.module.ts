@@ -37,6 +37,8 @@ import { DossieModule } from './modules/dossie/dossie.module';
 import { FrotaModule } from './modules/frota/frota.module';
 import { MigracaoLegadoModule } from './modules/migracao-legado/migracao-legado.module';
 import { PermissoesModule } from './modules/permissoes/permissoes.module';
+import { NotificacaoModule } from './modules/notificacao/notificacao.module';
+import { EmailModule } from './modules/email/email.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { AreaGuard } from './common/guards/area.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -51,6 +53,8 @@ import { RolesGuard } from './common/guards/roles.guard';
     DatabaseModule,
     PermissoesModule,
     QueuesModule,
+    EmailModule,
+    NotificacaoModule,
     HealthModule,
     AuthModule,
     TitularModule,

@@ -14,6 +14,7 @@ import { VezAprovacao } from '@azit/types';
 import { PrismaService } from '../../database/prisma.service';
 import { AlcadaService } from '../alcada/alcada.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
+import { emailAprovacao, EventoEmailAprovacao } from './aprovacao-email';
 
 // Registro passado ao efetivador quando a solicitação completa (ou é reprovada).
 export interface AprovacaoEfetivacao {
@@ -113,6 +114,7 @@ export class AprovacaoService {
         payload: params.payload as Prisma.InputJsonValue | undefined,
         solicitanteId: params.solicitanteId,
       },
+      include: { operacao: { select: { nome: true } }, solicitante: { select: { nome: true } } },
     });
     // Sino §16.1: quem decide (área Aprovações) fica sabendo na hora — e o
     // link abre o dossiê da solicitação (21/10), não a lista.
@@ -123,6 +125,9 @@ export class AprovacaoService {
       tipo: 'APROVACAO',
       area: 'APROVACOES',
     });
+    // Doc 06 §12.2: quem PODE DECIDIR (alçada cobre o valor), menos o solicitante,
+    // recebe notificação DIRIGIDA — e é ela que vira e-mail.
+    await this.avisarQuemPodeDecidir(aprovacao, { evento: 'esperando' }, [params.solicitanteId]);
     return { id: aprovacao.id, status: 'pendente' };
   }
 
@@ -135,7 +140,7 @@ export class AprovacaoService {
   ) {
     const aprovacao = await this.prisma.db.aprovacao.findFirst({
       where: { id: aprovacaoId },
-      include: { operacao: true, decisoes: true, complementos: { where: { respondidoEm: null } } },
+      include: { operacao: true, solicitante: { select: { nome: true } }, decisoes: true, complementos: { where: { respondidoEm: null } } },
     });
     if (!aprovacao) {
       throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Solicitação não encontrada' });
@@ -198,6 +203,9 @@ export class AprovacaoService {
       decisorId: usuarioId,
     };
 
+    const decisorNome = await this.nomeUsuario(usuarioId);
+    const agora = new Date();
+
     if (decisao === 'reprovar') {
       await this.prisma.db.aprovacao.update({
         where: { id: aprovacaoId },
@@ -206,18 +214,36 @@ export class AprovacaoService {
       const ef = this.efetivadores.get(aprovacao.tipoOperacao);
       if (ef?.reprovada) await ef.reprovada(efetivacao);
       // Sino §16.1: o solicitante fica sabendo, com rota para o ocorrido.
+      // E-mail (doc 06 §12.2): só operação/valor/solicitante/data — o parecer fica no Hub.
       await this.notificacao.emitir({
         titulo: 'Sua solicitação foi reprovada',
         corpo: `${aprovacao.resumo} — ${parecer}`,
         rota: this.rotaDoOcorrido(aprovacao),
         tipo: 'APROVACAO',
         usuarioId: aprovacao.solicitanteId,
+        email: emailAprovacao(this.dadosEmail(aprovacao, agora), { evento: 'decidida', decisao: 'nao_aprovada', por: decisorNome }),
       });
       this.logger.log(`Aprovação ${aprovacaoId} (${aprovacao.tipoOperacao}) REPROVADA por ${usuarioId}`);
       return { status: 'reprovada', efetivada: false };
     }
 
     if (decisao === 'recomendar') {
+      // Escalada (doc 06 §12.2): o solicitante sabe que foi recomendada; quem tem
+      // alçada para o valor — menos o solicitante e quem já decidiu — é avisado
+      // de novo, agora com o endosso. Antes não havia aviso nenhum neste passo.
+      await this.notificacao.emitir({
+        titulo: 'Sua solicitação foi recomendada',
+        corpo: `${aprovacao.resumo} — recomendada por ${decisorNome}; aguarda quem tem alçada para o valor`,
+        rota: this.rotaDoOcorrido(aprovacao),
+        tipo: 'APROVACAO',
+        usuarioId: aprovacao.solicitanteId,
+        email: emailAprovacao(this.dadosEmail(aprovacao, agora), { evento: 'decidida', decisao: 'recomendada', por: decisorNome }),
+      });
+      await this.avisarQuemPodeDecidir(
+        aprovacao,
+        { evento: 'escalada', recomendadaPor: decisorNome },
+        [aprovacao.solicitanteId, usuarioId, ...aprovacao.decisoes.map((d) => d.usuarioId)],
+      );
       return { status: 'pendente', efetivada: false };
     }
 
@@ -249,6 +275,7 @@ export class AprovacaoService {
       rota: this.rotaDoOcorrido(aprovacao),
       tipo: 'APROVACAO',
       usuarioId: aprovacao.solicitanteId,
+      email: emailAprovacao(this.dadosEmail(aprovacao, agora), { evento: 'decidida', decisao: 'aprovada', por: decisorNome }),
     });
     this.logger.log(`Aprovação ${aprovacaoId} (${aprovacao.tipoOperacao}) APROVADA e efetivada`);
     return { status: 'aprovada', efetivada: true, mensagem };
@@ -342,7 +369,7 @@ export class AprovacaoService {
   async pedirComplemento(aprovacaoId: string, usuarioId: string, pergunta: string) {
     const aprovacao = await this.prisma.db.aprovacao.findFirst({
       where: { id: aprovacaoId },
-      include: { complementos: { where: { respondidoEm: null } } },
+      include: { operacao: { select: { nome: true } }, solicitante: { select: { nome: true } }, complementos: { where: { respondidoEm: null } } },
     });
     if (!aprovacao) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Solicitação não encontrada' });
     if (aprovacao.status !== 'PENDENTE') {
@@ -359,12 +386,14 @@ export class AprovacaoService {
     });
     const ef = this.efetivadores.get(aprovacao.tipoOperacao);
     if (ef?.complementoPedido) await ef.complementoPedido(this.efetivacaoDe(aprovacao, usuarioId), pergunta, usuarioId);
+    // E-mail (doc 06 §12.2): a pergunta é texto livre e fica só no Hub.
     await this.notificacao.emitir({
       titulo: 'Pediram complemento na sua solicitação',
       corpo: pergunta,
       rota: `/aprovacoes/${aprovacaoId}`,
       tipo: 'APROVACAO',
       usuarioId: aprovacao.solicitanteId,
+      email: emailAprovacao(this.dadosEmail(aprovacao, c.createdAt), { evento: 'complemento_pedido', pedidoPor: await this.nomeUsuario(usuarioId) }),
     });
     this.logger.log(`Aprovação ${aprovacaoId}: complemento pedido por ${usuarioId}`);
     return { id: c.id };
@@ -396,17 +425,63 @@ export class AprovacaoService {
   }
 
   private async fecharComplemento(complementoId: string, usuarioId: string | undefined, resposta: string) {
+    const respondidoEm = new Date();
     const c = await this.prisma.db.aprovacaoComplemento.update({
       where: { id: complementoId },
-      data: { resposta, respondidoPorId: usuarioId, respondidoEm: new Date() },
+      data: { resposta, respondidoPorId: usuarioId, respondidoEm },
+      include: { aprovacao: { include: { operacao: { select: { nome: true } }, solicitante: { select: { nome: true } } } } },
     });
+    // E-mail (doc 06 §12.2) para quem pediu: a resposta (texto livre) fica só no Hub.
     await this.notificacao.emitir({
       titulo: 'Complemento respondido',
       corpo: resposta,
       rota: `/aprovacoes/${c.aprovacaoId}`,
       tipo: 'APROVACAO',
       usuarioId: c.pedidoPorId,
+      email: emailAprovacao(this.dadosEmail(c.aprovacao, respondidoEm), {
+        evento: 'complemento_respondido',
+        respondidoPor: usuarioId ? await this.nomeUsuario(usuarioId) : 'o sistema',
+      }),
     });
+  }
+
+  // --- Alertas por e-mail (doc 06 v1.1 §12) ---------------------------------
+
+  // O que o e-mail pode carregar (§12.3 item 1): operação, valor, solicitante, data.
+  private dadosEmail(
+    a: { id: string; valor: Prisma.Decimal; operacao: { nome: string }; solicitante: { nome: string } },
+    em: Date,
+  ) {
+    return { aprovacaoId: a.id, operacaoNome: a.operacao.nome, valorCentavos: this.cent(a.valor), solicitanteNome: a.solicitante.nome, em };
+  }
+
+  private async nomeUsuario(usuarioId: string): Promise<string> {
+    const u = await this.prisma.db.usuario.findFirst({ where: { id: usuarioId }, select: { nome: true } });
+    return u?.nome ?? 'usuário removido';
+  }
+
+  // Notificação DIRIGIDA (e e-mail) para cada usuário cuja alçada cobre a
+  // operação — a MESMA conta que a Central usa para "pode aprovar"
+  // (AlcadaService.usuariosAptos), nunca "todo mundo com a área Aprovações".
+  private async avisarQuemPodeDecidir(
+    a: { id: string; tipoOperacao: string; valor: Prisma.Decimal; resumo: string; operacao: { nome: string }; solicitante: { nome: string } },
+    evento: Extract<EventoEmailAprovacao, { evento: 'esperando' | 'escalada' }>,
+    excluir: string[],
+  ) {
+    const fora = new Set(excluir);
+    const aptos = (await this.alcada.usuariosAptos(a.tipoOperacao, this.cent(a.valor))).filter((u) => !fora.has(u.id));
+    const email = emailAprovacao(this.dadosEmail(a, new Date()), evento);
+    for (const u of aptos) {
+      await this.notificacao.emitir({
+        titulo: evento.evento === 'escalada' ? 'Aprovação esperando por você (recomendada)' : 'Aprovação esperando por você',
+        corpo: a.resumo,
+        rota: `/aprovacoes/${a.id}`,
+        tipo: 'APROVACAO',
+        usuarioId: u.id,
+        email,
+      });
+    }
+    return aptos.length;
   }
 
   private efetivacaoDe(

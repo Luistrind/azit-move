@@ -20,6 +20,22 @@ export interface AppConfig {
   // Entrar com Google (doc 06 v1.1 §2.2): id do cliente OAuth "Azit Hub Web"
   // (público; não há client secret no fluxo de ID token). Vazio = botão não aparece.
   google: { clientId: string };
+  // Endereço público do Hub (links dos e-mails, doc 06 §12.4). APP_URL, senão
+  // FRONTEND_URL (já é a URL pública nos stacks), senão o Vite local.
+  appUrl: string;
+  // Alertas por e-mail (doc 06 v1.1 §12.4). `transporte` escolhe o caminho:
+  //   smtp-relay = relay SMTP do Workspace (smtp-relay.gmail.com:587, STARTTLS,
+  //                liberado por IP no Admin — o escolhido, deploy/AMBIENTES.md §1.7);
+  //   gmail-api  = API do Gmail com conta de serviço (exige a chave JSON, que a
+  //                organização bloqueia por política — alternativa);
+  //   nenhum     = padrão: a fila registra "não configurado" e segue.
+  email: {
+    transporte: 'smtp-relay' | 'gmail-api' | 'nenhum';
+    remetente: string;
+    serviceAccountJson: string;
+    smtpHost: string;
+    smtpPort: number;
+  };
 }
 
 export default (): AppConfig => ({
@@ -57,4 +73,12 @@ export default (): AppConfig => ({
   },
   mcp: { secret: process.env.MCP_SECRET ?? '' },
   google: { clientId: process.env.GOOGLE_CLIENT_ID ?? '' },
+  appUrl: (process.env.APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, ''),
+  email: {
+    transporte: (['smtp-relay', 'gmail-api'] as const).find((t) => t === (process.env.EMAIL_TRANSPORTE ?? '').trim()) ?? 'nenhum',
+    remetente: (process.env.EMAIL_REMETENTE ?? '').trim(),
+    serviceAccountJson: (process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? '').trim(),
+    smtpHost: (process.env.SMTP_HOST ?? '').trim() || 'smtp-relay.gmail.com',
+    smtpPort: parseInt(process.env.SMTP_PORT ?? '587', 10) || 587,
+  },
 });

@@ -28,6 +28,9 @@ function montar(registro: ReturnType<typeof aprovacao>, alcadaOk = true) {
   const prisma = {
     db: {
       aprovacao: {
+        create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({
+          ...registro, ...data, id: 'ap-novo', valor: new Prisma.Decimal(String(data.valor)),
+        })),
         findMany: jest.fn().mockResolvedValue([registro]),
         findFirst: jest.fn().mockImplementation(() => Promise.resolve({
           ...registro,
@@ -38,10 +41,11 @@ function montar(registro: ReturnType<typeof aprovacao>, alcadaOk = true) {
       aprovacaoDecisao: { create: jest.fn().mockResolvedValue({}) },
       aprovacaoComplemento: {
         create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => { complementosCriados.push(data); return Promise.resolve({ id: 'cp-1', ...data }); }),
-        update: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'cp-1', aprovacaoId: 'ap-1', pedidoPorId: 'luis', ...data })),
+        update: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'cp-1', aprovacaoId: 'ap-1', pedidoPorId: 'luis', ...data, aprovacao: registro })),
         findFirst: jest.fn().mockResolvedValue(null),
       },
       titular: { findMany: jest.fn().mockResolvedValue([{ id: 't-wallace', nome: 'Wallace G. Teixeira' }]) },
+      usuario: { findFirst: jest.fn().mockImplementation(({ where }: { where: { id: string } }) => Promise.resolve(USUARIOS[where.id] ? { nome: USUARIOS[where.id] } : null)) },
       conta: { findMany: jest.fn().mockResolvedValue([]) },
       tituloPagar: { findMany: jest.fn().mockResolvedValue([]) },
       orcamentoFornecedor: { findMany: jest.fn().mockResolvedValue([]) },
@@ -49,10 +53,18 @@ function montar(registro: ReturnType<typeof aprovacao>, alcadaOk = true) {
       lotePagamento: { findMany: jest.fn().mockResolvedValue([]) },
     },
   };
-  const alcada = { verificar: jest.fn().mockResolvedValue({ aprovado: alcadaOk }) };
-  const notificacao = { emitir: jest.fn().mockResolvedValue(undefined) };
+  // Quem pode decidir pela alçada (doc 06 §12.2): Luís e Vicente — João é o solicitante.
+  const alcada = {
+    verificar: jest.fn().mockResolvedValue({ aprovado: alcadaOk }),
+    usuariosAptos: jest.fn().mockResolvedValue([
+      { id: 'joao', nome: USUARIOS.joao, email: 'joao@azit.com.br' },
+      { id: 'luis', nome: USUARIOS.luis, email: 'luis@azit.com.br' },
+      { id: 'vicente', nome: USUARIOS.vicente, email: 'vicente@azit.com.br' },
+    ]),
+  };
+  const notificacao = { emitir: jest.fn().mockResolvedValue('n-1') };
   const service = new AprovacaoService(prisma as never, alcada as never, notificacao as never);
-  return { service, prisma, notificacao, complementosCriados };
+  return { service, prisma, notificacao, alcada, complementosCriados };
 }
 
 describe('AprovacaoService — vez de quem olha (Central, 21/10)', () => {
@@ -122,6 +134,77 @@ describe('AprovacaoService — pedir complemento (doc 02 §7.9-A, decisão Luís
     await expect(service.responderComplemento('ap-1', 'vicente', 'Sim')).rejects.toMatchObject({ response: { erro: 'nao_solicitante' } });
     await service.responderComplemento('ap-1', 'joao', 'Confirmou: paga na quinta, 23/10.');
     expect(prisma.db.aprovacaoComplemento.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'cp-1' }, data: expect.objectContaining({ resposta: 'Confirmou: paga na quinta, 23/10.', respondidoPorId: 'joao' }) }));
-    expect(notificacao.emitir).toHaveBeenCalledWith(expect.objectContaining({ usuarioId: 'luis', titulo: 'Complemento respondido' }));
+    expect(notificacao.emitir).toHaveBeenCalledWith(expect.objectContaining({
+      usuarioId: 'luis', titulo: 'Complemento respondido',
+      email: expect.objectContaining({ assunto: 'Responderam o complemento: Acordo de pagamento', aprovacaoPendenteId: 'ap-1' }),
+    }));
+  });
+});
+
+// Alertas por e-mail (doc 06 v1.1 §12.2/§12.3): só notificação DIRIGIDA leva
+// conteúdo de e-mail, e esse conteúdo nunca cita o cliente (o resumo cita).
+const semCliente = (email: { assunto: string; linhas: string[] }) => {
+  const tudo = [email.assunto, ...email.linhas].join(' ');
+  expect(tudo).not.toMatch(/Wallace|Renegociação de 4/);
+  expect(tudo).toContain('Operação: Acordo de pagamento');
+  expect(tudo).toMatch(/Valor: R\$\s4\.188,00/); // formatCurrency usa espaço não separável
+  expect(tudo).toContain('Solicitante: João Pedro');
+};
+
+describe('AprovacaoService — destinatários e conteúdo do e-mail (doc 06 §12)', () => {
+  it('criar: área Aprovações no sino + UMA dirigida por quem pode decidir, menos o solicitante', async () => {
+    const { service, notificacao, alcada } = montar(aprovacao());
+    await service.criar({ tipoOperacao: 'acordo', referenciaTipo: 'acordo', referenciaId: 'ac-1', titularId: 't-wallace', valorCentavos: 418_800, resumo: 'Renegociação de 4 fatura(s) — Wallace', solicitanteId: 'joao' });
+    expect(alcada.usuariosAptos).toHaveBeenCalledWith('acordo', 418_800);
+    const chamadas = notificacao.emitir.mock.calls.map((c) => c[0]);
+    expect(chamadas[0]).toMatchObject({ area: 'APROVACOES', tipo: 'APROVACAO' });
+    expect(chamadas[0].email).toBeUndefined();
+    const dirigidas = chamadas.filter((c) => c.usuarioId);
+    expect(dirigidas.map((c) => c.usuarioId)).toEqual(['luis', 'vicente']);
+    for (const d of dirigidas) {
+      expect(d).toMatchObject({ titulo: 'Aprovação esperando por você', rota: '/aprovacoes/ap-novo', tipo: 'APROVACAO' });
+      expect(d.email.assunto).toBe('Aprovação esperando por você: Acordo de pagamento');
+      expect(d.email.aprovacaoPendenteId).toBe('ap-novo');
+      semCliente(d.email);
+    }
+  });
+
+  it('pedir complemento: e-mail ao solicitante sem a pergunta (texto livre fica no Hub)', async () => {
+    const { service, notificacao } = montar(aprovacao());
+    await service.pedirComplemento('ap-1', 'luis', 'O cliente Wallace confirmou?');
+    const [n] = notificacao.emitir.mock.calls.map((c) => c[0]).filter((c) => c.usuarioId === 'joao');
+    expect(n.email.assunto).toBe('Pediram complemento na sua solicitação: Acordo de pagamento');
+    expect(n.email.linhas.join(' ')).toContain('Luís pediu um complemento');
+    semCliente(n.email);
+  });
+
+  it('reprovar: e-mail "não aprovada" ao solicitante, parecer só no Hub', async () => {
+    const { service, notificacao } = montar(aprovacao());
+    await service.decidir('ap-1', 'vicente', 'reprovar', 'Wallace sem renda comprovada.');
+    const [n] = notificacao.emitir.mock.calls.map((c) => c[0]).filter((c) => c.usuarioId === 'joao');
+    expect(n.titulo).toBe('Sua solicitação foi reprovada');
+    expect(n.email.assunto).toBe('Sua solicitação foi não aprovada: Acordo de pagamento');
+    expect(n.email.linhas.join(' ')).toContain('não aprovada por Vicente');
+    semCliente(n.email);
+  });
+
+  it('aprovar (completa): e-mail "aprovada" ao solicitante', async () => {
+    const reg = aprovacao({ decisoes: [{ usuarioId: 'luis', decisao: 'APROVADA', parecer: null, createdAt: new Date(), usuario: { nome: USUARIOS.luis } }] });
+    const { service, notificacao } = montar(reg);
+    const r = await service.decidir('ap-1', 'vicente', 'aprovar');
+    expect(r.status).toBe('aprovada');
+    const [n] = notificacao.emitir.mock.calls.map((c) => c[0]).filter((c) => c.usuarioId === 'joao');
+    expect(n.email.assunto).toBe('Sua solicitação foi aprovada: Acordo de pagamento');
+    semCliente(n.email);
+  });
+
+  it('recomendar (escalada): solicitante sabe; quem pode decidir é avisado de novo, menos solicitante e quem já decidiu', async () => {
+    const { service, notificacao } = montar(aprovacao(), false);
+    await service.decidir('ap-1', 'luis', 'recomendar', 'Endosso.');
+    const chamadas = notificacao.emitir.mock.calls.map((c) => c[0]);
+    expect(chamadas.find((c) => c.usuarioId === 'joao')).toMatchObject({ titulo: 'Sua solicitação foi recomendada', email: expect.objectContaining({ assunto: 'Sua solicitação foi recomendada: Acordo de pagamento' }) });
+    const escaladas = chamadas.filter((c) => c.titulo === 'Aprovação esperando por você (recomendada)');
+    expect(escaladas.map((c) => c.usuarioId)).toEqual(['vicente']); // nem João (solicitante) nem Luís (recomendou)
+    expect(escaladas[0].email.linhas.join(' ')).toContain('Recomendada por Luís');
   });
 });
