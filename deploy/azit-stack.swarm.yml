@@ -65,6 +65,9 @@ services:
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5}
       # Connector MCP do claude.ai (14/09): segredo da URL (>=24 chars)
       MCP_SECRET: ${MCP_SECRET:-}
+      # Entrar com Google (doc 06 v1.1 §2.2): client id público do cliente OAuth
+      # "Azit Hub Web" (stack.env). Vazio = botão do Google não aparece no login.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     # Uploads PERSISTENTES (correção 14/09): documentos anexados (CNH,
     # extratos, embasamento) eram gravados no filesystem do container e
     # SUMIAM a cada deploy — caso real do Lourenço. Volume nomeado resolve.

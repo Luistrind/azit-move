@@ -91,6 +91,15 @@ Botão "Entrar com Google" em destaque. O formulário de e-mail e senha fica rec
 - **Registro de acessos (`AcessoUsuario`, §9):** toda tentativa, com sucesso ou não, grava forma (`GOOGLE` | `SENHA` | `REFRESH`), resultado, motivo da falha (interno), IP, agente e horário no fuso do Brasil. Fica visível em Usuários e permissões (últimos acessos de cada usuário) e o próprio usuário vê os seus em "Minha conta".
 - **Encerrar todas as sessões:** botão no cadastro do usuário (Admin) e em "Minha conta" que revoga todos os refresh tokens; em até 15 minutos o acesso cai em todos os dispositivos (§3.1).
 
+> **Como foi aplicado no bloco 2 (13/11/2026) — divergências e escolhas anotadas, não resolvidas em silêncio:**
+> 1. **Limite por IP é por rota:** `POST /auth/login` e `POST /auth/google` têm contadores separados (10/min cada), pelo `@nestjs/throttler` com guard só nessas duas rotas (`LoginThrottlerGuard`); `/auth/refresh` não tem limite — toda a equipe atrás do mesmo NAT renova a cada 15 min. Resposta `429 { erro: 'muitas_tentativas' }` (api-spec §5). O IP real vem do `X-Forwarded-For` do Traefik (`trustProxy: true` no Fastify).
+> 2. **Bloqueio temporário por usuário fica em memória do processo** (`ControleBloqueioSenha`), não no Redis: o backend roda com uma réplica e o contador é proteção, não estado de negócio — reiniciar o serviço zera as contagens. Se o backend ganhar réplicas, trocar por Redis com a mesma interface. A entrada por senha de um usuário bloqueado registra motivo `bloqueado`; a 10ª falha já é registrada como `bloqueado` (foi ela que disparou).
+> 3. **`REFRESH` só é registrado em falha** (token inexistente, revogado, expirado ou usuário inativo). Registrar cada renovação bem-sucedida (uma a cada 15 min por sessão aberta) poluiria os "últimos 50 acessos" sem dizer nada sobre a entrada da pessoa. Consequência: o `emailTentado` é nulo quando o token é desconhecido (§9).
+> 4. **"Minha conta" mostra os acessos SEM o motivo interno** (forma, resultado, IP, dispositivo, quando); o motivo (`senha_desligada`, `sub_divergente`…) aparece só em Usuários e permissões, para o Admin. O doc não distinguia; a resposta genérica (§2.4) perderia sentido se o próprio usuário visse "senha desligada" na lista.
+> 5. **Desativar um usuário, excluí-lo e "religar conta Google" também encerram as sessões dele** (as sessões antigas podem ser do dono anterior do e-mail). Não estava escrito; é o comportamento seguro.
+> 6. **O e-mail da senha de reserva também aceita os dois domínios** (mesma função de localização `localizarPorEmail`, pela parte local): o doc só falava do Google, mas dois caminhos de busca divergentes seriam bug esperando.
+> 7. **Criação de usuário recusa a mesma caixa nos dois domínios** (`joao@azit.com.br` e `joao@azitmove.com.br` não viram dois usuários) e só ADMIN liga `permiteSenha` — na criação também (DIRETOR cria usuários, mas sem senha).
+
 ---
 
 ## 3. Estratégia de tokens
@@ -380,11 +389,14 @@ model Usuario {
 }
 
 // (v1.1) Registro de acessos — toda tentativa, com ou sem sucesso (§2.5).
+// Aplicado 13/11/2026 (tabela acessos_usuario, migration 20261113120000). Divergência
+// do desenho: `emailTentado` ficou OPCIONAL — falha de REFRESH com token desconhecido
+// e ID token do Google recusado antes de ler o e-mail não têm e-mail para gravar.
 model AcessoUsuario {
   id         String   @id @default(cuid())
   usuarioId  String?  // null quando o e-mail não corresponde a ninguém (fica só o emailTentado)
-  emailTentado String
-  forma      FormaAcesso   // GOOGLE | SENHA | REFRESH
+  emailTentado String? // null em falha de refresh/token sem e-mail (ver acima)
+  forma      FormaAcesso   // GOOGLE | SENHA | REFRESH (REFRESH só em falha — §2.5, nota 3)
   sucesso    Boolean
   motivo     String?  // interno: dominio_invalido, sub_divergente, senha_desligada, bloqueado, senha_invalida…
   ip         String?
@@ -491,6 +503,8 @@ POST /api/v1/auth/refresh
   → emite novo access token
   → (opcional) rotaciona refresh token
   → retorna { accessToken, refreshToken? }
+  (v1.1, 13/11) falha → 401 refresh_invalido + AcessoUsuario { forma: REFRESH, sucesso: false };
+                sucesso NÃO registra acesso (§2.5, nota 3)
 ```
 
 ### 10.4 Aprovação com alçada
@@ -552,7 +566,7 @@ POST /api/v1/acordos/:id/aprovar
 | Bloco | Conteúdo | Por que nesta ordem |
 |---|---|---|
 | **1. Áreas como autorização** | `PermissoesService.areasEfetivas` única; `AreaGuard` + `@Area`/`@AreaLivre` em todos os controllers (mapa §13); rotas da tela com área e página "Sem acesso"; links entre áreas desabilitados; teste que cobre todos os controllers | Fecha o furo aberto hoje (analista entrando na análise). Não depende de nada externo. |
-| **2. Entrar com Google + senha opcional** | `POST /auth/google`; `googleSub`, `permiteSenha`, `senhaHash` opcional; liga/desliga por usuário no Admin; rate limit; bloqueio temporário; `AcessoUsuario` com tela (últimos acessos, encerrar sessões); tela de login nova | Depende do cliente OAuth criado pelo Luís no Google Cloud da empresa. Migração: usuários existentes continuam com `permiteSenha = false`; o Admin liga para si antes do deploy em produção, como rede de segurança, e desliga depois de entrar pelo Google. |
+| **2. Entrar com Google + senha opcional** — **CONSTRUÍDO 13/11/2026, aguarda homolog** (mesma branch do bloco 1) | `POST /auth/google` + `GET /auth/config`; `googleSub`, `permiteSenha`, `senhaHash` opcional (migration 20261113120000); liga/desliga por usuário no Admin (motivo auditado); rate limit por IP (throttler); bloqueio temporário em memória; `AcessoUsuario` com tela (últimos acessos em Usuários e permissões e em "Minha conta", encerrar sessões, religar conta Google); tela de login nova; card "Google — entrada no sistema" em Integrações; auto-bloqueio §13.3 | Depende do cliente OAuth criado pelo Luís no Google Cloud da empresa (deploy/AMBIENTES.md §1.5). Migração: usuários existentes continuam com `permiteSenha = false`; o Admin liga para si antes do deploy em produção, como rede de segurança, e desliga depois de entrar pelo Google — passo a passo em deploy/AMBIENTES.md §1.6. Escolhas e divergências: §2.5 (nota), §9, §13.3. |
 | **3. Alertas por e-mail** | §12: remetente, fila, eventos, preferência por usuário, tela | Depende do mesmo projeto Google (conta de serviço) e das notificações dirigidas já existentes. Serve também à Fatura Azit (doc 02 §32). |
 
 Cada bloco é uma branch, um homolog e uma tag. Nenhum vai para produção sem validação do Luís no homolog.
@@ -673,7 +687,7 @@ Os destinatários de "pode decidir" saem da mesma função que a Central usa par
 ### 13.3 Matriz padrão e risco de auto-bloqueio
 
 - **Matriz padrão (placeholder, Regra 12).** A matriz papel × área nunca foi semeada: em banco novo ninguém teria área nenhuma e, com a área valendo como autorização, nem o Admin entraria. O seed passou a semear um padrão provisório **só quando a matriz está vazia** (nunca sobrescreve a matriz editada pelo Admin em produção): ADMIN e DIRETOR com todas; APROVADOR com Aprovações, Análise de cadastro, Comercial, Contratos, Carteira; OPERADOR com Comercial, Contratos, Carteira, Pessoas, Ativos e frota, Produtos (**sem** Análise de cadastro — o analista recebe por exceção, como em produção); FINANCEIRO com Financeiro administrativo, Carteira, Contratos, Pessoas. Editável na tela Usuários e permissões.
-- **Auto-bloqueio.** Como decidido no §7.5, ADMIN não é curinga: se o Admin retirar CONFIGURACOES de si mesmo (pela matriz do papel ADMIN ou por exceção), perde a tela Usuários e permissões e ninguém mais consegue devolver a área pela interface. Nenhuma guarda impede isso hoje. **Proposta a decidir:** espelhar a regra "o sistema nunca fica sem administrador ativo" (`exigirOutroAdmin`) em "nunca fica sem administrador ativo com a área Configurações".
+- **Auto-bloqueio — APLICADO no bloco 2 (13/11/2026).** Como decidido no §7.5, ADMIN não é curinga: se o Admin retirar CONFIGURACOES de si mesmo (pela matriz do papel ADMIN ou por exceção), perde a tela Usuários e permissões e ninguém mais consegue devolver a área pela interface. A regra "o sistema nunca fica sem administrador ativo" (`exigirOutroAdmin`) foi espelhada em **"nunca fica sem administrador ativo com a área Configurações"**: `PermissoesService.exigirAdminComConfiguracoes` carrega usuários + matriz, aplica a mutação pretendida numa cópia (conta pura `haAdminComConfiguracoes`) e, se depois dela não sobrar administrador ativo, não excluído, com CONFIGURACOES efetiva, responde `422 { erro: 'sem_admin_configuracoes' }` com a mensagem "conceda a área (ou o papel) a outro usuário antes". Cobre: célula da matriz (`PUT /permissoes/matriz`), exceção por usuário (`PUT /usuarios/:id/permissoes`), papéis e `ativo` (`PATCH /usuarios/:id`) e exclusão (`DELETE /usuarios/:id`). A guarda antiga por papel (`ultimo_admin`, 400) continua valendo — a nova é mais estrita (papel + área). Decisão aplicada como proposta no doc; o Luís confirma no homolog.
 
 ---
 
@@ -684,6 +698,7 @@ Os destinatários de "pode decidir" saem da mesma função que a Central usa par
 | 1.0 | jun/2025 | Documento original: dois mundos de identidade, tokens, RBAC, alçadas, guards, titular (desenho) |
 | 1.1 | 12/11/2026 | Entrar com Google (dois domínios), senha opcional por usuário, limite de tentativas e registro de acessos (§2, §10, §11.3); área de trabalho como autorização na API e na tela, `AreaGuard` e mapa módulo → área (§5.4, §7.5, §13); alertas por e-mail sobre notificações dirigidas (§12); ordem dos blocos (§11.6). Decisões Luís. |
 | 1.1.1 | 13/11/2026 | Bloco 1 aplicado: §13 passa a ser o mapa EM VIGOR (13.1), com as divergências do mapa inicial (13.2), a matriz padrão do seed e o risco de auto-bloqueio (13.3); formato do 403 com `mensagem` (§7.5). Aguarda homolog. |
+| 1.1.2 | 13/11/2026 | Bloco 2 aplicado (mesma branch): entrar com Google, senha de reserva por usuário, limite por IP, bloqueio temporário, registro de acessos com telas (Usuários e permissões, Minha conta, Integrações), auto-bloqueio do §13.3. Escolhas e divergências anotadas na §2.5 (nota), §9 (`emailTentado` opcional), §10.3 (REFRESH só em falha), §11.6. Aguarda homolog. |
 
 *Doc 6 — Autenticação e Permissões · Azit Move V3 · v1.1 · nov/2026*
 *Documentos relacionados: Doc 2 — Spec de Domínio · Doc 4 — Setup · Doc 5 — Prisma Schema*

@@ -67,9 +67,11 @@ else
   preparar_worktree "$WT" "$TAG"
   trap 'remover_worktree "$WT"' EXIT
   docker build -t "azit-backend:$TAG" -f "$WT/apps/backend/Dockerfile" "$WT"
+  [ -n "${GOOGLE_CLIENT_ID:-}" ] || aviso "GOOGLE_CLIENT_ID ausente em deploy/stack.env — o botão 'Entrar com Google' NÃO vai aparecer (doc 06 §2.2; valor em deploy/AMBIENTES.md §1.5)"
   docker build -t "azit-frontend:$TAG" \
     --build-arg VITE_API_URL=https://api.azitmove.com.br \
     --build-arg VITE_AMBIENTE=producao \
+    --build-arg VITE_GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}" \
     -f "$WT/apps/frontend/Dockerfile" "$WT"
 fi
 # :latest acompanha a release publicada (o up.sh/stack usa :latest).
