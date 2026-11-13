@@ -68,6 +68,15 @@ services:
       # Entrar com Google (doc 06 v1.1 §2.2): client id público do cliente OAuth
       # "Azit Hub Web" (stack.env). Vazio = botão do Google não aparece no login.
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      # Alertas por e-mail (doc 06 v1.1 §12.4): link dos e-mails, transporte
+      # (smtp-relay | gmail-api | nenhum), caixa remetente e, só no gmail-api, a
+      # chave da conta de serviço (base64 no stack.env). Padrão = não configurado.
+      APP_URL: https://app.azitmove.com.br
+      EMAIL_TRANSPORTE: ${EMAIL_TRANSPORTE:-nenhum}
+      EMAIL_REMETENTE: ${EMAIL_REMETENTE:-}
+      SMTP_HOST: ${SMTP_HOST:-smtp-relay.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${GOOGLE_SERVICE_ACCOUNT_JSON:-}
     # Uploads PERSISTENTES (correção 14/09): documentos anexados (CNH,
     # extratos, embasamento) eram gravados no filesystem do container e
     # SUMIAM a cada deploy — caso real do Lourenço. Volume nomeado resolve.

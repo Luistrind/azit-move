@@ -864,6 +864,44 @@ Inalterados; falha de refresh registra acesso `REFRESH` sem sucesso.
 - `GET /api/v1/usuarios/:id/acessos` → `{ acessos: Acesso[50], sessoesAtivas }` (com o motivo interno).
 - Auto-bloqueio (doc 06 §13.3): `PUT /permissoes/matriz`, `PUT /usuarios/:id/permissoes`, `PATCH /usuarios/:id` (papéis/ativo) e `DELETE /usuarios/:id` respondem `422 sem_admin_configuracoes` quando a mudança deixaria o sistema sem administrador ativo com a área Configurações.
 
+### 4.11 Alertas por e-mail *(doc 06 v1.1 §12 — bloco 3, 13/11/2026)*
+
+O e-mail é um segundo canal da **notificação dirigida** (tipo `APROVACAO` com `usuarioId`). Nada síncrono: a notificação enfileira na fila BullMQ `email` (3 tentativas, 1 → 2 → 4 min); o processor relê antes de enviar e descarta se a pessoa já leu, já decidiu ou a solicitação já foi decidida. Conteúdo sem dado pessoal do cliente (operação, valor, solicitante, data, link).
+
+#### Preferência do próprio usuário (autenticado, `@AreaLivre`)
+- `GET /api/v1/me/preferencias` → `{ ordemInicio?, emailAlertas? }` — `emailAlertas` ausente = **ligado**.
+- `PUT /api/v1/me/preferencias` — `{ "emailAlertas": false }` desliga (mescla com as demais preferências). Desligar não desliga o sino.
+
+#### Auditoria por usuário (área CONFIGURACOES, ADMIN/DIRETOR)
+`GET /api/v1/usuarios/:id/alertas-email`
+```json
+{ "email": "ana@azit.com.br", "emailAlertas": true,
+  "itens": [ { "id": "…", "titulo": "Aprovação esperando por você", "rota": "/aprovacoes/…", "em": "2026-11-13T15:00:00.000Z",
+               "lidaEm": null, "emailEnviadoEm": "2026-11-13T15:00:04.000Z", "emailFalha": null } ] }
+```
+`emailFalha` traz o código quando o e-mail não saiu: `email_nao_configurado`, `descartado_ja_lida`, `descartado_ja_decidiu`, `descartado_aprovacao_encerrada`, `destinatario_sem_email`, `nao_enfileirado: …` ou a mensagem do Gmail na falha definitiva.
+
+#### Central de integrações (área CONFIGURACOES, ADMIN/DIRETOR)
+`GET /api/v1/integracoes/email`
+```json
+{ "configurado": true, "transporte": "smtp-relay|gmail-api|nenhum", "descricao": "smtp-relay.gmail.com:587 · STARTTLS · sem autenticação (…)",
+  "remetente": "hub@azitmove.com.br", "fonte": "servidor",
+  "variaveis": ["EMAIL_TRANSPORTE", "EMAIL_REMETENTE", "SMTP_HOST", "SMTP_PORT", "GOOGLE_SERVICE_ACCOUNT_JSON", "APP_URL"], "console": "https://admin.google.com/ac/apps/gmail/routing",
+  "ultimos": [ { "id": "42", "para": "ana@azit.com.br", "assunto": "Aprovação esperando por você: Acordo de pagamento",
+                 "origem": { "tipo": "notificacao", "id": "…" }, "estado": "enviado|falhou|descartado|naoConfigurado|aguardando|tentando",
+                 "motivo": null, "tentativas": 1, "em": "2026-11-13T15:00:04.000Z" } ] }
+```
+A credencial nunca é devolvida. Com `EMAIL_TRANSPORTE=nenhum` (padrão) ou sem `EMAIL_REMETENTE`: `configurado: false`, e cada job termina como `naoConfigurado`.
+
+#### Eventos que geram notificação dirigida (e e-mail) — `AprovacaoService`
+| Evento | Destinatários | Assunto |
+|---|---|---|
+| criar | quem pode decidir pela alçada (`AlcadaService.usuariosAptos`), menos o solicitante | "Aprovação esperando por você: {operação}" |
+| recomendar (escalada) | solicitante; e de novo quem pode decidir, menos solicitante e quem já decidiu | "Sua solicitação foi recomendada: …" / "Aprovação esperando por você: …" |
+| pedir complemento | solicitante | "Pediram complemento na sua solicitação: …" |
+| responder complemento | quem pediu | "Responderam o complemento: …" |
+| aprovar (completa) / reprovar | solicitante | "Sua solicitação foi aprovada: …" / "Sua solicitação foi não aprovada: …" |
+
 ---
 
 ## 5. Modelos de Erro

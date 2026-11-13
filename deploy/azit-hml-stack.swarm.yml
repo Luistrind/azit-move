@@ -63,6 +63,15 @@ services:
       # Entrar com Google (doc 06 v1.1 §2.2): o MESMO cliente OAuth da produção
       # (origem hml já autorizada). Vazio = botão do Google não aparece no login.
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      # Alertas por e-mail (doc 06 v1.1 §12.4): o link aponta para o homolog; a
+      # caixa remetente e a chave podem ser as mesmas da produção (o Gmail não
+      # distingue) — o e-mail sai de verdade para o usuário de teste.
+      APP_URL: https://hml.azitmove.com.br
+      EMAIL_TRANSPORTE: ${EMAIL_TRANSPORTE:-nenhum}
+      EMAIL_REMETENTE: ${EMAIL_REMETENTE:-}
+      SMTP_HOST: ${SMTP_HOST:-smtp-relay.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${GOOGLE_SERVICE_ACCOUNT_JSON:-}
     volumes:
       - azit_uploads:/app/apps/backend/uploads
     networks: [azit_internal, PopCarrosNet]

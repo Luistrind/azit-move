@@ -27,6 +27,7 @@ docker build -t azit-frontend:hml \
   --build-arg VITE_GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}" \
   -f "$WT/apps/frontend/Dockerfile" "$WT"
 [ -n "${GOOGLE_CLIENT_ID:-}" ] || aviso "GOOGLE_CLIENT_ID ausente em deploy/stack-hml.env — o botão 'Entrar com Google' NÃO vai aparecer (doc 06 §2.2; valor em deploy/AMBIENTES.md §1.5)"
+{ [ "${EMAIL_TRANSPORTE:-nenhum}" != "nenhum" ] && [ -n "${EMAIL_REMETENTE:-}" ]; } || aviso "EMAIL_TRANSPORTE/EMAIL_REMETENTE não definidos em deploy/stack-hml.env — alertas por e-mail ficam 'não configurado' (doc 06 §12.4; passo a passo em deploy/AMBIENTES.md §1.7)"
 ok "Imagens azit-backend:hml e azit-frontend:hml prontas"
 
 etapa "3/5 Stack $STACK"

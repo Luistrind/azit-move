@@ -108,6 +108,44 @@ docker exec $(docker ps -qf name=azit-hml_azit-db) psql -U azit -d azit -c "upda
 4. Senha de reserva só por exceção, ligada por usuário em Usuários e permissões (auditada com motivo).
 
 ---
+**1.7 Bloco 3 do doc 06 v1.1 — alertas por e-mail (13/11/2026): relay SMTP do Workspace (escolhido) ou API do Gmail (alternativa)**
+
+O backend tem dois transportes atrás da mesma interface, escolhidos por `EMAIL_TRANSPORTE` no stack.env. Sem a variável (ou `nenhum`) a fila registra `email_nao_configurado` em cada notificação dirigida e o sino segue normal — é o estado do dev local e do homolog até o Luís configurar.
+
+**Caminho escolhido — `EMAIL_TRANSPORTE=smtp-relay` (relay SMTP do Workspace).** Sem usuário nem senha: o Google aceita o e-mail porque o **IP do servidor** está liberado no Admin do Workspace. Nada de chave, nada de segredo no servidor além do que já existe.
+
+1. **Admin do Workspace** (admin.google.com, conta de administrador): Apps › Google Workspace › Gmail › **Roteamento** › "Serviço de relay SMTP" › Configurar:
+   - Remetentes permitidos: **somente endereços dos meus domínios**;
+   - Autenticação: marcar **"Aceitar somente e-mails dos endereços IP especificados"** e adicionar o IP do VPS **`147.79.81.186`** (nome "Azit Hub"); **não** exigir autenticação SMTP;
+   - Criptografia: **exigir TLS**. Salvar (pode levar até 1 h para valer).
+2. **Caixa remetente**: decidir o endereço (sugestão: `hub@azitmove.com.br`) — precisa existir no Workspace como usuário ou grupo, para o SPF/DKIM do domínio assinarem e para as respostas terem destino.
+3. **Variáveis** (as stacks já passam `SMTP_HOST`/`SMTP_PORT` com os padrões `smtp-relay.gmail.com`/`587`; só se mexe se o Google mudar):
+
+```bash
+echo 'EMAIL_TRANSPORTE=smtp-relay' >> /opt/azit/deploy/stack.env
+echo 'EMAIL_REMETENTE=hub@azitmove.com.br' >> /opt/azit/deploy/stack.env
+# homolog: as mesmas duas linhas em /opt/azit/deploy/stack-hml.env (mesmo IP, mesma caixa — o link do e-mail aponta para hml)
+```
+
+4. Deploy (hml e depois prod) e conferir em **Configurações › Integrações › "E-mail (Gmail do Workspace)"**: transporte ativo "Relay SMTP do Workspace", estado CONFIGURADO, remetente certo e, após uma solicitação de teste, os últimos envios da fila.
+
+   Em **dev local** o relay não funciona (o IP da máquina não está liberado): deixe `EMAIL_TRANSPORTE=nenhum`.
+
+Erros típicos do relay (aparecem no card como "Falhou" e no sino da área Configurações como "Falha ao enviar e-mail"):
+- `421 4.7.0 Try again later` / `550 5.7.1 Invalid credentials for relay` → o IP do servidor não está na lista do relay (ou a configuração ainda não propagou);
+- `550 5.7.1 ... not authorized to send from` → o remetente não é de um domínio do Workspace;
+- `STARTTLS` / `self signed` → porta errada (use 587) ou interceptação de rede.
+
+**Alternativa — `EMAIL_TRANSPORTE=gmail-api` (API do Gmail com conta de serviço).** Fica no código para o dia em que a política permitir a chave.
+
+- Já feito (13/11/2026, projeto `azit-hub`): conta de serviço **`azit-hub-email@azit-hub.iam.gserviceaccount.com`** (ID do cliente OAuth 2 `110335453739163520490`), **API do Gmail ativada**, delegação de domínio iniciada no Admin do Workspace (escopo `https://www.googleapis.com/auth/gmail.send`).
+- **Bloqueio atual**: a organização tem a política padrão `iam.managed.disableServiceAccountKeyCreation`, que impede gerar a chave JSON da conta de serviço. Sem a chave este caminho não funciona — por isso o relay SMTP foi o escolhido.
+- Se um dia a chave for liberada: baixar o JSON e colocar no stack.env em **base64 de uma linha** (`echo "GOOGLE_SERVICE_ACCOUNT_JSON=$(base64 -w0 /opt/azit/deploy/azit-hub-email.json)" >> /opt/azit/deploy/stack.env`), `EMAIL_TRANSPORTE=gmail-api`, `EMAIL_REMETENTE` = caixa impersonada. O backend aceita também o JSON cru ou um caminho de arquivo (só dev local; o Swarm não monta o arquivo). A chave é segredo: nunca no repositório, nunca em log, nunca na tela. Erros típicos: `unauthorized_client` (delegação não salva para este id / sem o escopo), `Delegation denied` (caixa inexistente), `invalid_grant` (relógio ou chave revogada).
+
+Migração do banco (roda no deploy, aditiva): `notificacoes.emailEnviadoEm` e `notificacoes.emailFalha`.
+
+---
+
 ## 2. Dia a dia — do seu computador até a produção
 
 A regra é uma só: **na produção só entra o que foi testado no homolog.** O

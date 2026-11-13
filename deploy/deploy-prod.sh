@@ -68,6 +68,7 @@ else
   trap 'remover_worktree "$WT"' EXIT
   docker build -t "azit-backend:$TAG" -f "$WT/apps/backend/Dockerfile" "$WT"
   [ -n "${GOOGLE_CLIENT_ID:-}" ] || aviso "GOOGLE_CLIENT_ID ausente em deploy/stack.env — o botão 'Entrar com Google' NÃO vai aparecer (doc 06 §2.2; valor em deploy/AMBIENTES.md §1.5)"
+  { [ "${EMAIL_TRANSPORTE:-nenhum}" != "nenhum" ] && [ -n "${EMAIL_REMETENTE:-}" ]; } || aviso "EMAIL_TRANSPORTE/EMAIL_REMETENTE não definidos em deploy/stack.env — alertas por e-mail ficam 'não configurado' (doc 06 §12.4; passo a passo em deploy/AMBIENTES.md §1.7)"
   docker build -t "azit-frontend:$TAG" \
     --build-arg VITE_API_URL=https://api.azitmove.com.br \
     --build-arg VITE_AMBIENTE=producao \

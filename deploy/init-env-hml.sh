@@ -36,6 +36,17 @@ ANTHROPIC_API_KEY=
 # Entrar com Google (doc 06 v1.1 §2.2): o MESMO cliente OAuth serve homolog e produção
 # (origem https://hml.azitmove.com.br já autorizada — deploy/AMBIENTES.md §1.5). É público.
 GOOGLE_CLIENT_ID=43681993535-8orbgnirmtc7p3lbu5ov0f2hvfp46g58.apps.googleusercontent.com
+# Alertas por e-mail (doc 06 v1.1 §12.4 — passo a passo em deploy/AMBIENTES.md §1.7).
+# EMAIL_TRANSPORTE: smtp-relay (relay SMTP do Workspace, o ESCOLHIDO — sem senha,
+# IP do servidor liberado no Admin), gmail-api (conta de serviço; exige a chave
+# JSON em GOOGLE_SERVICE_ACCOUNT_JSON, hoje bloqueada pela política da
+# organização) ou nenhum (padrão: a fila registra "não configurado" e o sino segue).
+# EMAIL_REMETENTE: caixa do domínio que assina os e-mails (ex.: hub@azitmove.com.br).
+EMAIL_TRANSPORTE=nenhum
+EMAIL_REMETENTE=
+SMTP_HOST=smtp-relay.gmail.com
+SMTP_PORT=587
+GOOGLE_SERVICE_ACCOUNT_JSON=
 EOF
 chmod 600 "$ARQ"
 
