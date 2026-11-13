@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import { formatCurrency, formatDate, CLASSIFICACOES_CONFERENCIA_ASAAS, type ClassificacaoConferenciaAsaas } from '@azit/utils';
 import { conferenciaAsaasService, type LinhaConferenciaAsaas } from '../services/conferencia-asaas.service';
 import { Modal } from '../components/Modal';
@@ -9,7 +8,8 @@ import { Tabela, type Coluna } from '../components/Tabela';
 import { StatusBadge } from '../components/StatusBadge';
 import { Botao } from '../components/Botao';
 import { toast } from '../components/Toast';
-import { mensagemErro } from '../lib/permissoes';
+import { mensagemErro, AREAS_ROTA_FICHA_TITULAR } from '../lib/permissoes';
+import { horaBR } from '../lib/datas';
 import {
   COBRANCA_ASAAS_STATUS_LABEL,
   CONFERENCIA_ASAAS_COLORS,
@@ -17,6 +17,7 @@ import {
   FATURA_SITUACAO_COLORS,
   FATURA_SITUACAO_LABEL,
 } from '../config/statusColors';
+import { LinkArea } from '../components/LinkArea';
 
 // Conferência Asaas × sistema (doc 02 §27.9, 12/11/2026) — bloco da Carteira,
 // aberto pela lista de vencidas. Composição de componentes GENÉRICOS (Modal,
@@ -86,7 +87,7 @@ export function ConferenciaAsaasModal({ open, onClose, de, ate, rotulo }: {
     {
       chave: 'cliente',
       titulo: 'Cliente',
-      render: (l) => <Link to={`/titulares/${l.titularId}`} style={{ color: 'var(--text-primary)' }}>{l.titular}</Link>,
+      render: (l) => <LinkArea area={AREAS_ROTA_FICHA_TITULAR} to={`/titulares/${l.titularId}`} style={{ color: 'var(--text-primary)' }}>{l.titular}</LinkArea>,
     },
     {
       chave: 'fatura',
@@ -185,7 +186,7 @@ export function ConferenciaAsaasModal({ open, onClose, de, ate, rotulo }: {
                 </span>
               ) : null}
               <span className="ml-auto text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                {dados.ambiente === 'producao' ? 'Asaas produção' : dados.ambiente === 'sandbox' ? 'Asaas sandbox' : 'Asaas simulado'} · lido {new Date(dados.consultadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                {dados.ambiente === 'producao' ? 'Asaas produção' : dados.ambiente === 'sandbox' ? 'Asaas sandbox' : 'Asaas simulado'} · lido {horaBR(dados.consultadoEm)}
               </span>
               <Botao tamanho="sm" variante="fantasma" onClick={() => void conferencia.refetch()} carregando={conferencia.isFetching}>Atualizar</Botao>
             </div>
