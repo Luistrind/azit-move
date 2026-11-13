@@ -79,6 +79,17 @@ docker tag "azit-backend:$TAG" azit-backend:latest
 docker tag "azit-frontend:$TAG" azit-frontend:latest
 
 etapa "3/5 Atualizando os serviços"
+# Reaplica o SPEC do stack da própria tag (variáveis de ambiente, volumes, labels)
+# antes de trocar a imagem. Caso real 13/11: v1.8.0 trouxe GOOGLE_CLIENT_ID no
+# azit-stack.swarm.yml e no stack.env, mas só o `service update --image` rodava —
+# o backend de produção subiu SEM a variável e ninguém conseguiu entrar pelo Google.
+# O homolog nunca teve o problema porque o deploy-hml.sh faz `stack deploy`.
+# Serviço cujo spec não mudou (banco, redis) não é reiniciado pelo stack deploy.
+SPEC="$BUILD_ROOT/azit-stack.$TAG.swarm.yml"
+mkdir -p "$BUILD_ROOT"
+git -C "$REPO_DIR" show "$TAG:deploy/azit-stack.swarm.yml" > "$SPEC"
+docker stack deploy -c "$SPEC" "$STACK" >/dev/null
+rm -f "$SPEC"
 docker service update --force --quiet --image "azit-backend:$TAG" "${STACK}_backend" >/dev/null
 CID=$(aguardar_servico "${STACK}_backend")
 ok "Backend $TAG no ar"

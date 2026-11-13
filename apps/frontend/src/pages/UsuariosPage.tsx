@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ROTULO_ENTRADA_USUARIO } from '@azit/types';
+import { AreaSistema, ROTULO_ENTRADA_USUARIO } from '@azit/types';
+
+// Total de áreas vem do enum, nunca chumbado (caso 13/11: a tela dizia "11 de 10 áreas").
+const TOTAL_AREAS = Object.values(AreaSistema).length;
 import { SENHA_MINIMO_CARACTERES, ehEmailWorkspace } from '@azit/utils';
 import {
   usuarioService,
@@ -125,7 +128,7 @@ function ListaUsuarios({ onMudou }: { onMudou: () => void }) {
       titulo: 'Áreas com acesso',
       render: (u) => (
         <span className="whitespace-normal">
-          {u.areasEfetivas.length === 10 ? 'Todas as áreas' : `${u.areasEfetivas.length} de 10 áreas`}
+          {u.areasEfetivas.length >= TOTAL_AREAS ? 'Todas as áreas' : `${u.areasEfetivas.length} de ${TOTAL_AREAS} áreas`}
           {u.excecoes.length > 0 && (
             <span className={`${pilula} ml-[6px]`} style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
               {u.excecoes.length} exceção{u.excecoes.length > 1 ? 'es' : ''}
