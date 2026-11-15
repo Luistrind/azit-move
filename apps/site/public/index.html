@@ -122,8 +122,8 @@ section{padding-block:72px}
 
 .provas{border-top:1px solid #16243a}
 .provas .wrap{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 28px;padding-block:20px}
-.provas div{display:flex;gap:10px;align-items:flex-start;font-size:14.5px;color:var(--sobre-escuro)}
-.provas div::before{content:"";flex:none;width:9px;height:9px;border-radius:50%;background:var(--laranja);margin-top:7px}
+.provas .wrap>div{display:flex;gap:10px;align-items:flex-start;font-size:14.5px;color:var(--sobre-escuro)}
+.provas .wrap>div::before{content:"";flex:none;width:9px;height:9px;border-radius:50%;background:var(--laranja);margin-top:7px}
 @media (max-width:760px){.provas .wrap{grid-template-columns:minmax(0,1fr)}}
 
 /* a conta (aluguel x Azit) */
@@ -276,7 +276,7 @@ footer a{color:var(--sobre-escuro)}
           <p class="lead">Venda parcelada direto com a Azit para quem trabalha com o carro na Grande Vitória. Análise pela sua renda real<span data-camp> e, só nesta Black Friday, entrada pela metade</span>.</p>
           <div class="placas">
             <div class="placa"><small>ENTRADA</small><span data-camp><s>R$ 3.990</s><i>por</i>R$ 1.990</span><span data-fora hidden>R$ 3.990</span></div>
-            <div class="placa"><small>CARRO A PARTIR DE</small><span>R$ 99,90<i>por dia</i></span></div>
+            <div class="placa"><small>SEU CARRO A PARTIR DE</small><span>R$ 99,90<i>por dia</i></span></div>
           </div>
           <div class="acao">
             <a class="btn" data-zap="Olá! Vi o site da Azit Move e quero saber da entrada." href="#"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z"/></svg><span data-camp>Quero minha entrada de R$ 1.990</span><span data-fora hidden>Quero falar com a Azit</span></a>
