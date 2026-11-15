@@ -13,6 +13,9 @@ export interface AppConfig {
   // WhatsApp de atendimento mostrado no rodapé da fatura (provisório até a
   // central de parâmetros da empresa ter o campo).
   atendimentoWhatsapp: string;
+  // Recebedor mostrado ao lado do Pix na Fatura Azit (doc 02 §32.2/§32.8): nome e
+  // CNPJ de quem recebe — precisa bater com o que o cliente vê no app do banco.
+  faturaRecebedor: { nome: string; cnpj: string };
   databaseUrl: string;
   redisUrl: string;
   jwt: { secret: string; accessExpiresIn: string; refreshExpiresInDays: number };
@@ -40,6 +43,12 @@ export default (): AppConfig => ({
   frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:3000',
   faturaPublicaUrl: process.env.FATURA_PUBLICA_URL ?? 'http://localhost:3002',
   atendimentoWhatsapp: process.env.AZIT_WHATSAPP_ATENDIMENTO ?? '',
+  // Padrão = a vendedora dos contratos (templates do funil). PROVISÓRIO (Regra
+  // 12): confirmar com o titular da conta no gateway antes de ligar em produção.
+  faturaRecebedor: {
+    nome: process.env.FATURA_RECEBEDOR_NOME ?? 'Azit Comércio de Veículos Ltda',
+    cnpj: process.env.FATURA_RECEBEDOR_CNPJ ?? '57.265.780/0001-19',
+  },
   databaseUrl: process.env.DATABASE_URL ?? '',
   redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
   jwt: {

@@ -1,14 +1,15 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
-import type { FaturaPublica, ItemFaturaPublica, PixFaturaPublica, SituacaoFaturaPublica, SituacaoFaturaPublicaResumo } from '@azit/types';
+import type { ContaFaturaPublica, FaturaPublica, ItemFaturaPublica, PixFaturaPublica, PixSobDemandaPublico, SituacaoFaturaPublica, SituacaoFaturaPublicaResumo } from '@azit/types';
 import {
-  chaveProdutoItemFatura,
   dataCalendarioUTC,
   dataHojeBrasil,
   detalharEncargoAtraso,
   diasAtrasoCalendario,
   faturaQuitada,
+  horaBrasil,
+  inicioDiaUTC,
   mascararDocumento,
   primeiroNome,
   situacaoFaturaRuntime,
@@ -17,9 +18,13 @@ import {
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasLeituraService } from '../asaas/asaas-leitura.service';
 import { tiposDosContratos } from '../contrato/tipo-contrato';
-import { TOKEN_FATURA_RE } from '../cobranca/fatura-link';
+import { TOKEN_FATURA_RE, whatsappParaWaMe } from '../cobranca/fatura-link';
+import { ContaFaturaService } from '../faturamento/conta-fatura.service';
+import { IntencaoPagamentoService, opcoesDePagamento } from '../faturamento/intencao-pagamento.service';
+import { apresentarItemFatura, contratosDosItens, INCLUDE_ITEM_FATURA } from '../faturamento/itens-fatura';
 import { comNavegador, htmlParaPdf } from '../dossie/pdf';
 import { payloadPixSimulado, valorDoPayloadPix } from '../asaas/pix';
+import { htmlFaturaAzitPdf } from './fatura-azit-pdf';
 import { htmlFaturaPdf } from './fatura-publica-pdf';
 
 const cent = (d: Prisma.Decimal | null | undefined): number => (d ? Math.round(Number(d.toString()) * 100) : 0);
@@ -42,67 +47,194 @@ export class FaturaPublicaService {
     private readonly prisma: PrismaService,
     private readonly asaasLeitura: AsaasLeituraService,
     private readonly config: ConfigService,
+    private readonly contaFatura: ContaFaturaService,
+    private readonly intencao: IntencaoPagamentoService,
   ) {}
 
+  // Fatura do modelo AZIT (Pix sob demanda, doc 02 §32.4-A) projeta a CONTA; a
+  // do modelo antigo segue exatamente como na F1.
   async porToken(token: string): Promise<FaturaPublica> {
     const f = await this.carregar(token);
-    return this.projetar(f, true);
+    return f.modeloEncargo === 'AZIT' ? this.projetarAzit(f) : this.projetar(f, true);
   }
 
   // Consulta leve para a página aberta (polling): só o que muda com o pagamento.
   async situacao(token: string): Promise<SituacaoFaturaPublicaResumo> {
     const f = await this.carregar(token);
-    const p = await this.projetar(f, false);
-    return { situacao: p.situacao, pagaParcialmente: p.pagaParcialmente, valorPago: p.valorPago, totalHoje: p.totalHoje, dataPagamento: p.dataPagamento };
+    const p = f.modeloEncargo === 'AZIT' ? await this.projetarAzit(f) : await this.projetar(f, false);
+    return {
+      situacao: p.situacao,
+      pagaParcialmente: p.pagaParcialmente,
+      valorPago: p.valorPago,
+      totalHoje: p.totalHoje,
+      dataPagamento: p.dataPagamento,
+      ...(p.conta ? { assinatura: p.conta.assinatura } : {}),
+    };
   }
 
-  async pdf(token: string): Promise<{ pdf: Buffer; nomeArquivo: string }> {
+  // PDF da fatura do link — ou, no modelo AZIT, de outra fatura da MESMA conta
+  // que a página já mostra (`numero`), sem expor o link dela.
+  async pdf(token: string, numero?: number): Promise<{ pdf: Buffer; nomeArquivo: string }> {
     const f = await this.carregar(token);
-    const p = await this.projetar(f, true);
-    const html = htmlFaturaPdf(p);
+    let html: string;
+    let paga: boolean;
+    let numeroFatura = f.numero;
+    if (f.modeloEncargo === 'AZIT') {
+      const p = await this.projetarAzit(f);
+      const conta = p.conta!;
+      const alvo = numero ? conta.faturas.find((x) => x.numero === numero) : conta.faturas.find((x) => x.id === conta.faturaDoLink);
+      if (!alvo) throw this.indisponivel();
+      numeroFatura = alvo.numero;
+      const r = htmlFaturaAzitPdf(p, alvo.id);
+      html = r.html;
+      paga = r.paga;
+    } else {
+      const p = await this.projetar(f, true);
+      html = htmlFaturaPdf(p);
+      paga = p.situacao === 'paga';
+    }
     const pdf = await comNavegador((b) => htmlParaPdf(b, html));
-    const nome = p.situacao === 'paga' ? `comprovante-fatura-${p.numero}.pdf` : `fatura-azit-${p.numero}.pdf`;
-    return { pdf, nomeArquivo: nome };
+    return { pdf, nomeArquivo: paga ? `comprovante-fatura-${numeroFatura}.pdf` : `fatura-azit-${numeroFatura}.pdf` };
+  }
+
+  // Pix sob demanda (doc 02 §32.4-A): o cliente escolheu um valor na página.
+  // O servidor VALIDA o valor pela regra do motor (nunca confia na tela), reusa
+  // a intenção ativa de mesmo valor no dia e devolve o código.
+  async criarIntencao(token: string, valor: number): Promise<PixSobDemandaPublico> {
+    const f = await this.carregar(token);
+    if (f.modeloEncargo !== 'AZIT') {
+      throw new UnprocessableEntityException({ erro: 'modelo_antigo', mensagem: 'Esta fatura é paga pelo Pix que já aparece na página.' });
+    }
+    const i = await this.intencao.criar({ contaId: f.contaId, valor, origem: 'PAGINA_PUBLICA' });
+    return {
+      valor: i.valor,
+      copiaECola: i.pixCopiaECola,
+      qrCodeImagem: i.pixQrCodeImagem,
+      validoAte: i.validoAte.toISOString(),
+      simulado: i.simulado,
+      outroValor: i.outroValor,
+      faturas: i.faturas.map((x) => ({ numero: x.numero, vencimento: x.vencimento, valor: x.valor })),
+    };
+  }
+
+  // Link inválido ou regenerado (§32.2): "Não encontramos esta fatura", sem
+  // revelar nada da conta — só o WhatsApp da Azit, para a página orientar.
+  private indisponivel(): NotFoundException {
+    const atendimento = this.config.get<string>('atendimentoWhatsapp') || null;
+    return new NotFoundException({ erro: 'fatura_indisponivel', mensagem: 'Fatura indisponível', atendimentoWhatsapp: atendimento, atendimentoWhatsappLink: whatsappParaWaMe(atendimento) });
+  }
+
+  // Muda quando entra pagamento em QUALQUER fatura da conta, quando o dia vira
+  // ou quando o Pix ativo muda — a página aberta recarrega.
+  private assinatura(c: Omit<ContaFaturaPublica, 'assinatura'>): string {
+    const pagamentos = c.motor.faturas.map((x) => `${x.id}:${x.pagamentos.length}:${x.pagamentos.reduce((t, p) => t + p.valor, 0)}`).join('|');
+    return `${c.hoje}#${pagamentos}#${c.antigasEmAberto.length}#${c.pix ? `${c.pix.valor}@${c.pix.validoAte}` : ''}`;
+  }
+
+  // Projeção da CONTA do modelo AZIT (§32.4-A, §32.6-A): as faturas em aberto
+  // (mais as pagas recentes), os itens com nome, os Pix recebidos e a entrada do
+  // motor. Os campos da F1 (totalHoje, encargo, …) saem da MESMA conta, para o
+  // PDF e o polling.
+  private async projetarAzit(f: Awaited<ReturnType<FaturaPublicaService['carregar']>>): Promise<FaturaPublica> {
+    const hoje = dataHojeBrasil();
+    const [conta, ativa, proxima] = await Promise.all([
+      this.contaFatura.carregar(f.contaId, { incluirFaturaId: f.id }),
+      this.intencao.ativaDaConta(f.contaId),
+      // Próxima fatura ainda não disponível (vence depois de hoje).
+      this.prisma.db.fatura.findFirst({ where: { contaId: f.contaId, status: 'ABERTA', dataVencimento: { gt: inicioDiaUTC(hoje) } }, orderBy: { dataVencimento: 'asc' }, select: { dataVencimento: true } }),
+    ]);
+    const k = this.contaFatura.projetar(conta, hoje);
+    const opcoes = opcoesDePagamento(conta, k);
+    const daConta = conta.faturas.find((x) => x.id === f.id);
+    const projetada = k.faturas.find((x) => x.id === f.id);
+    if (!daConta || !projetada) throw this.indisponivel();
+
+    const contratosDoLink = [...contratosDosItens(f.itensFatura).values()];
+    const pixAtivo: PixSobDemandaPublico | null =
+      ativa && ativa.pixCopiaECola
+        ? {
+            valor: cent(ativa.valor),
+            copiaECola: ativa.pixCopiaECola,
+            qrCodeImagem: ativa.pixQrCodeImagem,
+            validoAte: ativa.validoAte.toISOString(),
+            simulado: ativa.simulado,
+            outroValor: ativa.outroValor,
+            faturas: ((ativa.faturasPretendidas as unknown as { numero: number; vencimento: string; valor: number }[]) ?? []).map((x) => ({ numero: x.numero, vencimento: x.vencimento, valor: x.valor })),
+          }
+        : null;
+    const recebedor = this.config.get<{ nome: string; cnpj: string }>('faturaRecebedor') ?? { nome: 'Azit Move', cnpj: '' };
+    const atendimento = this.config.get<string>('atendimentoWhatsapp') || null;
+
+    const semAssinatura: Omit<ContaFaturaPublica, 'assinatura'> = {
+      hoje,
+      faturaDoLink: f.id,
+      faturas: conta.faturas.map((x) => ({
+        id: x.id,
+        numero: x.numero,
+        vencimento: x.vencimento,
+        contratos: x.id === f.id ? contratosDoLink.map((c) => c.numero) : [],
+        itens: x.itens.map((it) => ({ id: it.id, titulo: it.titulo, subtitulo: it.subtitulo, produto: it.produto })),
+        // Mesma ordem dos pagamentos do motor (valor zero = só registro de excedente, fica fora).
+        recebidos: x.pagamentos.filter((p) => p.valor > 0).map((p) => ({ data: p.data, hora: p.pagoEm ? horaBrasil(p.pagoEm) : null, valor: p.valor, identificador: p.identificadorPix })),
+      })),
+      motor: {
+        faturas: conta.faturas.map((x) => x.motor),
+        parametros: { cascata: conta.parametros.cascata, minimoParcialPct: conta.parametros.minimoParcialPct, minimoParcialPiso: conta.parametros.minimoParcialPiso },
+      },
+      mista: opcoes.mista,
+      antigasEmAberto: conta.abertasModeloAntigo.map((a) => ({ numero: a.numero, vencimento: a.vencimento, valor: a.valor })),
+      pix: pixAtivo,
+      recebedor,
+      atendimentoWhatsappLink: whatsappParaWaMe(atendimento),
+      proximoVencimento: proxima ? dataCalendarioUTC(proxima.dataVencimento) : null,
+    };
+    const contaPublica: ContaFaturaPublica = { ...semAssinatura, assinatura: this.assinatura(semAssinatura) };
+
+    const paga = projetada.situacao === 'paga';
+    const situacao: SituacaoFaturaPublica = paga ? 'paga' : projetada.diasAtraso > 0 ? 'vencida' : projetada.vencimento === hoje ? 'vence_hoje' : 'em_aberto';
+    const primeiroAtivo = contratosDoLink.find((c) => c.ativo)?.ativo ?? null;
+    const recebidos = daConta.pagamentos.filter((p) => p.valor > 0);
+    const ultimo = recebidos.at(-1);
+    return {
+      numero: f.numero,
+      situacao,
+      pagaParcialmente: projetada.situacao === 'parcial',
+      titular: { primeiroNome: primeiroNome(f.conta.titular.nome), documentoMascarado: mascararDocumento(f.conta.titular.cpfCnpj) },
+      veiculo: primeiroAtivo ? { descricao: [primeiroAtivo.marca, primeiroAtivo.modelo].filter(Boolean).join(' ').trim() || primeiroAtivo.descricao, placa: primeiroAtivo.placa ?? null } : null,
+      contratos: contratosDoLink.map((c) => c.numero),
+      vencimento: projetada.vencimento,
+      dataPagamento: paga && ultimo ? ultimo.data : null,
+      itens: daConta.itens.map((it) => ({ titulo: it.titulo, subtitulo: it.subtitulo, produto: it.produto, valor: it.valor })),
+      encargo: !paga && projetada.diasAtraso > 0 ? { multa: projetada.encargo.multa, atualizacao: projetada.encargo.atualizacao, diasAtraso: projetada.diasAtraso, fonte: 'calculo' } : null,
+      valorNominal: projetada.face,
+      valorPago: projetada.pagoTotal,
+      saldoNominal: projetada.saldoNominal,
+      totalHoje: projetada.totalHoje,
+      pagamentos: recebidos.map((p) => ({ data: p.data, valor: p.valor })),
+      pix: pixAtivo ? { payload: pixAtivo.copiaECola, valor: pixAtivo.valor, expiraEm: pixAtivo.validoAte, simulado: pixAtivo.simulado } : null,
+      atendimentoWhatsapp: atendimento,
+      geradoEm: new Date().toISOString(),
+      conta: contaPublica,
+    };
   }
 
   // ---------------------------------------------------------------
 
   private async carregar(token: string) {
-    if (!TOKEN_FATURA_RE.test(token)) throw new NotFoundException({ erro: 'fatura_indisponivel', mensagem: 'Fatura indisponível' });
+    if (!TOKEN_FATURA_RE.test(token)) throw this.indisponivel();
     const f = await this.prisma.db.fatura.findFirst({
       where: { tokenPublico: token, deletedAt: null },
       include: {
         conta: { include: { titular: { select: { nome: true, cpfCnpj: true } } } },
-        itensFatura: {
-          orderBy: { createdAt: 'asc' },
-          include: {
-            parcela: {
-              include: {
-                itemContratado: {
-                  include: {
-                    contrato: {
-                      select: {
-                        id: true,
-                        numero: true,
-                        snapshotJson: true,
-                        ativo: { select: { tipo: true, descricao: true, marca: true, modelo: true, placa: true } },
-                        novacaoComoTermo: { select: { id: true } },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
+        itensFatura: { orderBy: { createdAt: 'asc' }, include: INCLUDE_ITEM_FATURA },
         parcelas: { include: { contrato: { select: { taxaMultaAtraso: true, taxaJurosAtraso: true } } } },
       },
     });
-    if (!f) throw new NotFoundException({ erro: 'fatura_indisponivel', mensagem: 'Fatura indisponível' });
+    if (!f) throw this.indisponivel();
     // Fatura extinta (novação/rescisão) não é cobrança do cliente: a página
     // responde indisponível em vez de mostrar valores que não valem mais.
     if (f.status === 'NOVADA' || f.status === 'RESCINDIDA' || f.status === 'RENEGOCIADA') {
-      throw new NotFoundException({ erro: 'fatura_indisponivel', mensagem: 'Fatura indisponível' });
+      throw this.indisponivel();
     }
     return f;
   }
@@ -127,12 +259,9 @@ export class FaturaPublicaService {
     const saldoNominal = quitada ? 0 : Math.max(0, valorNominal - valorPago);
     const pagaParcialmente = !quitada && valorPago > 0;
 
-    // Tipo de cada contrato envolvido (uma classificação por contrato — como a carteira).
-    const contratos = new Map<string, NonNullable<(typeof f.itensFatura)[number]['parcela']>['itemContratado']['contrato']>();
-    for (const it of f.itensFatura) {
-      const c = it.parcela?.itemContratado.contrato;
-      if (c && !contratos.has(c.id)) contratos.set(c.id, c);
-    }
+    // Itens com o nome que o cliente lê — UMA montagem (faturamento/itens-fatura),
+    // a mesma da conta AZIT, do PDF e da ficha.
+    const contratos = contratosDosItens(f.itensFatura);
     const tipos: Map<string, TipoContrato> = await tiposDosContratos(this.prisma.db, [...contratos.values()]);
 
     const primeiroAtivo = [...contratos.values()].find((c) => c.ativo)?.ativo ?? null;
@@ -141,49 +270,8 @@ export class FaturaPublicaService {
       : null;
 
     const itens: ItemFaturaPublica[] = f.itensFatura.map((it) => {
-      const contrato = it.parcela?.itemContratado.contrato ?? null;
-      const tipoContrato = contrato ? (tipos.get(contrato.id) ?? null) : null;
-      const chave = chaveProdutoItemFatura({
-        tipo: it.tipo,
-        descricao: it.descricao,
-        valor: cent(it.valor),
-        origemItem: it.parcela?.itemContratado.origem ?? null,
-        tipoContrato,
-      });
-      const ativo = contrato?.ativo ?? null;
-      const nomeVeiculo = ativo ? [ativo.marca, ativo.modelo].filter(Boolean).join(' ').trim() || ativo.descricao : null;
-      const parcelaDe = it.parcela ? `Parcela ${it.parcela.numero} de ${it.parcela.totalParcelas}` : null;
-      const objeto = it.parcela?.itemContratado.descricao ?? it.descricao;
-      let titulo = chave.rotulo;
-      let subtitulo: string | null = parcelaDe;
-      if (chave.chave === 'encargos') {
-        titulo = 'Encargos de atraso';
-        subtitulo = it.descricao;
-      } else if (chave.parte === 'acordo') {
-        titulo = 'Acordo de pagamento';
-        subtitulo = parcelaDe ?? it.descricao;
-      } else if (chave.parte === 'intermediaria') {
-        titulo = nomeVeiculo ? `${chave.rotulo} — ${nomeVeiculo}` : chave.rotulo;
-        subtitulo = 'Entrada — parcela intermediária';
-      } else if (chave.parte === 'entrada_contrato' || chave.parte === 'entrada_acordo') {
-        titulo = nomeVeiculo ? `${chave.rotulo} — ${nomeVeiculo}` : chave.rotulo;
-        subtitulo = 'Entrada';
-      } else if (chave.parte === 'avulso') {
-        // Serviço/lançamento avulso dentro do produto do contrato: a descrição é o que explica.
-        titulo = it.descricao;
-        subtitulo = chave.rotulo;
-      } else if (chave.chave === 'compra_parcelada') {
-        titulo = nomeVeiculo ? `Compra Parcelada — ${nomeVeiculo}` : 'Compra Parcelada';
-      } else if (chave.chave === 'reembolso_parcelado' || chave.chave === 'credito_avulso' || chave.chave === 'termo_novacao') {
-        titulo = `${chave.rotulo} — ${objeto}`;
-      } else if (chave.chave === 'protecao_veicular') {
-        titulo = 'Proteção veicular';
-        subtitulo = nomeVeiculo ? `Serviço do período · ${nomeVeiculo}` : 'Serviço do período';
-      } else {
-        // Outros serviços do Catálogo (taxa, clube): nome do produto; descrição como apoio.
-        subtitulo = it.descricao !== chave.rotulo ? it.descricao : null;
-      }
-      return { titulo, subtitulo, produto: chave.chave, valor: cent(it.valor) };
+      const a = apresentarItemFatura(it, tipos);
+      return { titulo: a.titulo, subtitulo: a.subtitulo, produto: a.produto, valor: a.valor };
     });
 
     // Encargo de hoje (doc 02 §7.2, uma função) sobre as parcelas da fatura; fatura

@@ -1,4 +1,5 @@
-import type { GrupoCascataFatura, OrigemIntencaoPagamento, OrigemPagamentoFatura, SituacaoIntencaoPagamento } from '../enums/faturamento';
+import type { OrigemIntencaoPagamento, OrigemPagamentoFatura, SituacaoIntencaoPagamento } from '../enums/faturamento';
+import type { GrupoCascata } from './fatura-motor';
 
 // Parâmetros de faturamento (doc 02 §32.8) — Configurações › Faturamento.
 // Versionados: salvar cria uma versão nova; vale a de maior número.
@@ -10,7 +11,7 @@ export interface ParametrosFaturamento {
   pixSobDemanda: boolean;
   multaPadraoPct: number; // FAT001
   atualizacaoMesPadraoPct: number; // FAT002
-  cascata: GrupoCascataFatura[]; // FAT003
+  cascata: GrupoCascata[]; // FAT003
   minimoParcialPct: number; // FAT004 — % do valor de face
   minimoParcialPiso: number; // FAT004 — piso, centavos
   tetoIntencoesDia: number;

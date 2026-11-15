@@ -27,6 +27,7 @@ import { Botao } from '../components/Botao';
 import { Bloco } from '../components/Bloco';
 import { Secao } from '../components/Secao';
 import { LinkFaturaAcoes } from '../components/LinkFaturaAcoes';
+import { FaturaAzitBloco } from '../components/FaturaAzitBloco';
 
 // Layout v2 (doc 03 §11): a ficha do titular (hub da conta) em Secaos — uma
 // coluna no celular, duas no desktop —, relacionamento em Bloco com Leitura,
@@ -597,6 +598,9 @@ export function TitularDetalhePage() {
               </div>
             )}
 
+            {/* Fatura Azit F2 (doc 02 §32.4-A): pagamentos com o que cada um quitou e o Pix ativo. */}
+            {faturaDet.data.azit && contaId && <FaturaAzitBloco fd={faturaDet.data} contaId={contaId} recarregar={recarregar} />}
+
             {/* Reemissão só existe no modelo antigo: fatura de Pix sob demanda (doc 02
                 §32.4-A) não tem cobrança pré-criada, então a ação não aparece. */}
             {faturaDet.data.status === 'fechada' && !faturaDet.data.temCobrancaAsaas && faturaDet.data.modeloEncargo !== 'AZIT' && (
@@ -613,7 +617,8 @@ export function TitularDetalhePage() {
                 <div className="border-t pt-[12px]" style={{ borderColor: 'var(--border)' }}>
                   <Secao titulo={`Simulação (dev)${atraso > 0 ? ` · ${atraso} dia(s) de atraso` : ''}`}>
                     <div className="flex flex-wrap gap-[8px]">
-                      {!paga && (
+                      {/* Fatura de Pix sob demanda é paga pelo Pix da conta (bloco acima), não por aqui. */}
+                      {!paga && fd.modeloEncargo !== 'AZIT' && (
                         <Botao variante="primaria" disabled={ocupado} onClick={() => pagarFatura(fd.id)}>
                           Simular pagamento
                         </Botao>

@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { gerarCronograma, centavosParaReaisString, DIA_MS } from '@azit/utils';
+import { novoTokenFatura } from '../src/modules/cobranca/fatura-link';
 
 // Seed (Doc 4 §7.4, Doc 7 itens 1.1 e 2.5). Idempotente via upsert.
 // Banco guarda dinheiro em Decimal (reais); o domínio/API trafega centavos.
@@ -497,6 +498,9 @@ async function seedContratos() {
             dataVencimento: venc,
             valorTotal: reais(cron.valorNominal),
             status: 'ABERTA',
+            // Toda fatura nasce com o link público (doc 02 §32.2) — o seed criava sem,
+            // e a fatura de Pix sob demanda só é paga por ele (§32.4-A).
+            tokenPublico: novoTokenFatura(),
           },
         });
         await tx.itemFatura.create({

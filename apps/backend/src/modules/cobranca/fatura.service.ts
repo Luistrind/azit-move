@@ -5,13 +5,16 @@ import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
 import { calcularEncargoAtraso, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, dataCalendarioUTC, diasAtrasoCalendario, DIA_MS, FUSO_NEGOCIO, inicioDiaUTC, somarDiasISO, situacaoFaturaRuntime } from '@azit/utils';
 import { ConfigService } from '@nestjs/config';
-import { mensagemLinkFatura, montarLinkFatura, whatsappParaWaMe } from './fatura-link';
+import { mensagemLinkFatura, montarLinkFatura, novoTokenFatura, whatsappParaWaMe } from './fatura-link';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { cumprirAcordosSePagos } from '../operacoes/acordo-cumprimento';
 import { ParametrosFaturamentoService } from '../faturamento/parametros-faturamento.service';
+import { ContaFaturaService } from '../faturamento/conta-fatura.service';
+import { IntencaoPagamentoService, type FaturaPretendida } from '../faturamento/intencao-pagamento.service';
+import { ROTULO_ENCARGO_FATURA, TipoEncargoFatura, type IntencaoPagamentoOperador, type PagamentoFaturaOperador } from '@azit/types';
 
 const reais = (centavos: number) => centavosParaReaisString(centavos);
 const cent = (d: Prisma.Decimal | null): number =>
@@ -57,6 +60,8 @@ export class FaturaService {
     private readonly config: ConfigService,
     private readonly notificacao: NotificacaoService,
     private readonly parametrosFaturamento: ParametrosFaturamentoService,
+    private readonly contaFatura: ContaFaturaService,
+    private readonly intencao: IntencaoPagamentoService,
     @InjectQueue(QUEUE_NAMES.GERAR_COBRANCA_ASAAS)
     private readonly filaCobranca: Queue,
     @InjectQueue(QUEUE_NAMES.FECHAR_FATURA)
@@ -89,14 +94,16 @@ export class FaturaService {
   async fechar(referencia: Date = new Date()): Promise<{ fechadas: number; modelo: 'ASAAS_NATIVO' | 'AZIT' }> {
     const aFechar = await this.prisma.db.fatura.findMany({
       where: { status: 'ABERTA', dataFechamento: { lte: referencia } },
-      select: { id: true },
+      select: { id: true, tokenPublico: true },
     });
     const pixSobDemanda = await this.parametrosFaturamento.pixSobDemandaLigado();
     for (const f of aFechar) {
       if (pixSobDemanda) {
         await this.prisma.db.fatura.update({
           where: { id: f.id },
-          data: { status: 'FECHADA', modeloEncargo: 'AZIT' },
+          // Sem cobrança pré-criada, o link público é o ÚNICO caminho de pagamento:
+          // fatura antiga que por acaso não tenha token ganha um aqui.
+          data: { status: 'FECHADA', modeloEncargo: 'AZIT', ...(f.tokenPublico ? {} : { tokenPublico: novoTokenFatura() }) },
         });
         continue;
       }
@@ -667,14 +674,20 @@ export class FaturaService {
       },
     });
     if (!f) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Fatura não encontrada' });
-    const encargoAtual =
-      f.status === 'FECHADA' && !f.asaasChargeId ? this.encargoAteHoje(f.parcelas) : 0;
+    // Fatura do modelo AZIT (doc 02 §32.4-A): saldo, encargo, pagamentos e Pix
+    // ativo saem da conta refeita pelo motor — a mesma que a página do cliente mostra.
+    const azit = f.modeloEncargo === 'AZIT' ? await this.detalheAzit(f.contaId, f.id) : null;
+    const encargoAtual = azit
+      ? azit.multa + azit.atualizacao
+      : f.status === 'FECHADA' && !f.asaasChargeId
+        ? this.encargoAteHoje(f.parcelas)
+        : 0;
     const base = this.mapearFatura(f);
     // Fatura Azit (doc 02 §32.7): link, WhatsApp do titular (para o wa.me) e a
     // mensagem pronta — o texto é montado aqui, uma vez, não na tela.
     const link = base.linkPublico;
     const mensagemWhatsapp = link
-      ? mensagemLinkFatura({ nomeTitular: f.conta.titular.nome, numero: f.numero, vencimentoISO: dataCalendarioUTC(f.dataVencimento), valorCentavos: cent(f.valorTotal) + encargoAtual, situacao: base.situacao, link })
+      ? mensagemLinkFatura({ nomeTitular: f.conta.titular.nome, numero: f.numero, vencimentoISO: dataCalendarioUTC(f.dataVencimento), valorCentavos: azit ? azit.totalHoje : cent(f.valorTotal) + encargoAtual, situacao: base.situacao, link })
       : null;
     return {
       ...base,
@@ -683,6 +696,70 @@ export class FaturaService {
       whatsappTitular: whatsappParaWaMe(f.conta.titular.whatsapp),
       mensagemWhatsapp,
       enviosLink: f.enviosLink.map((e) => ({ id: e.id, canal: e.canal.toLowerCase(), usuario: e.usuario.nome, em: e.createdAt.toISOString() })),
+      azit,
+    };
+  }
+
+  // Leitura do operador para fatura AZIT: o que falta hoje, cada pagamento com
+  // o que quitou (mesmos nomes da página do cliente) e o Pix ativo da conta.
+  private async detalheAzit(contaId: string, faturaId: string) {
+    const [conta, ativa] = await Promise.all([this.contaFatura.carregar(contaId, { incluirFaturaId: faturaId }), this.intencao.ativaDaConta(contaId)]);
+    const f = conta.faturas.find((x) => x.id === faturaId);
+    const projetada = this.contaFatura.projetar(conta).faturas.find((x) => x.id === faturaId);
+    if (!f || !projetada) return null;
+    const nomeDoItem = new Map(f.itens.map((it) => [it.id, it.titulo]));
+    const pagamentos: PagamentoFaturaOperador[] = f.pagamentos.map((p) => ({
+      id: p.id,
+      data: p.data,
+      pagoEm: p.pagoEm?.toISOString() ?? null,
+      valor: p.valor,
+      valorExcedente: p.valorExcedente,
+      origem: p.origem as PagamentoFaturaOperador['origem'],
+      identificadorPix: p.identificadorPix,
+      intencaoId: p.intencaoId,
+      alocacoes: p.alocacoes.map((a) => ({
+        nome:
+          a.alvo === 'MULTA'
+            ? ROTULO_ENCARGO_FATURA[TipoEncargoFatura.MULTA]
+            : a.alvo === 'ATUALIZACAO'
+              ? ROTULO_ENCARGO_FATURA[TipoEncargoFatura.ATUALIZACAO]
+              : (nomeDoItem.get(a.itemId ?? '') ?? 'Item da fatura'),
+        valor: a.valor,
+        nivel: a.nivel,
+        quitou: a.quitou,
+        encargo: a.alvo !== 'ITEM',
+      })),
+    }));
+    const intencaoAtiva: IntencaoPagamentoOperador | null = ativa
+      ? {
+          id: ativa.id,
+          valor: cent(ativa.valor),
+          situacao: ativa.situacao as IntencaoPagamentoOperador['situacao'],
+          origem: ativa.origem as IntencaoPagamentoOperador['origem'],
+          dia: ativa.dia,
+          validoAte: ativa.validoAte.toISOString(),
+          criadaEm: ativa.createdAt.toISOString(),
+          faturas: ((ativa.faturasPretendidas as unknown as FaturaPretendida[]) ?? []).map((x) => ({ numero: x.numero, vencimento: x.vencimento, valor: x.valor })),
+          outroValor: ativa.outroValor,
+          simulado: ativa.simulado,
+        }
+      : null;
+    return {
+      situacao: projetada.situacao, // paga | parcial | vencida | hoje | aberta (calculada)
+      totalHoje: projetada.totalHoje,
+      saldoNominal: projetada.saldoNominal,
+      multa: projetada.encargo.multa,
+      atualizacao: projetada.encargo.atualizacao,
+      diasAtualizacao: projetada.encargo.dias,
+      atualizacaoDesde: projetada.encargo.desde,
+      diasAtraso: projetada.diasAtraso,
+      pagoTotal: projetada.pagoTotal,
+      pagamentos,
+      intencaoAtiva,
+      // Conta mista (§32.4-A, provisório): há fatura do modelo antigo em aberto.
+      contaMista: conta.abertasModeloAntigo.length > 0,
+      // Gateway em modo simulado: "Conferir Pix no gateway" não se aplica (a tela esconde).
+      gatewaySimulado: this.intencao.gatewaySimulado,
     };
   }
 

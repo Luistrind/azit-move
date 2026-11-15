@@ -1,4 +1,4 @@
-import type { GrupoCascataFatura, ParametrosFaturamentoResposta } from '@azit/types';
+import type { GrupoCascata, ParametrosFaturamentoResposta } from '@azit/types';
 import { api } from '../lib/api';
 
 // Configurações › Faturamento (doc 02 §32.8): parâmetros versionados + a chave
@@ -7,7 +7,7 @@ export interface SalvarParametrosFaturamento {
   pixSobDemanda?: boolean;
   multaPadraoPct?: number;
   atualizacaoMesPadraoPct?: number;
-  cascata?: GrupoCascataFatura[];
+  cascata?: GrupoCascata[];
   minimoParcialPct?: number;
   minimoParcialPiso?: number;
   tetoIntencoesDia?: number;

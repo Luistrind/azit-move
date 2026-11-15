@@ -1,6 +1,7 @@
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+import { formatCurrency } from '@azit/utils';
 import { NotificacaoService } from '../notificacao/notificacao.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { BaixaContaService } from './baixa-conta.service';
@@ -47,7 +48,7 @@ export class IntencaoPagamentoProcessor extends WorkerHost {
     await this.notificacao
       .emitir({
         titulo: 'Pix recebido e NÃO aplicado à conta',
-        corpo: `Pagamento ${job.data.pagamentoId} de R$ ${(job.data.valor / 100).toFixed(2).replace('.', ',')} — todas as tentativas de baixa falharam. Motivo: ${err.message}`,
+        corpo: `Pagamento ${job.data.pagamentoId} de ${formatCurrency(job.data.valor)} — todas as tentativas de baixa falharam. Motivo: ${err.message}`,
         rota: '/regua',
         tipo: 'FALHA',
         area: 'CARTEIRA_COBRANCA',

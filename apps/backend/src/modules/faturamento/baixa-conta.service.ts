@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { aplicarPagamentoNaConta, diaBrasil, imputarEmNiveis, inicioDiaUTC, reconstituirFatura, type BaixaFatura } from '@azit/utils';
+import { aplicarPagamentoNaConta, diaBrasil, formatCurrency, imputarEmNiveis, inicioDiaUTC, reconstituirFatura, type BaixaFatura } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
 import { cumprirAcordosSePagos } from '../operacoes/acordo-cumprimento';
@@ -44,7 +44,7 @@ export class BaixaContaService {
       // Dinheiro com referência que não conhecemos: nunca some em silêncio.
       await this.notificacao.emitir({
         titulo: 'Pix recebido com referência desconhecida',
-        corpo: `Pagamento ${job.pagamentoId} de R$ ${reais(job.valor).replace('.', ',')} chegou com a referência intencao:${job.intencaoId}, que não existe no sistema. Confira no gateway.`,
+        corpo: `Pagamento ${job.pagamentoId} de ${formatCurrency(job.valor)} chegou com a referência intencao:${job.intencaoId}, que não existe no sistema. Confira no gateway.`,
         rota: '/regua',
         tipo: 'FALHA',
         area: 'CARTEIRA_COBRANCA',
@@ -170,10 +170,10 @@ export class BaixaContaService {
       const titular = intencao.conta.titular;
       const partes: string[] = [];
       if (intencao.situacao !== 'ATIVA') partes.push(`o Pix era de um pedido que já não valia (${intencao.situacao === 'EXPIRADA' ? 'expirado' : intencao.situacao === 'SUBSTITUIDA' ? 'substituído' : 'já pago'}) e foi aceito mesmo assim`);
-      if (r.excedente > 0) partes.push(`sobraram R$ ${reais(r.excedente).replace('.', ',')} além do que a conta devia (registrado como excedente; ainda não vira crédito)`);
+      if (r.excedente > 0) partes.push(`sobraram ${formatCurrency(r.excedente)} além do que a conta devia (registrado como excedente; ainda não vira crédito)`);
       await this.notificacao.emitir({
         titulo: `Pix de ${titular.nome} precisa de atenção`,
-        corpo: `Recebemos R$ ${reais(job.valor).replace('.', ',')}: ${partes.join('; ')}.`,
+        corpo: `Recebemos ${formatCurrency(job.valor)}: ${partes.join('; ')}.`,
         rota: `/titulares/${titular.id}`,
         tipo: 'DINHEIRO',
         area: 'CARTEIRA_COBRANCA',

@@ -32,6 +32,7 @@ export * from './entities/item-contratado';
 export * from './entities/parcela';
 export * from './entities/fatura';
 export * from './entities/fatura-publica';
+export * from './entities/fatura-motor';
 export * from './entities/faturamento';
 export * from './entities/recebivel';
 export * from './entities/acordo';

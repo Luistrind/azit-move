@@ -18,6 +18,7 @@ export class LimitePublicoGuard implements CanActivate {
   private static readonly POR_IP = 90; // ~1 página + polling de 30 s de várias faturas
   private static readonly POR_TOKEN = 60;
   private static readonly POR_IP_PDF = 10;
+  private static readonly POR_TOKEN_PIX = 12; // gerar Pix (POST /intencao): poucos por minuto bastam
   private readonly janelas = new Map<string, number[]>();
   private ultimaLimpeza = Date.now();
 
@@ -25,11 +26,14 @@ export class LimitePublicoGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest<Requisicao>();
     const ip = this.ipDe(req);
     const token = req.params?.token ?? '';
-    const ehPdf = req.url.endsWith('/pdf');
+    const caminho = req.url.split('?')[0];
+    const ehPdf = caminho.endsWith('/pdf');
+    const ehPix = caminho.endsWith('/intencao');
     this.limparSePreciso();
     if (!this.permitir(`ip:${ip}`, LimitePublicoGuard.POR_IP)) this.negar();
     if (ehPdf && !this.permitir(`pdf:${ip}`, LimitePublicoGuard.POR_IP_PDF)) this.negar();
     if (token && !this.permitir(`tk:${token}`, LimitePublicoGuard.POR_TOKEN)) this.negar();
+    if (ehPix && token && !this.permitir(`pix:${token}`, LimitePublicoGuard.POR_TOKEN_PIX)) this.negar();
     return true;
   }
 

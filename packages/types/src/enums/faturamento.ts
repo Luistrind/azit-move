@@ -44,11 +44,3 @@ export const ROTULO_SITUACAO_INTENCAO: Record<SituacaoIntencaoPagamento, string>
   [SituacaoIntencaoPagamento.EXPIRADA]: 'Expirado',
   [SituacaoIntencaoPagamento.SUBSTITUIDA]: 'Substituído',
 };
-
-// Grupos da cascata de baixa (FAT003) — a ORDEM é parâmetro.
-export enum GrupoCascataFatura {
-  ENCARGOS = 'ENCARGOS',
-  PROTECAO = 'PROTECAO',
-  ACESSORIOS = 'ACESSORIOS',
-  PRINCIPAL = 'PRINCIPAL',
-}

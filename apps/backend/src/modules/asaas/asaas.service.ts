@@ -82,7 +82,11 @@ export class AsaasService {
     telefone?: string | null;
   }): Promise<string> {
     if (this.simulado) {
-      const id = `cus_sim_${params.titularId.slice(0, 8)}`;
+      // Id INTEIRO do titular: os 8 primeiros caracteres do cuid se repetem entre
+      // cadastros criados juntos (seed, importações) e o id truncado batia na
+      // unicidade de Titular.asaasCustomerId — o 2º titular ficava sem cobrança
+      // (achado no teste de ponta a ponta do Pix sob demanda, 15/11/2026).
+      const id = `cus_sim_${params.titularId}`;
       this.logger.log(`[simulado] cliente ${id} (${params.nome})`);
       return id;
     }

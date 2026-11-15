@@ -8,6 +8,7 @@ import {
   aplicarPagamentoNaConta,
   dataHojeBrasil,
   fimDoDiaBrasil,
+  formatCurrency,
   FUSO_NEGOCIO,
   reconstituirFatura,
   regraParcial,
@@ -90,6 +91,11 @@ export class IntencaoPagamentoService {
     @Inject(GATEWAY_PIX) private readonly gateway: GatewayPix,
     @InjectQueue(QUEUE_NAMES.INTENCAO_PAGAMENTO) private readonly fila: Queue,
   ) {}
+
+  // Sem gateway real (modo simulado) não há o que conferir nem cobrar de verdade.
+  get gatewaySimulado(): boolean {
+    return this.gateway.simulado;
+  }
 
   // Enfileira a baixa de um Pix recebido — jobId pelo pagamento: webhook
   // repetido ou conferência em dobro não geram dois jobs.
@@ -253,7 +259,7 @@ export class IntencaoPagamentoService {
   }
 
   private mensagemValorInvalido(motivo: string, o: OpcoesPagamento): string {
-    const brl = (c: number) => `R$ ${(c / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const brl = formatCurrency;
     if (motivo === 'nada_em_aberto') return 'Não há fatura em aberto para pagar.';
     if (motivo === 'acima_do_total') return `Esse valor passa do total em aberto. Para pagar tudo use ${brl(o.projecao.totalAberto)}.`;
     if (motivo === 'abaixo_do_minimo' && o.regra) return `O valor mínimo é ${brl(o.regra.minimo)}.`;
@@ -261,7 +267,7 @@ export class IntencaoPagamentoService {
   }
 
   private descricao(faturas: FaturaPretendida[], valor: number): string {
-    const brl = (c: number) => `R$ ${(c / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const brl = formatCurrency;
     const nums = faturas.map((f) => `#${f.numero}`).join(', ');
     return `Azit Move — pagamento de fatura${faturas.length > 1 ? 's' : ''} ${nums} — ${brl(valor)}`.slice(0, 490);
   }

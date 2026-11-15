@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { GrupoCascataFatura, ParametrosFaturamento, VersaoParametrosFaturamento } from '@azit/types';
+import type { GrupoCascata, ParametrosFaturamento, VersaoParametrosFaturamento } from '@azit/types';
 import { formatCurrency, formatarInstanteBR, minimoParcialFatura, ROTULO_GRUPO_CASCATA } from '@azit/utils';
 import { faturamentoService } from '../services/faturamento.service';
 import { toast } from '../components/Toast';
@@ -176,7 +176,7 @@ export function FaturamentoConfigPage() {
             é dividido entre os itens do grupo na proporção do que cada um deve.
           </div>
           <ol className="flex flex-col gap-[6px]">
-            {form.cascata.map((g: GrupoCascataFatura, i) => (
+            {form.cascata.map((g: GrupoCascata, i) => (
               <li key={g} className="flex items-center gap-[10px] rounded-[10px] px-[10px] py-[6px] text-[12.5px]" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
                 <span className="w-[20px] font-bold tabular-nums" style={mudo}>{i + 1}º</span>
                 <span className="min-w-0 flex-1">{ROTULO_GRUPO_CASCATA[g]}</span>

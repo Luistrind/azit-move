@@ -14,10 +14,14 @@
 import { detalharEncargoAtraso } from './calculations';
 import { diasCalendarioEntre } from './datas';
 import { imputarEmNiveis } from './imputacao';
+import type { AlocacaoMotor, AlvoAlocacao, FaturaMotor, GrupoCascata, ItemMotor, PagamentoMotor, ParametrosMotorFatura } from '@azit/types';
+
+// Os tipos de ENTRADA do motor moram em @azit/types (trafegam do backend para a
+// página pública); reexportados aqui para quem só importa o motor.
+export type { AlocacaoMotor, AlvoAlocacao, FaturaMotor, GrupoCascata, ItemMotor, PagamentoMotor, ParametrosMotorFatura };
 
 // Grupos da cascata de baixa (FAT003). A ORDEM é parâmetro (lista), nunca `if`.
-export const GRUPOS_CASCATA = ['ENCARGOS', 'PROTECAO', 'ACESSORIOS', 'PRINCIPAL'] as const;
-export type GrupoCascata = (typeof GRUPOS_CASCATA)[number];
+export const GRUPOS_CASCATA = ['ENCARGOS', 'PROTECAO', 'ACESSORIOS', 'PRINCIPAL'] as const satisfies readonly GrupoCascata[];
 export const CASCATA_PADRAO: GrupoCascata[] = ['ENCARGOS', 'PROTECAO', 'ACESSORIOS', 'PRINCIPAL'];
 export const ROTULO_GRUPO_CASCATA: Record<GrupoCascata, string> = {
   ENCARGOS: 'Encargos (multa e atualização)',
@@ -27,11 +31,6 @@ export const ROTULO_GRUPO_CASCATA: Record<GrupoCascata, string> = {
 };
 
 // Parâmetros de faturamento que o motor consome (Configurações › Faturamento).
-export interface ParametrosMotorFatura {
-  cascata: GrupoCascata[]; // FAT003
-  minimoParcialPct: number; // FAT004 — % do valor de face
-  minimoParcialPiso: number; // FAT004 — piso em centavos
-}
 export const PARAMETROS_MOTOR_PADRAO: ParametrosMotorFatura = {
   cascata: CASCATA_PADRAO,
   minimoParcialPct: 35,
@@ -67,38 +66,7 @@ export function grupoCascataDoItem(chave: { chave: string; parte: string }): Gru
 // ------------------------------------------------------------
 // Entrada do motor
 // ------------------------------------------------------------
-export interface ItemMotor {
-  id: string;
-  grupo: GrupoCascata;
-  valor: number; // valor de face do item, centavos
-  // Percentuais do CONTRATO do item (§32.4: "percentuais vindos do contrato").
-  multaPct: number; // 2 = 2%
-  atualizacaoMesPct: number; // 1 = 1% ao mês, pro-rata por dia
-}
-
-export type AlvoAlocacao = 'ITEM' | 'MULTA' | 'ATUALIZACAO';
-
-export interface AlocacaoMotor {
-  alvo: AlvoAlocacao;
-  itemId: string | null; // só quando alvo = ITEM
-  valor: number; // centavos
-  nivel: number; // posição do grupo na cascata (1 = primeiro)
-  quitou: boolean; // true = zerou o saldo do alvo neste pagamento
-}
-
-// Um pagamento JÁ APLICADO a uma fatura (PagamentoFatura + AlocacaoPagamento).
-export interface PagamentoMotor {
-  data: string; // dia do pagamento, 'YYYY-MM-DD'
-  valor: number; // centavos aplicados a ESTA fatura
-  alocacoes: AlocacaoMotor[];
-}
-
-export interface FaturaMotor {
-  id: string;
-  vencimento: string; // 'YYYY-MM-DD'
-  itens: ItemMotor[];
-  pagamentos: PagamentoMotor[]; // os registrados, em qualquer ordem
-}
+// (ItemMotor, AlocacaoMotor, PagamentoMotor e FaturaMotor: ver @azit/types.)
 
 // ------------------------------------------------------------
 // Estado reconstituído (runtime, nunca gravado)

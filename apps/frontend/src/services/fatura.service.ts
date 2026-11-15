@@ -1,3 +1,4 @@
+import type { IntencaoPagamentoOperador, PagamentoFaturaOperador } from '@azit/types';
 import { api } from '../lib/api';
 
 // Visão de faturas do cliente (por conta). Cada fatura agrega itens de todos os
@@ -46,6 +47,26 @@ export interface FaturaDetalhe extends Fatura {
   whatsappTitular: string | null;
   mensagemWhatsapp: string | null;
   enviosLink: EnvioLinkFatura[];
+  // Fatura Azit F2 (doc 02 §32.4-A): só em fatura do modelo de Pix sob demanda.
+  // O que falta hoje (encargo calculado pela Azit), os pagamentos com o que
+  // cada um quitou e o Pix ativo da conta.
+  azit: FaturaAzitDetalhe | null;
+}
+
+export interface FaturaAzitDetalhe {
+  situacao: 'paga' | 'parcial' | 'vencida' | 'hoje' | 'aberta';
+  totalHoje: number;
+  saldoNominal: number;
+  multa: number;
+  atualizacao: number;
+  diasAtualizacao: number;
+  atualizacaoDesde: string; // YYYY-MM-DD
+  diasAtraso: number;
+  pagoTotal: number;
+  pagamentos: PagamentoFaturaOperador[];
+  intencaoAtiva: IntencaoPagamentoOperador | null;
+  contaMista: boolean;
+  gatewaySimulado: boolean; // sem gateway real não há Pix para conferir
 }
 
 // Lançamento avulso da conta (doc 02 §4-A.3, revisão 30/08): entrada de contrato
@@ -103,6 +124,16 @@ export const faturaService = {
   async conferirPagamento(faturaId: string): Promise<{ enfileirado: boolean; statusAsaas: string | null; motivo: string | null }> {
     const { data } = await api.post(`/api/v1/faturas/${faturaId}/conferir-pagamento`);
     return data;
+  },
+  // Pix sob demanda (doc 02 §32.4-A): pergunta ao gateway pelos Pix recentes da
+  // conta e enfileira a baixa dos que ele confirma como pagos.
+  async conferirPix(contaId: string): Promise<{ conferidas: number; enfileiradas: number; simulado: boolean }> {
+    const { data } = await api.post(`/api/v1/contas/${contaId}/pix/conferir`);
+    return data;
+  },
+  // Dev/homologação: simula o pagamento do Pix ativo (mesmo job do webhook).
+  async simularPagamentoPix(intencaoId: string): Promise<void> {
+    await api.post(`/api/v1/dev/simular-pagamento-pix/${intencaoId}`);
   },
   // Dev: paga a fatura (enfileira a conciliação, como o webhook do Asaas).
   async simularPagamento(faturaId: string): Promise<void> {

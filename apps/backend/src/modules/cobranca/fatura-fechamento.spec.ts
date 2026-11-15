@@ -6,7 +6,7 @@ import { FaturaService } from './fatura.service';
 //   · LIGADA: fecha no modelo AZIT e NÃO enfileira cobrança.
 // Sem banco.
 
-function montar(pixSobDemanda: boolean, faturas: { id: string }[] = [{ id: 'f1' }, { id: 'f2' }]) {
+function montar(pixSobDemanda: boolean, faturas: { id: string; tokenPublico?: string | null }[] = [{ id: 'f1', tokenPublico: 'tk1' }, { id: 'f2', tokenPublico: 'tk2' }]) {
   const fatura = {
     findMany: jest.fn().mockResolvedValue(faturas),
     update: jest.fn().mockResolvedValue({}),
@@ -22,6 +22,8 @@ function montar(pixSobDemanda: boolean, faturas: { id: string }[] = [{ id: 'f1' 
     { get: () => '' } as never,
     notificacao as never,
     parametros as never,
+    {} as never, // ContaFaturaService — não usado no fechamento
+    {} as never, // IntencaoPagamentoService — idem
     filaCobranca as never,
     { add: jest.fn() } as never,
   );
@@ -34,7 +36,7 @@ describe('FaturaService.fechar — chave do Pix sob demanda', () => {
     const ref = new Date('2026-11-15T06:00:00Z');
     const r = await service.fechar(ref);
     expect(r).toEqual({ fechadas: 2, modelo: 'ASAAS_NATIVO' });
-    expect(fatura.findMany).toHaveBeenCalledWith({ where: { status: 'ABERTA', dataFechamento: { lte: ref } }, select: { id: true } });
+    expect(fatura.findMany).toHaveBeenCalledWith({ where: { status: 'ABERTA', dataFechamento: { lte: ref } }, select: { id: true, tokenPublico: true } });
     expect(fatura.update.mock.calls).toEqual([
       [{ where: { id: 'f1' }, data: { status: 'FECHADA' } }],
       [{ where: { id: 'f2' }, data: { status: 'FECHADA' } }],
@@ -54,6 +56,14 @@ describe('FaturaService.fechar — chave do Pix sob demanda', () => {
       { status: 'FECHADA', modeloEncargo: 'AZIT' },
     ]);
     expect(filaCobranca.add).not.toHaveBeenCalled();
+  });
+
+  it('chave ligada: fatura sem link público ganha o token no fechamento (é o único caminho de pagamento)', async () => {
+    const { service, fatura } = montar(true, [{ id: 'f1', tokenPublico: null }]);
+    await service.fechar();
+    const data = fatura.update.mock.calls[0][0].data as { status: string; modeloEncargo: string; tokenPublico: string };
+    expect(data).toMatchObject({ status: 'FECHADA', modeloEncargo: 'AZIT' });
+    expect(data.tokenPublico).toMatch(/^[a-f0-9]{64}$/);
   });
 });
 

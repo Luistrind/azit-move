@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import type { GrupoCascataFatura, ParametrosFaturamento, ParametrosFaturamentoResposta, VersaoParametrosFaturamento } from '@azit/types';
+import type { ParametrosFaturamento, ParametrosFaturamentoResposta, VersaoParametrosFaturamento } from '@azit/types';
 import { cascataValida, CASCATA_PADRAO, PARAMETROS_MOTOR_PADRAO, type GrupoCascata, type ParametrosMotorFatura } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 
@@ -14,7 +14,7 @@ export const PARAMETROS_FATURAMENTO_PADRAO: ParametrosFaturamento = {
   pixSobDemanda: false,
   multaPadraoPct: 2,
   atualizacaoMesPadraoPct: 1,
-  cascata: [...CASCATA_PADRAO] as GrupoCascataFatura[],
+  cascata: [...CASCATA_PADRAO],
   minimoParcialPct: PARAMETROS_MOTOR_PADRAO.minimoParcialPct,
   minimoParcialPiso: PARAMETROS_MOTOR_PADRAO.minimoParcialPiso,
   tetoIntencoesDia: 10,
@@ -41,7 +41,7 @@ function mapear(l: LinhaBase): VersaoParametrosFaturamento {
     multaPadraoPct: num(l.multaPadraoPct),
     atualizacaoMesPadraoPct: num(l.atualizacaoMesPadraoPct),
     // Cascata gravada inválida (não deveria existir) cai no padrão — nunca trava a baixa.
-    cascata: (cascataValida(l.cascata) ? l.cascata : [...CASCATA_PADRAO]) as GrupoCascataFatura[],
+    cascata: (cascataValida(l.cascata) ? l.cascata : [...CASCATA_PADRAO]),
     minimoParcialPct: num(l.minimoParcialPct),
     minimoParcialPiso: cent(l.minimoParcialPiso),
     tetoIntencoesDia: l.tetoIntencoesDia,
@@ -106,7 +106,7 @@ export class ParametrosFaturamentoService {
       pixSobDemanda: dto.pixSobDemanda ?? atual.pixSobDemanda,
       multaPadraoPct: dto.multaPadraoPct ?? atual.multaPadraoPct,
       atualizacaoMesPadraoPct: dto.atualizacaoMesPadraoPct ?? atual.atualizacaoMesPadraoPct,
-      cascata: (dto.cascata ?? atual.cascata) as GrupoCascataFatura[],
+      cascata: (dto.cascata ?? atual.cascata) as GrupoCascata[], // validada logo abaixo (cascataValida)
       minimoParcialPct: dto.minimoParcialPct ?? atual.minimoParcialPct,
       minimoParcialPiso: dto.minimoParcialPiso ?? atual.minimoParcialPiso,
       tetoIntencoesDia: dto.tetoIntencoesDia ?? atual.tetoIntencoesDia,
