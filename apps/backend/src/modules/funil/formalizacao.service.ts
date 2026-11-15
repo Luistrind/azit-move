@@ -23,8 +23,12 @@ import { AsaasService } from '../asaas/asaas.service';
 import { PropostaService } from './proposta.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
+import { entradaPagaAMenor, registrarEntradaAMenor, type RecebidoNoGateway } from '../cobranca/entrada-recebida';
 
 const cent = (d: Prisma.Decimal): number => reaisParaCentavos(d.toString());
+// Entrada parcelada: 60% à vista (o que a cobrança da entrada pede); os 40%
+// restantes entram nas faturas seguintes como intermediárias (doc 02 §4-A.3).
+const entradaAVistaDe = (valorEntrada: number, parcelada: boolean): number => (parcelada ? Math.round(valorEntrada * 0.6) : valorEntrada);
 
 // Contrato PADRÃO de compra e venda de veículo (modelo oficial — layout fixo,
 // dados por placeholder). Ver templates/contrato-veiculo.template.ts.
@@ -482,7 +486,7 @@ export class FormalizacaoService {
       numero: c.numero,
       status: c.status.toLowerCase(),
       entrada,
-      entradaAVista: c.entradaParcelada ? Math.round(entrada * 0.6) : entrada,
+      entradaAVista: entradaAVistaDe(entrada, c.entradaParcelada),
       entradaParcelada: c.entradaParcelada,
       assinadoTitular: !!c.assinaturaTitularEm,
       assinadoAzit: !!c.assinaturaAzitEm,
@@ -520,7 +524,7 @@ export class FormalizacaoService {
         descricao: c.itensContratados[0]?.descricao ?? c.numero,
         status: c.status.toLowerCase(),
         entrada,
-        entradaAVista: c.entradaParcelada ? Math.round(entrada * 0.6) : entrada,
+        entradaAVista: entradaAVistaDe(entrada, c.entradaParcelada),
         entradaParcelada: c.entradaParcelada,
         ancora: entrada > 0,
         assinadoTitular: !!c.assinaturaTitularEm,
@@ -625,7 +629,7 @@ export class FormalizacaoService {
     // Entrada parcelada: cobra só os 60% à vista agora; os 40% diluídos já estão
     // nas faturas seguintes como intermediárias (Doc 2 §4-A.3).
     const valorEntrada = cent(contrato.valorEntrada);
-    const valorAVista = contrato.entradaParcelada ? Math.round(valorEntrada * 0.6) : valorEntrada;
+    const valorAVista = entradaAVistaDe(valorEntrada, contrato.entradaParcelada);
     // Doc 02 §20 passo 12: a entrada vence na data PREVISTA DE ATIVAÇÃO
     // combinada com o cliente; sem data combinada, cai no padrão de 3 dias.
     const vencimentoEntrada =
@@ -682,7 +686,7 @@ export class FormalizacaoService {
   // "Dia zero": o pagamento da entrada gera o cronograma e ativa o contrato âncora
   // e TODOS os contratos do pacote (apartados — ex: seguro). Chamado tanto pelo
   // webhook PAYMENT_RECEIVED (ref ativacao:) quanto pelo simulador dev.
-  async ativarPacotePorPagamento(contratoId: string, paymentDate?: string) {
+  async ativarPacotePorPagamento(contratoId: string, paymentDate?: string, recebido?: RecebidoNoGateway) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id: contratoId },
       select: {
@@ -707,6 +711,24 @@ export class FormalizacaoService {
         area: 'CARTEIRA_COBRANCA',
       });
       return { contratoId: contrato.id, numero: contrato.numero, status: 'cancelado', cronogramaGerado: false, contratosAtivados: 0 };
+    }
+    // Entrada paga A MENOR (decisão Luís 15/11, doc 02 §4-A.3 e §32.6): pagamento
+    // em parte existe só dentro das faturas. Recebido abaixo da entrada cobrada
+    // (os 60% à vista, na entrada parcelada) NÃO é "dia zero": nada de cronograma,
+    // o recebimento fica registrado e a carteira trata à mão.
+    const entradaCobrada = entradaAVistaDe(cent(contrato.valorEntrada), contrato.entradaParcelada);
+    if (!contrato.entradaPagaEm && entradaPagaAMenor(recebido?.valorRecebido, entradaCobrada)) {
+      await registrarEntradaAMenor(this.prisma.db, {
+        entidade: 'contrato_credito',
+        entidadeId: contrato.id,
+        oQue: `Entrada do contrato ${contrato.numero}`,
+        consequencia: 'O contrato NÃO foi ativado e o cronograma não foi gerado.',
+        rota: `/contratos/${contrato.id}`,
+        valorRecebido: recebido!.valorRecebido!,
+        valorEntrada: entradaCobrada,
+        pagamentoId: recebido?.pagamentoId,
+      });
+      return { contratoId: contrato.id, numero: contrato.numero, status: 'entrada_a_menor', cronogramaGerado: false, contratosAtivados: 0 };
     }
     const pacote = contrato.propostaPacoteId
       ? await this.prisma.db.contratoCredito.findMany({
@@ -779,7 +801,7 @@ export class FormalizacaoService {
     if (valorEntrada <= 0 || contrato.entradaPagaEm) return;
     // Entrada parcelada: só os 60% à vista entram aqui — os 40% já são
     // intermediárias nas faturas do cronograma (§4-A.3).
-    const valorAVista = contrato.entradaParcelada ? Math.round(valorEntrada * 0.6) : valorEntrada;
+    const valorAVista = entradaAVistaDe(valorEntrada, contrato.entradaParcelada);
     const dataPagamento = paymentDate ? new Date(`${paymentDate}T12:00:00-03:00`) : new Date();
 
     await this.prisma.db.$transaction(async (tx) => {

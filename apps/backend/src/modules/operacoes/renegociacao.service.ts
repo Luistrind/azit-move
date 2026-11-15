@@ -26,6 +26,7 @@ import { parcelaParaApi } from '../contrato/contrato.mapper';
 import { novoTokenFatura } from '../cobranca/fatura-link';
 import { ContaFaturaService } from '../faturamento/conta-fatura.service';
 import { IntencaoPagamentoService } from '../faturamento/intencao-pagamento.service';
+import { entradaPagaAMenor, registrarEntradaAMenor, type RecebidoNoGateway } from '../cobranca/entrada-recebida';
 
 const reais = (c: number) => centavosParaReaisString(c);
 const cent = (d: Prisma.Decimal | null): number =>
@@ -694,7 +695,7 @@ export class RenegociacaoService implements OnModuleInit {
 
   // Efetivação via webhook da entrada (Gatilho 6). Conta-cêntrico: cobre as parcelas
   // vencidas de TODOS os contratos e explode o plano novo por contrato.
-  async efetivar(acordoId: string, paymentDateISO: string) {
+  async efetivar(acordoId: string, paymentDateISO: string, recebido?: RecebidoNoGateway) {
     const acordo = await this.prisma.db.acordo.findFirst({
       where: { id: acordoId },
       select: {
@@ -713,6 +714,25 @@ export class RenegociacaoService implements OnModuleInit {
     // RASCUNHO aceito por compat (acordos antigos cobravam a entrada na criação).
     if (acordo.status !== 'AGUARDANDO_ENTRADA' && acordo.status !== 'RASCUNHO') {
       return { resultado: 'ja_efetivado' };
+    }
+    // Entrada paga A MENOR (decisão Luís 15/11, doc 02 §7.7 e §32.6): pagamento
+    // em parte existe só dentro das faturas. Recebido abaixo da entrada NÃO
+    // efetiva o acordo — segue aguardando; o recebimento fica registrado e a
+    // carteira trata à mão.
+    if (entradaPagaAMenor(recebido?.valorRecebido, cent(acordo.valorEntrada))) {
+      const conta = await this.prisma.db.conta.findFirst({ where: { id: acordo.contaId }, select: { titular: { select: { nome: true } } } });
+      await registrarEntradaAMenor(this.prisma.db, {
+        entidade: 'acordo',
+        entidadeId: acordo.id,
+        oQue: `Entrada do acordo — ${conta?.titular.nome ?? 'cliente'}`,
+        consequencia: 'O acordo NÃO foi efetivado e segue aguardando a entrada.',
+        rota: '/acordos',
+        valorRecebido: recebido!.valorRecebido!,
+        valorEntrada: cent(acordo.valorEntrada),
+        pagamentoId: recebido?.pagamentoId,
+      });
+      this.logger.warn(`Acordo ${acordo.id}: entrada paga A MENOR — não efetivado`);
+      return { resultado: 'entrada_a_menor' };
     }
 
     const hoje = this.hojeUTC();

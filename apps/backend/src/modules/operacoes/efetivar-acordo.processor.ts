@@ -18,9 +18,12 @@ export class EfetivarAcordoProcessor extends WorkerHost {
   ) {
     super();
   }
-  async process(job: Job<{ acordoId?: string; novacaoId?: string; paymentDate?: string }>) {
+  async process(job: Job<{ acordoId?: string; novacaoId?: string; paymentDate?: string; valorRecebido?: number; pagamentoId?: string }>) {
+    // Entrada só vale inteira (doc 02 §32.6): o valor recebido vai junto e o
+    // serviço NÃO efetiva se vier abaixo da entrada (registra e avisa a carteira).
+    const recebido = { valorRecebido: job.data.valorRecebido, pagamentoId: job.data.pagamentoId };
     if (job.name === 'novacao-recebida') {
-      const r = await this.novacao.ativar(job.data.novacaoId!, job.data.paymentDate ?? '');
+      const r = await this.novacao.ativar(job.data.novacaoId!, job.data.paymentDate ?? '', recebido);
       this.logger.log(`ativar novação ${job.data.novacaoId}: ${r.resultado}`);
       return r;
     }
@@ -30,7 +33,7 @@ export class EfetivarAcordoProcessor extends WorkerHost {
     if (job.name === 'entrada-vencida') {
       return this.renegociacao.expirarPorEntradaVencida(job.data.acordoId!);
     }
-    const r = await this.renegociacao.efetivar(job.data.acordoId!, job.data.paymentDate ?? '');
+    const r = await this.renegociacao.efetivar(job.data.acordoId!, job.data.paymentDate ?? '', recebido);
     this.logger.log(`efetivar acordo ${job.data.acordoId}: ${r.resultado}`);
     return r;
   }

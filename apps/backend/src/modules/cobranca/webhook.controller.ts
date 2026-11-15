@@ -97,12 +97,22 @@ export class WebhookController {
       return { received: true };
     }
 
+    // Entrada de contrato, de acordo e recebimento inicial de novação só valem
+    // pelo valor INTEIRO (decisão Luís 15/11, doc 02 §32.6: pagamento em parte
+    // existe só dentro das faturas). O valor recebido vai no job e quem efetiva
+    // confere; abaixo da entrada, nada é ativado e a carteira é avisada.
+    const recebidoNoGateway = {
+      valorRecebido: typeof pg.value === 'number' ? Math.round(pg.value * 100) : undefined, // Asaas envia reais → centavos
+      pagamentoId: pg.id,
+    };
+
     // externalReference roteia por prefixo: "acordo:" = entrada de renegociação;
     // "ativacao:" = entrada do contrato (dia zero → cronograma); sem prefixo = fatura.
     if (recebido && ref.startsWith('acordo:')) {
       await this.filaAcordo.add('efetivar', {
         acordoId: ref.slice('acordo:'.length),
         paymentDate: pg.paymentDate ?? pg.dueDate ?? '',
+        ...recebidoNoGateway,
       });
       return { received: true };
     }
@@ -118,6 +128,7 @@ export class WebhookController {
       await this.filaAcordo.add('novacao-recebida', {
         novacaoId: ref.slice('novacao:'.length),
         paymentDate: pg.paymentDate ?? pg.dueDate ?? '',
+        ...recebidoNoGateway,
       });
       return { received: true };
     }
@@ -129,6 +140,7 @@ export class WebhookController {
       await this.filaAtivacao.add('ativar', {
         contratoId: ref.slice('ativacao:'.length),
         paymentDate: pg.paymentDate ?? pg.dueDate ?? '',
+        ...recebidoNoGateway,
       });
       return { received: true };
     }

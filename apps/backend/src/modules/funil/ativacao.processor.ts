@@ -17,7 +17,7 @@ export class AtivacaoProcessor extends WorkerHost {
   ) {
     super();
   }
-  async process(job: Job<{ contratoId: string; paymentDate?: string }>) {
+  async process(job: Job<{ contratoId: string; paymentDate?: string; valorRecebido?: number; pagamentoId?: string }>) {
     // Entrada VENCIDA sem pagamento (auditoria 15/09, P0-3): alerta a carteira
     // — reemissão/cancelamento são ação manual até a expiração automática do
     // estado entrar (decisão de domínio, Bloco B da auditoria).
@@ -32,8 +32,14 @@ export class AtivacaoProcessor extends WorkerHost {
       this.logger.warn(`ativacao ${job.data.contratoId}: contrato inexistente neste ambiente — ignorado`);
       return { resultado: 'contrato_de_outro_ambiente' };
     }
-    const r = await this.formalizacao.ativarPacotePorPagamento(job.data.contratoId, job.data.paymentDate);
-    this.logger.log(`ativacao ${job.data.contratoId}: ${r.contratosAtivados} contrato(s) ativado(s)`);
+    // Entrada só vale inteira (doc 02 §32.6): o valor recebido vai junto e o
+    // serviço NÃO ativa se vier abaixo da entrada (registra e avisa a carteira).
+    const r = await this.formalizacao.ativarPacotePorPagamento(job.data.contratoId, job.data.paymentDate, {
+      valorRecebido: job.data.valorRecebido,
+      pagamentoId: job.data.pagamentoId,
+    });
+    if (r.status === 'entrada_a_menor') this.logger.warn(`ativacao ${job.data.contratoId}: entrada paga A MENOR — nada ativado`);
+    else this.logger.log(`ativacao ${job.data.contratoId}: ${r.contratosAtivados} contrato(s) ativado(s)`);
     return r;
   }
 

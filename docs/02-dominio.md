@@ -252,6 +252,15 @@ Uma opção concreta apresentada na simulação. **Três origens**:
 > Asaas, dia zero imediato (cronograma nasce no clique) — as assinaturas continuam obrigatórias
 > e o gate de origem de capital também. Nada de cobrança de valor zero (o Asaas recusa).
 
+> **Entrada só vale INTEIRA (decisão 2026-11-15, Luís).** Pagamento em parte existe só dentro
+> das faturas (§32.6); **não conta como entrada**. O webhook leva o valor recebido no job
+> (`ativacao:`) e a ativação só acontece se ele for **maior ou igual à entrada cobrada** (os 60%
+> à vista, na entrada parcelada). Recebido a menor: **não é dia zero** — sem cronograma, contrato
+> segue em *Aguardando pagamento inicial*; o recebimento fica registrado (auditoria
+> `entrada_paga_a_menor`, com valor recebido, valor da entrada e id do pagamento) e a Carteira
+> recebe notificação de **FALHA** para tratar à mão (complemento ou devolução). O Pix do Asaas
+> não aceita valor diferente do cobrado; a regra fica explícita para qualquer gateway ou meio.
+
 ### 4-A.4 Proposta
 
 A oferta escolhida formalizada como pedido de crédito. É o que **persiste** e tem **máquina de estados própria** (distinta da do ContratoCredito). A proposta aprovada **gera** o ContratoCredito.
@@ -996,6 +1005,12 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > 5. **Entrada com data-limite dura**: o operador informa a data de pagamento da entrada; a
 >    cobrança no Asaas NÃO aceita pagamento após essa data (cancelamento automático do registro
 >    pós-vencimento). Sem pagamento até a data → proposta expira e exige recálculo.
+>    **Entrada só vale INTEIRA (decisão 2026-11-15, Luís):** o acordo só é efetivado se o valor
+>    recebido for maior ou igual à entrada. Recebido a menor **não efetiva** — o acordo segue
+>    *Aguardando entrada*, o recebimento fica registrado (auditoria `entrada_paga_a_menor`) e a
+>    Carteira recebe notificação de **FALHA** para tratamento manual. Pagamento em parte existe
+>    só dentro das faturas (§32.6): o que o cliente já pagou em parte nas faturas **reduz o
+>    saldo renegociado** (§32.12 item 12), mas nunca é tratado como entrada do acordo.
 > 6. Pendentes (a discutir em paralelo): rateio de desconto concedido pelo CONAC entre as
 >    origens; teto absoluto de prazo mesmo para o comitê; conflito termo (resolução de pleno
 >    direito por atraso) × produto (sem estado "rompido" — parcelas vencidas do acordo seguem a
@@ -1065,6 +1080,13 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 - Usado quando os Acordos brandos não recuperam o cliente, antes da retomada do veículo
 - O contrato origem vai para estado terminal de novação (preservado para auditoria); o contrato novo nasce com cronograma novo no D0
 - Passa pela estrutura de alçadas (operação mais sensível que o Acordo)
+- **Recebimento inicial só vale INTEIRO (decisão 2026-11-15, Luís):** a novação só é ativada se o
+  valor recebido (`novacao:`) for maior ou igual ao recebimento inicial. Recebido a menor **não
+  ativa** — as origens seguem valendo e a novação continua *Aguardando recebimento*; o
+  recebimento fica registrado (auditoria `entrada_paga_a_menor`, que aparece na trilha da
+  novação) e a Carteira recebe notificação de **FALHA** para tratamento manual. Pagamento em
+  parte existe só dentro das faturas (§32.6): o que já foi pago em parte nas faturas **reduz o
+  saldo novado** (§32.12 item 12), mas nunca é tratado como recebimento inicial.
 
 > **Fonte normativa (registrada 13/09):** o **Produto Novação de Contrato V1.0** (Vicente,
 > 26/08/2026 — `docs/Produto Novacao de Contrato v1.0 - Azit Hub.pdf`) é a especificação
@@ -3353,6 +3375,10 @@ faturas em aberto da conta são AZIT.
   uma cobrança fixa; substituído em 15/11.)
 - Quantidade de parciais por fatura: **livre até quitar** como padrão provisório (Regra 12);
   pendência 32.10 para teto.
+- **O parcial vale só para fatura (decisão 2026-11-15, Luís).** Entrada de contrato (§4-A.3),
+  entrada de acordo (§7.7) e recebimento inicial de novação (§7.7b) **não aceitam pagamento em
+  parte**: abaixo do valor inteiro, nada é ativado nem efetivado, o recebimento é registrado e a
+  Carteira é avisada (notificação de FALHA) para tratar à mão.
 - Situação da fatura com parcial: continua pelo cálculo de runtime (Regra 7) — `vencida` ou
   `em aberto` conforme a data, com `valorPago` parcial; a página rotula "Paga parcialmente".
 
@@ -3641,6 +3667,15 @@ Nada disso altera a régua, o bloqueio (Regra 6) ou a POP; só o **link** que va
     - **Fatura fantasma:** fatura que o banco diz PAGA sem os pagamentos que a quitam (efeito da
       quitação e do sinistro antigos) fica fora da conta do motor e não reaparece em aberto na
       página.
+    - **Pago em parte na fatura ≠ entrada (decisão 2026-11-15, Luís).** No acordo e na novação,
+      o que o cliente já pagou em parte nas faturas **reduz o saldo renegociado/novado** (é o
+      saldo do motor acima), mas **nunca** é contado como entrada do acordo nem como recebimento
+      inicial da novação: esses continuam sendo cobranças próprias, pagas pelo valor inteiro. O
+      webhook passou a levar o valor recebido nos jobs `ativar`, `efetivar` e
+      `novacao-recebida`; abaixo da entrada, nada é efetivado, o recebimento é registrado
+      (auditoria `entrada_paga_a_menor`, idempotente pelo id do pagamento) e a Carteira recebe
+      notificação de FALHA (§4-A.3, §7.7, §7.7b, §32.6). Job sem valor (simulador de
+      desenvolvimento, novação sem recebimento inicial) não passa por essa conferência.
     - **Testes:** cada fluxo tem o caso acima rodando "antes" (765,73) e "depois" (532,08) em
       `operacoes/fluxos-fatura-azit.spec.ts`; saldo por parcela em
       `faturamento/conta-fatura.service.spec.ts`; motor em `fatura-motor.test.ts`.

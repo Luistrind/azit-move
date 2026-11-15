@@ -1480,6 +1480,16 @@ eventos dessa referência são só ACK. Campos lidos de `payment`: `id`, `value`
 `clientPaymentDate` → `paymentDate` → `confirmedDate`, `pixTransaction`. A baixa é pela conta
 (doc 02 §32.4-A), idempotente pelo id do pagamento.
 
+### Webhook do gateway — entradas (`ativacao:`, `acordo:`, `novacao:`)
+
+Decisão de 15/11 (doc 02 §32.6): pagamento em parte vale só para fatura. Em
+`PAYMENT_RECEIVED`/`PAYMENT_CONFIRMED` dessas referências o webhook continua respondendo **202** e
+enfileirando (`ativar`, `efetivar`, `novacao-recebida`), agora com `valorRecebido` (centavos, de
+`payment.value`) e `pagamentoId` (`payment.id`) no job. Quem efetiva compara com a entrada
+cobrada: abaixo dela **não ativa nem efetiva**, grava auditoria `entrada_paga_a_menor` (uma vez
+por pagamento) e emite notificação `FALHA` para a área Carteira e cobrança. O resultado do job
+é `entrada_a_menor`.
+
 ### Operador (autenticado)
 
 | Método | Rota | Área / papéis | O que faz |

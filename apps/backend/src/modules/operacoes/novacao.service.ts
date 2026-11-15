@@ -29,6 +29,7 @@ import { AssinaturaService } from '../assinatura/assinatura.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 import { IntencaoPagamentoService } from '../faturamento/intencao-pagamento.service';
+import { ACAO_ENTRADA_A_MENOR, entradaPagaAMenor, registrarEntradaAMenor, type RecebidoNoGateway } from '../cobranca/entrada-recebida';
 import { NovacaoDecomposicaoService } from './novacao-decomposicao.service';
 import { SimularNovacaoBody } from './dto/novacao.dto';
 import { parcelaParaApi } from '../contrato/contrato.mapper';
@@ -501,11 +502,30 @@ export class NovacaoService implements OnModuleInit {
 
   // ---------------------------------------------------------------
   // 4. ATIVAÇÃO (A7 passo 6): extingue as origens e gera os dois cronogramas.
-  async ativar(novacaoId: string, paymentDateISO: string) {
+  async ativar(novacaoId: string, paymentDateISO: string, recebido?: RecebidoNoGateway) {
     const novacao = await this.prisma.db.novacao.findFirst({
       where: { id: novacaoId, status: { in: ['AGUARDANDO_ASSINATURA', 'AGUARDANDO_RECEBIMENTO'] } },
     });
     if (!novacao) return { resultado: 'estado_invalido' };
+    // Recebimento inicial pago A MENOR (decisão Luís 15/11, doc 02 §32.6):
+    // pagamento em parte existe só dentro das faturas. Abaixo do recebimento
+    // inicial a novação NÃO é ativada — as origens seguem vivas; o recebimento
+    // fica registrado e a carteira trata à mão.
+    if (entradaPagaAMenor(recebido?.valorRecebido, cent(novacao.recebimentoInicial))) {
+      const conta = await this.prisma.db.conta.findFirst({ where: { id: novacao.contaId }, select: { titular: { select: { nome: true } } } });
+      await registrarEntradaAMenor(this.prisma.db, {
+        entidade: 'novacao',
+        entidadeId: novacao.id,
+        oQue: `Recebimento inicial da novação — ${conta?.titular.nome ?? 'cliente'}`,
+        consequencia: 'A novação NÃO foi ativada: os contratos de origem seguem valendo.',
+        rota: '/acordos',
+        valorRecebido: recebido!.valorRecebido!,
+        valorEntrada: cent(novacao.recebimentoInicial),
+        pagamentoId: recebido?.pagamentoId,
+      });
+      this.logger.warn(`Novação ${novacao.id}: recebimento inicial pago A MENOR — não ativada`);
+      return { resultado: 'entrada_a_menor' };
+    }
     const snap = novacao.snapshotJson as unknown as SnapshotNovacao;
     const sim = snap.simulacao;
     const unico = !!snap.dto.contratoUnico;
@@ -1222,6 +1242,15 @@ export class NovacaoService implements OnModuleInit {
       if (docVeiculo.status === 'recusado') trilha.push({ em: docVeiculo.concluidoEm?.toISOString() ?? null, titulo: 'Assinatura recusada', por: null, detalhe: docVeiculo.motivoRecusa });
     }
     for (const l of logs) {
+      if (l.acao === ACAO_ENTRADA_A_MENOR) {
+        const d = (l.depois as { valorRecebido?: number; valorEntrada?: number } | null) ?? {};
+        trilha.push({
+          em: l.createdAt.toISOString(),
+          titulo: 'Recebimento inicial pago a menor — novação não ativada',
+          por: null,
+          detalhe: `Recebidos ${formatCurrency(d.valorRecebido ?? 0)} de ${formatCurrency(d.valorEntrada ?? 0)} · pagamento em parte só vale para fatura; tratar com o cliente`,
+        });
+      }
       if (l.acao === 'novacao_primeira_parcela_alterada') {
         const antes = (l.antes as { dataPrimeiraParcela?: string | null } | null)?.dataPrimeiraParcela ?? null;
         const depois = (l.depois as { dataPrimeiraParcela?: string; assinaturaReenviada?: boolean } | null) ?? null;
