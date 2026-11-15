@@ -259,6 +259,14 @@ export class FaturaService {
     if (fatura.status === 'PAGA' || fatura.status === 'PAGA_EM_ATRASO') {
       return { resultado: 'ja_conciliada' };
     }
+    // Fatura do modelo AZIT (doc 02 §32.4-A) NÃO passa por aqui: a baixa dela é
+    // pela conta (BaixaContaService), a partir do Pix de uma intenção. Esta
+    // conciliação trata o excedente como encargo do Asaas ("Opção 2"), o que não
+    // vale para o encargo calculado pela Azit.
+    if (fatura.modeloEncargo === 'AZIT') {
+      this.logger.warn(`Conciliação antiga ignorada: fatura ${fatura.id} é do modelo AZIT (baixa pela conta)`);
+      return { resultado: 'modelo_azit_baixa_pela_conta' };
+    }
 
     const dataPagamento = new Date(p.paymentDate);
     const contratosTocados = new Set<string>();

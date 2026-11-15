@@ -82,3 +82,13 @@ describe('fatura AZIT sem cobrança não é pendência', () => {
     expect(asaas.criarCobranca).not.toHaveBeenCalled();
   });
 });
+
+describe('conciliação antiga não toca em fatura AZIT', () => {
+  it('job conciliar de fatura AZIT é ignorado — a baixa dela é pela conta', async () => {
+    const { service, fatura } = montar(true);
+    fatura.findFirst.mockResolvedValue({ id: 'f1', status: 'FECHADA', modeloEncargo: 'AZIT', parcelas: [] });
+    const r = await service.conciliarPagamento({ faturaId: 'f1', paymentDate: '2026-11-09', dueDate: '2026-11-09', valor: 104900 });
+    expect(r).toEqual({ resultado: 'modelo_azit_baixa_pela_conta' });
+    expect(fatura.update).not.toHaveBeenCalled();
+  });
+});

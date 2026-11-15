@@ -3,6 +3,7 @@ import {
   Controller,
   Headers,
   HttpCode,
+  Inject,
   Post,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -15,6 +16,8 @@ import { QUEUE_NAMES } from '../queues/queues.module';
 import { webhookAsaasSchema, WebhookAsaasDto } from './dto/webhook-asaas.dto';
 import { IntegracoesService } from '../integracoes/integracoes.service';
 import { PrismaService } from '../../database/prisma.service';
+import { GATEWAY_PIX, PREFIXO_INTENCAO, intencaoDaReferencia, type GatewayPix } from '../faturamento/gateway-pix';
+import { IntencaoPagamentoService } from '../faturamento/intencao-pagamento.service';
 
 @Controller('webhooks')
 export class WebhookController {
@@ -30,6 +33,8 @@ export class WebhookController {
     private readonly filaAcordo: Queue,
     @InjectQueue(QUEUE_NAMES.ATIVAR_CONTRATO)
     private readonly filaAtivacao: Queue,
+    @Inject(GATEWAY_PIX) private readonly gatewayPix: GatewayPix,
+    private readonly intencao: IntencaoPagamentoService,
   ) {}
 
   // Webhook nunca é síncrono (Regra nº 4): valida assinatura, responde 202 e
@@ -69,6 +74,28 @@ export class WebhookController {
       return { received: true, ignored: true };
     }
     const recebido = dto.event === 'PAYMENT_RECEIVED' || dto.event === 'PAYMENT_CONFIRMED';
+
+    // "intencao:" = Pix sob demanda da Fatura Azit (doc 02 §32.4-A). O corpo é
+    // lido pelo GatewayPix (nada aqui conhece o formato do gateway) e, se o
+    // dinheiro entrou, a baixa PELA CONTA vai para a fila (Regra 4: 202 e fila).
+    // Qualquer outro evento dessa referência (vencida, removida) é só ACK: a
+    // validade do Pix é nossa (virada do dia), não do gateway.
+    if (ref.startsWith(PREFIXO_INTENCAO)) {
+      const evento = this.gatewayPix.interpretarWebhook(dto);
+      const intencaoId = intencaoDaReferencia(evento?.referencia);
+      if (evento?.pago && intencaoId) {
+        await this.intencao.enfileirarBaixa({
+          intencaoId,
+          pagamentoId: evento.pagamentoId,
+          valor: evento.valor,
+          dataPagamento: evento.dataPagamento,
+          recebidoEm: new Date().toISOString(),
+          identificadorPix: evento.identificadorPix,
+          origem: 'GATEWAY',
+        });
+      }
+      return { received: true };
+    }
 
     // externalReference roteia por prefixo: "acordo:" = entrada de renegociação;
     // "ativacao:" = entrada do contrato (dia zero → cronograma); sem prefixo = fatura.
