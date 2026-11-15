@@ -5,6 +5,7 @@ import { FaturaService } from './fatura.service';
 import { WebhookController } from './webhook.controller';
 import { CobrancaController } from './cobranca.controller';
 import { ConferenciaAsaasService } from './conferencia-asaas.service';
+import { FaturamentoModule } from '../faturamento/faturamento.module';
 import {
   PagamentoRecebidoProcessor,
   PagamentoVencidoProcessor,
@@ -18,6 +19,7 @@ import {
 // produtores que este módulo injeta (idempotente) e os processadores.
 @Module({
   imports: [
+    FaturamentoModule,
     BullModule.registerQueue(
       { name: QUEUE_NAMES.PAGAMENTO_RECEBIDO },
       { name: QUEUE_NAMES.PAGAMENTO_VENCIDO },

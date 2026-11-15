@@ -11,6 +11,7 @@ import { AsaasService } from '../asaas/asaas.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { cumprirAcordosSePagos } from '../operacoes/acordo-cumprimento';
+import { ParametrosFaturamentoService } from '../faturamento/parametros-faturamento.service';
 
 const reais = (centavos: number) => centavosParaReaisString(centavos);
 const cent = (d: Prisma.Decimal | null): number =>
@@ -55,6 +56,7 @@ export class FaturaService {
     private readonly asaas: AsaasService,
     private readonly config: ConfigService,
     private readonly notificacao: NotificacaoService,
+    private readonly parametrosFaturamento: ParametrosFaturamentoService,
     @InjectQueue(QUEUE_NAMES.GERAR_COBRANCA_ASAAS)
     private readonly filaCobranca: Queue,
     @InjectQueue(QUEUE_NAMES.FECHAR_FATURA)
@@ -78,19 +80,33 @@ export class FaturaService {
     this.logger.log('[cron] D-5: fechamento de faturas enfileirado');
   }
 
-  async fechar(referencia: Date = new Date()): Promise<{ fechadas: number }> {
+  // Chave do Pix sob demanda (doc 02 §32.4-A, Configurações › Faturamento):
+  //   · DESLIGADA (padrão): como sempre — fecha e enfileira a cobrança no Asaas;
+  //   · LIGADA: a fatura fecha no modelo AZIT e NÃO ganha cobrança pré-criada;
+  //     o Pix nasce quando o cliente vai pagar (intenção de pagamento).
+  // A chave é lida UMA vez por rodada: todas as faturas do mesmo fechamento
+  // saem no mesmo modelo.
+  async fechar(referencia: Date = new Date()): Promise<{ fechadas: number; modelo: 'ASAAS_NATIVO' | 'AZIT' }> {
     const aFechar = await this.prisma.db.fatura.findMany({
       where: { status: 'ABERTA', dataFechamento: { lte: referencia } },
       select: { id: true },
     });
+    const pixSobDemanda = await this.parametrosFaturamento.pixSobDemandaLigado();
     for (const f of aFechar) {
+      if (pixSobDemanda) {
+        await this.prisma.db.fatura.update({
+          where: { id: f.id },
+          data: { status: 'FECHADA', modeloEncargo: 'AZIT' },
+        });
+        continue;
+      }
       await this.prisma.db.fatura.update({
         where: { id: f.id },
         data: { status: 'FECHADA' },
       });
       await this.filaCobranca.add('gerar', { faturaId: f.id });
     }
-    return { fechadas: aFechar.length };
+    return { fechadas: aFechar.length, modelo: pixSobDemanda ? 'AZIT' : 'ASAAS_NATIVO' };
   }
 
   // Rede de segurança (correção 08/09 — produção: fatura FECHADA sem cobrança
@@ -108,7 +124,9 @@ export class FaturaService {
 
   async varrerCobrancasPendentes(): Promise<{ reenfileiradas: number; vencidasSemCobranca: number; possivelFilaParada: number }> {
     const pendentes = await this.prisma.db.fatura.findMany({
-      where: { status: 'FECHADA', asaasChargeId: null, deletedAt: null },
+      // Só o modelo antigo: fatura AZIT (doc 02 §32.4-A) fecha SEM cobrança de
+      // propósito — não é pendência, não se reenfileira e não gera alerta.
+      where: { status: 'FECHADA', asaasChargeId: null, modeloEncargo: 'ASAAS_NATIVO', deletedAt: null },
       select: {
         id: true, numero: true, dataVencimento: true, dataFechamento: true,
         conta: { select: { titular: { select: { id: true, nome: true } } } },
@@ -167,6 +185,9 @@ export class FaturaService {
       },
     });
     if (!fatura || fatura.asaasChargeId) return;
+    // Fatura do modelo AZIT nunca ganha cobrança pré-criada (doc 02 §32.4-A) —
+    // guarda para job antigo na fila ou reenfileiramento indevido.
+    if (fatura.modeloEncargo === 'AZIT') return;
 
     // Garante o cliente no Asaas (idempotente). Id simulado não vale em modo real.
     const titular = fatura.conta.titular;
@@ -560,6 +581,7 @@ export class FaturaService {
     id: string; numero: number; periodoReferencia: Date; dataVencimento: Date; dataFechamento: Date | null;
     dataPagamento: Date | null; status: string; valorTotal: Prisma.Decimal; valorPago: Prisma.Decimal | null;
     asaasChargeId: string | null;
+    modeloEncargo: string;
     tokenPublico?: string | null;
     itensFatura: { descricao: string; tipo: string; valor: Prisma.Decimal; credor: string }[];
   }) {
@@ -585,6 +607,9 @@ export class FaturaService {
       // Visível na tela (correção 08/09): fatura fechada SEM cobrança no Asaas
       // é um estado de exceção que o operador precisa enxergar e resolver.
       temCobrancaAsaas: !!f.asaasChargeId,
+      // Fatura Azit F2 (doc 02 §32.4-A): 'AZIT' = Pix sob demanda — não ter
+      // cobrança é o normal, e "Emitir cobrança" não se aplica.
+      modeloEncargo: f.modeloEncargo,
       // Fatura Azit (doc 02 §32.7): o link é atributo da fatura — aparece onde ela aparece.
       linkPublico: this.linkPublico(f.tokenPublico),
       itens: f.itensFatura.map((it) => ({
@@ -719,6 +744,9 @@ export class FaturaService {
     if (!fatura) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Fatura não encontrada' });
     if (fatura.asaasChargeId) {
       throw new UnprocessableEntityException({ erro: 'ja_tem_cobranca', mensagem: 'Esta fatura já tem cobrança no Asaas' });
+    }
+    if (fatura.modeloEncargo === 'AZIT') {
+      throw new UnprocessableEntityException({ erro: 'fatura_pix_sob_demanda', mensagem: 'Esta fatura é do modelo de Pix sob demanda: não tem cobrança pré-criada. O Pix é gerado pela página da fatura, no valor do dia.' });
     }
     if (fatura.status !== 'FECHADA') {
       throw new UnprocessableEntityException({ erro: 'fatura_nao_fechada', mensagem: 'Só fatura FECHADA recebe cobrança (a aberta fecha no D-5)' });

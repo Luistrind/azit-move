@@ -597,7 +597,9 @@ export function TitularDetalhePage() {
               </div>
             )}
 
-            {faturaDet.data.status === 'fechada' && !faturaDet.data.temCobrancaAsaas && (
+            {/* Reemissão só existe no modelo antigo: fatura de Pix sob demanda (doc 02
+                §32.4-A) não tem cobrança pré-criada, então a ação não aparece. */}
+            {faturaDet.data.status === 'fechada' && !faturaDet.data.temCobrancaAsaas && faturaDet.data.modeloEncargo !== 'AZIT' && (
               <BlocoReemissao fd={faturaDet.data} ocupado={ocupado} emitir={gerarCobrancaManual} />
             )}
 

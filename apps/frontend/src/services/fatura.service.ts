@@ -21,6 +21,9 @@ export interface Fatura {
   valorPago: number;
   // false em fatura FECHADA = a cobrança automática falhou (estado de exceção).
   temCobrancaAsaas: boolean;
+  // Fatura Azit F2 (doc 02 §32.4-A): 'AZIT' = Pix sob demanda. Não ter cobrança
+  // é o normal dessas faturas — "Emitir cobrança" não se aplica a elas.
+  modeloEncargo: 'ASAAS_NATIVO' | 'AZIT';
   // Fatura Azit (doc 02 §32.7): link público da fatura (fatura.azitmove.com.br/<token>).
   linkPublico: string | null;
   itens: FaturaItem[];
