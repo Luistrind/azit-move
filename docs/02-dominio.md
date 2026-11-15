@@ -3056,6 +3056,15 @@ Fonte: documento interno **"Módulo de Faturamento e Cobrança — Azit Hub V1.0
 cenários). Onde o FAT e este doc divergem, vale o que está aqui; o FAT fica como referência de
 origem.
 
+> **Revisão 2026-11-14 (homologação do protótipo pelo Vicente em 13/11 + decisões do Luís):** o
+> Vicente percorreu o protótipo v2 (artefato *Fatura Azit · várias em aberto*) com um roteiro de
+> 127 passos, 21 divergências e 25 melhorias (planilha *Homologação Fatura Azit · Roteiro de
+> testes*). Resultado consolidado no **protótipo v3** (https://claude.ai/artifact/QF2rdPR1PTmQN5Etcn5M8g)
+> e nas decisões marcadas **(14/11)** ao longo desta seção: mínimo do parcial pelo FAT (35% do valor
+> de face ou R$ 200, o maior), atualização só a partir do último pagamento, regra para mais de uma
+> fatura em aberto (§32.6-A), bloco de pagamento no topo da página, link abrindo na lista,
+> comprovante com hora e identificador do Pix, fatura única com recebedores diferentes (split).
+
 ### 32.1 O que muda e o que não muda
 
 | Tema | FAT v1.0 pedia | Decisão (Luís) |
@@ -3063,7 +3072,7 @@ origem.
 | Página da fatura | Página web pública "Fatura Azit" com itens, PIX/QR, PDF, status ao vivo | **Sim.** Substitui a página do Asaas (`invoiceUrl`) em tudo que vai ao cliente |
 | Régua | D-5/D-1 preventivos; D+1/3/5/10/15 | **Não.** Fica a nossa: lembretes §28 (D-2, D0) e POP §23 a partir do D+1; bloqueio pela Regra 6 |
 | Papel do Asaas | Passivo: gera PIX e devolve webhook | **Sim.** O Azit calcula encargo e saldo; o Asaas só emite a cobrança do valor que o Azit manda. Troca de plataforma será estudada — o gateway fica atrás de uma interface, nada da regra conhece o Asaas |
-| Pagamento parcial | Cliente digita valor livre, mínimo R$ 200 e/ou 35% | **Parcial com mínimo de 50% do saldo** (parâmetro). Valor livre, não |
+| Pagamento parcial | Cliente digita valor livre, mínimo R$ 200 e/ou 35% | **Parcial com mínimo** (parâmetro FAT004). Em 10/11 ficou 50% do saldo; **em 14/11 voltou ao FAT: o maior entre 35% do valor de face e R$ 200**, nunca sobre o saldo atualizado (§32.6). Valor livre, não |
 | Cascata de baixa | Lista ordenada parametrizável + rateio proporcional no nível | **Sim** (substitui a ordem fixa do §7.3) |
 | Crédito do cliente (pagamento a maior) | Carteira de crédito abatida na próxima fatura | **Depois.** Fora desta entrega; a sobra é só exibida |
 | E-mail | Canal da régua junto com WhatsApp | **Sim**, entra como canal |
@@ -3099,17 +3108,39 @@ Regra 16 (encargo e cascata numa função só, em `packages/utils`), §27.2 (só
   arquivo gerado); encargo é calculado pelo dia de hoje no fuso do Brasil; pagamento entra pelo
   webhook e aparece ao recarregar; com a página aberta, ela consulta o saldo a cada ~30 s e muda
   sozinha para *Paga*.
-- **Blocos, nesta ordem** (protótipo aprovado 10/11): cabeçalho navy com marca, nº da fatura e
-  conta, saudação pelo primeiro nome, situação (Em aberto / Vence hoje / Vencida / Paga
-  parcialmente / Paga), valor grande (total, ou "saldo a pagar hoje" quando já houve parcial) e
-  vencimento; **Valores já recebidos** (só se houver — cada pagamento expande e mostra o que
-  aquele valor quitou); **Itens da fatura** (linhas do §32.3, encargos no fim, total de hoje);
-  **Pagar com PIX** (QR + copia-e-cola do saldo, botão Copiar); ações **Pagar outro valor** e
-  **Exportar PDF**; rodapé com contrato, WhatsApp da Azit e aviso de saldo ao vivo. Paga: caixa
-  verde de confirmação + comprovante em PDF.
-- Nomes que o cliente lê (vocabulário 24/10, sem "juros"/"taxa"): **"Multa por atraso"** e
-  **"Atualização por dias de atraso"**, com a frase de apoio "calculada só sobre o saldo que
-  falta pagar". Multa já quitada aparece como "R$ 0,00 (quitada)".
+- **Disponibilidade:** a fatura fica disponível ao cliente **5 dias antes do vencimento** (como
+  sempre foi na operação; confirmado 14/11). Antes disso o link ainda não é enviado.
+- **Blocos, nesta ordem** (protótipo v3, decisão 14/11 — o v2 de 10/11 tinha o Pix no fim e o
+  Vicente mediu duas a três telas de rolagem até ele no celular): **cabeçalho** navy com marca, nº
+  da fatura, conta e placa, saudação pelo primeiro nome, situação (Em aberto / Vence hoje /
+  Vencida / Paga parcialmente / Paga), valor grande (**"Total a pagar"**; quando já houve parcial,
+  a linha "Você já pagou R$ X desta fatura" logo abaixo) e vencimento; **Pagar** logo abaixo do
+  cabeçalho — valor, **"Copiar código Pix" como ação principal**, QR Code recolhido ("para pagar
+  por outro aparelho"), nome e CNPJ do recebedor e validade do código; ações **Pagar outro valor**
+  e **Ver fatura em PDF**; **Valores já recebidos** (só se houver — cada Pix expande e mostra o que
+  quitou, com hora e identificador da transação); **Itens da fatura** (linhas do §32.3, encargos no
+  fim, total); rodapé com contrato, CPF mascarado, **botão "Falar com a Azit no WhatsApp"** e
+  aviso de saldo atualizado a cada abertura. Paga: caixa verde "Fatura paga", com **data, hora e
+  identificador do Pix**, os encargos pagos listados entre os itens (para a soma fechar com o
+  total pago) e **Baixar comprovante em PDF**.
+- **Três rótulos de valor, e só esses:** "Total a pagar" (fatura), "Total em aberto" (conta, com
+  "Vencido" e "A vencer" em linhas separadas quando há dos dois) e "Total pago".
+- **Textos para o cliente, nunca internos:** "Pix de R$ 600,00 pronto. Copie o código ou leia o
+  QR.", "Recebemos R$ 600,00. Faltam R$ 472,43 desta fatura." Nada de "gateway", "webhook",
+  "cobrança atualizada". Na janela de outro valor, o aviso muda com a situação: fatura a vencer
+  diz "se o restante não for pago até o vencimento, passa a ter multa e atualização"; vencida diz
+  "o que ficar em aberto continua com atualização por dia de atraso".
+- **Erros com orientação:** link inválido ou regenerado → "Não encontramos esta fatura", sem
+  revelar nada da conta, com o WhatsApp; falha ao gerar o Pix → a fatura carrega com o valor,
+  "Tentar de novo" e o WhatsApp; o saldo não muda por causa da falha.
+- **PDF (D-20 do Vicente):** dois documentos, gerados pela mesma projeção da página — a **fatura**
+  (itens, encargos do dia, Pix copia-e-cola e validade) e o **comprovante** (itens, encargos pagos,
+  pagamentos com data, hora e identificador). Não existe "extrato de faturas em aberto".
+- Nomes que o cliente lê (vocabulário 24/10, sem "juros"/"taxa"): **"Multa por atraso"** ("2%
+  sobre o saldo em atraso, cobrada uma única vez") e **"Atualização por dias de atraso"** ("1% ao
+  mês, proporcional: N dias desde o vencimento/desde o pagamento de dd/mm, só sobre R$ X · muda a
+  cada dia"). Multa já quitada aparece como "R$ 0,00 (paga)". O mesmo nome de item vale na lista de
+  itens, no detalhe do pagamento e no PDF.
 
 ### 32.3 Itens da fatura — de onde vêm as linhas
 
@@ -3138,6 +3169,14 @@ Fatura de contrato migrado do legado (§26) segue a mesma regra sobre os itens q
   parcial não gera encargo novo.
 - **Multa única** (RFAT-05): 2% sobre o saldo nominal no primeiro cálculo em atraso; quitada num
   parcial, não volta. A atualização diária continua sobre o que resta.
+- **Atualização reinicia a cada pagamento (D-03 do Vicente, 14/11):** depois de um pagamento, os
+  dias de atraso para a atualização contam **a partir da data desse pagamento**, sobre o saldo que
+  ficou — nunca de novo desde o vencimento. Exemplo conferido: fatura de R$ 1.049 vencida em
+  02/11, R$ 540 pagos em 07/11 (quitaram multa R$ 20,98 + atualização de 5 dias R$ 1,75 + proteção
+  + acessórios + R$ 167,27 do principal); em 09/11 correm **2 dias** sobre R$ 531,73 = R$ 0,35, total
+  R$ 532,08. O protótipo v2 recontava os 7 dias (R$ 532,97) e foi reprovado nesse ponto.
+  Encargo lançado e não coberto por um parcial fica pendente e entra no próximo cálculo; não há
+  multa nova.
 - Quando o dia vira (ou um parcial muda o saldo), o valor da cobrança no gateway é **atualizado
   para o total de hoje** — pelo mesmo job diário do §28 e no ato do parcial. O que o cliente vê na
   página e o que o PIX cobra são sempre o mesmo número.
@@ -3163,9 +3202,15 @@ Fatura de contrato migrado do legado (§26) segue a mesma regra sobre os itens q
 
 ### 32.6 Pagamento parcial com mínimo
 
-- Botão **"Pagar outro valor"** só em fatura em aberto. Mínimo = **50% do saldo a pagar hoje**
-  (parâmetro **FAT004**, percentual; piso em reais **pendente**, ver 32.10). Acima do saldo não
-  aceita ("para pagar tudo use o total"). Atalhos 50% / 75% / total.
+- Botão **"Pagar outro valor"** só em fatura em aberto. **Mínimo (FAT004, decisão 14/11, pelo
+  FAT):** o **maior** entre **35% do valor de face da fatura** e **R$ 200**. O percentual é sobre
+  o valor de face (soma dos itens na emissão), **nunca sobre o saldo atualizado** — o Vicente
+  mostrou que "50% do saldo" a cada parcial nunca liquida a fatura. Na fatura de R$ 1.049 o mínimo
+  é R$ 367,15, no primeiro parcial e nos seguintes. **Exceção:** o pagamento que **liquida** a
+  fatura pode ser menor que o mínimo; quando o saldo já é menor ou igual ao mínimo, a página não
+  oferece "outro valor", só o total. Acima do que se deve não aceita ("para pagar tudo use R$ X").
+  Atalhos: mínimo / 75% / total. O campo formata em reais enquanto o cliente digita e o botão só
+  ativa com valor válido.
 - Confirmado, o Azit **atualiza o valor da cobrança no gateway** para o valor escolhido e
   redesenha o QR. Recebido o webhook, aplica a cascata; a cobrança volta a ser atualizada para o
   **saldo remanescente** (mesmo link, mesma cobrança) para o cliente pagar o resto.
@@ -3173,6 +3218,36 @@ Fatura de contrato migrado do legado (§26) segue a mesma regra sobre os itens q
   pendência 32.10 para teto.
 - Situação da fatura com parcial: continua pelo cálculo de runtime (Regra 7) — `vencida` ou
   `em aberto` conforme a data, com `valorPago` parcial; a página rotula "Paga parcialmente".
+
+### 32.6-A Mais de uma fatura em aberto na mesma conta (decisão Luís 2026-11-11, fechada em 14/11)
+
+Caso que motivou a regra: cliente pagou a fatura mais nova por um boleto antigo do Asaas e deixou
+a vencida para trás. O FAT v1.0 não trata; o protótipo v2 propôs e o Vicente aprovou (D-06).
+
+- **O pagamento quita sempre a fatura mais antiga primeiro.** Qualquer valor recebido na conta é
+  aplicado fatura a fatura, da mais antiga para a mais nova, com a cascata do §32.5 dentro de
+  cada uma. Não existe forma de pagar só a mais nova, nem de pular uma fatura.
+- **O link abre na lista "Suas faturas"** quando há mais de uma em aberto (decisão 14/11; o modo
+  "direto na mais antiga" fica como alternativa não usada). A lista mostra o total em aberto, com
+  "Vencido" e "A vencer" separados, os cartões na ordem (a mais antiga com "Pague esta primeiro",
+  a segunda com "Paga junto com a de dd/mm", da terceira em diante "Paga junto com as anteriores")
+  e uma linha explicando o motivo: é assim que a dívida mais velha para de gerar atualização.
+  Com uma fatura só em aberto, o link abre direto nela (quando o cliente quita as antigas e sobra
+  uma, o mesmo link passa a abrir nela).
+- **Opções de pagamento sempre "da mais antiga até…":** só a mais antiga; as 2 mais antigas; …;
+  todas. **Padrão marcado (S-04): da mais antiga até a última que está vencida ou vence hoje.** A
+  fatura que ainda vai vencer fica disponível na lista, mas desmarcada.
+- **No detalhe de uma fatura que não é a mais antiga**, o Pix já vem com as anteriores incluídas e
+  o cabeçalho avisa que o total inclui a vencida de dd/mm; há a opção de pagar primeiro só a mais
+  antiga. Os itens aparecem agrupados por fatura, com subtotal.
+- **"Pagar outro valor" com mais de uma em aberto (D-07, opção A, decisão 14/11):** só conta,
+  para esta regra, fatura **vencida ou que vence hoje**. Com **uma única** vencida, o parcial
+  dela continua liberado pelo FAT004, mesmo com a próxima já disponível (ela aparece 5 dias antes
+  de vencer, então quase todo cliente em atraso teria duas em aberto e perderia o parcial). Com
+  **duas ou mais** vencidas, o mínimo é a **mais antiga inteira** e o que passar disso abate a
+  seguinte, na ordem. O máximo é sempre o total em aberto da conta.
+- Depois de um pagamento, a página diz o que aconteceu em linguagem do cliente: "Recebemos
+  R$ 1.272,43. Fatura de 02/11 quitada. Faltam R$ 849,00 da fatura de 09/11."
 
 ### 32.7 Como a fatura chega ao cliente — e como o operador manda
 
@@ -3198,10 +3273,18 @@ Fatura de contrato migrado do legado (§26) segue a mesma regra sobre os itens q
 | FAT001 | Multa por atraso | 2% (vem do contrato; parâmetro é o padrão de novos contratos) |
 | FAT002 | Atualização por dia de atraso | 1% a.m. pro-rata (idem) |
 | FAT003 | Cascata de baixa | Encargos → Proteção → Acessórios → Principal |
-| FAT004 | Mínimo do pagamento parcial | 50% do saldo de hoje |
+| FAT004 | Mínimo do pagamento parcial | **35% do valor de face ou R$ 200, o maior** (14/11; dois campos: percentual e piso) |
 | FAT007 | Pagamento a maior | Só registrar (crédito desligado) |
 
-FAT005/FAT006 (régua do FAT) **não existem**: a régua é a do §28/§23.
+FAT005/FAT006 (régua do FAT) **não existem**: a régua é a do §28/§23. Os parâmetros ficam em
+**Configurações › Faturamento** (D-14 do Vicente), versionados (`ParametroFaturamento`), e a
+homologação deles é pela tela do operador, não pela página do cliente.
+
+**Recebedores (D-17 do Vicente, decisão 14/11): fatura única, recebedores diferentes.** O cliente
+vê e paga uma fatura só; a parte da **Proteção veicular** é repassada à empresa da proteção no
+mesmo Pix (split no gateway, quando implementado — faz parte da implementação do split payment,
+não desta seção). Na página, o recebedor exibido perto do Pix é a Azit Move (nome e CNPJ) e o
+rodapé do PDF informa a empresa da proteção. Nomes e CNPJs no protótipo são ilustrativos.
 
 ### 32.9 Modelo de dados (resumo)
 
@@ -3213,13 +3296,19 @@ usuarioId, canal, data), `ParametroFaturamento` (versões, com cascata em JSON o
 
 ### 32.10 Pendências (decisão do Luís antes da fase correspondente)
 
-1. Piso em reais para o parcial (além dos 50%)? — F3.
-2. Teto de parciais por fatura? — F3.
+1. ~~Piso em reais para o parcial?~~ **Decidido 14/11:** R$ 200, junto com os 35% do valor de
+   face (FAT004, §32.6).
+2. Teto de parciais por fatura? — F3. (Com o mínimo sobre o valor de face, a fatura liquida em no
+   máximo três pagamentos; o teto perde urgência.)
 3. Texto das mensagens (WhatsApp manual, e-mail, lembretes com o link novo) — jurídico/V4.
 4. Crédito do cliente: estrutura contábil — fase posterior (FAT pendência 1).
 5. Como a proteção reage a parcial que não a cobre (cenário C do FAT: "pode ser suspensa") —
    hoje a proteção é operada pela Azit; decidir se parcial sem cobrir a proteção gera aviso ou
-   nada. Até lá: só aviso na ficha.
+   nada. Até lá: só aviso na ficha. (Com o mínimo de 35%/R$ 200 e a cascata, a proteção é sempre
+   coberta pelo primeiro parcial; o caso só existe para pagamento fora da página.)
+6. Split do Pix entre Azit Move e a empresa da proteção (D-17): nomes, CNPJs e o que o cliente vê
+   como recebedor no app do banco — na implementação do split payment.
+7. Testes de pagamento com o Asaas em ambiente de teste antes de liberar a F2 (D-16 do Vicente).
 
 ### 32.11 Ordem de construção e homologação
 
