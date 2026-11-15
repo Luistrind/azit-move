@@ -1,0 +1,175 @@
+import { Prisma } from '@prisma/client';
+import { ContaFaturaService, type ContaCarregada } from './conta-fatura.service';
+import { IntencaoPagamentoService } from './intencao-pagamento.service';
+import { AGORA, contaFixture, F2, F3, F4, HOJE } from './conta.fixture-spec';
+
+// Intenção de pagamento (doc 02 §32.4-A): reuso do mesmo valor no dia, UMA
+// ativa por conta, teto diário, virada do dia e validação do valor no
+// servidor. Gateway e banco dublados.
+
+type Linha = { id: string; contaId: string; valor: Prisma.Decimal; dia: string; situacao: string; gatewayId: string | null; pixCopiaECola: string | null; pixQrCodeImagem: string | null; simulado: boolean; outroValor: boolean; faturasPretendidas: unknown; validoAte: Date; createdAt: Date };
+
+function montar(conta: ContaCarregada, existentes: Partial<Linha>[] = []) {
+  const tabela: Linha[] = existentes.map((e, i) => ({
+    id: `int-${i}`, contaId: 'conta-1', valor: new Prisma.Decimal('0'), dia: HOJE, situacao: 'ATIVA', gatewayId: `pay-${i}`, pixCopiaECola: `codigo-${i}`,
+    pixQrCodeImagem: null, simulado: false, outroValor: false, faturasPretendidas: [], validoAte: new Date(), createdAt: new Date(2026, 10, 9, 8, i), ...e,
+  }));
+  const casa = (l: Linha, where: Record<string, unknown>) =>
+    Object.entries(where).every(([k, v]) => {
+      const atual = (l as unknown as Record<string, unknown>)[k];
+      if (v && typeof v === 'object' && 'lt' in v) return (atual as string) < (v as { lt: string }).lt;
+      if (v && typeof v === 'object' && 'in' in v) return (v as { in: unknown[] }).in.includes(atual);
+      if (v && typeof v === 'object' && 'not' in v) return atual !== (v as { not: unknown }).not;
+      return atual === v;
+    });
+  const intencaoPagamento = {
+    findFirst: jest.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => [...tabela].reverse().find((l) => casa(l, where)) ?? null),
+    findMany: jest.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => tabela.filter((l) => casa(l, where))),
+    count: jest.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => tabela.filter((l) => casa(l, where)).length),
+    updateMany: jest.fn().mockImplementation(async ({ where, data }: { where: Record<string, unknown>; data: Partial<Linha> }) => {
+      const alvo = tabela.filter((l) => casa(l, where));
+      alvo.forEach((l) => Object.assign(l, data));
+      return { count: alvo.length };
+    }),
+    create: jest.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      const l = { ...data, valor: new Prisma.Decimal(data.valor as string), createdAt: new Date() } as unknown as Linha;
+      tabela.push(l);
+      return l;
+    }),
+  };
+  const db = { intencaoPagamento, $queryRaw: jest.fn().mockResolvedValue([]), $transaction: jest.fn() };
+  db.$transaction.mockImplementation((fn: (tx: typeof db) => Promise<unknown>) => fn(db));
+  const prisma = { db };
+  const contaFatura = new ContaFaturaService(prisma as never);
+  jest.spyOn(contaFatura, 'carregar').mockResolvedValue(conta);
+  let seq = 0;
+  const gateway = {
+    nome: 'teste',
+    simulado: false,
+    criarPix: jest.fn().mockImplementation(async (p: { referencia: string; valor: number }) => ({ gatewayId: `pay-novo-${++seq}`, copiaECola: `pix-${p.valor}`, qrCodeImagem: null, simulado: false })),
+    cancelarPix: jest.fn().mockResolvedValue({ cancelado: true, pago: false }),
+    consultarPix: jest.fn().mockResolvedValue({ existe: true, pago: false, valor: 0, dataPagamento: null, pagamentoId: null }),
+    interpretarWebhook: jest.fn(),
+  };
+  const fila = { add: jest.fn().mockResolvedValue({}) };
+  const service = new IntencaoPagamentoService(prisma as never, contaFatura, gateway as never, fila as never);
+  return { service, gateway, fila, tabela, intencaoPagamento };
+}
+
+describe('IntencaoPagamentoService', () => {
+  beforeAll(() => jest.useFakeTimers().setSystemTime(AGORA));
+  afterAll(() => jest.useRealTimers());
+
+  it('cria o Pix do valor exato, com referência intencao:<id>, válido até 23h59 de hoje, e o retrato das faturas', async () => {
+    const { service, gateway, tabela } = montar(contaFixture([F2(), F3()]));
+    const r = await service.criar({ contaId: 'conta-1', valor: 212143, origem: 'PAGINA_PUBLICA' });
+    expect(gateway.criarPix).toHaveBeenCalledWith(expect.objectContaining({ valor: 212143, dia: HOJE, titularId: 'tit-1', referencia: `intencao:${r.id}` }));
+    expect(r).toMatchObject({ valor: 212143, pixCopiaECola: 'pix-212143', outroValor: false, reaproveitada: false });
+    expect(r.validoAte.toISOString()).toBe('2026-11-10T02:59:59.999Z');
+    expect(r.faturas).toEqual([
+      { faturaId: 'f2', numero: 22, vencimento: '2026-11-02', valor: 107243 },
+      { faturaId: 'f3', numero: 23, vencimento: '2026-11-09', valor: 104900 },
+    ]);
+    expect(tabela).toHaveLength(1);
+    expect(tabela[0]).toMatchObject({ situacao: 'ATIVA', dia: HOJE, origem: 'PAGINA_PUBLICA', gatewayId: 'pay-novo-1' });
+  });
+
+  it('REUSO: pedir de novo o mesmo valor no mesmo dia devolve a intenção ativa, sem criar outro Pix', async () => {
+    const { service, gateway, tabela } = montar(contaFixture([F2()]));
+    const a = await service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' });
+    const b = await service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' });
+    expect(b.id).toBe(a.id);
+    expect(b.reaproveitada).toBe(true);
+    expect(gateway.criarPix).toHaveBeenCalledTimes(1);
+    expect(tabela).toHaveLength(1);
+  });
+
+  it('UMA ATIVA: outro valor marca a anterior como SUBSTITUIDA e cancela o Pix dela no gateway', async () => {
+    const { service, gateway, tabela } = montar(contaFixture([F2()]));
+    const a = await service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' });
+    const b = await service.criar({ contaId: 'conta-1', valor: 60000, origem: 'PAGINA_PUBLICA' });
+    expect(b.outroValor).toBe(true);
+    expect(tabela.map((l) => [l.id, l.situacao])).toEqual([[a.id, 'SUBSTITUIDA'], [b.id, 'ATIVA']]);
+    expect(gateway.cancelarPix).toHaveBeenCalledWith('pay-novo-1');
+    expect((await service.ativaDaConta('conta-1'))?.id).toBe(b.id);
+  });
+
+  it('valor fora da regra é recusado no servidor, sem tocar no gateway', async () => {
+    const { service, gateway } = montar(contaFixture([F2(), F3()]));
+    await expect(service.criar({ contaId: 'conta-1', valor: 50000, origem: 'PAGINA_PUBLICA' })).rejects.toMatchObject({ response: { erro: 'valor_invalido', motivo: 'abaixo_do_minimo' } });
+    await expect(service.criar({ contaId: 'conta-1', valor: 999999, origem: 'PAGINA_PUBLICA' })).rejects.toMatchObject({ response: { erro: 'valor_invalido', motivo: 'acima_do_total' } });
+    expect(gateway.criarPix).not.toHaveBeenCalled();
+  });
+
+  it('fatura a vencer não trava o parcial da única vencida (D-07)', async () => {
+    const { service } = montar(contaFixture([F2(), F4()]));
+    const r = await service.criar({ contaId: 'conta-1', valor: 36715, origem: 'PAGINA_PUBLICA' });
+    expect(r).toMatchObject({ valor: 36715, outroValor: true });
+    expect(r.faturas).toEqual([{ faturaId: 'f2', numero: 22, vencimento: '2026-11-02', valor: 36715 }]);
+  });
+
+  it('CONTA MISTA (provisório §32.4-A): só a fatura AZIT mais antiga, sozinha; nada de várias nem de outro valor', async () => {
+    const mista = contaFixture([F2(), F3()], { abertasModeloAntigo: [{ id: 'old', numero: 20, vencimento: '2026-10-19', valor: 104900, tokenPublico: 'tk-old' }] });
+    const { service } = montar(mista);
+    await expect(service.criar({ contaId: 'conta-1', valor: 212143, origem: 'PAGINA_PUBLICA' })).rejects.toMatchObject({ response: { erro: 'valor_invalido' } });
+    await expect(service.criar({ contaId: 'conta-1', valor: 150000, origem: 'PAGINA_PUBLICA' })).rejects.toMatchObject({ response: { erro: 'valor_invalido' } });
+    await expect(service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' })).resolves.toMatchObject({ valor: 107243 });
+  });
+
+  it('TETO diário de valores distintos por conta', async () => {
+    const conta = contaFixture([F2()]);
+    conta.parametros.tetoIntencoesDia = 2;
+    const { service, gateway } = montar(conta);
+    await service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' });
+    await service.criar({ contaId: 'conta-1', valor: 60000, origem: 'PAGINA_PUBLICA' });
+    await expect(service.criar({ contaId: 'conta-1', valor: 70000, origem: 'PAGINA_PUBLICA' })).rejects.toMatchObject({ response: { erro: 'limite_pix_dia' }, status: 429 });
+    // Pedir de novo o valor da ativa NÃO conta: reaproveita.
+    await expect(service.criar({ contaId: 'conta-1', valor: 60000, origem: 'PAGINA_PUBLICA' })).resolves.toMatchObject({ reaproveitada: true });
+    expect(gateway.criarPix).toHaveBeenCalledTimes(2);
+  });
+
+  it('falha do gateway: 503 com orientação, nada gravado e a intenção anterior continua ativa', async () => {
+    const { service, gateway, tabela } = montar(contaFixture([F2()]));
+    const a = await service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' });
+    gateway.criarPix.mockRejectedValueOnce(new Error('timeout'));
+    await expect(service.criar({ contaId: 'conta-1', valor: 60000, origem: 'PAGINA_PUBLICA' })).rejects.toMatchObject({ response: { erro: 'pix_indisponivel' }, status: 503 });
+    expect(tabela.map((l) => [l.id, l.situacao])).toEqual([[a.id, 'ATIVA']]);
+    expect(gateway.cancelarPix).not.toHaveBeenCalled();
+  });
+
+  it('VIRADA DO DIA: expira as ativas de ontem e cancela os Pix; a de hoje fica', async () => {
+    const { service, gateway, tabela } = montar(contaFixture([F2()]), [
+      { id: 'ontem', dia: '2026-11-08', gatewayId: 'pay-ontem' },
+      { id: 'hoje', dia: HOJE, gatewayId: 'pay-hoje' },
+    ]);
+    // A de ontem já não vale para a página mesmo antes de o job rodar (Regra 7).
+    expect((await service.ativaDaConta('conta-1'))?.id).toBe('hoje');
+    const r = await service.expirarVencidas();
+    expect(r).toEqual({ expiradas: 1, pagasEncontradas: 0 });
+    expect(tabela.map((l) => [l.id, l.situacao])).toEqual([['ontem', 'EXPIRADA'], ['hoje', 'ATIVA']]);
+    expect(gateway.cancelarPix).toHaveBeenCalledTimes(1);
+    expect(gateway.cancelarPix).toHaveBeenCalledWith('pay-ontem');
+  });
+
+  it('corrida entre cancelar e pagar: Pix expirado que o gateway diz PAGO vira baixa na fila (o dinheiro manda)', async () => {
+    const { service, gateway, fila } = montar(contaFixture([F2()]), [{ id: 'ontem', dia: '2026-11-08', gatewayId: 'pay-ontem' }]);
+    gateway.cancelarPix.mockResolvedValueOnce({ cancelado: false, pago: true });
+    gateway.consultarPix.mockResolvedValueOnce({ existe: true, pago: true, valor: 107243, dataPagamento: '2026-11-08', pagamentoId: 'pay-ontem' });
+    const r = await service.expirarVencidas();
+    expect(r).toEqual({ expiradas: 1, pagasEncontradas: 1 });
+    expect(fila.add).toHaveBeenCalledWith('baixar', expect.objectContaining({ intencaoId: 'ontem', pagamentoId: 'pay-ontem', valor: 107243, dataPagamento: '2026-11-08', origem: 'GATEWAY' }), { jobId: 'baixa-pay-ontem' });
+  });
+
+  it('conferência do operador enfileira só o que o gateway confirma como pago', async () => {
+    const { service, gateway, fila } = montar(contaFixture([F2()]), [
+      { id: 'a', situacao: 'EXPIRADA', gatewayId: 'pay-a' },
+      { id: 'b', situacao: 'ATIVA', gatewayId: 'pay-b' },
+      { id: 'c', situacao: 'PAGA', gatewayId: 'pay-c' },
+    ]);
+    gateway.consultarPix.mockImplementation(async (id: string) => (id === 'pay-a' ? { existe: true, pago: true, valor: 54000, dataPagamento: '2026-11-07', pagamentoId: 'pay-a' } : { existe: true, pago: false, valor: 0, dataPagamento: null, pagamentoId: id }));
+    const r = await service.conferirConta('conta-1');
+    expect(r).toEqual({ conferidas: 2, enfileiradas: 1, simulado: false });
+    expect(fila.add).toHaveBeenCalledTimes(1);
+    expect(fila.add).toHaveBeenCalledWith('baixar', expect.objectContaining({ intencaoId: 'a', pagamentoId: 'pay-a', origem: 'CONFERENCIA' }), expect.anything());
+  });
+});

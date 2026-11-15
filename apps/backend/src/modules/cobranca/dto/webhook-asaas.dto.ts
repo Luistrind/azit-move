@@ -17,6 +17,11 @@ export const webhookAsaasSchema = z.object({
       externalReference: z.string().nullish(),
       value: z.number().nullish(),
       paymentDate: z.string().nullish(),
+      // Fatura Azit F2 (doc 02 §32.4-A): dia em que o cliente pagou, dia da
+      // confirmação e identificador da transação Pix, quando o Asaas manda.
+      clientPaymentDate: z.string().nullish(),
+      confirmedDate: z.string().nullish(),
+      pixTransaction: z.unknown(),
       dueDate: z.string().nullish(),
       fineValue: z.number().nullish(),
       interestValue: z.number().nullish(),

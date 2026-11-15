@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   diaBrasil, dataCalendarioUTC, somarDiasISO, partesBrasil, diaSemanaISO, isoParaBR,
-  formatarDiaBR, formatarInstanteBR, inicioDiaUTC, diasAtrasoCalendario, dataHojeBrasil, diaDeColunaMista,
+  formatarDiaBR, formatarInstanteBR, inicioDiaUTC, diasAtrasoCalendario, dataHojeBrasil, diaDeColunaMista, fimDoDiaBrasil, horaBrasil,
 } from './datas';
 
 describe('datas — fuso do negócio (Regra 15)', () => {
@@ -55,5 +55,18 @@ describe('datas — fuso do negócio (Regra 15)', () => {
     const venc = new Date('2026-10-01T00:00:00.000Z');
     expect(diasAtrasoCalendario(venc, new Date('2026-10-04T00:00:00.000Z'))).toBe(3);
     expect(diasAtrasoCalendario(venc, new Date('2026-09-30T00:00:00.000Z'))).toBe(0);
+  });
+});
+
+describe('fimDoDiaBrasil / horaBrasil (validade do Pix sob demanda, doc 02 §32.4-A)', () => {
+  it('23h59 de Brasília é 02h59 UTC do dia seguinte — e continua sendo o mesmo dia no Brasil', () => {
+    const fim = fimDoDiaBrasil('2026-11-15');
+    expect(fim.toISOString()).toBe('2026-11-16T02:59:59.999Z');
+    expect(diaBrasil(fim)).toBe('2026-11-15');
+    expect(diaBrasil(new Date(fim.getTime() + 1))).toBe('2026-11-16');
+    expect(horaBrasil(fim)).toBe('23:59');
+  });
+  it('hora de um instante no fuso do negócio', () => {
+    expect(horaBrasil(new Date('2026-11-07T21:22:10.000Z'))).toBe('18:22');
   });
 });

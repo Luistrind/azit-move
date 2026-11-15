@@ -142,3 +142,24 @@ export function diasAtrasoCalendario(vencimento: Date, referencia?: Date): numbe
   const ref = referencia ? dataCalendarioUTC(referencia) : dataHojeBrasil();
   return Math.max(0, diasCalendarioEntre(dataCalendarioUTC(vencimento), ref));
 }
+
+// Último instante (23:59:59.999) de um dia-calendário 'YYYY-MM-DD' NO FUSO DO
+// NEGÓCIO, como instante real — validade do Pix sob demanda (doc 02 §32.4-A:
+// "válido até as 23h59 do dia"). O deslocamento do fuso é lido do próprio
+// Intl (sem "−3h" fixo): acha-se quanto o relógio de Brasília difere do UTC
+// naquele instante e desconta-se.
+export function fimDoDiaBrasil(iso: string): Date {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  const comoUTC = Date.UTC(y, m - 1, d, 23, 59, 59, 999);
+  const local = partesBrasil(new Date(comoUTC));
+  const [ly, lm, ld] = local.dia.split('-').map(Number);
+  const relogioLocal = Date.UTC(ly, lm - 1, ld, local.hora, local.minuto, 59, 999);
+  return new Date(comoUTC - (relogioLocal - comoUTC));
+}
+
+// 'HH:MM' de um INSTANTE no fuso do negócio (a página da fatura mostra a hora
+// do Pix recebido).
+export function horaBrasil(instante: Date): string {
+  const p = partesBrasil(instante);
+  return `${String(p.hora).padStart(2, '0')}:${String(p.minuto).padStart(2, '0')}`;
+}
