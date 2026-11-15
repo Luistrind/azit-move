@@ -1402,9 +1402,19 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 - **Juros/multas:** calculados automaticamente pelo Asaas no momento do pagamento; sistema recalcula internamente para conciliação
 - **Forma de pagamento: PIX** (decisão Luís, 2026-09-23). Toda cobrança que o sistema cria no Asaas — entrada, faturas, crédito avulso, entrada de acordo e recebimento da novação — nasce com `billingType: PIX`. Antes saía `UNDEFINED` (o cliente escolhia boleto/PIX/cartão na fatura). Ponto único: `AsaasService.criarCobranca`.
 
-### 11.3 WhatsApp / Z-API (Comunicação)
-- **Direção:** Azit → Cliente
-- **Uso:** notificação de vencimento, cobrança na régua, comunicados operacionais
+### 11.3 WhatsApp — API oficial da Meta (Comunicação)
+- **Direção:** Azit → Cliente (modelos aprovados) e Cliente → Azit (respostas, atendidas no
+  sistema — §24)
+- **Uso:** lembretes de pagamento (§28) num número dedicado; a notificação formal de cobrança
+  da POP fica para depois (§23.5)
+- **Decisão 2026-09-19 (Luís):** WhatsApp Business Platform oficial (Cloud API da Meta), não
+  Z-API — modelos aprovados, situação de entrega e leitura oficial e sem risco de banimento por
+  volume. Credenciais na Central de Integrações (§22).
+- **Decisão 2026-09-19 (Luís) — opção C: o número fica só na API.** Sem coexistência com o
+  aplicativo e sem parceiro: o custo é só a tarifa da Meta por mensagem de utilidade. As
+  respostas dos clientes passam a ser atendidas **no sistema** (§24).
+- **Decisão 2026-11-15 (Luís) — caminho enxuto:** o canal, os lembretes e a tela Conversas
+  entram agora; regras do canal no §23.
 
 ### 11.4 Assinatura Digital (provisória — mock manual)
 - Hoje a assinatura é **manual**: o sistema gera o documento, o operador baixa, o cliente assina por fora, o operador sobe o assinado.
@@ -2046,6 +2056,117 @@ troca próxima da credencial do Asaas de sandbox para produção.
    ambiente antes de qualquer cobrança real.
 6. Webhooks continuam exigindo segredo em produção (auditoria 15/09, P0-1) — o segredo
    passa a poder ser definido pela tela, espelhado no painel do provedor.
+7. **WhatsApp (Meta)** entra na central com as mesmas regras (2026-11-15): id do número, id
+   da conta do WhatsApp Business, token de acesso, segredo do aplicativo (assinatura do
+   webhook) e token de verificação (cadastro do webhook). Os dois ids não são segredo e
+   aparecem inteiros; os três segredos seguem o item 1. **Testar conexão** lê o próprio número
+   na Meta, sem enviar mensagem. O que o canal faz com a credencial está no §23.
+
+## 23. Canal WhatsApp — regras de envio (decisão Luís, 2026-09-19; retomado em 2026-11-15)
+
+**Decisão de 15/11/2026 (Luís) — caminho enxuto.** A fatura passa a ser paga por Pix gerado na
+hora (§32.4-A), sem cobrança criada com antecedência no Asaas; logo o Asaas deixa de avisar o
+cliente, e os lembretes de pagamento (§28) viram pré-requisito para ligar o modelo novo em
+produção. Por isso o WhatsApp é retomado só com o necessário: **o canal** (esta seção), **os
+lembretes D-2 e D0** (§28) e **a tela Conversas** (§24). A notificação formal de cobrança da POP
+fica adiada (§23.5).
+
+Tudo o que sai pelo WhatsApp — lembrete automático ou resposta do operador — passa por **uma
+regra única de envio**, descrita aqui. Nenhuma tela ou job decide sozinho se manda de verdade.
+
+### 23.1 Chave geral e credencial
+
+- **Chave geral** dos envios automáticos, **desligada por padrão**, em Configuração › WhatsApp.
+  Desligada, nenhum lembrete é gerado. A resposta do operador na tela Conversas não depende da
+  chave: é ato humano, dentro da janela de 24 h.
+- **Sem credencial** (id do número + token de acesso, §22 item 7):
+  - **fora de produção** (local e homologação) o envio vira **SIMULADO**: fica registrado com o
+    texto e o destino, marcado "simulado — não enviado", nunca confundível com envio real;
+  - **em produção nada é simulado.** O envio fica **RETIDO**, com o motivo, e sai sozinho na
+    varredura seguinte depois que a credencial existir. A tela mostra o que está retido.
+
+### 23.2 Um número só, e números autorizados fora de produção
+
+O número real da Azit é usado em desenvolvimento, homologação e produção; não há número de
+teste (decisão Luís, 19/09). Por isso, **fora de produção só sai mensagem de verdade para os
+números autorizados** do ambiente — lista em Configuração › WhatsApp, gravada no banco de cada
+ambiente. Os clientes de teste são cadastrados com o WhatsApp do Luís ou de funcionários.
+
+- Qualquer outro destino é registrado como SIMULADO, com o motivo, e nada é enviado.
+- Lista vazia significa que nada real sai do ambiente.
+- A trava existe em **duas camadas**: a regra de envio e o cliente da Meta, que recusa enviar
+  fora de produção sem a autorização explícita do destino.
+- Produção ignora a lista: manda para o WhatsApp do cadastro do titular.
+
+| Ambiente | Credencial | Destino | Resultado |
+|---|---|---|---|
+| produção | sim | qualquer | ENVIA |
+| produção | não | qualquer | RETIDO (nunca simula) |
+| fora de produção | sim | autorizado | ENVIA |
+| fora de produção | sim | não autorizado | SIMULADO |
+| fora de produção | não | qualquer | SIMULADO |
+
+### 23.3 Modelos de mensagem por ambiente
+
+Mensagem iniciada pela empresa exige **modelo aprovado** pela Meta. O botão de link de um
+modelo tem o **domínio fixo** (só o final do endereço varia), e homologação e produção usam
+domínios diferentes para a Fatura Azit. Logo, o **nome e o idioma do modelo de cada momento**
+(D-2 e D0) são parâmetros do canal, gravados no banco de cada ambiente: produção aponta para os
+modelos com o domínio de produção, homologação para os modelos com o domínio de homologação. O
+**texto** do modelo vive na Meta (é ela quem aprova); o sistema guarda, por envio, o texto que
+montou com as variáveis, para o operador ver o que o cliente recebeu.
+
+Os parâmetros do canal são **versionados**: cada alteração grava uma versão nova, com quem
+alterou e quando; a tela mostra a versão em vigor.
+
+### 23.4 Webhook da Meta
+
+- Público, em `/api/v1/webhooks/whatsapp`. O cadastro é confirmado por GET com o **token de
+  verificação**; cada POST é conferido pela assinatura `X-Hub-Signature-256` (HMAC do corpo com
+  o segredo do aplicativo). **Produção recusa webhook sem segredo configurado.**
+- Regra 4: responde na hora e enfileira. A fila processa a situação de entrega (entregue, lida,
+  falhou) dos envios e as mensagens recebidas dos clientes (§24).
+- O aplicativo da Meta aponta para **uma** URL. Durante a homologação, aponta para o homolog;
+  na entrada em produção, passa para a produção. Depois disso o homolog não recebe mais
+  entrega nem leitura, e a ferramenta de teste simula esses carimbos.
+
+### 23.5 Notificação formal da POP — adiada
+
+As notificações formais do POP-COB-001 (caso de cobrança, seis etapas, PDF anexado, prova com
+SHA-256, janela de dias úteis das 9h às 17h, retomada e rescisão) foram desenhadas em 19/09 e
+construídas na branch `feat/notificacoes-cobranca`, que **não foi incorporada**. Continuam
+valendo como desenho e voltam depois dos lembretes, sobre este mesmo canal. Até lá, a partir do
+D+1 a cobrança é humana (régua, §7) e o bloqueio segue a Regra 6.
+
+## 24. Conversas do WhatsApp (decisão Luís, 2026-09-19 — opção C; construída em 2026-11-15)
+
+Com o número só na API (§11.3), o cliente que responde a um lembrete é atendido pelo sistema,
+na tela **Carteira › Conversas do WhatsApp** (área Carteira e cobrança). A conversa é do
+**número** de WhatsApp, ligada ao titular quando o número bate com o cadastro. Não é um produto
+de atendimento geral: serve à cobrança.
+
+1. **Entrada**: toda mensagem recebida (texto, áudio, imagem, documento, localização, botão)
+   chega pelo webhook (§23.4) e é gravada com o conteúdo original, o horário da Meta e o id da
+   mensagem. A mídia é baixada da Meta na hora, porque o link dela expira, e fica guardada no
+   sistema.
+2. **Identificação — número canônico**: o número é guardado sempre na forma `55 + DDD +
+   celular com o nono dígito`. A Meta às vezes informa números brasileiros sem o nono dígito;
+   o sistema acrescenta. Para achar o titular, o número é comparado ao WhatsApp do cadastro em
+   todas as formas (com e sem DDI, com e sem nono dígito). Sem correspondência, a conversa
+   aparece como "número não identificado".
+3. **Resposta**: quem tem a área Carteira e cobrança responde pela tela. Pela regra da Meta,
+   **texto livre só pode sair até 24 h depois da última mensagem do cliente**. Fora dessa
+   janela a tela não deixa escrever e explica o motivo. O envio passa pela regra única do §23
+   (fora de produção, só número autorizado; o resto fica SIMULADO).
+4. **Uma conversa só**: a tela junta as mensagens trocadas e os lembretes enviados àquele
+   número (§28), sem duplicar registro: o lembrete continua sendo `LembretePagamento`.
+5. **Leitura**: abrir a conversa marca as mensagens como lidas no sistema e avisa a Meta
+   (confirmação azul para o cliente). A primeira mensagem não lida de um número gera alerta no
+   sino (área Carteira e cobrança), que leva à conversa.
+6. **Fora do escopo desta fase**: enviar anexos pela tela, respostas prontas, atribuir a
+   conversa a um operador, indicador de mensagem nova no card da régua e a entrada das
+   mensagens no dossiê do contrato como prova (POP §17) — os dois últimos voltam junto com a
+   notificação formal (§23.5).
 
 ## 25. Controle de frota (decisão Luís, 2026-09-20)
 
@@ -2822,71 +2943,116 @@ API: `GET /cobranca/conferencia-asaas?de&ate` e `POST /cobranca/conferencia-asaa
 
 ---
 
-## 28. Lembretes de pagamento pelo WhatsApp (decisão Luís, 2026-10-30)
+## 28. Lembretes de pagamento pelo WhatsApp (decisão Luís, 2026-10-30; revisto em 2026-11-15)
 
-Contexto: o aviso por SMS do Asaas vem falhando e custa à parte. Decisão: o próprio sistema
-avisa o cliente pelo **mesmo número de WhatsApp dedicado da POP** (§23, branch
-`feat/notificacoes-cobranca`), com o link de pagamento da cobrança. Lembrete é coisa distinta da
-notificação formal: não abre caso de cobrança, não conta entre as seis etapas da POP, não gera
-PDF nem prova e nasce ANTES do atraso. A partir do D+1 quem fala é a POP.
+Contexto de 30/10: o aviso por SMS do Asaas vem falhando e custa à parte. Decisão: o próprio
+sistema avisa o cliente pelo número de WhatsApp dedicado (§11.3), com o link de pagamento.
+Lembrete é coisa distinta da notificação formal: não abre caso de cobrança, não conta entre as
+seis etapas da POP, não gera PDF nem prova e nasce ANTES do atraso.
 
-### 28.1 Os três momentos de uma fatura
+**Revisão de 15/11/2026 (Luís).** Com o Pix sob demanda (§32.4-A) a fatura deixa de nascer com
+cobrança no Asaas, então o Asaas deixa de avisar: os lembretes passam a ser **pré-requisito**
+para ligar o modelo novo em produção e são construídos agora, pelo caminho enxuto (§23). Três
+coisas mudam em relação ao texto de 30/10: o link é o da **Fatura Azit** (§28.2); o "sem dobro"
+não depende mais de `asaasInvoiceUrl` (§28.1); e os lembretes saem **antes** da notificação
+formal da POP, que fica adiada (§28.5).
+
+### 28.1 Os momentos de uma fatura
 
 | Momento | Mensagem | Regra |
 |---|---|---|
-| **D-2** | fatura disponível: valor, vencimento e **link de pagamento** | sai qualquer dia da semana, das 9h às 20h |
-| **D0** (vence hoje) | lembrete curto com o mesmo link | só se a fatura ainda estiver em aberto na manhã do dia |
-| **D+1 em diante** | 1ª a 6ª notificações da POP (§23) | como já desenhado; a 1ª passa a levar o link também |
+| **D-2** | fatura disponível: valor, vencimento e **link da Fatura Azit** | sai qualquer dia da semana, das 9h às 20h |
+| **D0** (vence hoje) | lembrete curto com o mesmo link | só se a fatura ainda estiver em aberto no dia |
+| **D+1 em diante** | sem mensagem automática nesta fase | cobrança humana pela régua; a notificação formal da POP volta depois (§23.5) |
 
 - **Unidade é a fatura, não o contrato.** A fatura já consolida os itens da conta (veículo +
   proteção + reembolso parcelado…): o cliente recebe UMA mensagem com UM link por vencimento.
 - **Sábado existe.** A maior parte da base vence na segunda (decisão 04/07), logo D-2 cai no
-  sábado. A janela de dias úteis 9h–17h vale só para as notificações formais (§23 item 4); os
-  lembretes saem todo dia, 9h–20h (America/Sao_Paulo, Regra 15), porque é no fim de semana que o
-  motorista tem o dinheiro da semana na mão.
-- **Só manda se ainda devo.** Fatura PAGA, PAGA_EM_ATRASO, RENEGOCIADA, NOVADA ou coberta por acordo
-  não recebe lembrete. Pagou pelo link no sábado, não recebe nada na segunda.
-- **Sem dobro.** Com o lembrete ligado para um titular, o aviso por SMS do Asaas é desligado para
-  aquele cliente (Regra 1: a régua é do Azit; o Asaas só cobra). Enquanto o lembrete estiver
-  desligado, o Asaas continua avisando como hoje.
-- **Um lembrete por fatura por momento**, idempotente pela chave `(faturaId, momento)`; o job
-  diário que já roda o D-5 e o D+3 ganha os dois momentos, na mesma chave de dia no fuso do Brasil.
+  sábado. Os lembretes saem todo dia, 9h–20h (America/Sao_Paulo, Regra 15), porque é no fim de
+  semana que o motorista tem o dinheiro da semana na mão.
+- **Só manda se ainda devo.** Recebe lembrete a fatura **fechada** (já passou pelo D-5), com
+  saldo em aberto, de titular com o lembrete ligado e com WhatsApp válido. Fatura PAGA,
+  PAGA_EM_ATRASO, RENEGOCIADA, NOVADA, RESCINDIDA ou coberta por acordo (vínculo de acordo na
+  fatura, ou em todas as suas parcelas) não recebe. Pagou pelo link no sábado, não recebe nada
+  na segunda. Pagou uma parte: o lembrete sai com o **saldo**, não com o valor cheio.
+- **Um lembrete por fatura por momento**, garantido pela chave única `(fatura, momento)`. Não
+  há reenvio automático: se o D-2 falhou na Meta, a falha fica registrada, o operador é
+  avisado no sino e pode mandar o link à mão (§32.7); o D0 sai normalmente.
+- **Varredura de hora em hora dentro da janela.** O job roda a cada hora cheia das 9h às 19h
+  (fuso do Brasil), em fila, com a chave do job pelo dia e hora no fuso do Brasil. Cada rodada
+  procura as faturas que vencem daqui a 2 dias (D-2) e as que vencem hoje (D0) e ainda não têm
+  o lembrete daquele momento. Assim, um titular ligado às 15h do D-2 ainda recebe no mesmo dia,
+  e uma rodada que falhou é coberta pela seguinte. Passado o dia, o momento perdido **não** é
+  enviado com atraso.
+- **Retido** (produção sem credencial, §23.1): o lembrete fica registrado como RETIDO e é
+  tentado de novo nas rodadas seguintes **do mesmo dia**. Virou o dia, fica retido para sempre,
+  como registro de que não saiu.
+- **Sem dobro com o Asaas.** Com o lembrete ligado para um titular, o aviso do próprio Asaas é
+  desligado para aquele cliente (Regra 1: a régua é do Azit; o Asaas só cobra). O Asaas trata
+  isso no **cadastro do cliente**: campo `notificationDisabled` (`PUT /v3/customers/{id}`).
+  - Desligar altera um cadastro fora do sistema, então é **ato explícito do operador** na ficha
+    ("Desligar o aviso do Asaas"), separado de ligar o lembrete e disponível só com o lembrete
+    ligado, com registro de quem fez e quando. Ligar o lembrete, sozinho, não mexe no Asaas.
+  - Cliente que **já existe** no Asaas: o cadastro é alterado na hora. Cliente que **ainda não
+    existe** lá: a decisão fica registrada e o cliente nasce com o aviso desligado quando for
+    criado (ponto único: `AsaasService.criarCliente`).
+  - Religar o aviso do Asaas segue o mesmo caminho. Desligar o lembrete **não** religa o Asaas
+    sozinho: a ficha destaca o titular que ficou sem aviso nenhum, para o operador decidir.
+  - Enquanto o operador não desligar, o Asaas continua avisando como hoje.
 
 ### 28.2 Link de pagamento
 
-O link é o `invoiceUrl` da cobrança no Asaas (a página da cobrança, com PIX copia-e-cola).
-Hoje a fatura guarda só `asaasChargeId`; passa a guardar **`asaasInvoiceUrl`**, preenchido no
-mesmo ato em que a cobrança é criada (`AsaasService.criarCobranca`, ponto único) e retroalimentado
-pela leitura da cobrança quando estiver vazio (faturas emitidas antes desta decisão e cobranças
-migradas do legado, §26). O link nunca é montado à mão pelo sistema.
+O link é a **página pública da Fatura Azit** (§32.2 e §32.7): `<endereço da fatura>/<token>`,
+montado sempre a partir do token da fatura (`Fatura.tokenPublico`) e do endereço-base do
+ambiente. Vale para os dois modelos de fatura (cobrança no Asaas ou Pix sob demanda): a página
+mostra os itens, o valor do dia e o Pix. O `invoiceUrl` do Asaas, previsto no texto de 30/10,
+**não é usado** e a fatura não ganha o campo `asaasInvoiceUrl`.
 
-> **Evolução §32.7 (2026-11-10):** com a Fatura Azit, o link das mensagens passa a ser a **página pública da fatura** (`fatura.azitmove.com.br/<token>`), não mais o `invoiceUrl` do Asaas; e-mail entra como canal dos mesmos momentos. O `asaasInvoiceUrl` fica só para faturas antigas.
+No modelo da Meta o botão de link tem o domínio fixo e recebe só o **token** como variável
+(§23.3). Fatura sem token (anterior à Fatura Azit e não preenchida) não recebe lembrete; a
+tela mostra o motivo.
 
 ### 28.3 Canal, consentimento e ambientes
 
-- Mesmo cliente da Meta, mesma trava de números autorizados fora de produção e mesma chave geral
-  da POP (§23 itens 8 e 10): sem credencial, produção não simula e o lembrete fica retido; fora de
-  produção vira SIMULADO. As respostas do cliente caem na tela Conversas do WhatsApp (§24).
-- Modelo da Meta: categoria utilidade, corpo curto, **botão de link dinâmico** com o
-  `asaasInvoiceUrl`. É um modelo por momento (D-2 e D0), editável em Configurações > Notificações
-  de cobrança, com o padrão restaurável.
-- **Consentimento**: o titular precisa ter aceitado receber avisos por WhatsApp. Conferir com o
-  jurídico se o contrato atual cobre isso, junto com os quatro ajustes de redação dos anexos da POP
-  já pendentes. Até lá o lembrete nasce desligado por titular; ligar é ato do operador na ficha.
+- Tudo passa pela regra única de envio do §23: chave geral desligada por padrão, números
+  autorizados fora de produção, produção nunca simula. As respostas do cliente caem na tela
+  Conversas do WhatsApp (§24).
+- **Modelos da Meta**: categoria utilidade, corpo curto, **botão de link dinâmico**. Um modelo
+  por momento (D-2 e D0), com nome e idioma parametrizados por ambiente (§23.3). Variáveis do
+  corpo, nesta ordem: primeiro nome, número da fatura, valor, vencimento. Variável do botão: o
+  token da fatura. O texto é provisório até a revisão do jurídico/V4 (§32.10 item 3) e segue o
+  vocabulário de 24/10 (sem "financiar", "taxa", "juros").
+- **Consentimento**: o titular precisa ter aceitado receber avisos por WhatsApp. Conferir com
+  o jurídico se o contrato atual cobre isso. Até lá o lembrete **nasce desligado por titular**;
+  ligar é ato do operador na ficha, com registro de quem ligou e quando (e de quem desligou).
 
 ### 28.4 Registro e tela
 
-Cada lembrete é um registro (`LembretePagamento`: fatura, momento, destino, texto enviado,
-id da mensagem na Meta, carimbos de envio/entrega/leitura/falha), visível na ficha do titular ao
-lado da fatura e no dossiê do caso de cobrança quando a fatura entrar em atraso, para o operador
-saber que o cliente foi avisado antes. Não entra na prova formal da POP.
+Cada lembrete é um registro (`LembretePagamento`: fatura, momento, destino, texto montado,
+modelo usado, id da mensagem na Meta, carimbos de envio, entrega, leitura e falha, e a
+situação: PREPARADO, ENVIADO, ENTREGUE, LIDO, FALHOU, SIMULADO ou RETIDO, com o motivo quando
+não saiu). Aparece:
+
+- na **ficha do titular**, ao lado das faturas: o estado do lembrete do titular (ligado ou
+  desligado, por quem e quando), o aviso do Asaas e a lista dos lembretes de cada fatura com a
+  situação;
+- na **tela Conversas** (§24), dentro da conversa do número;
+- em **Configuração › WhatsApp**: a chave geral, os números autorizados, os modelos e o que
+  está retido.
+
+Não entra na prova formal da POP.
 
 ### 28.5 Ordem de construção
 
-Depois que a carteira (§27) e o layout v2 passarem pelo homolog: (1) rebase da branch da POP
-sobre a main; (2) `asaasInvoiceUrl` na fatura + retroalimentação; (3) os dois momentos no job
-diário, reaproveitando o cliente da Meta; (4) tela. Nada disso sai de verdade antes de a conta da
-Meta sair do "Continuar" da plataforma WhatsApp (pendência desde 06/10).
+Decisão de 15/11: (1) canal — cliente da Meta, parâmetros, regra de envio e webhook (§23);
+(2) lembretes D-2 e D0 com o link da Fatura Azit; (3) tela Conversas (§24). **Os lembretes saem
+antes da notificação formal da POP**, que fica adiada (§23.5) e será reconstruída sobre este
+canal; a branch `feat/notificacoes-cobranca` serve só de fonte e não é incorporada. E-mail
+como segundo canal dos mesmos momentos (§32.7) fica para depois.
+
+Nada sai de verdade antes de: a conta da Meta concluir a configuração da plataforma WhatsApp
+(pendência desde 06/10), o número dedicado estar registrado na API, os modelos serem aprovados
+e o jurídico confirmar o consentimento.
 
 ---
 
