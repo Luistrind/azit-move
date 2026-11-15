@@ -1,0 +1,647 @@
+<title>Fatura Azit v3</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: barra do protótipo (cenários, onde o link abre, parâmetros) e o "celular" do cliente em coluna única (420px).
+   v3 (14/11): retorno do Vicente sobre o v2 — pagar primeiro (código Pix como ação principal), mínimo do parcial
+   sobre o valor de face com piso em reais, atualização só a partir do último pagamento, padrão "só o vencido",
+   comprovante com hora e identificador, PDF visível, telas de erro, textos para o cliente. Mesmos tokens do v2. */
+:root{
+  --navy:#001029; --accent:#fa8e0d; --accent-ink:#001029;
+  --bg:#eef1f5; --surface:#ffffff; --surface-muted:#f8fafc; --surface-input:#f1f4f8;
+  --border:#e4e9ef; --border-light:#eef1f5;
+  --text:#001029; --text-body:#5b6b7f; --text-secondary:#6b7a8c; --text-muted:#9aa7b5; --text-label:#8694a4;
+  --on-navy:#c2cedb; --on-navy-muted:#67809a;
+  --ok-fg:#1f9d5b; --ok-bg:#eafaf1; --danger-fg:#e0413c; --danger-bg:#fdeceb; --warn-fg:#c98a0a; --warn-bg:#fef6e9; --warn-ink:#8a5a00; --info-fg:#2456c7; --info-bg:#eef4ff;
+  --folha:#ffffff; --folha-ink:#111827;
+  --display:'Outfit',system-ui,sans-serif; --body:'Manrope',system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#09090b; --surface:#121214; --surface-muted:#18181b; --surface-input:#1c1c20;
+  --border:rgba(255,255,255,.1); --border-light:rgba(255,255,255,.07);
+  --text:#fafafa; --text-body:#b4b4bc; --text-secondary:#a1a1aa; --text-muted:#71717a; --text-label:#8b8b93;
+  --ok-fg:#4cc07e; --ok-bg:rgba(46,158,91,.18); --danger-fg:#f27c78; --danger-bg:rgba(229,72,77,.18); --warn-fg:#e3b341; --warn-bg:rgba(201,150,15,.18); --warn-ink:#e3b341; --info-fg:#7fb0f5; --info-bg:rgba(57,135,229,.2);
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#09090b; --surface:#121214; --surface-muted:#18181b; --surface-input:#1c1c20;
+  --border:rgba(255,255,255,.1); --border-light:rgba(255,255,255,.07);
+  --text:#fafafa; --text-body:#b4b4bc; --text-secondary:#a1a1aa; --text-muted:#71717a; --text-label:#8b8b93;
+  --ok-fg:#4cc07e; --ok-bg:rgba(46,158,91,.18); --danger-fg:#f27c78; --danger-bg:rgba(229,72,77,.18); --warn-fg:#e3b341; --warn-bg:rgba(201,150,15,.18); --warn-ink:#e3b341; --info-fg:#7fb0f5; --info-bg:rgba(57,135,229,.2);
+  color-scheme:dark}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--body);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 32px}
+button{font:inherit;cursor:pointer}
+button:disabled{cursor:not-allowed;opacity:.5}
+h1,h2,h3{margin:0;font-family:var(--display);text-wrap:balance}
+.num{font-variant-numeric:tabular-nums}
+
+/* barra do protótipo */
+.proto{max-width:760px;margin:0 auto;padding:14px 0 10px;display:flex;flex-direction:column;gap:8px}
+.proto .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-label);font-weight:700}
+.proto .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.proto .row .lbl{margin-right:4px;min-width:118px}
+.chip{border:1px solid var(--border);background:var(--surface);color:var(--text-body);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600}
+.chip[aria-pressed="true"]{background:var(--navy);border-color:var(--navy);color:#fff}
+.proto .nota{font-size:12.5px;color:var(--text-secondary)}
+.proto details{border:1px solid var(--border);border-radius:10px;background:var(--surface)}
+.proto summary{cursor:pointer;padding:9px 12px;font-size:12.5px;font-weight:700;color:var(--text-body)}
+.proto .param{padding:4px 12px 12px;display:flex;flex-direction:column;gap:8px;font-size:12.5px;color:var(--text-body)}
+.proto .param .row .lbl{min-width:170px}
+.proto .param p{margin:0}
+.proto .param b{color:var(--text)}
+
+/* "celular" */
+.fone{max-width:420px;margin:6px auto 0;background:var(--surface);border:1px solid var(--border);border-radius:22px;overflow:hidden;box-shadow:0 10px 40px rgba(0,16,41,.08)}
+.volta{display:flex;align-items:center;gap:6px;background:var(--navy);color:var(--on-navy);border:0;width:100%;text-align:left;padding:10px 18px 0;font-size:13px;font-weight:600}
+.volta:hover{color:#fff}
+.topo{background:var(--navy);color:#fff;padding:18px 18px 20px;display:flex;flex-direction:column;gap:12px}
+.marca{display:flex;align-items:center;gap:8px}
+.marca img{width:32px;height:32px;display:block}
+.marca .wm{font-family:var(--display);font-weight:700;font-size:17px;letter-spacing:-.01em}
+.marca .wm b{color:var(--accent);font-weight:700}
+.topo .meta{color:var(--on-navy-muted);font-size:12px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.topo .ola{color:var(--on-navy);font-size:14px}
+.topo .ola strong{color:#fff;font-weight:600}
+.status{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:700;width:max-content}
+.status::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.st-aberta{background:var(--info-bg);color:var(--info-fg)} .st-hoje{background:var(--warn-bg);color:var(--warn-fg)}
+.st-vencida{background:var(--danger-bg);color:var(--danger-fg)} .st-parcial{background:var(--warn-bg);color:var(--warn-fg)} .st-paga{background:var(--ok-bg);color:var(--ok-fg)}
+.total{display:flex;flex-direction:column;gap:2px}
+.total .k{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--on-navy-muted);font-weight:700}
+.total .v{font-family:var(--display);font-weight:800;font-size:34px;letter-spacing:-.02em;line-height:1.1}
+.total .venc{color:var(--on-navy);font-size:13.5px}
+.total .venc em{font-style:normal;color:var(--accent);font-weight:700}
+.total .sub{color:var(--on-navy);font-size:13px;display:flex;gap:10px;flex-wrap:wrap}
+.total .sub b{color:#fff;font-weight:600}
+.aviso-topo{background:rgba(250,142,13,.16);border:1px solid rgba(250,142,13,.45);color:#fff;border-radius:10px;padding:9px 11px;font-size:13px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+.aviso-topo b{color:var(--accent)}
+.aviso-topo button{background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:6px 10px;font-weight:700;font-size:12.5px}
+
+.corpo{padding:16px 16px 20px;display:flex;flex-direction:column;gap:16px}
+section.bloco{display:flex;flex-direction:column;gap:8px}
+.bloco h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-label);font-weight:700}
+.bloco h2 small{display:block;text-transform:none;letter-spacing:0;font-weight:500;color:var(--text-secondary);font-size:12.5px;margin-top:2px}
+.lista{display:flex;flex-direction:column}
+.item{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-light)}
+.item:last-child{border-bottom:0}
+.item .n{min-width:0;display:flex;flex-direction:column;gap:2px}
+.item .n .t{font-weight:600;font-size:14.5px}
+.item .n .s{font-size:12.5px;color:var(--text-secondary)}
+.item .v{font-weight:700;white-space:nowrap}
+.item .v.zero{color:var(--text-muted);font-weight:500}
+.item.encargo .t{color:var(--warn-ink)}
+.soma{display:flex;justify-content:space-between;padding-top:10px;border-top:1px dashed var(--border);font-weight:700}
+.soma .v{font-family:var(--display);font-size:20px}
+.ajuda{font-size:12.5px;color:var(--text-secondary);background:var(--surface-muted);border-radius:10px;padding:9px 11px}
+.ajuda b{color:var(--text)}
+
+/* PAGAR — primeiro bloco depois do cabeçalho (S-02, S-03) */
+.pagar{border:1px solid var(--border);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--surface)}
+.pagar .cab{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.pagar .cab .k{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-label);font-weight:700}
+.pagar .cab .v{font-family:var(--display);font-weight:800;font-size:26px;line-height:1.1}
+.pagar .cab .leg{font-size:12.5px;color:var(--text-secondary);margin-top:2px}
+.pagar .btn-p{width:100%;padding:13px 14px;font-size:15px}
+.pagar .qr{border-top:1px solid var(--border-light);padding-top:8px}
+.pagar .qr summary{list-style:none;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-body);display:flex;justify-content:space-between;align-items:center}
+.pagar .qr summary::-webkit-details-marker{display:none}
+.pagar .qr summary::after{content:"▾";color:var(--text-muted)}
+.pagar .qr[open] summary::after{content:"▴"}
+.pagar .qr .box{display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0 4px;text-align:center}
+.pagar canvas{width:168px;height:168px;image-rendering:pixelated;border-radius:8px;background:#fff;padding:8px;max-width:100%}
+.pagar code{display:block;width:100%;font-size:11.5px;background:var(--surface-input);border-radius:8px;padding:9px 10px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-body)}
+.pagar .receb{font-size:12px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px}
+.pagar .receb b{color:var(--text-body);font-weight:600}
+.btn{border:0;border-radius:10px;padding:11px 14px;font-weight:700;font-size:14px;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn-p{background:var(--accent);color:var(--accent-ink)}
+.btn-s{background:var(--surface-input);color:var(--text)}
+.btn-l{background:transparent;color:var(--text-body);text-decoration:underline;text-underline-offset:3px;padding:6px}
+.acoes{display:flex;flex-direction:column;gap:8px}
+.acoes .dupla{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.proto-only{border:1px dashed var(--border);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;align-items:center}
+.proto-only .lbl{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);font-weight:700}
+
+/* seleção de quanto pagar */
+.seg{display:grid;gap:6px}
+.seg button{border:1px solid var(--border);background:var(--surface);border-radius:12px;padding:10px 12px;display:flex;justify-content:space-between;gap:10px;align-items:center;color:var(--text);text-align:left}
+.seg button .l{display:flex;flex-direction:column;gap:1px;min-width:0}
+.seg button .l b{font-weight:700;font-size:14px}
+.seg button .l span{font-size:12px;color:var(--text-secondary)}
+.seg button .r{font-family:var(--display);font-weight:800;white-space:nowrap}
+.seg button[aria-pressed="true"]{border-color:var(--navy);background:var(--navy);color:#fff}
+.seg button[aria-pressed="true"] .l span{color:var(--on-navy)}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* cartões das faturas (visão da conta) */
+.cards{display:flex;flex-direction:column;gap:8px}
+.card{display:grid;grid-template-columns:auto 1fr auto;gap:10px 12px;align-items:center;width:100%;text-align:left;border:1px solid var(--border);border-radius:14px;padding:12px;background:var(--surface);color:var(--text)}
+.card:hover{border-color:var(--text-muted)}
+.card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.card.primeira{border-color:var(--accent);box-shadow:0 0 0 3px rgba(250,142,13,.15)}
+.card.travada{background:var(--surface-muted)}
+.card .ord{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:13px;background:var(--surface-input);color:var(--text-body)}
+.card.primeira .ord{background:var(--accent);color:var(--accent-ink)}
+.card .ord.ok{background:var(--ok-bg);color:var(--ok-fg)}
+.card .info{min-width:0;display:flex;flex-direction:column;gap:3px}
+.card .info .t{font-weight:700;font-size:14.5px}
+.card .info .s{font-size:12.5px;color:var(--text-secondary)}
+/* S-01: etiqueta legível nos dois temas — laranja sólido com tinta navy */
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;border-radius:6px;padding:3px 8px;width:max-content;margin-top:2px;color:var(--warn-ink);background:var(--warn-bg)}
+.tag.primeira{background:var(--accent);color:var(--accent-ink)}
+.card .val{display:flex;flex-direction:column;align-items:flex-end;gap:2px;white-space:nowrap}
+.card .val b{font-family:var(--display);font-size:16px}
+.card .val span{font-size:11.5px;color:var(--text-muted)}
+.grupo{border:1px solid var(--border);border-radius:12px;padding:2px 12px 10px;margin-bottom:8px}
+.grupo.esta{box-shadow:inset 3px 0 0 var(--accent)}
+.gt{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:9px 0 2px;font-size:12px;font-weight:700;color:var(--text-label);letter-spacing:.04em;text-transform:uppercase}
+.gt span:last-child{font-weight:500;color:var(--text-secondary);text-transform:none;letter-spacing:0}
+.subt{display:flex;justify-content:space-between;gap:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:13px;color:var(--text-body)}
+.subt b{color:var(--text)}
+
+/* valores já recebidos */
+.rec{border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.rec summary{list-style:none;display:flex;justify-content:space-between;gap:10px;padding:11px 12px;cursor:pointer;background:var(--surface-muted)}
+.rec summary::-webkit-details-marker{display:none}
+.rec summary .d{display:flex;flex-direction:column;gap:1px;font-size:13.5px}
+.rec summary .d span{font-size:12px;color:var(--text-secondary)}
+.rec summary .v{font-weight:700;color:var(--ok-fg);white-space:nowrap}
+.rec summary .v::after{content:"▾";margin-left:6px;color:var(--text-muted);font-size:12px}
+.rec[open] summary .v::after{content:"▴"}
+.rec .quitou{padding:6px 12px 10px;display:flex;flex-direction:column}
+.rec .quitou .q{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border-light);color:var(--text-body)}
+.rec .quitou .q:last-child{border-bottom:0}
+.rec .quitou .q b{color:var(--text);font-weight:600}
+.rec .quitou .q.meta{color:var(--text-muted);font-size:12px}
+
+.pago-box{background:var(--ok-bg);color:var(--ok-fg);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:6px;text-align:center}
+.pago-box .g{font-family:var(--display);font-weight:800;font-size:20px}
+.pago-box .s{color:var(--text-body);font-size:13.5px}
+.pago-box .s b{color:var(--text)}
+.erro-box{border:1px solid var(--border);border-left:4px solid var(--danger-fg);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:8px;background:var(--surface-muted)}
+.erro-box h3{font-size:17px}
+.erro-box p{margin:0;font-size:13.5px;color:var(--text-body)}
+.rodape{padding:14px 16px 18px;border-top:1px solid var(--border-light);font-size:12px;color:var(--text-muted);display:flex;flex-direction:column;gap:8px}
+.rodape b{color:var(--text-body);font-weight:600}
+.btn-wa{background:var(--ok-bg);color:var(--ok-fg);border:1px solid var(--border);width:100%}
+
+/* modal */
+.veu{position:fixed;inset:0;background:rgba(0,16,41,.45);display:grid;place-items:end center;padding:0 max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-bottom,0px));z-index:20}
+.modal{width:100%;max-width:420px;background:var(--surface);border-radius:18px;padding:18px 16px 16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 -10px 40px rgba(0,16,41,.2);max-height:calc(100dvh - 32px);overflow:auto}
+.modal h3{font-size:18px}
+.modal p{margin:0;color:var(--text-body);font-size:13.5px}
+.modal p b{color:var(--text)}
+.campo{display:flex;flex-direction:column;gap:6px}
+.campo label{font-size:12px;font-weight:700;color:var(--text-label);letter-spacing:.06em;text-transform:uppercase}
+.campo .in{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:12px;padding:10px 12px;background:var(--surface-input)}
+.campo .in:focus-within{border-color:var(--accent)}
+.campo .in span{color:var(--text-secondary);font-weight:600}
+.campo input{border:0;background:transparent;font:inherit;font-family:var(--display);font-weight:700;font-size:22px;width:100%;min-width:0;color:var(--text);outline:none}
+.campo .dica{font-size:12.5px;color:var(--text-secondary)}
+.campo .dica.erro{color:var(--danger-fg);font-weight:600}
+.campo .dica.ok{color:var(--ok-fg);font-weight:600}
+.atalhos{display:flex;gap:6px;flex-wrap:wrap}
+
+/* "PDF" — folha sempre clara, como sai impresso (D-20) */
+.folha-wrap{width:100%;max-width:460px;max-height:calc(100dvh - 32px);overflow:auto;display:flex;flex-direction:column;gap:8px}
+.folha{background:var(--folha);color:var(--folha-ink);border-radius:6px;padding:22px 22px 18px;font-size:12.5px;line-height:1.45;font-family:var(--body);box-shadow:0 10px 40px rgba(0,0,0,.35)}
+.folha h3{font-family:var(--display);font-size:16px;color:#001029;margin-bottom:2px}
+.folha .cab{display:flex;justify-content:space-between;gap:10px;border-bottom:2px solid #001029;padding-bottom:10px;margin-bottom:10px}
+.folha .cab .wm{font-family:var(--display);font-weight:800;font-size:16px;color:#001029}
+.folha .cab .wm b{color:#fa8e0d}
+.folha .cab .r{text-align:right;color:#4b5563;font-size:11.5px}
+.folha .selo{display:inline-block;border:1.5px solid #1f9d5b;color:#1f9d5b;border-radius:4px;padding:1px 7px;font-weight:800;letter-spacing:.06em;font-size:11px;text-transform:uppercase}
+.folha .selo.ab{border-color:#2456c7;color:#2456c7}
+.folha .dl{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin:10px 0;color:#374151}
+.folha .dl b{color:#111827;font-weight:600}
+.folha table{width:100%;border-collapse:collapse;margin:8px 0}
+.folha th{text-align:left;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #d1d5db;padding:4px 0}
+.folha td{padding:5px 0;border-bottom:1px solid #eef1f5;color:#111827;vertical-align:top}
+.folha td.v,.folha th.v{text-align:right;white-space:nowrap}
+.folha td small{display:block;color:#6b7280;font-size:11px}
+.folha tr.tot td{border-top:2px solid #001029;border-bottom:0;font-weight:800;font-size:14px}
+.folha .pixf{border:1px dashed #9ca3af;border-radius:6px;padding:8px 10px;margin-top:8px;word-break:break-all;font-size:10.5px;color:#374151}
+.folha .pixf b{display:block;font-size:11.5px;color:#111827;margin-bottom:3px}
+.folha .pe{border-top:1px solid #d1d5db;margin-top:12px;padding-top:8px;font-size:10.5px;color:#6b7280;display:flex;flex-direction:column;gap:2px}
+.folha-wrap .btn{align-self:center}
+.toast{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 14px;border-radius:10px;font-size:13.5px;max-width:calc(100% - 32px);z-index:30;box-shadow:0 8px 30px rgba(0,16,41,.3)}
+@media (prefers-reduced-motion:no-preference){.toast{animation:sobe .2s ease-out}@keyframes sobe{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}}
+</style>
+
+<div class="proto">
+  <div class="lbl">Protótipo v3 · Fatura Azit (FAT v1.0 + §32 + retorno do Vicente de 13/11, decisões do Luís de 14/11) — hoje é segunda-feira, 09/11/2026</div>
+  <div class="row"><span class="lbl">Uma fatura</span><span id="cenarios-uma"></span></div>
+  <div class="row"><span class="lbl">Mais de uma</span><span id="cenarios-varias"></span></div>
+  <div class="row"><span class="lbl">Erros</span><span id="cenarios-erros"></span></div>
+  <div class="row"><span class="lbl">O link abre em</span><span id="entradas"></span></div>
+  <div class="nota" id="nota-cenario"></div>
+  <details>
+    <summary>Parâmetros (Configurações › Faturamento) e regras decididas (Luís, 14/11)</summary>
+    <div class="param">
+      <p><b>FAT001</b> Multa por atraso: 2%, uma única vez, sobre o saldo que faltava no vencimento. <b>FAT002</b> Atualização: 1% ao mês, proporcional aos dias, só sobre o saldo que falta e <b>só a partir do último pagamento</b> (D-03). <b>FAT003</b> Cascata: Encargos → Proteção → Acessórios → Principal, rateio proporcional no nível.</p>
+      <p><b>FAT004</b> Mínimo do parcial, pelo doc: vale o <b>maior</b> entre <b>35% do valor de face</b> da fatura e <b>R$ 200</b>. O percentual nunca é sobre o saldo atualizado (senão a fatura nunca liquida). O pagamento que <b>liquida</b> a fatura pode ser menor que o mínimo; quando o saldo já é menor que o mínimo, a página só oferece o total.</p>
+      <p><b>Mais de uma fatura em aberto</b> (D-07, opção A): só fatura <b>vencida ou que vence hoje</b> conta. Com uma única vencida, o parcial dela continua liberado pelo FAT004, mesmo com a próxima já disponível (ela aparece 5 dias antes do vencimento). Com duas ou mais vencidas, o mínimo é a mais antiga inteira e o que passar abate a seguinte.</p>
+      <p><b>Padrão da seleção</b> (S-04): só o que está vencido ou vence hoje; o que ainda vai vencer fica disponível, mas desmarcado. <b>Link do WhatsApp</b> (D-12): abre na lista "Suas faturas" quando há mais de uma em aberto. <b>Ordem dos blocos</b>: pagar primeiro, itens depois.</p>
+      <p>Recebedores (D-17): fatura única; a Proteção veicular é repassada à empresa da proteção no mesmo Pix (nomes e CNPJs são ilustrativos até o split estar implementado).</p>
+    </div>
+  </details>
+</div>
+
+<div class="fone" id="fone"></div>
+
+<script id="motor">
+// ================== MOTOR (sem DOM) — no produto é UMA função em packages/utils (Regra 16) ==================
+const P = { multaPct:2, atualMesPct:1, minPct:35, minReais:200, aVencerConta:false }; // FAT004 pelo doc (Luís, 14/11): 35% e R$ 200, vale o maior
+const HOJE = new Date(2026,10,9); // segunda-feira 09/11/2026
+const r2 = (v)=> Math.round((v+Number.EPSILON)*100)/100;
+const diasEntre = (a,b)=> Math.max(0, Math.round((b-a)/864e5));
+// Os ITENS como o sistema grava (ItemFatura). Mesmo nome em todo lugar (S-18).
+const ITENS = [
+  {id:'veiculo',  nivel:4, nome:'Compra Parcelada — Hyundai HB20S', nominal:699.00, sub:(f)=>`Parcela ${f.parcela} de 104`},
+  {id:'protecao', nivel:2, nome:'Proteção veicular',                 nominal:50.00,  sub:()=>'Serviço do período · repassado à Azit Proteção'},
+  {id:'reemb',    nivel:3, nome:'Reembolso Parcelado — IPVA 2026',  nominal:120.00, sub:(f)=>`Parcela ${f.parcela-19} de 10`},
+  {id:'acordo',   nivel:3, nome:'Acordo de pagamento',              nominal:180.00, sub:(f)=>`Parcela ${f.parcela-20} de 6 · acordo de 14/09`},
+];
+const FACE = ITENS.reduce((a,i)=>a+i.nominal,0);
+// Cascata (FAT003): níveis 1→4, rateio proporcional dentro do nível; o último item do nível absorve o centavo.
+function aplicarCascata(valor, saldos){
+  const quitou=[]; let resta=r2(valor);
+  for(const nivel of [1,2,3,4]){ const grupo=saldos.filter(s=>s.nivel===nivel && s.saldo>0.004); if(!grupo.length) continue;
+    const total=r2(grupo.reduce((a,s)=>a+s.saldo,0)); if(resta<=0.004) break;
+    if(resta>=total-0.004){ for(const s of grupo){ quitou.push({id:s.id,nome:s.nome, v:s.saldo, total:true}); resta=r2(resta-s.saldo); s.saldo=0; } }
+    else { let dist=0; grupo.forEach((s,i)=>{ const q = i===grupo.length-1 ? r2(resta-dist) : r2(resta*s.saldo/total); dist=r2(dist+q); quitou.push({id:s.id,nome:s.nome, v:q, total:false}); s.saldo=r2(s.saldo-q); }); resta=0; }
+  }
+  return {quitou, sobra:Math.max(0,resta)};
+}
+// Encargo acumulado de uma fatura entre o último marco e uma data (D-03: a atualização reinicia a cada pagamento).
+function encargoAte(f, data){
+  const saldo=f.saldoNominal();
+  const emAtraso = data>f.venc;
+  const multaNova = (emAtraso && !f.multaLancada) ? r2(saldo*P.multaPct/100) : 0;
+  const dias = emAtraso ? diasEntre(f.atualDesde, data) : 0;
+  const atualNova = dias>0 ? r2(saldo*(P.atualMesPct/100)/30*dias) : 0;
+  return { multa:r2(f.pend.multa+multaNova), atual:r2(f.pend.atual+atualNova), multaNova, atualNova, dias };
+}
+function novaFatura(def){
+  const f={ ...def, saldos: ITENS.map(it=>({id:it.id,nome:it.nome,nivel:it.nivel,saldo:it.nominal})), pend:{multa:0,atual:0}, multaLancada:false, atualDesde:def.venc, recebidos:[], encargosPagos:{multa:0,atual:0} };
+  f.saldoNominal=()=> r2(f.saldos.reduce((a,s)=>a+s.saldo,0));
+  return f;
+}
+// Aplica UM pagamento da conta, fatura a fatura, da mais antiga para a mais nova (§32.6-A). Devolve o que sobrou.
+function pagar(fat, p){
+  let resta = p.v==='resto' ? Number.POSITIVE_INFINITY : r2(p.v);
+  for(const f of fat){ if(resta<=0.004) break;
+    const saldo=f.saldoNominal(); if(saldo<=0.004) continue;
+    const e=encargoAte(f,p.data);
+    const encs=[]; if(e.multa>0) encs.push({id:'multa',nome:'Multa por atraso',nivel:1,saldo:e.multa}); if(e.atual>0) encs.push({id:'atual',nome:'Atualização por dias de atraso',nivel:1,saldo:e.atual});
+    const total=r2(saldo+e.multa+e.atual); const v=Math.min(resta,total);
+    const r=aplicarCascata(v,[...encs,...f.saldos]);
+    if(e.multaNova>0) f.multaLancada=true;
+    f.pend.multa = encs.find(x=>x.id==='multa')?.saldo ?? 0; f.pend.atual = encs.find(x=>x.id==='atual')?.saldo ?? 0;
+    for(const q of r.quitou){ if(q.id==='multa') f.encargosPagos.multa=r2(f.encargosPagos.multa+q.v); if(q.id==='atual') f.encargosPagos.atual=r2(f.encargosPagos.atual+q.v); }
+    f.atualDesde=p.data; // daqui em diante a atualização corre só sobre o que ficou
+    f.recebidos.push({data:p.data, hora:p.hora||'12:03', e2e:p.e2e||('E18236120' + p.data.getFullYear() + String(p.data.getMonth()+1).padStart(2,'0') + String(p.data.getDate()).padStart(2,'0') + '1203' + String(f.numero).padStart(3,'0')), v, quitou:r.quitou});
+    resta = resta===Number.POSITIVE_INFINITY ? 0 : r2(resta-v);
+  }
+  return resta;
+}
+function calcular(c, extras){
+  const fat=c.faturas.map(novaFatura);
+  for(const f of fat) if(f.pagaEm){ pagar([f],{data:f.pagaEm, v:'resto', hora:'09:41'}); }
+  for(const p of [...(c.pagos||[]), ...extras]) pagar(fat,p);
+  for(const f of fat){
+    f.saldoNominalHoje=f.saldoNominal(); f.diasAtraso=diasEntre(f.venc,HOJE); const e=encargoAte(f,HOJE);
+    f.enc={multa:e.multa, atual:e.atual, diasAtual:e.dias}; f.totalHoje=r2(f.saldoNominalHoje+e.multa+e.atual);
+    f.pagoTotal=r2(f.recebidos.reduce((a,r)=>a+r.v,0)); f.face=FACE;
+    f.status = f.saldoNominalHoje<=0.004?'paga' : f.recebidos.length?'parcial' : f.diasAtraso>0?'vencida' : f.venc.getTime()===HOJE.getTime()?'hoje' : 'aberta';
+    f.aVencer = f.venc>HOJE;
+  }
+  const abertas=fat.filter(f=>f.status!=='paga'), pagas=fat.filter(f=>f.status==='paga');
+  const vencidas=abertas.filter(f=>!f.aVencer);
+  return {fat, abertas, pagas, vencidas,
+    totalAberto:r2(abertas.reduce((a,f)=>a+f.totalHoje,0)), totalVencido:r2(vencidas.reduce((a,f)=>a+f.totalHoje,0)),
+    acumulado:abertas.map((_,i)=>r2(abertas.slice(0,i+1).reduce((a,f)=>a+f.totalHoje,0))),
+    selPadrao:Math.max(1, vencidas.length)};
+}
+// Regra do "Pagar outro valor" (D-01 + D-07): devolve o mínimo, o máximo e o motivo.
+function regraParcial(k){
+  const m=k.abertas[0]; const naRegra = P.aVencerConta ? k.abertas.length : k.vencidas.length;
+  if(naRegra>1) return {tipo:'antiga', minimo:m.totalHoje, maximo:k.totalAberto};
+  const minimo=r2(Math.max(m.face*P.minPct/100, P.minReais));
+  if(m.totalHoje<=minimo+0.004) return {tipo:'sem-parcial', minimo:m.totalHoje, maximo:k.totalAberto};
+  return {tipo:'uma', minimo, maximo:k.totalAberto};
+}
+</script>
+
+<script>
+// ================== DADOS DE EXEMPLO E TELA ==================
+const LOGO = 'data:image/png;base64,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';
+const CONTA = { titular:'Carlos', cpf:'***.456.789-**', placa:'RQT-4F21', conta:'CT-00187', contrato:'2026050012', whats:'5527999990000', whatsTxt:'(27) 99999-0000' };
+const RECEBEDOR = { nome:'Azit Move Ltda', cnpj:'12.345.678/0001-90', protecao:'Azit Proteção', cnpjProt:'98.765.432/0001-10' };
+const F = {
+  f1:{id:'f1', numero:21, parcela:21, venc:new Date(2026,9,26)},
+  f2:{id:'f2', numero:22, parcela:22, venc:new Date(2026,10,2)},
+  f3:{id:'f3', numero:23, parcela:23, venc:new Date(2026,10,9)},
+  f4:{id:'f4', numero:24, parcela:24, venc:new Date(2026,10,16)},
+};
+const CEN = [
+  {id:'aberta',  grupo:'uma', nome:'Em aberto (a vencer)', faturas:[F.f4], nota:'Fatura disponível 5 dias antes do vencimento. Sem encargo. Pagar outro valor: mínimo = maior entre 35% do valor de face (R$ 367,15) e R$ 200 (FAT004, pelo doc).'},
+  {id:'hoje',    grupo:'uma', nome:'Vence hoje (D0)',      faturas:[F.f3], nota:'Lembrete do D0 trouxe o cliente aqui. Sem encargo ainda: a multa só entra no dia seguinte ao vencimento.'},
+  {id:'vencida', grupo:'uma', nome:'Vencida (D+7)',        faturas:[F.f2], nota:'Encargo pela Azit: multa única de 2% + atualização de 1% a.m. proporcional aos dias. O Pix cobra exatamente o total da página.'},
+  {id:'parcial', grupo:'uma', nome:'Paga parcialmente',    faturas:[F.f2], pagos:[{data:new Date(2026,10,7), v:540.00, hora:'18:22'}], nota:'Cliente pagou R$ 540 no D+5. Corrigido (D-03): a atualização dos 5 primeiros dias foi quitada; de 07/11 a hoje correm só 2 dias sobre o saldo de R$ 531,73 → R$ 0,35. Total R$ 532,08.'},
+  {id:'paga',    grupo:'uma', nome:'Paga',                 faturas:[F.f2], pagos:[{data:new Date(2026,10,7), v:540.00, hora:'18:22'},{data:new Date(2026,10,9), v:'resto', hora:'12:03'}], nota:'Segundo pagamento liquidou o saldo. A página vira comprovante, com hora e identificador do Pix (S-19) e os encargos pagos listados (S-05).'},
+  {id:'duas',    grupo:'varias', nome:'2 em aberto', faturas:[F.f2, F.f3], nota:'A de 02/11 venceu há 7 dias e a de hoje vence agora. As duas estão vencidas ou vencem hoje, então o padrão é pagar as duas; dá para pagar primeiro só a mais antiga.'},
+  {id:'tres',    grupo:'varias', nome:'3 em aberto', faturas:[F.f1, F.f2, F.f3], nota:'Duas vencidas e a de hoje. As opções são sempre "da mais antiga até…". A terceira fatura diz "paga junto com as anteriores" (S-06).'},
+  {id:'parcial2',grupo:'varias', nome:'2 em aberto, a antiga paga em parte', faturas:[F.f2, F.f3], pagos:[{data:new Date(2026,10,7), v:540.00, hora:'18:22'}], nota:'Cliente pagou R$ 540 da fatura de 02/11 no D+5. O que falta dela (R$ 532,08) continua na frente da fatura de hoje.'},
+  {id:'pulou',   grupo:'varias', nome:'Pagou a mais nova e pulou a antiga', faturas:[F.f2, {...F.f3, pagaEm:new Date(2026,10,9)}, F.f4], nota:'O cliente pagou a de 09/11 por um boleto antigo e deixou a de 02/11 para trás. A de 16/11 ainda não venceu: fica fora do padrão (S-04) e, pela proposta D-07, não trava o parcial da vencida.'},
+  {id:'erro-link', grupo:'erros', nome:'Link inválido', faturas:[F.f2], nota:'Token que não existe ou foi regenerado pelo administrador (§32.2). A página não revela nada da conta.'},
+  {id:'erro-pix',  grupo:'erros', nome:'Falha ao gerar o Pix', faturas:[F.f2], nota:'A fatura carrega, mas o gateway não respondeu. O cliente vê o valor, pode tentar de novo e tem o WhatsApp à mão (UX-11).'},
+];
+const brl = (v)=> v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const dataBr = (d)=> d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+const dataCurta = (d)=> d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+const diaSem = (d)=> d.toLocaleDateString('pt-BR',{weekday:'long'});
+const STATUS_TXT = {aberta:'Em aberto', hoje:'Vence hoje', vencida:'Vencida', parcial:'Paga parcialmente', paga:'Paga'};
+const vencTxt = (f)=> f.status==='paga' ? `Vencimento ${dataCurta(f.venc)}` : f.diasAtraso>0 ? `Venceu em ${dataCurta(f.venc)} · ${f.diasAtraso} ${f.diasAtraso===1?'dia':'dias'} de atraso` : f.status==='hoje' ? `Vence hoje, ${diaSem(f.venc)}` : `Vence ${diaSem(f.venc)}, ${dataCurta(f.venc)}`;
+const codigoPix = (valor)=> `00020126580014br.gov.bcb.pix0136a1b2c3d4-azit-move-conta-00187-5204000053039865406${Math.round(valor*100)}5802BR5913AZIT MOVE LTDA6007VITORIA`;
+
+// ---------- estado ----------
+let cenAtual='aberta', entrada='lista';
+let view={tipo:'lista'};
+let pagosExtra=[]; let selecao=null; let valorEscolhido=null; let pixFalhou=false;
+
+function iniciarCenario(){ pagosExtra=[]; selecao=null; valorEscolhido=null; pixFalhou = (cenAtual==='erro-pix');
+  const c=CEN.find(x=>x.id===cenAtual); const k=calcular(c,[]);
+  view = (k.abertas.length>1 && entrada==='lista') ? {tipo:'lista'} : {tipo:'fatura', id:(k.abertas[0]||k.fat.at(-1)).id};
+  render(); }
+
+// ---------- pedaços ----------
+function topo(k, f, ov){
+  const abertas=k.abertas; let ola, pill, kTxt, vTxt, venc, sub='', aviso='';
+  if(f){
+    ola = f.status==='paga' ? 'Esta fatura está quitada.' : 'Aqui está a sua fatura.';
+    pill=`<span class="status st-${f.status}">${STATUS_TXT[f.status]}</span>`;
+    kTxt = ov?.kTxt ?? (f.status==='paga'?'Total pago':'Total a pagar'); vTxt = ov?.vTxt ?? brl(f.status==='paga'?f.pagoTotal:f.totalHoje);
+    venc = f.status==='paga'?`Vencimento era ${dataBr(f.venc)}`:f.diasAtraso>0?`Venceu em <em>${dataBr(f.venc)}</em> · ${f.diasAtraso} ${f.diasAtraso===1?'dia':'dias'} de atraso`:f.status==='hoje'?`Vence <em>hoje</em>, ${diaSem(f.venc)} ${dataCurta(f.venc)}`:`Vence ${diaSem(f.venc)}, <em>${dataBr(f.venc)}</em>`;
+    if(f.status==='parcial') sub=`<div class="sub"><span>Você já pagou <b>${brl(f.pagoTotal)}</b> desta fatura</span></div>`; // S-10
+    const idx=abertas.findIndex(x=>x.id===f.id);
+    if(idx===0 && abertas.length>1 && entrada==='antiga' && valorEscolhido==null) aviso=`<div class="aviso-topo"><span>Você tem mais ${abertas.length-1} ${abertas.length-1===1?'fatura':'faturas'} em aberto. Pagar tudo: <b>${brl(k.totalAberto)}</b></span><button data-acao="lista" data-sel="${abertas.length}">Ver todas</button></div>`; // S-24
+  } else {
+    const nv=k.vencidas.filter(x=>x.diasAtraso>0).length, nh=abertas.filter(x=>x.status==='hoje').length, na=abertas.filter(x=>x.aVencer).length;
+    ola = abertas.length ? `Você tem <strong>${abertas.length} faturas em aberto</strong>.` : 'Suas faturas estão em dia.';
+    const partes=[]; if(nv) partes.push(`${nv} ${nv===1?'vencida':'vencidas'}`); if(nh) partes.push(`${nh} vence hoje`); if(na) partes.push(`${na} a vencer`);
+    pill = abertas.length ? `<span class="status st-${nv?'vencida':nh?'hoje':'aberta'}">${partes.join(' · ')}</span>` : `<span class="status st-paga">Tudo pago</span>`;
+    if(abertas.length){ kTxt='Total em aberto'; vTxt=brl(k.totalAberto);
+      if(na && k.vencidas.length) sub=`<div class="sub"><span>Vencido <b>${brl(k.totalVencido)}</b></span><span>A vencer <b>${brl(r2(k.totalAberto-k.totalVencido))}</b></span></div>`; // S-07
+      const m=abertas[0]; venc = m.diasAtraso>0?`A mais antiga venceu em <em>${dataBr(m.venc)}</em> · ${m.diasAtraso} ${m.diasAtraso===1?'dia':'dias'} de atraso`:`A mais antiga vence <em>${m.status==='hoje'?'hoje':dataBr(m.venc)}</em>`; }
+    else { const ult=k.pagas.flatMap(x=>x.recebidos).sort((a,b)=>b.data-a.data)[0]; kTxt='Último pagamento'; vTxt=brl(ult?ult.v:0); venc = ult?`Recebido em <em>${dataBr(ult.data)}</em> às ${ult.hora}`:'Nenhuma fatura em aberto.'; } // S-20
+  }
+  return `<header class="topo">
+      <div class="marca"><img src="${LOGO}" alt="" width="32" height="32"><div class="wm">azit<b>move</b></div></div>
+      <div class="meta"><span>${f?`Fatura nº ${f.numero}`:'Suas faturas'}</span><span>Conta ${CONTA.conta} · ${CONTA.placa}</span></div>
+      <div class="ola">Olá, <strong>${CONTA.titular}</strong>. ${ola}</div>
+      ${pill}
+      <div class="total"><div class="k">${kTxt}</div><div class="v num">${vTxt}</div><div class="venc">${venc}</div>${sub}</div>
+      ${aviso}
+    </header>`;
+}
+const rodape = ()=>`<footer class="rodape">
+  <span><b>Azit Move</b> · Contrato ${CONTA.contrato} · CPF ${CONTA.cpf}</span>
+  <a class="btn btn-wa" href="https://wa.me/${CONTA.whats}?text=${encodeURIComponent('Olá! Tenho uma dúvida sobre a fatura do contrato '+CONTA.contrato+'.')}" target="_blank" rel="noopener">Falar com a Azit no WhatsApp · ${CONTA.whatsTxt}</a>
+  <span>Pagamento processado com segurança. Esta página mostra o saldo atualizado a cada abertura.</span></footer>`;
+
+// Bloco PAGAR: código Pix é a ação principal; QR fica recolhido para quem abre no computador (S-02).
+function blocoPagar(valor, legenda, extra='', ov={}){
+  if(pixFalhou) return `<section class="erro-box"><h3>Não conseguimos gerar o Pix agora</h3><p>O valor desta fatura é <b class="num">${brl(valor)}</b>. Tente de novo em alguns segundos. Se continuar, fale com a gente pelo WhatsApp: o saldo não muda por causa desta falha.</p>
+    <div class="acoes"><button class="btn btn-p" data-acao="tentar-pix">Tentar de novo</button></div></section>`;
+  return `<section class="pagar" id="pagar">
+      <div class="cab"><div><div class="k">${ov.k||'Pagar agora'}</div><div class="v num">${brl(valor)}</div><div class="leg">${legenda}</div></div></div>
+      <button class="btn btn-p" data-acao="copiar">Copiar código Pix</button>
+      <details class="qr"><summary>Mostrar QR Code <span>para pagar por outro aparelho</span></summary>
+        <div class="box"><canvas id="qr" width="33" height="33" aria-label="QR Code Pix (ilustrativo)"></canvas><code id="pixcode">${codigoPix(valor)}</code></div></details>
+      <div class="receb"><span>Recebedor: <b>${RECEBEDOR.nome}</b> · CNPJ ${RECEBEDOR.cnpj}</span><span>O código vale até as 23h59 de hoje; ao reabrir a página, ele é gerado de novo com o saldo do dia.</span></div>
+      ${extra}
+    </section>`;
+}
+function acoesFatura(f, podeOutro, simularAcao='simular'){
+  return `<div class="acoes">
+      <div class="dupla">${podeOutro?`<button class="btn btn-s" data-acao="outro">Pagar outro valor</button>`:`<button class="btn btn-s" disabled title="O saldo já é menor que o mínimo do parcial">Pagar outro valor</button>`}<button class="btn btn-s" data-acao="pdf" data-fat="${f?f.id:''}">Ver fatura em PDF</button></div>
+      <div class="proto-only"><span class="lbl">Só no protótipo</span><button class="btn btn-l" data-acao="${simularAcao}">Simular pagamento recebido</button></div></div>`;
+}
+function itensDe(f){
+  const itens = ITENS.map(i=>{ const s=f.saldos.find(x=>x.id===i.id).saldo; const pago=r2(i.nominal-s); const sub=i.sub(f);
+    return `<div class="item"><div class="n"><div class="t">${i.nome}</div><div class="s">${pago>0.004&&s>0.004?`${sub} · já recebido ${brl(pago)}`:sub}</div></div><div class="v num ${s<=0.004?'zero':''}">${s<=0.004?'Quitado':brl(s)}</div></div>`; }).join('');
+  let enc='';
+  if(f.status==='paga'){ // S-05: encargos pagos aparecem para a soma fechar
+    if(f.encargosPagos.multa>0) enc+=`<div class="item encargo"><div class="n"><div class="t">Multa por atraso</div><div class="s">2% sobre o saldo em atraso, uma única vez · paga</div></div><div class="v num">${brl(f.encargosPagos.multa)}</div></div>`;
+    if(f.encargosPagos.atual>0) enc+=`<div class="item encargo"><div class="n"><div class="t">Atualização por dias de atraso</div><div class="s">1% ao mês, proporcional aos dias · paga</div></div><div class="v num">${brl(f.encargosPagos.atual)}</div></div>`;
+  } else if(f.diasAtraso>0){
+    const desde = f.recebidos.length ? `desde o pagamento de ${dataCurta(f.atualDesde)}` : 'desde o vencimento';
+    enc = `<div class="item encargo"><div class="n"><div class="t">Multa por atraso</div><div class="s">${f.multaLancada&&f.enc.multa<=0.004?'Cobrada uma única vez, já paga':'2% sobre o saldo em atraso, cobrada uma única vez'}</div></div><div class="v num ${f.enc.multa?'':'zero'}">${f.enc.multa?brl(f.enc.multa):'R$ 0,00 (paga)'}</div></div>
+    <div class="item encargo"><div class="n"><div class="t">Atualização por dias de atraso</div><div class="s">1% ao mês, proporcional: ${f.enc.diasAtual} ${f.enc.diasAtual===1?'dia':'dias'} ${desde}, só sobre ${brl(f.saldoNominalHoje)} · muda a cada dia</div></div><div class="v num">${brl(f.enc.atual)}</div></div>`;
+  }
+  return itens+enc;
+}
+function recebidosDe(f){
+  if(!f.recebidos.length) return '';
+  return `<section class="bloco"><h2>Valores já recebidos</h2>${f.recebidos.map(r=>`
+    <details class="rec"><summary><div class="d">Pix em ${dataBr(r.data)} às ${r.hora}<span>toque para ver o que este valor quitou</span></div><div class="v num">${brl(r.v)}</div></summary>
+      <div class="quitou">${r.quitou.map(q=>`<div class="q"><span>${q.nome}${q.total?'':' (parte)'}</span><b class="num">${brl(q.v)}</b></div>`).join('')}<div class="q meta"><span>Identificador do Pix</span><span class="num">${r.e2e}</span></div></div></details>`).join('')}</section>`;
+}
+
+// ---------- telas ----------
+function renderLista(k){
+  const n=k.abertas.length;
+  const cards = k.abertas.map((f,i)=>{ const ant=k.abertas[i-1];
+    const tag = i===0 ? `<div class="tag primeira">Pague esta primeiro</div>` : i===1 ? `<div class="tag">Paga junto com a de ${dataCurta(ant.venc)}</div>` : `<div class="tag">Paga junto com as anteriores</div>`;
+    const extra = f.status==='parcial' ? ` · já pagou ${brl(f.pagoTotal)}` : '';
+    return `<button class="card ${i===0?'primeira':'travada'}" data-ver="${f.id}" aria-label="Ver fatura nº ${f.numero}">
+      <div class="ord">${f.numero}</div>
+      <div class="info"><div class="t">Fatura nº ${f.numero}</div><div class="s">${vencTxt(f)}${f.status==='parcial'?' · Paga parcialmente':''}${extra}</div>${tag}</div>
+      <div class="val"><b class="num">${brl(f.totalHoje)}</b><span>Detalhes ›</span></div></button>`; }).join('');
+  const pagas = k.pagas.length ? `<section class="bloco"><h2>Faturas pagas</h2><div class="cards">${k.pagas.map(f=>`<button class="card" data-ver="${f.id}"><div class="ord ok">${f.numero}</div><div class="info"><div class="t">Fatura nº ${f.numero}</div><div class="s">Paga em ${dataBr(f.recebidos.at(-1).data)} às ${f.recebidos.at(-1).hora}</div></div><div class="val"><b class="num">${brl(f.pagoTotal)}</b><span>Comprovante ›</span></div></button>`).join('')}</div></section>` : '';
+  let pagamento='';
+  if(n===0){ pagamento=`<div class="pago-box"><div class="g">Tudo em dia, ${CONTA.titular}!</div><div class="s">Nenhuma fatura em aberto. A próxima vence na segunda, <b>${dataBr(new Date(k.fat.at(-1).venc.getTime()+7*864e5))}</b>.</div></div>`; }
+  else {
+    const kSel = Math.min(selecao ?? k.selPadrao, n); const valor = valorEscolhido ?? k.acumulado[kSel-1];
+    const seg = n>1 && valorEscolhido==null ? `<div class="seg" role="radiogroup" aria-label="Quanto pagar agora">${k.abertas.map((f,i)=>{ const q=i+1;
+        const titulo = q===1?'Só a mais antiga':q===n?'Todas as faturas':`As ${q} mais antigas`;
+        const sub = q===1?`Fatura de ${dataCurta(f.venc)}${f.aVencer?' (ainda vai vencer)':''}`:`Da fatura de ${dataCurta(k.abertas[0].venc)} até a de ${dataCurta(f.venc)}${f.aVencer?' (ainda vai vencer)':''}`;
+        return `<button role="radio" aria-checked="${q===kSel}" aria-pressed="${q===kSel}" data-sel="${q}"><div class="l"><b>${titulo}</b><span>${sub}</span></div><div class="r num">${brl(k.acumulado[i])}</div></button>`; }).join('')}</div>` : '';
+    const legenda = valorEscolhido!=null ? `valor escolhido por você` : n===1 ? 'esta fatura' : kSel===n ? `as ${n} faturas de uma vez` : kSel===1 ? `só a fatura de ${dataCurta(k.abertas[0].venc)}` : `as ${kSel} faturas mais antigas`;
+    const regra=regraParcial(k);
+    pagamento = `${blocoPagar(valor, legenda, valorEscolhido!=null?`<button class="btn btn-l" data-acao="voltar-total">Voltar às opções</button>`:'')}${seg}${acoesFatura(null, regra.tipo!=='sem-parcial')}`;
+  }
+  return `${topo(k,null)}<div class="corpo">
+    ${pagamento}
+    ${n?`<section class="bloco"><h2>Faturas em aberto<small>O pagamento quita sempre a mais antiga primeiro: é assim que a dívida mais velha para de gerar atualização.</small></h2><div class="cards">${cards}</div></section>`:''}
+    ${pagas}</div>${rodape()}`;
+}
+function renderFatura(k, f){
+  const idx=k.abertas.findIndex(x=>x.id===f.id); const n=k.abertas.length; const regra=regraParcial(k);
+  let cobertas=[f], total=f.totalHoje, ov, pagamento;
+  if(f.status==='paga'){
+    const ult=f.recebidos.at(-1);
+    pagamento = `<div class="pago-box"><div class="g">Fatura paga. Obrigado, ${CONTA.titular}!</div><div class="s">Pago em <b>${dataBr(ult.data)} às ${ult.hora}</b> · Pix ${ult.e2e}</div></div>
+      <div class="acoes"><button class="btn btn-s" data-acao="pdf" data-fat="${f.id}">Baixar comprovante em PDF</button>${n?`<button class="btn btn-l" data-acao="lista">Você ainda tem ${n} ${n===1?'fatura':'faturas'} em aberto · ver</button>`:''}</div>`;
+  } else if(idx===0){
+    let valor=f.totalHoje, legenda=n>1?'só esta fatura, a mais antiga':'esta fatura';
+    if(valorEscolhido!=null){ valor=valorEscolhido; const m=Math.max(1,k.acumulado.findIndex(a=>a>=valor-0.004)+1); cobertas=k.abertas.slice(0,m); total=valor;
+      legenda = m===1 ? `pagamento parcial · ficam em aberto ${brl(r2(f.totalHoje-valor))}` : `quita ${m-1===1?`a fatura nº ${cobertas[0].numero}`:`${m-1} faturas`} e abate parte da nº ${cobertas.at(-1).numero}`;
+      if(m>1) ov={kTxt:`Valor escolhido · ${m} faturas`, vTxt:brl(valor)}; }
+    const extra = n>1 && valorEscolhido==null ? `<button class="btn btn-s" data-acao="lista" data-sel="${n}">Pagar todas as ${n} · ${brl(k.totalAberto)}</button>` : (valorEscolhido!=null?`<button class="btn btn-l" data-acao="voltar-total">Voltar ao valor total</button>`:'');
+    pagamento = `${blocoPagar(valor, legenda, extra)}${acoesFatura(f, regra.tipo!=='sem-parcial', 'simular-uma')}`;
+  } else {
+    const ant=k.abertas[0]; const kSel=Math.min(Math.max(1, selecao ?? Math.max(idx+1, 1)), n); const valor=valorEscolhido ?? k.acumulado[kSel-1];
+    const opcoes=[...new Set([idx+1, 1, n])].sort((a,b)=>a-b);
+    const seg= valorEscolhido!=null ? '' : `<div class="seg" role="radiogroup" aria-label="Quanto pagar agora">${opcoes.map(q=>{
+      const titulo = q===idx+1 ? (idx===1?'As duas juntas':`Até esta fatura (${q})`) : q===1 ? `Só a fatura de ${dataCurta(ant.venc)}` : `Todas as ${n}`;
+      const sub = q===idx+1 ? `Da fatura de ${dataCurta(ant.venc)} até esta` : q===1 ? 'A mais antiga, que venceu antes desta' : 'Inclui as que vencem depois desta';
+      return `<button role="radio" aria-checked="${q===kSel}" aria-pressed="${q===kSel}" data-sel="${q}"><div class="l"><b>${titulo}</b><span>${sub}</span></div><div class="r num">${brl(k.acumulado[q-1])}</div></button>`; }).join('')}</div>`;
+    const legenda = kSel===1 ? `só a fatura de ${dataCurta(ant.venc)}; esta continua em aberto` : kSel===idx+1 ? `esta e ${idx===1?`a de ${dataCurta(ant.venc)}`:`as ${idx} anteriores`} de uma vez` : `as ${n} faturas em aberto`;
+    if(valorEscolhido!=null){ const m=Math.max(1,k.acumulado.findIndex(a=>a>=valor-0.004)+1); cobertas=k.abertas.slice(0,m); total=valor; ov={kTxt:`Valor escolhido · ${m===1?'fatura nº '+ant.numero:m+' faturas'}`, vTxt:brl(valor)}; }
+    else { cobertas=k.abertas.slice(0,kSel); total=valor; ov={ kTxt: kSel===1 ? `Total a pagar · só a fatura nº ${ant.numero}` : `Total a pagar · ${kSel} faturas, inclui a vencida de ${dataCurta(ant.venc)}`, vTxt: brl(total) }; } // S-25
+    pagamento = `<div class="ajuda">Esta fatura é paga <b>junto com a de ${dataCurta(ant.venc)}</b>, que venceu antes dela${idx>1?` (e mais ${idx-1} anterior${idx-1>1?'es':''})`:''}. O pagamento sempre quita a fatura mais antiga primeiro, por isso não dá para pagar só esta. Se preferir, pague primeiro só a mais antiga.</div>
+      ${blocoPagar(valor, valorEscolhido!=null?'valor escolhido por você':legenda, valorEscolhido!=null?`<button class="btn btn-l" data-acao="voltar-total">Voltar às opções</button>`:'')}${seg}${acoesFatura(f, regra.tipo!=='sem-parcial')}`;
+  }
+  const voltar = k.fat.length>1 ? `<button class="volta" data-acao="lista">‹ Suas faturas</button>` : '';
+  const soEsta = cobertas.length===1 && cobertas[0].id===f.id;
+  const itensSec = soEsta
+    ? `<section class="bloco"><h2>Itens da fatura</h2><div class="lista">${itensDe(f)}</div>
+        <div class="soma"><span>${f.status==='paga'?'Total pago':'Total a pagar'}</span><span class="v num">${brl(f.status==='paga'?f.pagoTotal:f.totalHoje)}</span></div>
+        ${f.status==='parcial'?`<div class="ajuda">Multa e atualização só incidem sobre o que ainda falta pagar. O que você já pagou não gera encargo novo.</div>`:''}</section>`
+    : `<section class="bloco"><h2>Itens a pagar<small>${cobertas.length===1?`Só a fatura nº ${cobertas[0].numero}, que venceu antes desta.`:`${cobertas.length} faturas, da mais antiga até ${cobertas.at(-1).id===f.id?'esta':`a nº ${cobertas.at(-1).numero}`}.`}</small></h2>
+        ${cobertas.map(c=>`<div class="grupo ${c.id===f.id?'esta':''}"><div class="gt"><span>Fatura nº ${c.numero}${c.id===f.id?' · esta':''}</span><span>${vencTxt(c)}</span></div><div class="lista">${itensDe(c)}</div><div class="subt"><span>Subtotal da fatura nº ${c.numero}</span><b class="num">${brl(c.totalHoje)}</b></div></div>`).join('')}
+        <div class="soma"><span>Total a pagar</span><span class="v num">${brl(total)}</span></div>
+        ${valorEscolhido!=null && k.acumulado[cobertas.length-1]-total>0.004 ? `<div class="ajuda">Pagamento parcial: ficam em aberto <b>${brl(r2(k.acumulado[cobertas.length-1]-total))}</b> da fatura nº ${cobertas.at(-1).numero}.</div>` : ''}</section>`;
+  return `${voltar}${topo(k,f,ov)}<div class="corpo">${pagamento}${recebidosDe(f)}${itensSec}</div>${rodape()}`;
+}
+function renderErroLink(){
+  return `<header class="topo"><div class="marca"><img src="${LOGO}" alt="" width="32" height="32"><div class="wm">azit<b>move</b></div></div><div class="meta"><span>Fatura Azit</span></div></header>
+    <div class="corpo"><section class="erro-box"><h3>Não encontramos esta fatura</h3><p>O link pode estar incompleto ou ter sido substituído. Confira a mensagem que você recebeu ou fale com a Azit, que mandamos o link certo.</p></section>
+    <a class="btn btn-wa" href="https://wa.me/${CONTA.whats}" target="_blank" rel="noopener">Falar com a Azit no WhatsApp · ${CONTA.whatsTxt}</a></div>
+    <footer class="rodape"><span><b>Azit Move</b> · fatura.azitmove.com.br</span></footer>`;
+}
+
+function render(){
+  const c=CEN.find(x=>x.id===cenAtual); const k=calcular(c,pagosExtra);
+  document.getElementById('nota-cenario').textContent=c.nota;
+  const fone=document.getElementById('fone');
+  if(cenAtual==='erro-link'){ fone.innerHTML=renderErroLink(); return; }
+  let valorQr=null;
+  if(view.tipo==='fatura'){ const f=k.fat.find(x=>x.id===view.id); fone.innerHTML=renderFatura(k,f);
+    const idx=k.abertas.findIndex(x=>x.id===f.id), n=k.abertas.length;
+    if(idx===0) valorQr=valorEscolhido ?? f.totalHoje; else if(idx>0) valorQr=valorEscolhido ?? k.acumulado[Math.min(Math.max(1,selecao??idx+1),n)-1]; }
+  else { fone.innerHTML=renderLista(k); const n=k.abertas.length; if(n) valorQr=valorEscolhido ?? k.acumulado[Math.min(selecao??k.selPadrao,n)-1]; }
+  if(valorQr!=null) desenharQR(valorQr);
+}
+function desenharQR(valor){ const cv=document.getElementById('qr'); if(!cv) return; const ctx=cv.getContext('2d'); const n=33; ctx.fillStyle='#fff'; ctx.fillRect(0,0,n,n); ctx.fillStyle='#001029';
+  let seed=Math.round(valor*100)+7; const rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff;};
+  for(let y=0;y<n;y++)for(let x=0;x<n;x++){ if(rnd()<.45) ctx.fillRect(x,y,1,1); }
+  const olho=(ox,oy)=>{ ctx.fillStyle='#fff'; ctx.fillRect(ox-1,oy-1,9,9); ctx.fillStyle='#001029'; ctx.fillRect(ox,oy,7,7); ctx.fillStyle='#fff'; ctx.fillRect(ox+1,oy+1,5,5); ctx.fillStyle='#001029'; ctx.fillRect(ox+2,oy+2,3,3); };
+  olho(0,0); olho(n-7,0); olho(0,n-7); }
+
+// ---------- interação ----------
+let toastT; function toast(msg){ let t=document.querySelector('.toast'); if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t);} t.textContent=msg; clearTimeout(toastT); toastT=setTimeout(()=>t.remove(),3400); }
+const ENTRADAS=[{id:'lista',nome:'Suas faturas (lista)'},{id:'antiga',nome:'Direto na fatura mais antiga'}];
+for(const g of ['uma','varias','erros']) document.getElementById('cenarios-'+g).innerHTML = CEN.filter(c=>c.grupo===g).map(c=>`<button class="chip" data-cen="${c.id}" aria-pressed="${c.id===cenAtual}">${c.nome}</button>`).join(' ');
+document.getElementById('entradas').innerHTML = ENTRADAS.map(e=>`<button class="chip" data-ent="${e.id}" aria-pressed="${e.id===entrada}">${e.nome}</button>`).join(' ');
+document.querySelector('.proto').addEventListener('click',(ev)=>{
+  const b=ev.target.closest('[data-cen]'); if(b){ cenAtual=b.dataset.cen; document.querySelectorAll('[data-cen]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.cen===cenAtual)); iniciarCenario(); return; }
+  const e=ev.target.closest('[data-ent]'); if(e){ entrada=e.dataset.ent; document.querySelectorAll('[data-ent]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.ent===entrada)); iniciarCenario(); return; }
+});
+
+document.getElementById('fone').addEventListener('click', async (ev)=>{
+  const c=CEN.find(x=>x.id===cenAtual); const k=calcular(c,pagosExtra);
+  const ver=ev.target.closest('[data-ver]'); if(ver){ view={tipo:'fatura', id:ver.dataset.ver}; selecao=null; valorEscolhido=null; render(); window.scrollTo({top:document.getElementById('fone').offsetTop-8, behavior:'smooth'}); return; }
+  const sel=ev.target.closest('[data-sel]:not([data-acao])'); if(sel){ selecao=+sel.dataset.sel; valorEscolhido=null; render(); return; }
+  const b=ev.target.closest('[data-acao]'); if(!b) return;
+  switch(b.dataset.acao){
+    case 'lista': { view={tipo:'lista'}; valorEscolhido=null; if(b.dataset.sel) selecao=+b.dataset.sel; render(); if(b.dataset.sel){ document.getElementById('pagar')?.scrollIntoView({behavior:'smooth',block:'center'}); toast(`Pix de ${brl(k.acumulado[+b.dataset.sel-1])}: ${+b.dataset.sel===1?'só a fatura mais antiga':`as ${b.dataset.sel} faturas`}.`); } break; }
+    case 'copiar': { const txt=document.getElementById('pixcode').textContent; try{ await navigator.clipboard.writeText(txt); toast('Código Pix copiado. Cole no app do seu banco.'); }catch{ const d=document.querySelector('.pagar .qr'); if(d) d.open=true; const r=document.createRange(); r.selectNodeContents(document.getElementById('pixcode')); const s=getSelection(); s.removeAllRanges(); s.addRange(r); toast('Código selecionado. Use copiar no seu teclado.'); } break; }
+    case 'pdf': abrirPdf(k, b.dataset.fat ? k.fat.find(x=>x.id===b.dataset.fat) : null); break;
+    case 'voltar-total': valorEscolhido=null; render(); break;
+    case 'outro': abrirModal(k); break;
+    case 'tentar-pix': pixFalhou=false; render(); toast('Pix gerado. Copie o código ou leia o QR.'); break;
+    case 'simular': case 'simular-uma': {
+      const n=k.abertas.length; const idxV = view.tipo==='fatura' ? k.abertas.findIndex(x=>x.id===view.id) : -1; const padrao = idxV>0 ? idxV+1 : k.selPadrao;
+      const v = b.dataset.acao==='simular-uma' ? (valorEscolhido ?? k.abertas[0].totalHoje) : (valorEscolhido ?? k.acumulado[Math.min(selecao??padrao,n)-1]);
+      pagosExtra.push({data:HOJE, v, hora:'12:03'}); valorEscolhido=null; selecao=null;
+      const k2=calcular(c,pagosExtra); const quitadas=k.abertas.filter(f=>k2.fat.find(x=>x.id===f.id).status==='paga');
+      const prox=k2.abertas[0];
+      let msg=`Recebemos ${brl(v)}.`;
+      if(quitadas.length) msg+=` ${quitadas.length===1?`Fatura de ${dataCurta(quitadas[0].venc)} quitada.`:`${quitadas.length} faturas quitadas.`}`;
+      if(prox && prox.recebidos.length) msg+=` Faltam ${brl(prox.totalHoje)} da fatura de ${dataCurta(prox.venc)}.`;
+      if(!prox) msg+=' Tudo em dia!';
+      if(k2.abertas.length===1){ view={tipo:'fatura', id:k2.abertas[0].id}; } else if(k2.abertas.length===0){ view = k2.fat.length>1 ? {tipo:'lista'} : {tipo:'fatura', id:k2.fat[0].id}; } else { view={tipo:'lista'}; }
+      render(); toast(msg); break; }
+  }
+});
+
+// Máscara de reais enquanto digita (S-21): só dígitos, sempre com centavos.
+function mascaraReais(inp){ const d=(inp.value||'').replace(/\D/g,'').replace(/^0+(?=\d)/,''); if(!d){inp.value='';return null;} const v=+(d)/100; inp.value=v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); return r2(v); }
+
+function abrirModal(k){
+  const n=k.abertas.length; const m=k.abertas[0]; const regra=regraParcial(k); const minimo=regra.minimo, maximo=regra.maximo;
+  const aVencerSo = m.aVencer; // S-17: texto conforme a situação
+  const consequencia = aVencerSo ? 'Se o restante não for pago até o vencimento, ele passa a ter multa e atualização.' : 'O que ficar em aberto continua com atualização por dia de atraso, só sobre o saldo que faltar.';
+  const explica = regra.tipo==='antiga'
+    ? `Como há mais de uma fatura vencida, o mínimo é o valor da mais antiga, a <b>fatura de ${dataCurta(m.venc)}: ${brl(minimo)}</b>. O que passar disso abate a fatura seguinte, na ordem. ${consequencia}`
+    : `Você pode pagar parte agora e o restante depois. O mínimo é <b>${brl(minimo)}</b> (${P.minPct}% do valor da fatura${P.minReais>m.face*P.minPct/100?`, e nunca menos que ${brl(P.minReais)}`:''}). ${consequencia}`;
+  const atalhos = regra.tipo==='antiga'
+    ? k.acumulado.map((v,i)=>`<button class="chip" data-sug="${v}">${i+1===1?'Só a mais antiga':i+1===n?'Tudo':`As ${i+1} mais antigas`} · ${brl(v)}</button>`).join('')
+    : [...new Set([minimo, r2(Math.max(minimo, m.totalHoje*0.75)), m.totalHoje])].map(v=>`<button class="chip" data-sug="${v}">${Math.abs(v-m.totalHoje)<0.005?'Total ':Math.abs(v-minimo)<0.005?'Mínimo ':''}${brl(v)}</button>`).join('')+(n>1?`<button class="chip" data-sug="${maximo}">Tudo · ${brl(maximo)}</button>`:'');
+  const veu=document.createElement('div'); veu.className='veu'; veu.setAttribute('role','dialog'); veu.setAttribute('aria-modal','true');
+  veu.innerHTML=`<div class="modal"><h3>Pagar outro valor</h3><p>${explica}</p>
+    <div class="campo"><label for="vparcial">Quanto quer pagar agora?</label><div class="in"><span>R$</span><input id="vparcial" inputmode="numeric" placeholder="0,00" autocomplete="off"></div><div class="dica" id="dica">Entre ${brl(minimo)} e ${brl(maximo)}</div></div>
+    <div class="atalhos">${atalhos}</div>
+    <div class="acoes"><button class="btn btn-p" id="confirmar" disabled>Gerar Pix deste valor</button><button class="btn btn-l" id="cancelar">Cancelar</button></div></div>`;
+  document.body.appendChild(veu);
+  const inp=veu.querySelector('#vparcial'), dica=veu.querySelector('#dica'), btn=veu.querySelector('#confirmar');
+  const previa=(v)=>{ const c=CEN.find(x=>x.id===cenAtual); const k2=calcular(c,[...pagosExtra,{data:HOJE,v}]);
+    const quitadas=k.abertas.filter(f=>k2.fat.find(x=>x.id===f.id).status==='paga'); const prox=k2.abertas[0]; const partes=[];
+    if(quitadas.length) partes.push(`quita ${quitadas.length===1?`a fatura de ${dataCurta(quitadas[0].venc)}`:`${quitadas.length} faturas (até a de ${dataCurta(quitadas.at(-1).venc)})`}`);
+    if(prox){ const antes=k.abertas.find(f=>f.id===prox.id); const abatido=r2(antes.totalHoje-prox.totalHoje); if(abatido>0.004) partes.push(`abate ${brl(abatido)} da fatura de ${dataCurta(prox.venc)} (ficam ${brl(prox.totalHoje)})`); }
+    return partes.length ? partes.join(' e ').replace(/^./,ch=>ch.toUpperCase())+'.' : 'Quita tudo.'; };
+  const validar=()=>{ const v=mascaraReais(inp); btn.disabled=true;
+    if(v==null){dica.className='dica';dica.textContent=`Entre ${brl(minimo)} e ${brl(maximo)}`;return null;}
+    if(v<minimo-0.004){dica.className='dica erro';dica.textContent= regra.tipo==='antiga' ? `Abaixo do mínimo: a fatura de ${dataCurta(m.venc)} precisa ser paga inteira (${brl(minimo)}).` : `Abaixo do mínimo de ${brl(minimo)}.`;return null;}
+    if(v>maximo+0.004){dica.className='dica erro';dica.textContent=`Acima do que você deve. Para pagar tudo, use ${brl(maximo)}.`;return null;}
+    dica.className='dica ok'; dica.textContent = v>=maximo-0.004 ? 'Quita todas as faturas.' : previa(v); btn.disabled=false; return v; };
+  inp.addEventListener('input', validar);
+  veu.addEventListener('click',(ev)=>{ const s=ev.target.closest('[data-sug]'); if(s){ inp.value=Math.round(+s.dataset.sug*100).toString(); validar(); return; } if(ev.target===veu||ev.target.id==='cancelar') veu.remove(); });
+  btn.addEventListener('click',()=>{ const v=validar(); if(v==null){inp.focus();return;}
+    const exato=k.acumulado.findIndex(a=>Math.abs(a-v)<0.005);
+    if(exato>=0){ valorEscolhido=null; selecao=exato+1; } else { valorEscolhido=v; selecao=null; }
+    if(view.tipo!=='fatura') view={tipo:'lista'}; veu.remove(); render(); toast(`Pix de ${brl(v)} pronto. Copie o código ou leia o QR.`); document.getElementById('pagar')?.scrollIntoView({behavior:'smooth',block:'center'}); });
+  setTimeout(()=>inp.focus(),50);
+}
+
+// "PDF" (D-20): fatura em aberto, ou comprovante quando paga — o que o cliente salva ou imprime.
+function abrirPdf(k, f){
+  const alvo = f || k.abertas[0] || k.fat.at(-1);
+  const paga = alvo.status==='paga';
+  const linhas = ITENS.map(i=>{ const s=alvo.saldos.find(x=>x.id===i.id).saldo; return `<tr><td>${i.nome}<small>${i.sub(alvo)}</small></td><td class="v num">${brl(i.nominal)}</td><td class="v num">${s<=0.004?'—':brl(s)}</td></tr>`; }).join('');
+  const encs = paga
+    ? (alvo.encargosPagos.multa>0?`<tr><td>Multa por atraso<small>2%, uma única vez</small></td><td class="v num">${brl(alvo.encargosPagos.multa)}</td><td class="v num">—</td></tr>`:'')+(alvo.encargosPagos.atual>0?`<tr><td>Atualização por dias de atraso<small>1% ao mês, proporcional aos dias</small></td><td class="v num">${brl(alvo.encargosPagos.atual)}</td><td class="v num">—</td></tr>`:'')
+    : alvo.diasAtraso>0 ? `<tr><td>Multa por atraso<small>2%, uma única vez</small></td><td class="v num">${brl(alvo.enc.multa)}</td><td class="v num">${brl(alvo.enc.multa)}</td></tr><tr><td>Atualização por dias de atraso<small>${alvo.enc.diasAtual} dias · 1% ao mês proporcional</small></td><td class="v num">${brl(alvo.enc.atual)}</td><td class="v num">${brl(alvo.enc.atual)}</td></tr>` : '';
+  const pags = alvo.recebidos.length ? `<h3 style="margin-top:10px">Pagamentos recebidos</h3><table><tr><th>Data e hora</th><th>Identificador do Pix</th><th class="v">Valor</th></tr>${alvo.recebidos.map(r=>`<tr><td>${dataBr(r.data)} ${r.hora}</td><td style="font-size:11px">${r.e2e}</td><td class="v num">${brl(r.v)}</td></tr>`).join('')}</table>` : '';
+  const veu=document.createElement('div'); veu.className='veu'; veu.setAttribute('role','dialog'); veu.setAttribute('aria-modal','true');
+  veu.innerHTML=`<div class="folha-wrap"><div class="folha">
+    <div class="cab"><div><div class="wm">azit<b>move</b></div><div style="font-size:11px;color:#4b5563">${RECEBEDOR.nome} · CNPJ ${RECEBEDOR.cnpj}</div></div><div class="r"><b>${paga?'Comprovante de pagamento':'Fatura'} nº ${alvo.numero}</b><br>Conta ${CONTA.conta} · Contrato ${CONTA.contrato}<br><span class="selo ${paga?'':'ab'}">${paga?'Paga':STATUS_TXT[alvo.status]}</span></div></div>
+    <div class="dl"><span>Titular</span><b>${CONTA.titular} · CPF ${CONTA.cpf}</b><span>Veículo</span><b>Hyundai HB20S · ${CONTA.placa}</b><span>Vencimento</span><b>${dataBr(alvo.venc)}</b><span>${paga?'Pago em':'Saldo em'}</span><b>${paga?`${dataBr(alvo.recebidos.at(-1).data)} às ${alvo.recebidos.at(-1).hora}`:dataBr(HOJE)}</b></div>
+    <table><tr><th>Item</th><th class="v">Valor</th><th class="v">${paga?'Em aberto':'Falta pagar'}</th></tr>${linhas}${encs}
+      <tr class="tot"><td>${paga?'Total pago':'Total a pagar hoje'}</td><td></td><td class="v num">${brl(paga?alvo.pagoTotal:alvo.totalHoje)}</td></tr></table>
+    ${pags}
+    ${paga?'':`<div class="pixf"><b>Pix copia e cola · ${brl(alvo.totalHoje)} · válido até 23h59 de ${dataBr(HOJE)}</b>${codigoPix(alvo.totalHoje)}</div>`}
+    <div class="pe"><span>Proteção veicular prestada por ${RECEBEDOR.protecao} (CNPJ ${RECEBEDOR.cnpjProt}), repassada no mesmo Pix.</span><span>Documento gerado em ${dataBr(HOJE)} às 12:04 em fatura.azitmove.com.br. ${paga?'Este comprovante vale como recibo de quitação da fatura.':'Depois do vencimento, multa e atualização entram sobre o saldo que faltar.'}</span></div>
+  </div><button class="btn btn-s" id="fechar-pdf">Fechar</button></div>`;
+  document.body.appendChild(veu);
+  veu.addEventListener('click',(ev)=>{ if(ev.target===veu||ev.target.id==='fechar-pdf') veu.remove(); });
+}
+iniciarCenario();
+</script>

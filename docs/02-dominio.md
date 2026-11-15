@@ -3177,13 +3177,74 @@ Fatura de contrato migrado do legado (§26) segue a mesma regra sobre os itens q
   R$ 532,08. O protótipo v2 recontava os 7 dias (R$ 532,97) e foi reprovado nesse ponto.
   Encargo lançado e não coberto por um parcial fica pendente e entra no próximo cálculo; não há
   multa nova.
-- Quando o dia vira (ou um parcial muda o saldo), o valor da cobrança no gateway é **atualizado
-  para o total de hoje** — pelo mesmo job diário do §28 e no ato do parcial. O que o cliente vê na
-  página e o que o PIX cobra são sempre o mesmo número.
+- ~~Quando o dia vira, o valor da cobrança no gateway é atualizado para o total de hoje.~~
+  **Substituído em 2026-11-15 pelo Pix sob demanda (§32.4-A):** a fatura do modelo AZIT não tem
+  cobrança pré-criada para atualizar; o Pix nasce na hora, com o valor do dia. O que o cliente vê
+  na página e o que o Pix cobra continuam sendo sempre o mesmo número.
 - Conciliação: a "Opção 2" atual (excedente pago = encargo do Asaas) **deixa de valer** para
   faturas emitidas neste modelo; o encargo passa a ser alocado pela cascata (§32.5) e fica
   registrado por pagamento. Faturas antigas (cobrança com encargo nativo) continuam no modelo
   antigo até liquidar — a fatura carrega qual modelo usa (`modeloEncargo`).
+
+### 32.4-A Pix sob demanda — a cobrança deixa de nascer com a fatura (decisão Luís, 2026-11-15)
+
+**O que muda.** Até aqui cada fatura fechada (D-5) criava uma cobrança no Asaas, e "parcela =
+fatura = cobrança real" (decisão 20/10). Para as faturas do modelo **AZIT** isso deixa de valer:
+a fatura fecha e fica disponível **sem cobrança no gateway**. O Pix é criado **no momento em que o
+cliente vai pagar**, com o valor exato escolhido (uma fatura, várias "da mais antiga até…", ou
+outro valor), válido **até as 23h59 do dia** (fuso do Brasil, Regra 15). Origem: o Vicente apontou
+que pagar duas faturas exigia uma terceira cobrança e a conciliação das duas originais; o Pix
+dinâmico torna a cobrança descartável.
+
+**Intenção de pagamento.** É o registro do Azit para "o cliente pediu um Pix de R$ X para a conta
+Y": conta, valor, as faturas que o valor pretende cobrir (retrato do momento), validade, origem
+(página pública ou operador), identificador e copia-e-cola devolvidos pelo gateway, situação
+(ATIVA, PAGA, EXPIRADA, SUBSTITUIDA). A referência enviada ao gateway é `intencao:<id>`, e é por
+ela que o webhook volta.
+
+- **Reuso:** pedir de novo o mesmo valor para a mesma conta no mesmo dia devolve a intenção ativa;
+  não cria outra. Há teto de intenções distintas por conta por dia (padrão provisório: 10,
+  Regra 12) para a página pública não virar fábrica de cobranças.
+- **Uma ativa por vez:** criar uma intenção de outro valor marca a anterior como SUBSTITUIDA e
+  cancela o Pix dela no gateway. Na virada do dia, um job expira as ativas e cancela os Pix.
+- **O dinheiro manda, a intenção só anuncia.** Se um Pix de intenção substituída ou expirada for
+  pago mesmo assim (corrida entre cancelar e pagar), o valor **é aceito** e aplicado pela regra
+  normal na data do pagamento. O que faltar continua em aberto; o que sobrar fica registrado
+  como excedente (§32.5). Nunca se recusa nem se devolve dinheiro automaticamente.
+
+**Baixa pela conta.** O pagamento recebido é **da conta**, não de uma fatura: aplica-se fatura a
+fatura, da mais antiga para a mais nova (§32.6-A), com a cascata do §32.5 dentro de cada uma,
+calculando o encargo na **data do pagamento**. O resultado são os `PagamentoFatura` e
+`AlocacaoPagamento` do §32.5, um por fatura tocada, todos ligados à mesma intenção.
+
+**Encargo sem estado gravado (Regra 7).** Multa lançada, atualização já paga e "desde quando
+conta a atualização" (§32.4) não são colunas: saem de **refazer a conta** sobre os itens da fatura
+e os pagamentos registrados, numa função única em `packages/utils` (Regra 16) usada pela página,
+pela baixa e pela ficha. O motor do protótipo v3 é a referência, com os números conferidos pelo
+Vicente.
+
+**Gateway atrás de interface.** O domínio fala com `GatewayPix` (criar Pix de valor X com
+validade e referência; cancelar; ler o webhook). A implementação de hoje é o Asaas (cobrança
+avulsa PIX com vencimento no dia, **sem multa nem juros nativos**); trocar por um banco no padrão
+do Banco Central (Itaú foi avaliado em 15/11) ou acrescentar split (§32.8) é trocar a
+implementação, não a regra. Nada fora do adaptador conhece o Asaas.
+
+**O que NÃO muda:** entrada de contrato (`ativacao:`), entrada de acordo (`acordo:`), recebimento
+de novação (`novacao:`) e crédito avulso continuam com cobrança própria e fluxo próprio. Faturas
+já emitidas no modelo antigo (`ASAAS_NATIVO`) seguem com a cobrança que têm até liquidar (§32.4 e
+regra de 21/10: cobrança vencida, de hoje ou de amanhã não se apaga). A migração do legado (§26)
+não é tocada.
+
+**Chave de virada.** Parâmetro em Configurações › Faturamento, **desligado por padrão**: ligado,
+as faturas que fecharem dali em diante nascem AZIT. Nada muda em produção até o Luís ligar.
+
+**Consequências que precisam de decisão antes de ligar em produção** (pendências 8 e 9 do §32.10):
+(a) hoje quem avisa o cliente da fatura é o **próprio Asaas**, porque a cobrança nasce no D-5 e o
+cadastro do cliente lá não desliga as notificações; sem cobrança pré-criada o Asaas não avisa
+ninguém, e os lembretes do §28 passam a ser pré-requisito; (b) conta com faturas dos dois modelos
+em aberto ao mesmo tempo. Até decidir, o padrão provisório é: a fatura antiga é paga pela cobrança
+que já tem, sozinha, e as opções "da mais antiga até…" e "outro valor" só aparecem quando todas as
+faturas em aberto da conta são AZIT.
 
 ### 32.5 Cascata de baixa parametrizável e rateio (substitui a ordem fixa do §7.3)
 
@@ -3211,9 +3272,10 @@ Fatura de contrato migrado do legado (§26) segue a mesma regra sobre os itens q
   oferece "outro valor", só o total. Acima do que se deve não aceita ("para pagar tudo use R$ X").
   Atalhos: mínimo / 75% / total. O campo formata em reais enquanto o cliente digita e o botão só
   ativa com valor válido.
-- Confirmado, o Azit **atualiza o valor da cobrança no gateway** para o valor escolhido e
-  redesenha o QR. Recebido o webhook, aplica a cascata; a cobrança volta a ser atualizada para o
-  **saldo remanescente** (mesmo link, mesma cobrança) para o cliente pagar o resto.
+- Confirmado, o Azit cria uma **intenção de pagamento** do valor escolhido (§32.4-A) e mostra o
+  Pix dela. Recebido o webhook, aplica a baixa pela conta; para pagar o resto, o cliente abre o
+  mesmo link e a página gera o Pix do saldo do dia. (Texto de 10/11 falava em atualizar o valor de
+  uma cobrança fixa; substituído em 15/11.)
 - Quantidade de parciais por fatura: **livre até quitar** como padrão provisório (Regra 12);
   pendência 32.10 para teto.
 - Situação da fatura com parcial: continua pelo cálculo de runtime (Regra 7) — `vencida` ou
@@ -3291,7 +3353,9 @@ rodapé do PDF informa a empresa da proteção. Nomes e CNPJs no protótipo são
 `Fatura.tokenPublico` (único), `Fatura.modeloEncargo` (ASAAS_NATIVO | AZIT), `PagamentoFatura`
 (faturaId, valor, data, origem, gatewayPaymentId, valorExcedente), `AlocacaoPagamento`
 (pagamentoId, itemFaturaId | encargo, tipoEncargo, valor, nivel), `EnvioLinkFatura` (faturaId,
-usuarioId, canal, data), `ParametroFaturamento` (versões, com cascata em JSON ordenado). O
+usuarioId, canal, data), `ParametroFaturamento` (versões, com cascata em JSON ordenado),
+`IntencaoPagamento` (contaId, valor, faturas pretendidas em JSON, validoAte, origem, situação,
+gatewayId, payload do copia-e-cola; `PagamentoFatura.intencaoId` liga cada baixa à intenção). O
 `asaasInvoiceUrl` do §28.2 **não é mais necessário** no fluxo novo (fica para faturas antigas).
 
 ### 32.10 Pendências (decisão do Luís antes da fase correspondente)
@@ -3309,6 +3373,13 @@ usuarioId, canal, data), `ParametroFaturamento` (versões, com cascata em JSON o
 6. Split do Pix entre Azit Move e a empresa da proteção (D-17): nomes, CNPJs e o que o cliente vê
    como recebedor no app do banco — na implementação do split payment.
 7. Testes de pagamento com o Asaas em ambiente de teste antes de liberar a F2 (D-16 do Vicente).
+8. **Quem avisa o cliente quando o Asaas parar de avisar** (§32.4-A): lembretes do §28 por e-mail
+   (o módulo de e-mail do doc 06 §12 já existe, aguardando homolog) e por WhatsApp (Meta, parado),
+   ou envio manual pelo operador enquanto isso. Pré-requisito para ligar a chave em produção.
+9. **Transição das faturas já emitidas** (§32.4-A): ficam no modelo antigo até liquidar (padrão
+   provisório) ou o operador converte a conta, apagando as cobranças antigas? Contas em atraso
+   ficam mistas por mais tempo.
+10. Teto de intenções de pagamento por conta por dia (provisório: 10).
 
 ### 32.11 Ordem de construção e homologação
 
@@ -3327,10 +3398,14 @@ usuarioId, canal, data), `ParametroFaturamento` (versões, com cascata em JSON o
   > **Pendente desta fase, por dependência:** o link no §28 (lembretes ainda não construídos) e
   > na 1ª da POP (§23, branch `feat/notificacoes-cobranca`, não mergeada) entra quando essas
   > peças chegarem à main — a mensagem-base está em `mensagemLinkFatura`.
-- **F2 — Encargo pela Azit + cascata:** `modeloEncargo` AZIT para faturas novas, cobrança sem
-  encargo nativo, atualização diária do valor, `PagamentoFatura`/`AlocacaoPagamento`, cascata
-  parametrizável com rateio, "Valores já recebidos". Marco: cenários A, B, C e D do FAT reproduzidos
-  em homolog com valores conferidos à mão.
+- **F2 — Encargo pela Azit + cascata + Pix sob demanda (revisto 15/11):** motor único em
+  `packages/utils` (encargo com reinício a cada pagamento, cascata com rateio, baixa pela conta da
+  mais antiga para a mais nova); `modeloEncargo` AZIT para faturas que fecharem com a chave
+  ligada, **sem cobrança pré-criada**; `IntencaoPagamento` e `GatewayPix` (§32.4-A);
+  `PagamentoFatura`/`AlocacaoPagamento`; página com "Valores já recebidos", várias faturas
+  (§32.6-A) e a ordem de blocos do v3; Configurações › Faturamento com a chave e os parâmetros.
+  Marco: cenários A, B, C e D do FAT e os do roteiro do Vicente reproduzidos em homolog com os
+  valores conferidos à mão; chave desligada em produção.
 - **F3 — Parcial com mínimo:** botão, validação, atualização da cobrança, saldo remanescente.
   Marco: dois parciais e a quitação, com encargo só sobre o resto.
 - **F4 — E-mail** como canal da régua. **F5 — Crédito do cliente** (quando a pendência 4 fechar).
