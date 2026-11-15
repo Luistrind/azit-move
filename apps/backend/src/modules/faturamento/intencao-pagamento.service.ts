@@ -55,7 +55,7 @@ export interface JobBaixaIntencao {
   origem: 'GATEWAY' | 'CONFERENCIA';
 }
 
-// Job da mesma fila que cancela, no gateway, o Pix de uma intenção substituída.
+// Job da mesma fila que cancela, no gateway, o Pix de uma intenção que deixou de valer.
 export interface JobCancelarPix {
   intencaoId: string;
   gatewayId: string;
@@ -84,9 +84,12 @@ export function opcoesDePagamento(conta: ContaCarregada, projecao: ContaProjetad
 }
 
 // Intenção de pagamento (doc 02 §32.4-A): "o cliente pediu um Pix de R$ X para
-// a conta Y". Reuso do mesmo valor no dia, UMA ativa por conta, teto diário e
-// virada do dia. A intenção só ANUNCIA: a baixa é pela regra, na data do
-// pagamento (BaixaContaService).
+// a conta Y". VÁRIAS ativas por conta no mesmo dia, UMA POR VALOR (regra Luís
+// 15/11: gerar um Pix novo não cancela os anteriores — até pagar, o cliente
+// pode voltar a uma opção que já tinha gerado). Reuso por valor, teto diário de
+// valores distintos e virada do dia. Quando um pagamento é baixado, as outras
+// ativas da conta deixam de valer (BaixaContaService). A intenção só ANUNCIA:
+// a baixa é pela regra, na data do pagamento.
 @Injectable()
 export class IntencaoPagamentoService {
   private readonly logger = new Logger(IntencaoPagamentoService.name);
@@ -110,13 +113,21 @@ export class IntencaoPagamentoService {
     await this.fila.add('baixar', job, { jobId: `baixa-${job.pagamentoId.replace(/[^A-Za-z0-9_-]/g, '_')}` });
   }
 
-  // Intenção que ainda vale AGORA para a conta (o dia é o de hoje no Brasil —
-  // a que ficou de ontem está expirada mesmo antes de o job rodar, Regra 7).
-  async ativaDaConta(contaId: string) {
-    return this.prisma.db.intencaoPagamento.findFirst({
+  // Intenções que ainda valem AGORA para a conta, da mais recente para a mais
+  // antiga (o dia é o de hoje no Brasil — a que ficou de ontem está expirada
+  // mesmo antes de o job rodar, Regra 7). Pode haver várias: uma por valor.
+  async ativasDaConta(contaId: string) {
+    return this.prisma.db.intencaoPagamento.findMany({
       where: { contaId, situacao: 'ATIVA', dia: dataHojeBrasil() },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  // Manda para a fila o cancelamento, no gateway, do Pix de uma intenção que
+  // deixou de valer. jobId pelo Pix: pedir duas vezes não gera dois jobs.
+  async enfileirarCancelamento(intencaoId: string, gatewayId: string | null): Promise<void> {
+    if (!gatewayId) return;
+    await this.fila.add('cancelar', { intencaoId, gatewayId } satisfies JobCancelarPix, { jobId: `cancelar-${gatewayId.replace(/[^A-Za-z0-9_-]/g, '_')}` });
   }
 
   async criar(pedido: { contaId: string; valor: number; origem: 'PAGINA_PUBLICA' | 'OPERADOR'; usuarioId?: string | null }): Promise<IntencaoCriada> {
@@ -132,13 +143,17 @@ export class IntencaoPagamentoService {
       if (!v.ok) throw new UnprocessableEntityException({ erro: 'valor_invalido', motivo: v.motivo, mensagem: this.mensagemValorInvalido(v.motivo, opcoes) });
     }
 
-    // 2) Reuso: mesmo valor, mesma conta, mesmo dia → a intenção ativa volta como está.
-    const ativa = await this.ativaDaConta(pedido.contaId);
-    if (ativa && cent(ativa.valor) === valor && ativa.pixCopiaECola) return this.mapear(ativa, true);
+    // 2) Reuso: mesmo valor, mesma conta, mesmo dia → a intenção ativa DESSE
+    //    VALOR volta como está (procura entre todas as ativas, não só a última).
+    const mesmoValor = (linhas: { valor: Prisma.Decimal; pixCopiaECola: string | null }[]) => linhas.find((l) => cent(l.valor) === valor && l.pixCopiaECola);
+    const jaAtiva = mesmoValor(await this.ativasDaConta(pedido.contaId));
+    if (jaAtiva) return this.mapear(jaAtiva as Prisma.IntencaoPagamentoGetPayload<object>, true);
 
-    // 3) Teto de valores distintos por conta por dia (página pública não vira fábrica de cobranças).
-    const noDia = await this.prisma.db.intencaoPagamento.count({ where: { contaId: pedido.contaId, dia: hoje } });
-    if (noDia >= conta.parametros.tetoIntencoesDia) {
+    // 3) Teto de VALORES DISTINTOS por conta por dia (página pública não vira
+    //    fábrica de cobranças). Valor que já foi pedido hoje não conta de novo.
+    const doDia = await this.prisma.db.intencaoPagamento.findMany({ where: { contaId: pedido.contaId, dia: hoje }, select: { valor: true } });
+    const distintos = new Set(doDia.map((l) => cent(l.valor)));
+    if (!distintos.has(valor) && distintos.size >= conta.parametros.tetoIntencoesDia) {
       throw new HttpException(
         { erro: 'limite_pix_dia', mensagem: 'Você já gerou muitos códigos Pix diferentes hoje. Use o último código gerado ou fale com a gente pelo WhatsApp.' },
         HttpStatus.TOO_MANY_REQUESTS,
@@ -153,7 +168,7 @@ export class IntencaoPagamentoService {
       return { faturaId: f.id, numero: f.numero, vencimento: f.vencimento, valor: b.valor };
     });
 
-    // 5) Pix no gateway ANTES de gravar: se falhar, a intenção anterior continua valendo.
+    // 5) Pix no gateway ANTES de gravar: se falhar, nada muda (as ativas continuam valendo).
     const id = `int_${randomBytes(12).toString('hex')}`;
     let pix;
     try {
@@ -169,13 +184,14 @@ export class IntencaoPagamentoService {
       throw new ServiceUnavailableException({ erro: 'pix_indisponivel', mensagem: 'Não conseguimos gerar o Pix agora. Tente de novo em alguns segundos.' });
     }
 
-    // 6) Uma ativa por conta: trava a conta, substitui as anteriores e grava a nova.
-    const { criada, substituidas } = await this.prisma.db.$transaction(async (tx) => {
+    // 6) Grava a nova SEM tocar nas outras ativas (regra 15/11: nada é cancelado
+    //    na criação). A trava da conta garante UMA ativa por valor: se outro
+    //    pedido do mesmo valor entrou enquanto o gateway respondia, vale o que
+    //    já está gravado e o Pix recém-criado é descartado.
+    const { criada, duplicada } = await this.prisma.db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM contas WHERE id = ${pedido.contaId} FOR UPDATE`;
-      const anteriores = await tx.intencaoPagamento.findMany({ where: { contaId: pedido.contaId, situacao: 'ATIVA' }, select: { id: true, gatewayId: true } });
-      if (anteriores.length) {
-        await tx.intencaoPagamento.updateMany({ where: { id: { in: anteriores.map((a) => a.id) } }, data: { situacao: 'SUBSTITUIDA' } });
-      }
+      const concorrente = mesmoValor(await tx.intencaoPagamento.findMany({ where: { contaId: pedido.contaId, situacao: 'ATIVA', dia: hoje } }));
+      if (concorrente) return { criada: concorrente as Prisma.IntencaoPagamentoGetPayload<object>, duplicada: true };
       const nova = await tx.intencaoPagamento.create({
         data: {
           id,
@@ -194,17 +210,12 @@ export class IntencaoPagamentoService {
           simulado: pix.simulado,
         },
       });
-      return { criada: nova, substituidas: anteriores };
+      return { criada: nova, duplicada: false };
     }, { timeout: 20_000 });
 
-    // 7) O Pix das substituídas é cancelado no gateway PELA FILA (15/11): eram
-    //    duas chamadas ao gateway (consultar + remover) aguardadas antes de
-    //    responder ao cliente. Agora a resposta sai na hora; o worker cancela e
-    //    repete se o gateway falhar.
-    for (const s of substituidas) {
-      if (s.gatewayId) await this.fila.add('cancelar', { intencaoId: s.id, gatewayId: s.gatewayId } satisfies JobCancelarPix, { jobId: `cancelar-${s.id}` });
-    }
-    return this.mapear(criada, false);
+    // 7) Só o Pix em dobro (corrida do mesmo valor) é cancelado — pela fila, fora da resposta.
+    if (duplicada) await this.enfileirarCancelamento(criada.id, pix.gatewayId);
+    return this.mapear(criada, duplicada);
   }
 
   // Virada do dia (§32.4-A): expira as ativas de dias anteriores e cancela os
@@ -249,10 +260,12 @@ export class IntencaoPagamentoService {
     return { conferidas: recentes.length, enfileiradas, simulado: false };
   }
 
-  // Job 'cancelar' (worker): cancela no gateway o Pix de uma intenção
-  // SUBSTITUIDA. Se o gateway disser que já foi pago, a baixa é enfileirada (o
-  // dinheiro manda). Gateway fora do ar ou cancelamento não confirmado LANÇA —
-  // o BullMQ repete com backoff, em vez de deixar um Pix antigo pagável.
+  // Job 'cancelar' (worker): cancela no gateway o Pix de uma intenção que
+  // deixou de valer (as outras ativas depois de um pagamento baixado, ou o Pix
+  // em dobro de uma corrida). Se o gateway disser que já foi pago, a baixa é
+  // enfileirada (o dinheiro manda). Gateway fora do ar ou cancelamento não
+  // confirmado LANÇA — o BullMQ repete com backoff, em vez de deixar um Pix
+  // antigo pagável.
   async cancelarSubstituida(job: JobCancelarPix): Promise<{ resultado: 'cancelado' | 'ja_pago' }> {
     const r = await this.gateway.cancelarPix(job.gatewayId);
     if (r.pago) {

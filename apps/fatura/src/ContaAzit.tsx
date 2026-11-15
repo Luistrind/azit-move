@@ -17,7 +17,9 @@ import { diaSemana, linkWhatsapp, Marca, QrPix } from './comum';
 // selecionada assim que carrega, e de novo quando o cliente troca a opção ou
 // confirma outro valor — o toque em "Copiar código Pix" só copia. Pedir de novo
 // o mesmo valor no dia devolve o mesmo Pix (reuso no servidor), então reabrir a
-// página não cria cobrança nova. A cópia acontece DENTRO do toque: depois de
+// página não cria cobrança nova. Gerar outro valor NÃO cancela os anteriores
+// (regra Luís 15/11): a página guarda um código por valor e, se o cliente volta
+// a uma opção que já tinha gerado, o código aparece na hora, sem pedir de novo. A cópia acontece DENTRO do toque: depois de
 // esperar a rede o Safari do iPhone recusa, então se o código ainda não chegou
 // a página mostra o código com "Toque para copiar" em vez de copiar atrasado.
 
@@ -36,19 +38,6 @@ function vistaInicial(k: ContaProjetada, conta: ContaFaturaPublica): Vista {
   return k.faturas.some((x) => x.id === conta.faturaDoLink) ? { tipo: 'fatura', id: conta.faturaDoLink } : { tipo: 'lista' };
 }
 
-// Se a conta JÁ tem um Pix ativo hoje (o cliente gerou e voltou à página), a
-// página abre na opção desse Pix — senão a pré-geração trocaria, só por abrir,
-// um código que ele pode estar colando no app do banco.
-function escolhaDoPixAtivo(k: ContaProjetada, conta: ContaFaturaPublica, regra: RegraParcial | null): { selecao: number | null; valorEscolhido: number | null } {
-  const nada = { selecao: null, valorEscolhido: null };
-  const v = conta.pix?.valor;
-  if (!v) return nada;
-  const i = k.acumulado.indexOf(v);
-  if (i >= 0) return conta.mista && i > 0 ? nada : { selecao: i + 1, valorEscolhido: null };
-  if (regra && regra.tipo !== 'sem-parcial' && v >= regra.minimo && v <= regra.maximo) return { selecao: null, valorEscolhido: v };
-  return nada;
-}
-
 // Espera (ms) entre o cliente trocar de opção e a página pedir o Pix novo: quem
 // passa pelas opções sem parar não gera um Pix por toque.
 const ESPERA_TROCA_MS = 450;
@@ -63,9 +52,10 @@ export function ContaAzit({ f, token, avisar }: { f: FaturaPublica; token: strin
   const n = k.abertas.length;
 
   const [vista, setVista] = useState<Vista>(() => vistaInicial(k, conta));
-  const [selecao, setSelecao] = useState<number | null>(() => escolhaDoPixAtivo(k, conta, regra).selecao);
-  const [valorEscolhido, setValorEscolhido] = useState<number | null>(() => escolhaDoPixAtivo(k, conta, regra).valorEscolhido);
-  const [pix, setPix] = useState<PixSobDemandaPublico | null>(conta.pix);
+  const [selecao, setSelecao] = useState<number | null>(null);
+  const [valorEscolhido, setValorEscolhido] = useState<number | null>(null);
+  // Pix ativos de hoje, UM POR VALOR: os que o servidor já tinha + os gerados nesta visita.
+  const [pixPorValor, setPixPorValor] = useState<Record<number, PixSobDemandaPublico>>(() => Object.fromEntries(conta.pixAtivos.map((p) => [p.valor, p])));
   const [pixFalhou, setPixFalhou] = useState(false);
   const [gerando, setGerando] = useState(false);
   // O cliente tocou em "Copiar" antes de o código chegar: o botão vira
@@ -90,8 +80,10 @@ export function ContaAzit({ f, token, avisar }: { f: FaturaPublica; token: strin
   useEffect(() => {
     const antes = anterior.current;
     anterior.current = k;
-    setPix(conta.pix);
     if (antes === k) return;
+    // A página recarregou (pagamento ou virada do dia): valem os Pix que o
+    // servidor diz estarem ativos — depois de um pagamento, os outros são cancelados.
+    setPixPorValor(Object.fromEntries(conta.pixAtivos.map((p) => [p.valor, p])));
     const pago = (p: ContaProjetada) => p.faturas.reduce((s, x) => s + x.pagoTotal, 0);
     const recebido = pago(k) - pago(antes);
     if (recebido <= 0) return;
@@ -121,7 +113,7 @@ export function ContaAzit({ f, token, avisar }: { f: FaturaPublica; token: strin
   const maxSel = Math.max(1, n);
   const kSel = conta.mista ? 1 : Math.min(Math.max(1, selecao ?? (fat ? (idx <= 0 ? 1 : idx + 1) : k.selecaoPadrao)), maxSel);
   const valor = n === 0 || (fat && fat.situacao === 'paga') ? null : (valorEscolhido ?? k.acumulado[kSel - 1]);
-  const pixDoValor = pix && valor !== null && pix.valor === valor ? pix : null;
+  const pixDoValor = valor !== null ? (pixPorValor[valor] ?? null) : null;
   // Mudou o valor a pagar: o QR recolhe e o pedido de cópia pendente deixa de valer.
   useEffect(() => {
     setQrAberto(false);
@@ -134,7 +126,7 @@ export function ContaAzit({ f, token, avisar }: { f: FaturaPublica; token: strin
     setPixFalhou(false);
     try {
       const p = await faturaApi.criarIntencao(token, v);
-      setPix(p);
+      setPixPorValor((m) => ({ ...m, [p.valor]: p }));
       // O cliente tocou em Copiar enquanto o código vinha: NÃO copia agora (fora
       // do toque o iPhone recusa) — o código aparece com "Toque para copiar".
       if (pediuCopiaRef.current) avisar(`Pix de ${brl(p.valor)} pronto. Toque no código para copiar.`);

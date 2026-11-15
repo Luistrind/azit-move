@@ -1,11 +1,10 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { aplicarPagamentoNaConta, diaBrasil, formatCurrency, imputarEmNiveis, inicioDiaUTC, reconstituirFatura, type BaixaFatura } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
 import { cumprirAcordosSePagos } from '../operacoes/acordo-cumprimento';
 import { ContaFaturaService, type FaturaDaConta } from './conta-fatura.service';
-import { GATEWAY_PIX, type GatewayPix } from './gateway-pix';
-import type { JobBaixaIntencao } from './intencao-pagamento.service';
+import { IntencaoPagamentoService, type JobBaixaIntencao } from './intencao-pagamento.service';
 
 const reais = (c: number): string => (c / 100).toFixed(2);
 
@@ -32,7 +31,7 @@ export class BaixaContaService {
     private readonly prisma: PrismaService,
     private readonly contaFatura: ContaFaturaService,
     private readonly notificacao: NotificacaoService,
-    @Inject(GATEWAY_PIX) private readonly gateway: GatewayPix,
+    private readonly intencoes: IntencaoPagamentoService,
   ) {}
 
   async aplicarPagamentoDeIntencao(job: JobBaixaIntencao): Promise<{ resultado: ResultadoBaixa; faturas: number; excedente: number }> {
@@ -145,8 +144,12 @@ export class BaixaContaService {
       }
 
       // A intenção paga vira PAGA — mesmo que estivesse EXPIRADA ou SUBSTITUIDA
-      // (o dinheiro manda). O saldo da conta mudou: qualquer OUTRA intenção
-      // ativa deixa de valer (o valor dela já não corresponde ao que se deve).
+      // (o dinheiro manda). O saldo da conta mudou: TODAS as outras intenções
+      // ativas da conta (pode haver várias, uma por valor — regra 15/11) deixam
+      // de valer: o valor delas já não corresponde ao que se deve. É o único
+      // ponto em que uma intenção vira SUBSTITUIDA; o Pix delas é cancelado no
+      // gateway pela fila, depois da transação. Se o cliente pagar outra antes
+      // do cancelamento, ela é aplicada normalmente (próxima fatura ou excedente).
       await tx.intencaoPagamento.update({ where: { id: intencao.id }, data: { situacao: 'PAGA', pagoEm: pagoEm ?? new Date(job.recebidoEm), valorRecebido: reais(job.valor) } });
       const outrasAtivas = await tx.intencaoPagamento.findMany({ where: { contaId, situacao: 'ATIVA', id: { not: intencao.id } }, select: { id: true, gatewayId: true } });
       if (outrasAtivas.length) await tx.intencaoPagamento.updateMany({ where: { id: { in: outrasAtivas.map((o) => o.id) } }, data: { situacao: 'SUBSTITUIDA' } });
@@ -161,15 +164,13 @@ export class BaixaContaService {
     const cumpridos = await cumprirAcordosSePagos(this.prisma.db, r.contratos);
     if (cumpridos > 0) this.logger.log(`${cumpridos} acordo(s) CUMPRIDO(s) na baixa pela conta`);
 
-    for (const o of r.outrasAtivas) {
-      if (!o.gatewayId) continue;
-      await this.gateway.cancelarPix(o.gatewayId).catch((e) => this.logger.warn(`Não consegui cancelar o Pix ${o.gatewayId}: ${(e as Error).message}`));
-    }
+    // Cancelamento no gateway das outras ativas: pela fila (repete se o gateway falhar).
+    for (const o of r.outrasAtivas) await this.intencoes.enfileirarCancelamento(o.id, o.gatewayId);
 
     if (r.excedente > 0 || intencao.situacao !== 'ATIVA') {
       const titular = intencao.conta.titular;
       const partes: string[] = [];
-      if (intencao.situacao !== 'ATIVA') partes.push(`o Pix era de um pedido que já não valia (${intencao.situacao === 'EXPIRADA' ? 'expirado' : intencao.situacao === 'SUBSTITUIDA' ? 'substituído' : 'já pago'}) e foi aceito mesmo assim`);
+      if (intencao.situacao !== 'ATIVA') partes.push(`o Pix era de um pedido que já não valia (${intencao.situacao === 'EXPIRADA' ? 'expirado' : intencao.situacao === 'SUBSTITUIDA' ? 'cancelado depois de outro pagamento' : 'já pago'}) e foi aceito mesmo assim`);
       if (r.excedente > 0) partes.push(`sobraram ${formatCurrency(r.excedente)} além do que a conta devia (registrado como excedente; ainda não vira crédito)`);
       await this.notificacao.emitir({
         titulo: `Pix de ${titular.nome} precisa de atenção`,

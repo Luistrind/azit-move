@@ -36,9 +36,9 @@ function montar(conta: ContaCarregada, opts: { situacaoIntencao?: string; jaApli
   const contaFatura = new ContaFaturaService({ db } as never);
   const carregar = jest.spyOn(contaFatura, 'carregar').mockResolvedValue(conta);
   const notificacao = { emitir: jest.fn().mockResolvedValue(undefined) };
-  const gateway = { cancelarPix: jest.fn().mockResolvedValue({ cancelado: true, pago: false }) };
-  const service = new BaixaContaService({ db } as never, contaFatura, notificacao as never, gateway as never);
-  return { service, tx, db, notificacao, gateway, carregar };
+  const intencoes = { enfileirarCancelamento: jest.fn().mockResolvedValue(undefined) };
+  const service = new BaixaContaService({ db } as never, contaFatura, notificacao as never, intencoes as never);
+  return { service, tx, db, notificacao, intencoes, carregar };
 }
 
 const job = (valor: number, extra: Partial<JobBaixaIntencao> = {}): JobBaixaIntencao => ({
@@ -186,11 +186,24 @@ describe('BaixaContaService.aplicarPagamentoDeIntencao', () => {
     expect(tx.contratoCredito.update).toHaveBeenCalledWith({ where: { id: 'c-veiculo' }, data: { status: 'ENCERRADO', motivoEncerramento: 'QUITACAO', dataEncerramento: new Date('2026-11-09T00:00:00.000Z') } });
   });
 
-  it('o saldo mudou: outra intenção ATIVA da conta deixa de valer e o Pix dela é cancelado', async () => {
-    const { service, tx, gateway } = montar(contaFixture([F2()]), { situacaoIntencao: 'SUBSTITUIDA', outrasAtivas: [{ id: 'int_2', gatewayId: 'pay_ativo' }] });
+  it('o saldo mudou: TODAS as outras intenções ATIVAS da conta deixam de valer e o cancelamento dos Pix vai para a fila', async () => {
+    // Regra 15/11: pode haver várias ativas (uma por valor); gerar não cancela — quem cancela é a baixa.
+    const outras = [{ id: 'int_2', gatewayId: 'pay_2' }, { id: 'int_3', gatewayId: 'pay_3' }, { id: 'int_4', gatewayId: null }];
+    const { service, tx, intencoes } = montar(contaFixture([F2()]), { outrasAtivas: outras });
     await service.aplicarPagamentoDeIntencao(job(60000));
-    expect(tx.intencaoPagamento.updateMany).toHaveBeenCalledWith({ where: { id: { in: ['int_2'] } }, data: { situacao: 'SUBSTITUIDA' } });
-    expect(gateway.cancelarPix).toHaveBeenCalledWith('pay_ativo');
+    // Procura todas as ativas da conta, de qualquer dia, menos a que foi paga.
+    expect(tx.intencaoPagamento.findMany).toHaveBeenCalledWith({ where: { contaId: 'conta-1', situacao: 'ATIVA', id: { not: 'int_1' } }, select: { id: true, gatewayId: true } });
+    expect(tx.intencaoPagamento.updateMany).toHaveBeenCalledWith({ where: { id: { in: ['int_2', 'int_3', 'int_4'] } }, data: { situacao: 'SUBSTITUIDA' } });
+    // Fora da transação e fora do caminho do webhook: pela fila, uma por intenção.
+    expect(intencoes.enfileirarCancelamento.mock.calls).toEqual([['int_2', 'pay_2'], ['int_3', 'pay_3'], ['int_4', null]]);
+  });
+
+  it('o dinheiro manda: a 2ª intenção paga antes do cancelamento é aplicada normalmente (próxima fatura ou excedente)', async () => {
+    // A 1ª baixa já marcou esta como SUBSTITUIDA; o Pix dela foi pago mesmo assim.
+    const { service, tx } = montar(contaFixture([F2()]), { situacaoIntencao: 'SUBSTITUIDA' });
+    const r = await service.aplicarPagamentoDeIntencao(job(107243 + 5000, { pagamentoId: 'pay_segundo' }));
+    expect(r).toEqual({ resultado: 'aplicado_com_excedente', faturas: 1, excedente: 5000 });
+    expect(criados(tx)[0]).toMatchObject({ faturaId: 'f2', valor: '1072.43', valorExcedente: '50.00', gatewayPaymentId: 'pay_segundo' });
   });
 
   it('referência de intenção que não existe: nada é baixado e a carteira é avisada', async () => {

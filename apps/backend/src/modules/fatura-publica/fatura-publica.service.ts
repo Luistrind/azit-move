@@ -131,11 +131,12 @@ export class FaturaPublicaService {
     return new NotFoundException({ erro: 'fatura_indisponivel', mensagem: 'Fatura indisponível', atendimentoWhatsapp: atendimento, atendimentoWhatsappLink: whatsappParaWaMe(atendimento) });
   }
 
-  // Muda quando entra pagamento em QUALQUER fatura da conta, quando o dia vira
-  // ou quando o Pix ativo muda — a página aberta recarrega.
+  // Muda quando entra pagamento em QUALQUER fatura da conta ou quando o dia
+  // vira — a página aberta recarrega. Gerar um Pix NÃO muda a assinatura (não
+  // altera saldo nem cancela nada; a página já guarda os códigos que pediu).
   private assinatura(c: Omit<ContaFaturaPublica, 'assinatura'>): string {
     const pagamentos = c.motor.faturas.map((x) => `${x.id}:${x.pagamentos.length}:${x.pagamentos.reduce((t, p) => t + p.valor, 0)}`).join('|');
-    return `${c.hoje}#${pagamentos}#${c.antigasEmAberto.length}#${c.pix ? `${c.pix.valor}@${c.pix.validoAte}` : ''}`;
+    return `${c.hoje}#${pagamentos}#${c.antigasEmAberto.length}`;
   }
 
   // Projeção da CONTA do modelo AZIT (§32.4-A, §32.6-A): as faturas em aberto
@@ -144,9 +145,9 @@ export class FaturaPublicaService {
   // PDF e o polling.
   private async projetarAzit(f: Awaited<ReturnType<FaturaPublicaService['carregar']>>): Promise<FaturaPublica> {
     const hoje = dataHojeBrasil();
-    const [conta, ativa, proxima] = await Promise.all([
+    const [conta, ativas, proxima] = await Promise.all([
       this.contaFatura.carregar(f.contaId, { incluirFaturaId: f.id }),
-      this.intencao.ativaDaConta(f.contaId),
+      this.intencao.ativasDaConta(f.contaId),
       // Próxima fatura ainda não disponível (vence depois de hoje).
       this.prisma.db.fatura.findFirst({ where: { contaId: f.contaId, status: 'ABERTA', dataVencimento: { gt: inicioDiaUTC(hoje) } }, orderBy: { dataVencimento: 'asc' }, select: { dataVencimento: true } }),
     ]);
@@ -157,18 +158,21 @@ export class FaturaPublicaService {
     if (!daConta || !projetada) throw this.indisponivel();
 
     const contratosDoLink = [...contratosDosItens(f.itensFatura).values()];
-    const pixAtivo: PixSobDemandaPublico | null =
-      ativa && ativa.pixCopiaECola
-        ? {
-            valor: cent(ativa.valor),
-            copiaECola: ativa.pixCopiaECola,
-            qrCodeImagem: ativa.pixQrCodeImagem,
-            validoAte: ativa.validoAte.toISOString(),
-            simulado: ativa.simulado,
-            outroValor: ativa.outroValor,
-            faturas: ((ativa.faturasPretendidas as unknown as { numero: number; vencimento: string; valor: number }[]) ?? []).map((x) => ({ numero: x.numero, vencimento: x.vencimento, valor: x.valor })),
-          }
-        : null;
+    // Todos os Pix ativos de hoje (um por valor, do mais recente para o mais
+    // antigo): a página mostra na hora o código de uma opção que o cliente já
+    // tinha gerado, sem pedir de novo.
+    const pixAtivos: PixSobDemandaPublico[] = ativas
+      .filter((a) => a.pixCopiaECola)
+      .map((a) => ({
+        valor: cent(a.valor),
+        copiaECola: a.pixCopiaECola!,
+        qrCodeImagem: a.pixQrCodeImagem,
+        validoAte: a.validoAte.toISOString(),
+        simulado: a.simulado,
+        outroValor: a.outroValor,
+        faturas: ((a.faturasPretendidas as unknown as { numero: number; vencimento: string; valor: number }[]) ?? []).map((x) => ({ numero: x.numero, vencimento: x.vencimento, valor: x.valor })),
+      }));
+    const pixAtivo: PixSobDemandaPublico | null = pixAtivos[0] ?? null;
     const recebedor = this.config.get<{ nome: string; cnpj: string }>('faturaRecebedor') ?? { nome: 'Azit Move', cnpj: '' };
     const atendimento = this.config.get<string>('atendimentoWhatsapp') || null;
 
@@ -191,6 +195,7 @@ export class FaturaPublicaService {
       mista: opcoes.mista,
       antigasEmAberto: conta.abertasModeloAntigo.map((a) => ({ numero: a.numero, vencimento: a.vencimento, valor: a.valor })),
       pix: pixAtivo,
+      pixAtivos,
       recebedor,
       atendimentoWhatsappLink: whatsappParaWaMe(atendimento),
       proximoVencimento: proxima ? dataCalendarioUTC(proxima.dataVencimento) : null,

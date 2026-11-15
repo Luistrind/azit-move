@@ -701,9 +701,9 @@ export class FaturaService {
   }
 
   // Leitura do operador para fatura AZIT: o que falta hoje, cada pagamento com
-  // o que quitou (mesmos nomes da página do cliente) e o Pix ativo da conta.
+  // o que quitou (mesmos nomes da página do cliente) e os Pix ativos da conta.
   private async detalheAzit(contaId: string, faturaId: string) {
-    const [conta, ativa] = await Promise.all([this.contaFatura.carregar(contaId, { incluirFaturaId: faturaId }), this.intencao.ativaDaConta(contaId)]);
+    const [conta, ativas] = await Promise.all([this.contaFatura.carregar(contaId, { incluirFaturaId: faturaId }), this.intencao.ativasDaConta(contaId)]);
     const f = conta.faturas.find((x) => x.id === faturaId);
     const projetada = this.contaFatura.projetar(conta).faturas.find((x) => x.id === faturaId);
     if (!f || !projetada) return null;
@@ -730,20 +730,19 @@ export class FaturaService {
         encargo: a.alvo !== 'ITEM',
       })),
     }));
-    const intencaoAtiva: IntencaoPagamentoOperador | null = ativa
-      ? {
-          id: ativa.id,
-          valor: cent(ativa.valor),
-          situacao: ativa.situacao as IntencaoPagamentoOperador['situacao'],
-          origem: ativa.origem as IntencaoPagamentoOperador['origem'],
-          dia: ativa.dia,
-          validoAte: ativa.validoAte.toISOString(),
-          criadaEm: ativa.createdAt.toISOString(),
-          faturas: ((ativa.faturasPretendidas as unknown as FaturaPretendida[]) ?? []).map((x) => ({ numero: x.numero, vencimento: x.vencimento, valor: x.valor })),
-          outroValor: ativa.outroValor,
-          simulado: ativa.simulado,
-        }
-      : null;
+    // Pode haver vários Pix ativos hoje, um por valor (regra 15/11).
+    const intencoesAtivas: IntencaoPagamentoOperador[] = ativas.map((ativa) => ({
+      id: ativa.id,
+      valor: cent(ativa.valor),
+      situacao: ativa.situacao as IntencaoPagamentoOperador['situacao'],
+      origem: ativa.origem as IntencaoPagamentoOperador['origem'],
+      dia: ativa.dia,
+      validoAte: ativa.validoAte.toISOString(),
+      criadaEm: ativa.createdAt.toISOString(),
+      faturas: ((ativa.faturasPretendidas as unknown as FaturaPretendida[]) ?? []).map((x) => ({ numero: x.numero, vencimento: x.vencimento, valor: x.valor })),
+      outroValor: ativa.outroValor,
+      simulado: ativa.simulado,
+    }));
     return {
       situacao: projetada.situacao, // paga | parcial | vencida | hoje | aberta (calculada)
       totalHoje: projetada.totalHoje,
@@ -755,7 +754,7 @@ export class FaturaService {
       diasAtraso: projetada.diasAtraso,
       pagoTotal: projetada.pagoTotal,
       pagamentos,
-      intencaoAtiva,
+      intencoesAtivas,
       // Conta mista (§32.4-A, provisório): há fatura do modelo antigo em aberto.
       contaMista: conta.abertasModeloAntigo.length > 0,
       // Gateway em modo simulado: "Conferir Pix no gateway" não se aplica (a tela esconde).

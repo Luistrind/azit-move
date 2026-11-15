@@ -1426,7 +1426,7 @@ Token inexistente, malformado ou de fatura extinta → 404 `fatura_indisponivel`
 | Método | Rota | O que faz |
 |---|---|---|
 | GET | `/api/v1/publico/faturas/:token` | Projeção da fatura (`FaturaPublica`, `@azit/types`). Fatura do modelo **AZIT** traz `conta` |
-| GET | `/api/v1/publico/faturas/:token/situacao` | Polling (~30 s). No modelo AZIT inclui `assinatura`: muda quando entra pagamento na conta, o dia vira ou o Pix ativo muda |
+| GET | `/api/v1/publico/faturas/:token/situacao` | Polling (~30 s). No modelo AZIT inclui `assinatura`: muda quando entra pagamento na conta ou o dia vira (gerar um Pix não muda) |
 | POST | `/api/v1/publico/faturas/:token/intencao` | **Pix sob demanda** (só modelo AZIT). Body `{ "valor": 107243 }` |
 | GET | `/api/v1/publico/faturas/:token/pdf` | PDF: fatura (em aberto) ou comprovante (paga). `?fatura=<nº>` imprime outra fatura da mesma conta que a página mostra |
 
@@ -1434,7 +1434,8 @@ Token inexistente, malformado ou de fatura extinta → 404 `fatura_indisponivel`
 (id, número, vencimento, nome dos itens, Pix recebidos com data, hora e identificador),
 `motor { faturas[], parametros }` (entrada do motor de `@azit/utils`: itens com grupo da cascata e
 percentuais, pagamentos com alocações; a página refaz a conta com a mesma função do servidor),
-`mista`, `antigasEmAberto[]`, `pix` (o Pix ativo de hoje, se houver), `recebedor`,
+`mista`, `antigasEmAberto[]`, `pix` (o Pix ativo mais recente de hoje, se houver), `pixAtivos[]`
+(todos os ativos de hoje, um por valor), `recebedor`,
 `atendimentoWhatsappLink`, `proximoVencimento`, `assinatura`. Nenhum dado pessoal além de primeiro
 nome, placa e documento mascarado; nenhum token de outra fatura.
 
@@ -1455,10 +1456,11 @@ nome, placa e documento mascarado; nenhum token de outra fatura.
 }
 ```
 
-Pedir de novo o mesmo valor no mesmo dia devolve o **mesmo** Pix; outro valor substitui o anterior
-(o Pix substituído é cancelado no gateway pela fila `intencao-pagamento`, job `cancelar`, fora da
-resposta). A página chama esta rota **ao carregar** e a cada troca de opção (pré-geração, doc 02
-§32.12 item 4). Chamadas ao gateway têm tempo limite de 8 s; a duração da rota e de cada chamada
+Pedir de novo o mesmo valor no mesmo dia devolve o **mesmo** Pix. Outro valor cria **outro** Pix
+e **não cancela** os anteriores (doc 02 §32.4-A, regra de 15/11): a conta pode ter vários ativos
+no dia, um por valor. Os demais só são cancelados quando um pagamento é baixado na conta (fila
+`intencao-pagamento`, job `cancelar`) ou na virada do dia. A página chama esta rota **ao
+carregar** e a cada opção nova (pré-geração, doc 02 §32.12 item 4). Chamadas ao gateway têm tempo limite de 8 s; a duração da rota e de cada chamada
 (`criarPix`, `POST /payments`, `GET pixQrCode`) sai no log do backend.
 
 | Status | `erro` | Quando |
@@ -1484,7 +1486,7 @@ eventos dessa referência são só ACK. Campos lidos de `payment`: `id`, `value`
 |---|---|---|---|
 | GET | `/api/v1/faturamento/parametros` | Configurações | `{ vigente, faturasEmAberto { azit, asaasNativo }, historico[] }` |
 | POST | `/api/v1/faturamento/parametros` | Configurações · ADMIN, DIRETOR | Salva **nova versão**. Campos opcionais: `pixSobDemanda`, `multaPadraoPct`, `atualizacaoMesPadraoPct`, `cascata` (os 4 grupos), `minimoParcialPct`, `minimoParcialPiso` (centavos), `tetoIntencoesDia`, `motivo`. 400 `validacao` / `sem_alteracao` |
-| GET | `/api/v1/faturas/:id` | Carteira e cobrança, ficha | Passa a trazer `modeloEncargo` e, em fatura AZIT, `azit { situacao, totalHoje, saldoNominal, multa, atualizacao, diasAtraso, pagoTotal, pagamentos[] (com alocacoes[]), intencaoAtiva, contaMista, gatewaySimulado }` |
+| GET | `/api/v1/faturas/:id` | Carteira e cobrança, ficha | Passa a trazer `modeloEncargo` e, em fatura AZIT, `azit { situacao, totalHoje, saldoNominal, multa, atualizacao, diasAtraso, pagoTotal, pagamentos[] (com alocacoes[]), intencoesAtivas[], contaMista, gatewaySimulado }` |
 | POST | `/api/v1/contas/:contaId/pix/conferir` | Carteira e cobrança, ficha · ADMIN, OPERADOR, FINANCEIRO, DIRETOR | 202. Pergunta ao gateway pelos Pix recentes da conta e enfileira a baixa dos pagos: `{ conferidas, enfileiradas, simulado }` |
 | POST | `/api/v1/faturas/:id/gerar-cobranca` | — | Fatura AZIT → 422 `fatura_pix_sob_demanda` |
 | POST | `/api/v1/dev/simular-pagamento-pix/:intencaoId` | fora de produção · ADMIN, OPERADOR | 202. Enfileira o mesmo job do webhook para o Pix da intenção |

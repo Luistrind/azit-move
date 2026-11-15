@@ -64,7 +64,8 @@ export interface FaturaAzitDetalhe {
   diasAtraso: number;
   pagoTotal: number;
   pagamentos: PagamentoFaturaOperador[];
-  intencaoAtiva: IntencaoPagamentoOperador | null;
+  // Pix ativos de hoje da conta, um por valor (gerar outro valor não cancela os anteriores).
+  intencoesAtivas: IntencaoPagamentoOperador[];
   contaMista: boolean;
   gatewaySimulado: boolean; // sem gateway real não há Pix para conferir
 }

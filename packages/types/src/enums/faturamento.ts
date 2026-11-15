@@ -42,5 +42,5 @@ export const ROTULO_SITUACAO_INTENCAO: Record<SituacaoIntencaoPagamento, string>
   [SituacaoIntencaoPagamento.ATIVA]: 'Pix ativo',
   [SituacaoIntencaoPagamento.PAGA]: 'Pago',
   [SituacaoIntencaoPagamento.EXPIRADA]: 'Expirado',
-  [SituacaoIntencaoPagamento.SUBSTITUIDA]: 'Substituído',
+  [SituacaoIntencaoPagamento.SUBSTITUIDA]: 'Cancelado após outro pagamento',
 };

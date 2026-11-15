@@ -36,7 +36,7 @@ export function FaturaAzitBloco({ fd, contaId, recarregar }: { fd: FaturaDetalhe
   const a = fd.azit;
   if (!a) return null;
   const paga = a.situacao === 'paga';
-  const pix = a.intencaoAtiva;
+  const ativos = a.intencoesAtivas;
 
   async function conferir() {
     setOcupado(true);
@@ -122,20 +122,31 @@ export function FaturaAzitBloco({ fd, contaId, recarregar }: { fd: FaturaDetalhe
       </Secao>
 
       {!paga && (
-        <Secao titulo="Pix ativo da conta">
-          {pix ? (
-            <div className="flex flex-col gap-[2px] text-[12px]" style={corpo}>
-              <div className="flex items-baseline justify-between gap-[8px]" style={{ color: 'var(--text-primary)' }}>
-                <b>{formatCurrency(pix.valor)}{pix.outroValor ? ' · outro valor' : ''}</b>
-                <span>vale até {horaBR(pix.validoAte)} de hoje</span>
-              </div>
-              <span style={mudo}>Gerado às {horaBR(pix.criadaEm)}, {ORIGEM_PIX[pix.origem]}{pix.simulado ? ' · gateway simulado' : ''}.</span>
-              {pix.faturas.map((x) => (
-                <div key={x.numero} className="flex items-center justify-between gap-[8px]">
-                  <span>Fatura #{x.numero} · vencimento {dataBR(x.vencimento)}</span>
-                  <span className="flex-none tabular-nums">{formatCurrency(x.valor)}</span>
+        <Secao titulo="Pix ativos da conta" tag={ativos.length > 1 ? `${ativos.length} valores gerados hoje` : undefined}>
+          {ativos.length ? (
+            <div className="flex flex-col gap-[8px]">
+              {ativos.map((pix) => (
+                <div key={pix.id} className="flex flex-col gap-[2px] rounded-[10px] px-[10px] py-[8px] text-[12px]" style={{ ...corpo, background: 'var(--surface-input)' }}>
+                  <div className="flex items-baseline justify-between gap-[8px]" style={{ color: 'var(--text-primary)' }}>
+                    <b>{formatCurrency(pix.valor)}{pix.outroValor ? ' · outro valor' : ''}</b>
+                    <span>vale até {horaBR(pix.validoAte)} de hoje</span>
+                  </div>
+                  <span style={mudo}>Gerado às {horaBR(pix.criadaEm)}, {ORIGEM_PIX[pix.origem]}{pix.simulado ? ' · gateway simulado' : ''}.</span>
+                  {pix.faturas.map((x) => (
+                    <div key={x.numero} className="flex items-center justify-between gap-[8px]">
+                      <span>Fatura #{x.numero} · vencimento {dataBR(x.vencimento)}</span>
+                      <span className="flex-none tabular-nums">{formatCurrency(x.valor)}</span>
+                    </div>
+                  ))}
+                  {/* Só fora de produção. */}
+                  {FERRAMENTAS_TESTE && pode(ROLE_SIMULAR) && (
+                    <Botao variante="primaria" tamanho="sm" className="mt-[4px] self-start" disabled={ocupado} onClick={() => void simular(pix.id)}>Simular pagamento deste Pix (teste)</Botao>
+                  )}
                 </div>
               ))}
+              {ativos.length > 1 && (
+                <span className="text-[12px]" style={mudo}>O cliente pode pagar qualquer um deles. Quando um pagamento entra, os outros são cancelados.</span>
+              )}
             </div>
           ) : (
             <div className="text-[12px]" style={mudo}>Nenhum Pix gerado hoje para esta conta.</div>
@@ -147,10 +158,6 @@ export function FaturaAzitBloco({ fd, contaId, recarregar }: { fd: FaturaDetalhe
                 <span>O cliente pagou e a fatura não baixou?</span>
                 <Botao variante="secundaria" tamanho="sm" disabled={ocupado} onClick={() => void conferir()}>Conferir Pix no gateway</Botao>
               </>
-            )}
-            {/* Só fora de produção, e só quando há um Pix para pagar. */}
-            {FERRAMENTAS_TESTE && pix && pode(ROLE_SIMULAR) && (
-              <Botao variante="primaria" tamanho="sm" disabled={ocupado} onClick={() => void simular(pix.id)}>Simular pagamento do Pix (teste)</Botao>
             )}
           </div>
         </Secao>

@@ -3,9 +3,10 @@ import { ContaFaturaService, type ContaCarregada } from './conta-fatura.service'
 import { IntencaoPagamentoService } from './intencao-pagamento.service';
 import { AGORA, contaFixture, F2, F3, F4, HOJE } from './conta.fixture-spec';
 
-// Intenção de pagamento (doc 02 §32.4-A): reuso do mesmo valor no dia, UMA
-// ativa por conta, teto diário, virada do dia e validação do valor no
-// servidor. Gateway e banco dublados.
+// Intenção de pagamento (doc 02 §32.4-A): VÁRIAS ativas por conta no dia, uma
+// por valor (regra 15/11 — gerar um Pix novo não cancela os anteriores), reuso
+// por valor, teto diário de valores distintos, virada do dia e validação do
+// valor no servidor. Gateway e banco dublados.
 
 type Linha = { id: string; contaId: string; valor: Prisma.Decimal; dia: string; situacao: string; gatewayId: string | null; pixCopiaECola: string | null; pixQrCodeImagem: string | null; simulado: boolean; outroValor: boolean; faturasPretendidas: unknown; validoAte: Date; createdAt: Date };
 
@@ -84,19 +85,48 @@ describe('IntencaoPagamentoService', () => {
     expect(tabela).toHaveLength(1);
   });
 
-  it('UMA ATIVA: outro valor marca a anterior como SUBSTITUIDA e manda o cancelamento do Pix dela para a FILA', async () => {
+  it('VÁRIAS ATIVAS, uma por valor (regra 15/11): outro valor NÃO cancela nem substitui o anterior', async () => {
     const { service, gateway, fila, tabela } = montar(contaFixture([F2()]));
     const a = await service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' });
     const b = await service.criar({ contaId: 'conta-1', valor: 60000, origem: 'PAGINA_PUBLICA' });
     expect(b.outroValor).toBe(true);
-    expect(tabela.map((l) => [l.id, l.situacao])).toEqual([[a.id, 'SUBSTITUIDA'], [b.id, 'ATIVA']]);
-    // A resposta ao cliente NÃO espera o gateway cancelar: nenhuma chamada de
-    // cancelar/consultar no caminho — só o job na fila, deduplicado pela intenção.
+    // As duas continuam ATIVAS; nada vai para o gateway nem para a fila de cancelamento.
+    expect(tabela.map((l) => [l.id, l.situacao])).toEqual([[a.id, 'ATIVA'], [b.id, 'ATIVA']]);
     expect(gateway.cancelarPix).not.toHaveBeenCalled();
     expect(gateway.consultarPix).not.toHaveBeenCalled();
-    expect(fila.add).toHaveBeenCalledTimes(1);
-    expect(fila.add).toHaveBeenCalledWith('cancelar', { intencaoId: a.id, gatewayId: 'pay-novo-1' }, { jobId: `cancelar-${a.id}` });
-    expect((await service.ativaDaConta('conta-1'))?.id).toBe(b.id);
+    expect(fila.add).not.toHaveBeenCalled();
+    expect((await service.ativasDaConta('conta-1')).map((i) => i.id).sort()).toEqual([a.id, b.id].sort());
+  });
+
+  it('o cliente muda de ideia e VOLTA a uma opção já gerada: recebe o mesmo Pix, mesmo não sendo o mais recente', async () => {
+    const { service, gateway, tabela } = montar(contaFixture([F2()]));
+    const a = await service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' });
+    const b = await service.criar({ contaId: 'conta-1', valor: 60000, origem: 'PAGINA_PUBLICA' });
+    const c = await service.criar({ contaId: 'conta-1', valor: 70000, origem: 'PAGINA_PUBLICA' });
+    const deNovoA = await service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' });
+    const deNovoB = await service.criar({ contaId: 'conta-1', valor: 60000, origem: 'PAGINA_PUBLICA' });
+    expect(deNovoA).toMatchObject({ id: a.id, pixCopiaECola: a.pixCopiaECola, reaproveitada: true });
+    expect(deNovoB).toMatchObject({ id: b.id, reaproveitada: true });
+    expect(gateway.criarPix).toHaveBeenCalledTimes(3); // um Pix por valor, nunca dois do mesmo
+    expect(tabela.map((l) => [l.id, l.situacao])).toEqual([[a.id, 'ATIVA'], [b.id, 'ATIVA'], [c.id, 'ATIVA']]);
+  });
+
+  it('corrida do MESMO valor: vale a intenção que já está gravada e só o Pix em dobro vai para a fila de cancelamento', async () => {
+    const { service, gateway, fila, tabela, intencaoPagamento } = montar(contaFixture([F2()]));
+    // Enquanto o gateway respondia ao 2º pedido, o 1º (mesmo valor) foi gravado.
+    const ativasAntes = intencaoPagamento.findMany.getMockImplementation()!;
+    let chamadas = 0;
+    intencaoPagamento.findMany.mockImplementation(async (args: { where: Record<string, unknown> }) => {
+      chamadas++;
+      // 1ª leitura (reuso) e 2ª (teto do dia) do 2º pedido ainda não enxergam a concorrente.
+      return chamadas <= 2 ? [] : ativasAntes(args);
+    });
+    tabela.push({ id: 'int-concorrente', contaId: 'conta-1', valor: new Prisma.Decimal('1072.43'), dia: HOJE, situacao: 'ATIVA', gatewayId: 'pay-concorrente', pixCopiaECola: 'codigo-concorrente', pixQrCodeImagem: null, simulado: false, outroValor: false, faturasPretendidas: [], validoAte: new Date(), createdAt: new Date() });
+    const r = await service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' });
+    expect(r).toMatchObject({ id: 'int-concorrente', pixCopiaECola: 'codigo-concorrente', reaproveitada: true });
+    expect(tabela).toHaveLength(1); // não gravou uma 2ª ativa do mesmo valor
+    expect(gateway.criarPix).toHaveBeenCalledTimes(1);
+    expect(fila.add).toHaveBeenCalledWith('cancelar', { intencaoId: 'int-concorrente', gatewayId: 'pay-novo-1' }, { jobId: 'cancelar-pay-novo-1' });
   });
 
   it('job cancelar: cancela no gateway; gateway sem confirmar LANÇA (a fila repete); Pix já pago vira baixa', async () => {
@@ -140,40 +170,45 @@ describe('IntencaoPagamentoService', () => {
     await expect(service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' })).resolves.toMatchObject({ valor: 107243 });
   });
 
-  it('TETO diário de valores distintos por conta', async () => {
+  it('TETO diário de VALORES DISTINTOS por conta: voltar a um valor já pedido não conta', async () => {
     const conta = contaFixture([F2()]);
     conta.parametros.tetoIntencoesDia = 2;
-    const { service, gateway } = montar(conta);
+    const { service, gateway, tabela } = montar(conta);
     await service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' });
     await service.criar({ contaId: 'conta-1', valor: 60000, origem: 'PAGINA_PUBLICA' });
     await expect(service.criar({ contaId: 'conta-1', valor: 70000, origem: 'PAGINA_PUBLICA' })).rejects.toMatchObject({ response: { erro: 'limite_pix_dia' }, status: 429 });
-    // Pedir de novo o valor da ativa NÃO conta: reaproveita.
+    // Pedir de novo QUALQUER valor já gerado hoje NÃO conta: reaproveita.
     await expect(service.criar({ contaId: 'conta-1', valor: 60000, origem: 'PAGINA_PUBLICA' })).resolves.toMatchObject({ reaproveitada: true });
+    await expect(service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' })).resolves.toMatchObject({ reaproveitada: true });
     expect(gateway.criarPix).toHaveBeenCalledTimes(2);
+    // Valor já pedido hoje cuja intenção deixou de valer (um pagamento entrou): pode ser gerado de novo sem estourar o teto.
+    tabela.forEach((l) => { l.situacao = 'SUBSTITUIDA'; });
+    await expect(service.criar({ contaId: 'conta-1', valor: 60000, origem: 'PAGINA_PUBLICA' })).resolves.toMatchObject({ reaproveitada: false });
+    await expect(service.criar({ contaId: 'conta-1', valor: 80000, origem: 'PAGINA_PUBLICA' })).rejects.toMatchObject({ response: { erro: 'limite_pix_dia' } });
   });
 
-  it('falha do gateway: 503 com orientação, nada gravado e a intenção anterior continua ativa', async () => {
+  it('falha do gateway: 503 com orientação, nada gravado e as intenções que já existiam continuam ativas', async () => {
     const { service, gateway, fila, tabela } = montar(contaFixture([F2()]));
     const a = await service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' });
     gateway.criarPix.mockRejectedValueOnce(new Error('timeout'));
     await expect(service.criar({ contaId: 'conta-1', valor: 60000, origem: 'PAGINA_PUBLICA' })).rejects.toMatchObject({ response: { erro: 'pix_indisponivel' }, status: 503 });
     expect(tabela.map((l) => [l.id, l.situacao])).toEqual([[a.id, 'ATIVA']]);
     expect(gateway.cancelarPix).not.toHaveBeenCalled();
-    expect(fila.add).not.toHaveBeenCalled(); // nada a cancelar: a anterior continua valendo
+    expect(fila.add).not.toHaveBeenCalled();
   });
 
-  it('VIRADA DO DIA: expira as ativas de ontem e cancela os Pix; a de hoje fica', async () => {
+  it('VIRADA DO DIA: expira TODAS as ativas de ontem e cancela os Pix; a de hoje fica', async () => {
     const { service, gateway, tabela } = montar(contaFixture([F2()]), [
       { id: 'ontem', dia: '2026-11-08', gatewayId: 'pay-ontem' },
+      { id: 'ontem-outro-valor', dia: '2026-11-08', gatewayId: 'pay-ontem-2' },
       { id: 'hoje', dia: HOJE, gatewayId: 'pay-hoje' },
     ]);
     // A de ontem já não vale para a página mesmo antes de o job rodar (Regra 7).
-    expect((await service.ativaDaConta('conta-1'))?.id).toBe('hoje');
+    expect((await service.ativasDaConta('conta-1')).map((i) => i.id)).toEqual(['hoje']);
     const r = await service.expirarVencidas();
-    expect(r).toEqual({ expiradas: 1, pagasEncontradas: 0 });
-    expect(tabela.map((l) => [l.id, l.situacao])).toEqual([['ontem', 'EXPIRADA'], ['hoje', 'ATIVA']]);
-    expect(gateway.cancelarPix).toHaveBeenCalledTimes(1);
-    expect(gateway.cancelarPix).toHaveBeenCalledWith('pay-ontem');
+    expect(r).toEqual({ expiradas: 2, pagasEncontradas: 0 });
+    expect(tabela.map((l) => [l.id, l.situacao])).toEqual([['ontem', 'EXPIRADA'], ['ontem-outro-valor', 'EXPIRADA'], ['hoje', 'ATIVA']]);
+    expect(gateway.cancelarPix.mock.calls.map((c) => c[0])).toEqual(['pay-ontem', 'pay-ontem-2']);
   });
 
   it('corrida entre cancelar e pagar: Pix expirado que o gateway diz PAGO vira baixa na fila (o dinheiro manda)', async () => {

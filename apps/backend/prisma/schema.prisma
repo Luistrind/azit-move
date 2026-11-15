@@ -240,6 +240,9 @@ enum SituacaoIntencaoPagamento {
   ATIVA
   PAGA
   EXPIRADA
+  // Desde 15/11/2026 NÃO é mais usada na criação (gerar um Pix novo não cancela
+  // os anteriores). Hoje marca só as intenções que deixaram de valer porque um
+  // pagamento foi baixado na conta e o valor delas já não corresponde ao devido.
   SUBSTITUIDA
 }
 
@@ -1365,10 +1368,11 @@ model AlocacaoPagamento {
 }
 
 // Intenção de pagamento (doc 02 §32.4-A): "o cliente pediu um Pix de R$ X para
-// a conta Y". A referência enviada ao gateway é `intencao:<id>`. Uma ATIVA por
-// conta; pedir o mesmo valor no mesmo dia reusa; outro valor SUBSTITUI a
-// anterior; a virada do dia EXPIRA. O dinheiro manda: Pix de intenção
-// substituída ou expirada pago mesmo assim é aceito.
+// a conta Y". A referência enviada ao gateway é `intencao:<id>`. VÁRIAS ativas
+// por conta no dia, UMA POR VALOR (regra 15/11): pedir o mesmo valor reusa;
+// outro valor cria outra, sem cancelar as anteriores. Pagamento baixado na
+// conta invalida as demais (SUBSTITUIDA); a virada do dia EXPIRA. O dinheiro
+// manda: Pix de intenção que já não valia, pago mesmo assim, é aceito.
 model IntencaoPagamento {
   id                 String                    @id @default(cuid())
   contaId            String

@@ -11,8 +11,9 @@ import { IntencaoPagamentoService, type JobBaixaIntencao, type JobCancelarPix } 
 //   · 'baixar'   — Pix de uma intenção foi pago (webhook → 202 → aqui, Regra 4):
 //                  aplica pela conta, na data do pagamento;
 //   · 'expirar'  — virada do dia: expira as intenções ativas e cancela os Pix;
-//   · 'cancelar' — o cliente pediu outro valor: o Pix da intenção substituída é
-//                  cancelado no gateway aqui, fora da resposta ao cliente.
+//   · 'cancelar' — um pagamento foi baixado na conta: o Pix das OUTRAS intenções
+//                  ativas (que já não correspondem ao que se deve) é cancelado no
+//                  gateway aqui. Gerar um Pix novo não cancela nada (regra 15/11).
 @Processor(QUEUE_NAMES.INTENCAO_PAGAMENTO)
 export class IntencaoPagamentoProcessor extends WorkerHost {
   private readonly logger = new Logger(IntencaoPagamentoProcessor.name);

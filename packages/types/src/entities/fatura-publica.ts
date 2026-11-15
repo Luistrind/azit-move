@@ -65,7 +65,7 @@ export interface SituacaoFaturaPublicaResumo {
   totalHoje: number;
   dataPagamento: string | null;
   // Fatura Azit F2 (modelo AZIT): muda quando entra um pagamento em QUALQUER
-  // fatura da conta ou quando o Pix ativo muda — a página recarrega.
+  // fatura da conta ou quando o dia vira — a página recarrega.
   assinatura?: string;
 }
 
@@ -117,11 +117,15 @@ export interface ContaFaturaPublica {
   // antiga pode ser paga, sozinha — sem "várias" e sem "outro valor".
   mista: boolean;
   antigasEmAberto: { numero: number; vencimento: string; valor: number }[];
-  pix: PixSobDemandaPublico | null;
+  pix: PixSobDemandaPublico | null; // o Pix ativo mais recente de hoje (PDF)
+  // Todos os Pix ativos de hoje, um por valor (regra 15/11: gerar outro valor
+  // não cancela os anteriores) — a página mostra na hora o código de uma opção
+  // que o cliente já tinha gerado.
+  pixAtivos: PixSobDemandaPublico[];
   recebedor: { nome: string; cnpj: string };
   atendimentoWhatsappLink: string | null; // dígitos com DDI, para o wa.me
   proximoVencimento: string | null; // próxima fatura ainda não disponível
-  // Muda quando entra pagamento na conta, o dia vira ou o Pix ativo muda — a
-  // página compara com a do polling (/situacao) e recarrega.
+  // Muda quando entra pagamento na conta ou o dia vira — a página compara com
+  // a do polling (/situacao) e recarrega. Gerar um Pix não muda a assinatura.
   assinatura: string;
 }

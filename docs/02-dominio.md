@@ -3267,15 +3267,25 @@ Y": conta, valor, as faturas que o valor pretende cobrir (retrato do momento), v
 (ATIVA, PAGA, EXPIRADA, SUBSTITUIDA). A referência enviada ao gateway é `intencao:<id>`, e é por
 ela que o webhook volta.
 
-- **Reuso:** pedir de novo o mesmo valor para a mesma conta no mesmo dia devolve a intenção ativa;
-  não cria outra. Há teto de intenções distintas por conta por dia (padrão provisório: 10,
-  Regra 12) para a página pública não virar fábrica de cobranças.
-- **Uma ativa por vez:** criar uma intenção de outro valor marca a anterior como SUBSTITUIDA e
-  cancela o Pix dela no gateway. Na virada do dia, um job expira as ativas e cancela os Pix.
-- **O dinheiro manda, a intenção só anuncia.** Se um Pix de intenção substituída ou expirada for
-  pago mesmo assim (corrida entre cancelar e pagar), o valor **é aceito** e aplicado pela regra
-  normal na data do pagamento. O que faltar continua em aberto; o que sobrar fica registrado
-  como excedente (§32.5). Nunca se recusa nem se devolve dinheiro automaticamente.
+- **Reuso:** pedir de novo o mesmo valor para a mesma conta no mesmo dia devolve a intenção ativa
+  **daquele valor**; não cria outra. Há teto de **valores distintos** por conta por dia (padrão
+  provisório: 10, Regra 12) para a página pública não virar fábrica de cobranças; voltar a um
+  valor já pedido no dia não conta de novo.
+- ~~**Uma ativa por vez:** criar uma intenção de outro valor marca a anterior como SUBSTITUIDA e
+  cancela o Pix dela no gateway.~~ **Várias ativas, uma por valor (decisão Luís, 2026-11-15, à
+  noite — substitui "uma ativa por vez"):** gerar um Pix novo **não cancela** os anteriores. Até
+  pagar, o cliente pode mudar de ideia e voltar a uma opção que já tinha gerado; o código dela
+  continua valendo. Nada é cancelado nem marcado na criação.
+  - **Quem cancela é o pagamento:** quando um pagamento é baixado na conta, **todas as outras**
+    intenções ativas daquela conta deixam de valer (situação SUBSTITUIDA — é o único uso que
+    restou para ela) e os Pix são cancelados no gateway **pela fila**, fora do caminho do webhook:
+    os valores delas já não correspondem ao que se deve.
+  - **Virada do dia:** um job expira **todas** as ativas e cancela os Pix, como antes.
+- **O dinheiro manda, a intenção só anuncia.** Se um Pix de intenção cancelada ou expirada for
+  pago mesmo assim (corrida entre cancelar e pagar), ou se o cliente pagar **duas** intenções
+  antes do cancelamento, cada valor **é aceito** e aplicado pela regra normal na data do
+  pagamento: o segundo cai na próxima fatura em aberto ou, se não houver, fica registrado como
+  excedente (§32.5). Nunca se recusa nem se devolve dinheiro automaticamente.
 
 **Baixa pela conta.** O pagamento recebido é **da conta**, não de uma fatura: aplica-se fatura a
 fatura, da mais antiga para a mais nova (§32.6-A), com a cascata do §32.5 dentro de cada uma,
@@ -3509,9 +3519,10 @@ Nada disso altera a régua, o bloqueio (Regra 6) ou a POP; só o **link** que va
   implementação (`GATEWAY_PIX`): Pix avulso, vencimento no dia, valor exato, sem `fine` nem
   `interest`, referência `intencao:<id>`, modo simulado.
 - **Intenção de pagamento:** valor validado no servidor pela regra do motor; reuso do mesmo valor
-  no dia; uma ativa por conta (a anterior vira SUBSTITUIDA e tem o Pix cancelado pela fila); teto diário por
-  conta; job de virada do dia às 00h05 (fila `intencao-pagamento`) que expira e cancela. Cancelar
-  nunca apaga cobrança paga: se o gateway disser que pagou, a baixa é enfileirada.
+  no dia; **várias ativas por conta, uma por valor** (regra de 15/11: nada é cancelado na criação);
+  teto diário de valores distintos por conta; job de virada do dia às 00h05 (fila
+  `intencao-pagamento`) que expira e cancela todas. Cancelar nunca apaga cobrança paga: se o
+  gateway disser que pagou, a baixa é enfileirada.
 - **Webhook e baixa:** referência `intencao:` responde 202 e enfileira; o worker trava a conta,
   aplica da fatura mais antiga para a mais nova na data do pagamento, grava `PagamentoFatura` +
   `AlocacaoPagamento` e mantém parcela, recebível, encerramento por quitação,
@@ -3552,21 +3563,27 @@ Nada disso altera a régua, o bloqueio (Regra 6) ou a POP; só o **link** que va
      tocar antes de o código chegar, o botão mostra "Gerando o código Pix…" e, na chegada, o código
      aparece com **"Toque para copiar"** — nunca se copia depois de esperar a rede (o Safari do
      iPhone recusa cópia fora do toque).
-   - **Fora do caminho da resposta:** o cancelamento do Pix da intenção substituída vai para a fila
+   - **Fora do caminho da resposta:** gerar um Pix não cancela nada (regra de 15/11, §32.4-A); o
+     cancelamento que existe — o das outras ativas depois de um pagamento — vai para a fila
      (job `cancelar`, com repetição); as chamadas ao Asaas têm tempo limite de 8 s (erro claro →
      tela "Não conseguimos gerar o Pix agora"); a leitura do código não espera 30 s quando o Asaas
      limita requisições.
    - **Medição:** o backend registra a duração de cada chamada ao gateway (`criarPix`: total,
      cliente, `POST /payments`, `GET pixQrCode`) e da rota `POST …/intencao`, para medir no homolog
      com o Asaas de teste.
-   - **A observar no homolog:** cada troca de opção gera um Pix e conta no limite diário por conta
-     (padrão 10, pendência 10 do §32.10). Navegar muito entre opções pode chegar ao limite; a
-     página então avisa só quando o cliente toca em Copiar.
+   - **A observar no homolog:** cada opção **nova** que o cliente escolhe gera um Pix e conta no
+     limite diário de valores distintos por conta (padrão 10, pendência 10 do §32.10); voltar a
+     uma opção já gerada não gera nem conta. Se chegar ao limite, a página avisa só quando o
+     cliente toca em Copiar. Com várias ativas, a conta pode ter no gateway um Pix em aberto por
+     valor escolhido no dia, até o pagamento ou a virada do dia.
 5. **Dinheiro sem fatura em aberto:** Pix de intenção antiga pago depois de a conta estar quitada
    é registrado **inteiro como excedente** na fatura AZIT mais recente (`PagamentoFatura` de valor
    zero), com aviso à carteira. Nada é devolvido nem vira crédito.
-6. **Depois de qualquer baixa**, outra intenção ativa da conta passa a SUBSTITUIDA e o Pix dela é
-   cancelado (o valor já não corresponde ao que se deve).
+6. **Depois de qualquer baixa**, **todas** as outras intenções ativas da conta passam a SUBSTITUIDA
+   e os Pix delas são cancelados pela fila (o valor já não corresponde ao que se deve). Com a
+   regra de 15/11 (várias ativas, §32.4-A) este é o **único** ponto que cancela intenção além da
+   virada do dia; conferido que cobre todas as ativas da conta, de qualquer dia. A página aberta
+   recarrega e passa a mostrar só os Pix que continuam valendo.
 7. **`Parcela.valorEncargo` no modelo AZIT:** o encargo é da fatura; para o extrato, o encargo
    pago é rateado entre as parcelas pelo valor nominal (informativo — a verdade é a
    `AlocacaoPagamento`).
