@@ -14,6 +14,7 @@ import {
 import { StatusContratoCredito, Credor, Periodicidade as PeriodicidadeTypes } from '@azit/types';
 import { diasAtrasoCalendario, gerarCronograma, centavosParaReaisString, inicioHojeBrasilUTC, dataCalendarioUTC, inicioDiaUTC, DIA_MS, DIAS_POR_PERIODO, fatorValorDesdeSemanal, FUSO_NEGOCIO } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
+import { parametrosFaturamentoVigentes } from '../faturamento/parametros-faturamento.service';
 import { CriarContratoDto } from './dto/criar-contrato.dto';
 import { ListarContratosDto } from './dto/listar-contratos.dto';
 import {
@@ -287,6 +288,7 @@ export class ContratoService {
         numero = `${prefixo}${String(count + 1).padStart(4, '0')}`;
       }
 
+      const padroesFaturamento = await parametrosFaturamentoVigentes(tx);
       const criado = await tx.contratoCredito.create({
         data: {
           numero,
@@ -305,8 +307,10 @@ export class ContratoService {
             { assinatura: 'ASSINATURA', compra_parcelada: 'COMPRA_PARCELADA', compra_vista: 'COMPRA_VISTA' } as const
           )[dto.modalidade ?? 'assinatura'],
           indiceReajuste: dto.indiceReajuste,
-          taxaMultaAtraso: dto.taxaMultaAtraso,
-          taxaJurosAtraso: dto.taxaJurosAtraso,
+          // Sem taxa informada, vale o padrão de Configurações › Faturamento
+          // (FAT001/FAT002, doc 02 §32.8) — antes era o default fixo do schema.
+          taxaMultaAtraso: dto.taxaMultaAtraso ?? padroesFaturamento.multaPadraoPct,
+          taxaJurosAtraso: dto.taxaJurosAtraso ?? padroesFaturamento.atualizacaoMesPadraoPct,
           taxaDescontoQuitacao: dto.taxaDescontoQuitacao,
           status: statusInicial,
           propostaPacoteId: opts.propostaPacoteId,

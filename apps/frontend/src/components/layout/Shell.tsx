@@ -37,6 +37,7 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
   '/migracao-legado': { title: 'Migração do legado', subtitle: 'Clientes que já existem no Asaas — conciliação caso a caso' },
   '/produtos': { title: 'Itens avulsos de contrato', subtitle: 'Itens contratáveis avulsos (legado §9)' },
   '/configuracoes/assinatura': { title: 'Assinatura digital', subtitle: 'Signatários padrão e validade do contrato' },
+  '/configuracoes/faturamento': { title: 'Faturamento', subtitle: 'Regras da Fatura Azit e Pix sob demanda' },
   '/configuracoes/integracoes': { title: 'Integrações', subtitle: 'Credenciais do Asaas e da ZapSign — sem redeploy' },
 };
 

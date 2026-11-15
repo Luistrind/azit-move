@@ -38,6 +38,7 @@ import { SimuladorConfigPage } from './pages/SimuladorConfigPage';
 import { UsuariosPage } from './pages/UsuariosPage';
 import { CentroCustoPage } from './pages/CentroCustoPage';
 import { IntegracoesPage } from './pages/IntegracoesPage';
+import { FaturamentoConfigPage } from './pages/FaturamentoConfigPage';
 import { OcorrenciasPage } from './pages/OcorrenciasPage';
 import { MigracaoLegadoPage } from './pages/MigracaoLegadoPage';
 import { MigracaoLegadoCasoPage } from './pages/MigracaoLegadoCasoPage';
@@ -129,6 +130,7 @@ export const router = createBrowserRouter([
           rota('configuracoes/alcadas', <AlcadasPage />, CONFIGURACOES),
           rota('configuracoes/assinatura', <AssinaturaConfigPage />, CONFIGURACOES),
           rota('configuracoes/documentos-empresa', <DocumentosEmpresaPage />, CONFIGURACOES),
+          rota('configuracoes/faturamento', <FaturamentoConfigPage />, CONFIGURACOES),
           rota('configuracoes/simulador', <SimuladorConfigPage />, CONFIGURACOES),
           rota('configuracoes/usuarios', <UsuariosPage />, CONFIGURACOES),
           rota('configuracoes/integracoes', <IntegracoesPage />, CONFIGURACOES),

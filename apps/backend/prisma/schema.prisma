@@ -217,6 +217,32 @@ enum CanalEnvioLinkFatura {
   COPIA
 }
 
+// Fatura Azit F2 (doc 02 §32.5): de onde veio a baixa. GATEWAY = webhook do
+// Pix de uma intenção; CONFERENCIA = operador conferiu o pagamento na ficha.
+enum OrigemPagamentoFatura {
+  GATEWAY
+  CONFERENCIA
+}
+
+// Encargo calculado pela Azit (doc 02 §32.4) que uma alocação quitou.
+enum TipoEncargoFatura {
+  MULTA
+  ATUALIZACAO
+}
+
+// Intenção de pagamento (doc 02 §32.4-A): quem pediu o Pix e como ele está.
+enum OrigemIntencaoPagamento {
+  PAGINA_PUBLICA
+  OPERADOR
+}
+
+enum SituacaoIntencaoPagamento {
+  ATIVA
+  PAGA
+  EXPIRADA
+  SUBSTITUIDA
+}
+
 enum TipoItemFatura {
   PRINCIPAL
   INTERMEDIARIA // parcela-balão da entrada parcelada
@@ -425,6 +451,7 @@ model Conta {
   contratosCredito      ContratoCredito[]
   contratosInvestimento ContratoInvestimento[]
   faturas               Fatura[]
+  intencoesPagamento    IntencaoPagamento[]
   acordos               Acordo[]
   novacoes              Novacao[]
   lancamentos           LancamentoConta[]
@@ -1255,6 +1282,7 @@ model Fatura {
   parcelas    Parcela[]
   acordo      Acordo?      @relation(fields: [acordoId], references: [id])
   enviosLink  EnvioLinkFatura[]
+  pagamentos  PagamentoFatura[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1284,6 +1312,119 @@ model EnvioLinkFatura {
 
   @@index([faturaId])
   @@map("envios_link_fatura")
+}
+
+// Fatura Azit F2 (doc 02 §32.5): UM pagamento aplicado a UMA fatura. O dinheiro
+// é da conta (§32.4-A): um Pix que cobre três faturas gera três linhas, todas
+// com o mesmo gatewayPaymentId e a mesma intenção. É daqui (e das alocações)
+// que o motor refaz a conta — não há coluna de saldo, multa lançada ou
+// "atualização desde" (Regra 7).
+model PagamentoFatura {
+  id               String                @id @default(cuid())
+  faturaId         String
+  intencaoId       String?
+  valor            Decimal               @db.Decimal(12, 2) // aplicado a ESTA fatura
+  dataPagamento    DateTime // dia do pagamento (data-calendário do Brasil em UTC-midnight)
+  pagoEm           DateTime? // instante, quando o gateway informa (a página mostra a hora)
+  origem           OrigemPagamentoFatura
+  gatewayPaymentId String? // id do pagamento no gateway — chave da idempotência
+  identificadorPix String? // endToEndId da transação, quando o gateway informa
+  // Pago além de tudo o que a conta devia (§32.5): só registrado, na última
+  // fatura tocada. Virar crédito do cliente é fase posterior.
+  valorExcedente   Decimal               @default(0) @db.Decimal(12, 2)
+
+  fatura    Fatura              @relation(fields: [faturaId], references: [id])
+  intencao  IntencaoPagamento?  @relation(fields: [intencaoId], references: [id])
+  alocacoes AlocacaoPagamento[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([gatewayPaymentId, faturaId])
+  @@index([faturaId])
+  @@index([intencaoId])
+  @@map("pagamentos_fatura")
+}
+
+// O que um pagamento quitou (doc 02 §32.5): um item da fatura OU um encargo
+// (multa / atualização), com o nível da cascata em que caiu.
+model AlocacaoPagamento {
+  id           String             @id @default(cuid())
+  pagamentoId  String
+  itemFaturaId String?
+  tipoEncargo  TipoEncargoFatura?
+  valor        Decimal            @db.Decimal(12, 2)
+  nivel        Int
+  quitou       Boolean            @default(false) // zerou o saldo do alvo neste pagamento
+
+  pagamento  PagamentoFatura @relation(fields: [pagamentoId], references: [id])
+  itemFatura ItemFatura?     @relation(fields: [itemFaturaId], references: [id])
+
+  @@index([pagamentoId])
+  @@index([itemFaturaId])
+  @@map("alocacoes_pagamento")
+}
+
+// Intenção de pagamento (doc 02 §32.4-A): "o cliente pediu um Pix de R$ X para
+// a conta Y". A referência enviada ao gateway é `intencao:<id>`. Uma ATIVA por
+// conta; pedir o mesmo valor no mesmo dia reusa; outro valor SUBSTITUI a
+// anterior; a virada do dia EXPIRA. O dinheiro manda: Pix de intenção
+// substituída ou expirada pago mesmo assim é aceito.
+model IntencaoPagamento {
+  id                 String                    @id @default(cuid())
+  contaId            String
+  valor              Decimal                   @db.Decimal(12, 2)
+  // Retrato do momento: [{ faturaId, numero, vencimento, valor }] — o que o
+  // valor pretendia cobrir. A baixa real segue a regra na data do pagamento.
+  faturasPretendidas Json
+  outroValor         Boolean                   @default(false)
+  dia                String // dia do Brasil em que vale (YYYY-MM-DD) — chave do reuso e do teto
+  validoAte          DateTime // 23h59 do dia, fuso do Brasil
+  origem             OrigemIntencaoPagamento
+  usuarioId          String? // operador, quando origem = OPERADOR
+  situacao           SituacaoIntencaoPagamento @default(ATIVA)
+  gatewayId          String? // id da cobrança no gateway
+  pixCopiaECola      String?
+  pixQrCodeImagem    String? // PNG em base64, quando o gateway devolve
+  simulado           Boolean                   @default(false)
+  pagoEm             DateTime?
+  valorRecebido      Decimal?                  @db.Decimal(12, 2)
+
+  conta      Conta             @relation(fields: [contaId], references: [id])
+  usuario    Usuario?          @relation("IntencaoPagamentoUsuario", fields: [usuarioId], references: [id])
+  pagamentos PagamentoFatura[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([contaId, situacao])
+  @@index([contaId, dia])
+  @@index([gatewayId])
+  @@map("intencoes_pagamento")
+}
+
+// Parâmetros de faturamento (doc 02 §32.8), VERSIONADOS: salvar cria uma
+// versão nova; vale a de maior número. Sem linha = padrões provisórios
+// (Regra 12), com a chave do Pix sob demanda DESLIGADA.
+model ParametroFaturamento {
+  id                      String  @id @default(cuid())
+  versao                  Int     @unique
+  // Chave de virada (§32.4-A): ligada, as faturas que fecharem dali em diante
+  // nascem no modelo AZIT, sem cobrança pré-criada no gateway.
+  pixSobDemanda           Boolean @default(false)
+  multaPadraoPct          Decimal @default(2) @db.Decimal(5, 2) // FAT001 — padrão de novos contratos
+  atualizacaoMesPadraoPct Decimal @default(1) @db.Decimal(5, 2) // FAT002 — idem
+  cascata                 Json // FAT003 — lista ordenada de grupos
+  minimoParcialPct        Decimal @default(35) @db.Decimal(5, 2) // FAT004 — % do valor de face
+  minimoParcialPiso       Decimal @default(200) @db.Decimal(12, 2) // FAT004 — piso em reais
+  tetoIntencoesDia        Int     @default(10) // intenções distintas por conta por dia
+  motivo                  String?
+  criadoPorId             String?
+
+  criadoPor Usuario? @relation("ParametroFaturamentoUsuario", fields: [criadoPorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@map("parametros_faturamento")
 }
 
 model LancamentoConta {
@@ -1323,6 +1464,7 @@ model ItemFatura {
   fatura  Fatura   @relation(fields: [faturaId], references: [id])
   parcela Parcela? @relation(fields: [parcelaId], references: [id])
   ocorrencia OcorrenciaVeiculo? // repasse de multa/IPVA (doc 02 sec.25.3)
+  alocacoes  AlocacaoPagamento[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1692,6 +1834,8 @@ model Usuario {
 
   permissoesArea PermissaoUsuarioArea[]
   enviosLinkFatura EnvioLinkFatura[] @relation("EnvioLinkFaturaUsuario")
+  intencoesPagamento    IntencaoPagamento[]    @relation("IntencaoPagamentoUsuario")
+  parametrosFaturamento ParametroFaturamento[] @relation("ParametroFaturamentoUsuario")
   acessos        AcessoUsuario[]
 
   createdAt DateTime  @default(now())

@@ -19,6 +19,7 @@ export * from './enums/role-usuario';
 export * from './enums/area-sistema';
 export * from './enums/aprovacao';
 export * from './enums/acesso';
+export * from './enums/faturamento';
 
 // Entidades
 export * from './entities/titular';
@@ -31,5 +32,6 @@ export * from './entities/item-contratado';
 export * from './entities/parcela';
 export * from './entities/fatura';
 export * from './entities/fatura-publica';
+export * from './entities/faturamento';
 export * from './entities/recebivel';
 export * from './entities/acordo';

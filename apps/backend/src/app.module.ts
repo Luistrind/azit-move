@@ -15,6 +15,7 @@ import { AsaasModule } from './modules/asaas/asaas.module';
 import { IntegracoesModule } from './modules/integracoes/integracoes.module';
 import { CobrancaModule } from './modules/cobranca/cobranca.module';
 import { FaturaPublicaModule } from './modules/fatura-publica/fatura-publica.module';
+import { FaturamentoModule } from './modules/faturamento/faturamento.module';
 import { ReguaModule } from './modules/regua/regua.module';
 import { AlcadaModule } from './modules/alcada/alcada.module';
 import { AprovacaoModule } from './modules/aprovacao/aprovacao.module';
@@ -63,6 +64,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     AsaasModule,
     CobrancaModule,
     FaturaPublicaModule,
+    FaturamentoModule,
     FrotaModule,
     MigracaoLegadoModule,
     ReguaModule,
