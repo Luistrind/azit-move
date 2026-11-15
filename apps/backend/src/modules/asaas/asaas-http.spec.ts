@@ -1,4 +1,4 @@
-import { ASAAS_TIMEOUT_MS, AsaasTimeoutError, fetchAsaas } from './asaas-http';
+import { ASAAS_TIMEOUT_MS, AsaasTimeoutError, fetchAsaas, limiteQrPixMs } from './asaas-http';
 import { AsaasService } from './asaas.service';
 import { AsaasLeituraService } from './asaas-leitura.service';
 
@@ -46,5 +46,44 @@ describe('fetchAsaas — tempo limite', () => {
     await expect(leitura.pixQrCode('pay_1')).rejects.toMatchObject({ status: 429 });
     expect(Date.now() - t0).toBeLessThan(2000);
     expect(rede).toHaveBeenCalledTimes(1); // sem repetição
+  });
+});
+
+// Limite próprio do código Pix (homolog 15/11): o sandbox não devolveu o código
+// em 8 s; o homolog aumenta o limite por ambiente para medir, produção fica em 8 s.
+describe("limite da consulta do código Pix (ASAAS_PIX_QR_TIMEOUT_MS)", () => {
+  const antes = process.env.ASAAS_PIX_QR_TIMEOUT_MS;
+  afterEach(() => {
+    if (antes === undefined) delete process.env.ASAAS_PIX_QR_TIMEOUT_MS;
+    else process.env.ASAAS_PIX_QR_TIMEOUT_MS = antes;
+    jest.restoreAllMocks();
+  });
+
+  it("sem a variável (ou com valor fora de 1–60 s) fica no padrão de 8 s", () => {
+    delete process.env.ASAAS_PIX_QR_TIMEOUT_MS;
+    expect(limiteQrPixMs()).toBe(8000);
+    for (const v of ["abc", "500", "120000", ""]) {
+      process.env.ASAAS_PIX_QR_TIMEOUT_MS = v;
+      expect(limiteQrPixMs()).toBe(8000);
+    }
+  });
+
+  it("com a variável, SÓ o pixQrCode usa o limite novo; as outras chamadas seguem em 8 s", async () => {
+    process.env.ASAAS_PIX_QR_TIMEOUT_MS = "30000";
+    const limite = jest.spyOn(AbortSignal, "timeout");
+    jest.spyOn(global, "fetch").mockResolvedValue({ ok: true, json: async () => ({ payload: "000201", id: "pay_1" }) } as never);
+    const leitura = new AsaasLeituraService(integracoes as never);
+    await leitura.pixQrCode("pay_1");
+    expect(limite).toHaveBeenLastCalledWith(30000);
+    const asaas = new AsaasService(integracoes as never);
+    await asaas.criarCobranca({ externalReference: "intencao:int_1", valor: 1000, vencimento: new Date("2026-11-09T00:00:00Z"), descricao: "x", customerId: "cus_1" }).catch(() => undefined);
+    expect(limite).toHaveBeenLastCalledWith(8000);
+  });
+
+  it("estouro do limite próprio diz o tempo certo no erro", async () => {
+    process.env.ASAAS_PIX_QR_TIMEOUT_MS = "30000";
+    jest.spyOn(global, "fetch").mockRejectedValueOnce(Object.assign(new Error("timeout"), { name: "TimeoutError" }));
+    const leitura = new AsaasLeituraService(integracoes as never);
+    await expect(leitura.pixQrCode("pay_1")).rejects.toThrow("Asaas GET /payments/pay_1/pixQrCode não respondeu em 30 s");
   });
 });

@@ -53,6 +53,10 @@ services:
       ASAAS_API_URL: https://api-sandbox.asaas.com/v3
       ASAAS_API_KEY: ${ASAAS_API_KEY:-}
       ASAAS_WEBHOOK_SECRET: ${ASAAS_WEBHOOK_SECRET}
+      # Limite da consulta do código Pix (asaas-http, 15/11): o sandbox não devolveu o
+      # código em 8 s. No homolog o limite é 30 s para MEDIR o tempo real do sandbox;
+      # produção não define (fica nos 8 s padrão).
+      ASAAS_PIX_QR_TIMEOUT_MS: "30000"
       # Vazio = provedor simulado (não consome créditos da BigDataCorp).
       BIGDATACORP_TOKEN_ID: ${BIGDATACORP_TOKEN_ID:-}
       BIGDATACORP_ACCESS_TOKEN: ${BIGDATACORP_ACCESS_TOKEN:-}
