@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Azit Move · Pague o valor de um aluguel. No fim, o carro é seu.</title>
+<meta name="description" content="Venda parcelada de carro direto com a Azit Move para quem trabalha com o carro na Grande Vitória. Análise pela sua renda real, pagamento por semana, quinzena ou mês.">
+<meta name="theme-color" content="#070f1c">
+<link rel="canonical" href="https://azitmove.com.br/">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:site_name" content="Azit Move">
+<meta property="og:title" content="Pague o valor de um aluguel. No fim, o carro é seu.">
+<meta property="og:description" content="Venda parcelada direto com a Azit para quem trabalha com o carro na Grande Vitória.">
+<meta property="og:url" content="https://azitmove.com.br/">
+<meta property="og:image" content="https://azitmove.com.br/icone-192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Manrope:wght@400;500;600;700&family=Saira+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}img{max-width:100%}[hidden]{display:none!important}html{scroll-behavior:smooth}@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}</style>
+<style>
+/* Conceito: "a estrada da semana". O motorista mede a vida em semanas e em quilômetros: os números são hodômetros,
+   as divisórias são faixa tracejada de pista, o preço vem numa placa. Página de marca, tema único (asfalto + papel claro). */
+:root{
+  --asfalto:#070f1c; --navy:#001029; --laranja:#fa8e0d; --laranja-esc:#c96c00;
+  --papel:#f2f4f8; --branco:#ffffff; --tinta:#001029; --tinta-2:#48566b; --tinta-3:#7a8798;
+  --linha:#dde3ec; --sobre-escuro:#c6d1df; --sobre-escuro-2:#7f93ab; --borda-escura:#1d2c44; --cartao-escuro:#0d1929;
+  --seu:#178a52; --seu-bg:#e6f6ee; --perde:#b3392f; --perde-bg:#fbeceb;
+  --display:'Outfit',system-ui,sans-serif; --texto:'Manrope',system-ui,sans-serif; --num:'Saira Condensed','Outfit',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--papel);color:var(--tinta);font-family:var(--texto);font-size:16px;line-height:1.55}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.02em;line-height:1.08}
+p{margin:0}
+a{color:inherit}
+.wrap{max-width:1120px;margin:0 auto;padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px))}
+section{padding-block:72px}
+@media (max-width:640px){section{padding-block:52px}}
+.escuro{background:var(--asfalto);color:#fff}
+.navy{background:var(--navy);color:#fff}
+.claro{background:var(--branco)}
+.olho{font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--laranja-esc)}
+.escuro .olho,.navy .olho{color:var(--laranja)}
+.h2{font-size:clamp(30px,4.6vw,48px);font-weight:800}
+.lead{font-size:18px;color:var(--tinta-2);max-width:62ch}
+.escuro .lead,.navy .lead{color:var(--sobre-escuro)}
+.cab{display:flex;flex-direction:column;gap:14px;margin-bottom:36px}
+.cab.solta{margin-bottom:0}
+.faixa{height:6px;background:repeating-linear-gradient(90deg,var(--laranja) 0 30px,var(--papel) 30px 56px)}
+.depois{margin-top:30px}
+
+/* botão */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;background:var(--laranja);color:var(--navy);font-family:var(--display);font-weight:700;font-size:17px;padding:16px 24px;border-radius:12px;text-decoration:none;border:0;cursor:pointer;box-shadow:0 6px 0 var(--laranja-esc);transition:transform .12s,box-shadow .12s}
+.btn:hover{transform:translateY(2px);box-shadow:0 4px 0 var(--laranja-esc)}
+.btn:active{transform:translateY(6px);box-shadow:0 0 0 var(--laranja-esc)}
+.btn svg{width:22px;height:22px;flex:none}
+.fantasma{display:inline-flex;align-items:center;gap:8px;font-family:var(--display);font-weight:700;color:var(--tinta);background:var(--branco);border:2px solid var(--tinta);border-radius:12px;padding:12px 18px;cursor:pointer;font-size:15px;text-decoration:none}
+:is(.btn,.fantasma,summary,input,a):focus-visible{outline:3px solid var(--laranja);outline-offset:3px}
+
+/* barra da campanha */
+.camp{background:var(--laranja);color:var(--navy);font-family:var(--display);font-weight:700;font-size:15px}
+.camp .wrap{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;justify-content:center;padding-block:9px}
+.cron{display:inline-flex;gap:6px;align-items:center}
+.cron b{background:var(--navy);color:#fff;border-radius:6px;padding:2px 7px;font-family:var(--num);font-size:18px;min-width:34px;text-align:center}
+
+/* topo + hero */
+.topo{display:flex;justify-content:space-between;align-items:center;gap:16px;padding-block:20px}
+.marca{display:flex;align-items:center;gap:10px;text-decoration:none}
+.marca img{width:40px;height:40px;display:block}
+.marca span{font-family:var(--display);font-weight:700;font-size:22px;letter-spacing:-.02em;color:#fff}
+.marca b{color:var(--laranja);font-weight:700}
+.topo nav{display:flex;gap:22px;font-size:14.5px;font-weight:600;color:var(--sobre-escuro)}
+.topo nav a{text-decoration:none}
+.topo nav a:hover{color:#fff}
+@media (max-width:760px){.topo nav{display:none}}
+.hero{padding-block:28px 72px}
+.hero .grade{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:48px;align-items:center}
+@media (max-width:900px){.hero .grade{grid-template-columns:minmax(0,1fr);gap:36px}}
+.hero h1{font-size:clamp(40px,6.4vw,72px);font-weight:800}
+.hero h1 em{font-style:normal;color:var(--laranja)}
+.hero .lead{margin-top:20px}
+.placas{display:flex;flex-wrap:wrap;gap:14px;margin-top:30px}
+.placa{display:inline-flex;flex-direction:column;background:#fff;color:var(--navy);border-radius:10px;overflow:hidden;border:3px solid var(--navy);box-shadow:0 0 0 2px #fff;max-width:100%}
+.placa small{background:#1b4fb8;color:#fff;font-family:var(--display);font-weight:700;font-size:10.5px;letter-spacing:.2em;text-align:center;padding:3px 10px}
+.placa span{font-family:var(--num);font-weight:700;font-size:30px;line-height:1;padding:8px 14px 9px;letter-spacing:.02em;white-space:nowrap}
+.placa i{font-style:normal;font-size:15px;font-family:var(--display);font-weight:600;letter-spacing:0;margin:0 6px;color:var(--tinta-2)}
+.placa s{font-size:17px;color:var(--tinta-3)}
+.hero .acao{margin-top:30px}
+
+/* as duas pistas (hero) */
+.pistas{background:linear-gradient(180deg,#101c2f,#0a1424);border:1px solid var(--borda-escura);border-radius:22px;padding:24px 22px 22px;display:flex;flex-direction:column;gap:18px;min-width:0}
+.pistas h2{font-size:14px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--sobre-escuro-2);line-height:1.3}
+.pista{display:flex;flex-direction:column;gap:8px}
+.pista .n{display:flex;justify-content:space-between;gap:10px;align-items:baseline;font-family:var(--display);font-weight:700;font-size:17px}
+.pista .n small{font-family:var(--texto);font-weight:500;font-size:13px;color:var(--sobre-escuro-2)}
+.via{position:relative;height:46px;border-radius:10px;background:#18263b;overflow:hidden}
+.via::before{content:"";position:absolute;left:12px;right:12px;top:50%;height:3px;transform:translateY(-50%);background:repeating-linear-gradient(90deg,#3a4c66 0 16px,#18263b 16px 30px)}
+.via .rastro{position:absolute;left:0;top:0;bottom:0;width:62%;border-radius:10px}
+.via.aluguel .rastro{background:linear-gradient(90deg,rgba(179,57,47,0),rgba(179,57,47,.4))}
+.via.azit .rastro{background:linear-gradient(90deg,rgba(250,142,13,.15),rgba(250,142,13,.8))}
+.via .carro{position:absolute;top:50%;left:62%;transform:translate(-100%,-50%);width:44px;height:22px}
+.via .fim{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:12px;font-weight:700;font-family:var(--display);letter-spacing:.04em;padding:3px 8px;border-radius:6px}
+.via.aluguel .fim{background:var(--perde-bg);color:var(--perde)}
+.via.azit .fim{background:var(--seu-bg);color:var(--seu)}
+@media (prefers-reduced-motion:no-preference){
+  .via .rastro{animation:rastro 4.6s cubic-bezier(.3,.1,.3,1) both}
+  .via .carro{animation:carro 4.6s cubic-bezier(.3,.1,.3,1) both}
+  @keyframes rastro{from{width:12%}to{width:62%}}
+  @keyframes carro{from{left:12%}to{left:62%}}
+}
+.pistas .res{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.pistas .res div{background:var(--cartao-escuro);border:1px solid var(--borda-escura);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.pistas .res span{font-size:12.5px;color:var(--sobre-escuro-2)}
+.pistas .res b{font-family:var(--num);font-size:30px;line-height:1.05;font-weight:700}
+.pistas .res .p b{color:#f08b82}
+.pistas .res .s b{color:var(--laranja)}
+.pistas .rod{font-size:12.5px;color:var(--sobre-escuro-2)}
+.pistas .rod a{color:var(--sobre-escuro)}
+
+.provas{border-top:1px solid #16243a}
+.provas .wrap{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 28px;padding-block:20px}
+.provas .wrap>div{display:flex;gap:10px;align-items:flex-start;font-size:14.5px;color:var(--sobre-escuro)}
+.provas .wrap>div::before{content:"";flex:none;width:9px;height:9px;border-radius:50%;background:var(--laranja);margin-top:7px}
+@media (max-width:760px){.provas .wrap{grid-template-columns:minmax(0,1fr)}}
+
+/* a conta (aluguel x Azit) */
+.conta{display:flex;flex-direction:column;gap:22px}
+.controle{background:var(--branco);border:1px solid var(--linha);border-radius:16px;padding:18px 20px}
+.pin{display:flex;flex-direction:column;gap:22px}
+.trilho.fixa .pin{position:sticky;top:var(--topo,16px)}
+.controle label{font-family:var(--display);font-weight:700;font-size:17px;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline}
+.controle output{font-family:var(--num);font-size:28px;color:var(--laranja-esc);line-height:1}
+.controle small{color:var(--tinta-3);font-size:13px;display:block;margin-top:4px}
+input[type=range]{width:100%;accent-color:var(--laranja);height:28px;margin:6px 0 0}
+.lados{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+@media (max-width:820px){.lados{grid-template-columns:minmax(0,1fr)}}
+.lado{background:var(--branco);border-radius:20px;border:1px solid var(--linha);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.lado header{padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:10px;font-family:var(--display);font-weight:800;font-size:21px}
+.lado.al header{background:#e2e7ef;color:var(--tinta)}
+.lado.az header{background:var(--laranja);color:var(--navy)}
+.lado header small{font-family:var(--texto);font-weight:700;font-size:13px}
+.lado .corpo{padding:18px 20px 20px;display:flex;flex-direction:column;gap:16px}
+.sem{display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:4px}
+.sem i{aspect-ratio:1;border-radius:5px;display:grid;place-items:center;font-style:normal;font-family:var(--num);font-weight:600;font-size:12px;background:#eef1f6;color:#a7b2c2}
+.lado.al .sem i.pg{background:#d3d9e3;color:#5f6b7c;text-decoration:line-through;text-decoration-color:var(--perde)}
+.lado.az .sem i.pg{background:var(--laranja);color:var(--navy)}
+.metrica{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;padding-top:14px;border-top:1px dashed var(--linha)}
+.metrica span{font-size:14px;color:var(--tinta-2);max-width:16ch}
+.odo{display:inline-flex;align-items:center;gap:2px;font-family:var(--num);font-weight:700;font-size:30px;line-height:1;white-space:nowrap}
+.odo b{background:var(--navy);color:#fff;border-radius:5px;padding:5px 5px 6px;min-width:20px;text-align:center;font-weight:700}
+.odo u{text-decoration:none;color:var(--tinta-2);font-size:20px;padding:0 1px}
+.odo.zero b{background:var(--perde)}
+.odo.seu b{background:var(--seu)}
+@media (max-width:400px){.odo{font-size:24px}.odo b{min-width:16px;padding:4px 3px 5px}}
+.veredito{border-radius:12px;padding:12px 14px;font-weight:700;font-size:15px}
+.lado.al .veredito{background:var(--perde-bg);color:var(--perde)}
+.lado.az .veredito{background:var(--seu-bg);color:var(--seu)}
+.conta .nota{font-size:13px;color:var(--tinta-3);max-width:80ch}
+
+/* dores */
+.tres{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:44px}
+@media (max-width:820px){.tres{grid-template-columns:minmax(0,1fr)}}
+.dor{border-left:4px solid var(--perde);padding:4px 0 4px 18px;display:flex;flex-direction:column;gap:6px}
+.dor h3{font-size:20px;font-weight:700}
+.dor p{color:var(--tinta-2)}
+.virada{margin-top:44px;font-family:var(--display);font-weight:800;font-size:clamp(24px,3.4vw,34px);letter-spacing:-.02em;max-width:24ch;line-height:1.15}
+.virada em{font-style:normal;color:var(--laranja-esc)}
+
+/* comparação */
+.rolavel{overflow-x:auto}
+.comp{width:100%;min-width:520px;border-collapse:separate;border-spacing:0;border:1px solid var(--linha);border-radius:18px;overflow:hidden;background:var(--branco)}
+.comp th,.comp td{padding:16px 18px;text-align:left;vertical-align:top;border-bottom:1px solid var(--linha);font-size:15.5px}
+.comp tr:last-child td,.comp tr:last-child th{border-bottom:0}
+.comp thead th{font-family:var(--display);font-size:17px;font-weight:800}
+.comp thead th:nth-child(2){background:#e2e7ef}
+.comp thead th:nth-child(3){background:var(--laranja);color:var(--navy)}
+.comp tbody th{font-weight:700;color:var(--tinta-2);font-size:14px;width:24%}
+.comp tbody td:nth-child(2){color:var(--tinta-2)}
+.comp tbody td:nth-child(3){font-weight:700;background:#fff8ee}
+@media (max-width:640px){.comp th,.comp td{padding:12px;font-size:14px}}
+
+/* carros */
+.carros{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;max-width:900px}
+@media (max-width:820px){.carros{grid-template-columns:minmax(0,1fr)}}
+.carro-c{background:var(--branco);border:1px solid var(--linha);border-radius:18px;overflow:hidden;display:flex;flex-direction:column}
+.foto{aspect-ratio:16/10;max-width:100%;background:#e6ebf2;overflow:hidden}
+.foto img{width:100%;height:100%;object-fit:cover;display:block}
+.carro-c .t{padding:16px 18px 18px;display:flex;flex-direction:column;gap:4px}
+.carro-c h3{font-size:21px;font-weight:800}
+.carro-c p{color:var(--tinta-2);font-size:14.5px}
+
+/* oferta */
+.oferta .grade{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:40px;align-items:center}
+@media (max-width:900px){.oferta .grade{grid-template-columns:minmax(0,1fr)}}
+.cartao-of{background:#fff;color:var(--navy);border-radius:22px;padding:26px 24px}
+.cartao-of dl{margin:0;display:grid;gap:14px}
+.cartao-of dl div{display:flex;justify-content:space-between;gap:12px;align-items:baseline;border-bottom:1px dashed var(--linha);padding-bottom:12px}
+.cartao-of dl div:last-child{border:0;padding:0}
+.cartao-of dt{font-weight:700;color:var(--tinta-2);font-size:14px;text-transform:uppercase;letter-spacing:.08em}
+.cartao-of dd{margin:0;font-family:var(--num);font-weight:700;font-size:34px;line-height:1;text-align:right}
+.cartao-of dd s{font-size:18px;color:var(--tinta-3);display:block}
+.cartao-of dd small{display:block;font-family:var(--texto);font-weight:600;font-size:13px;color:var(--tinta-2)}
+.cartao-of dd.prazo{font-family:var(--texto);font-size:15px;line-height:1.35}
+
+/* passos (são uma sequência de verdade) */
+.passos{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;counter-reset:p}
+@media (max-width:900px){.passos{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.passos{grid-template-columns:minmax(0,1fr)}}
+.passo{counter-increment:p;display:flex;flex-direction:column;gap:8px;padding-top:16px;border-top:6px solid var(--tinta)}
+.passo::before{content:counter(p);font-family:var(--num);font-weight:700;font-size:44px;line-height:1;color:var(--laranja-esc)}
+.passo h3{font-size:20px;font-weight:700}
+.passo p{color:var(--tinta-2);font-size:15px}
+
+/* para quem */
+.quem{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:40px;align-items:start}
+@media (max-width:820px){.quem{grid-template-columns:minmax(0,1fr)}}
+.lista{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.lista li{display:flex;gap:12px;align-items:flex-start;background:var(--papel);border:1px solid var(--linha);border-radius:12px;padding:14px 16px;font-weight:600}
+.lista li::before{content:"";flex:none;width:22px;height:22px;border-radius:50%;background:var(--seu) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-9'/%3E%3C/svg%3E") center/14px no-repeat;margin-top:1px}
+
+/* depois da chave */
+.quatro{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px}
+@media (max-width:900px){.quatro{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.quatro{grid-template-columns:minmax(0,1fr)}}
+.benef{display:flex;flex-direction:column;gap:6px;padding:18px;border:1px solid var(--borda-escura);border-radius:16px;background:var(--cartao-escuro)}
+.benef h3{font-size:19px;font-weight:700;color:var(--laranja)}
+.benef p{color:var(--sobre-escuro);font-size:15px}
+
+/* empresa */
+.empresa{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,.7fr);gap:40px;align-items:center}
+@media (max-width:820px){.empresa{grid-template-columns:minmax(0,1fr)}}
+.numeros{display:flex;gap:28px;flex-wrap:wrap}
+.numeros div{display:flex;flex-direction:column}
+.numeros b{font-family:var(--num);font-size:64px;line-height:1;font-weight:700;color:var(--laranja-esc)}
+.numeros span{font-weight:600;color:var(--tinta-2)}
+
+/* faq */
+.faq{display:flex;flex-direction:column;gap:10px;max-width:820px}
+.faq details{background:var(--papel);border:1px solid var(--linha);border-radius:14px}
+.faq summary{list-style:none;cursor:pointer;padding:16px 18px;font-family:var(--display);font-weight:700;font-size:17.5px;display:flex;justify-content:space-between;gap:14px;align-items:center}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:"+";font-family:var(--num);font-size:28px;line-height:1;color:var(--laranja-esc);flex:none}
+.faq details[open] summary::after{content:"–"}
+.faq details p{padding:0 18px 18px;color:var(--tinta-2);max-width:68ch}
+
+/* final + rodapé */
+.final .h2{max-width:20ch}
+.final .lead{margin:18px 0 28px}
+footer{background:var(--asfalto);color:var(--sobre-escuro-2);font-size:13.5px;border-top:1px solid #16243a}
+footer .wrap{padding-block:26px 96px;display:flex;flex-wrap:wrap;gap:10px 28px;justify-content:space-between}
+footer a{color:var(--sobre-escuro)}
+.zap{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));width:58px;height:58px;border-radius:50%;background:#1fb355;display:grid;place-items:center;box-shadow:0 8px 24px rgba(0,0,0,.3);z-index:20}
+.zap svg{width:30px;height:30px}
+</style>
+
+</head>
+<body>
+<div class="camp" id="camp" data-camp>
+  <div class="wrap"><span>BLACK FRIDAY AZIT MOVE · 23 a 30/11</span>
+    <span class="cron">Termina em <b id="cd">15</b>d <b id="ch">00</b>h <b id="cm">00</b>m <b id="cs">00</b>s</span></div>
+</div>
+
+<div class="escuro">
+  <div class="wrap">
+    <div class="topo">
+      <a class="marca" href="#"><img src="/marca-icone.png" alt="" width="40" height="40"><span>azit<b>move</b></span></a>
+      <nav aria-label="Seções"><a href="#conta">A conta do aluguel</a><a href="#como">Como funciona</a><a href="#carros">Carros</a><a href="#duvidas">Dúvidas</a></nav>
+    </div>
+    <section class="hero">
+      <div class="grade">
+        <div>
+          <h1>Pague o valor de um aluguel. <em>No fim, o carro é seu.</em></h1>
+          <p class="lead">Venda parcelada direto com a Azit para quem trabalha com o carro na Grande Vitória. Análise pela sua renda real<span data-camp> e, só nesta Black Friday, entrada pela metade</span>.</p>
+          <div class="placas">
+            <div class="placa"><small>ENTRADA</small><span data-camp><s>R$ 3.990</s><i>por</i>R$ 1.990</span><span data-fora hidden>R$ 3.990</span></div>
+            <div class="placa"><small>SEU CARRO A PARTIR DE</small><span>R$ 99,90<i>por dia</i></span></div>
+          </div>
+          <div class="acao">
+            <a class="btn" data-zap="Olá! Vi o site da Azit Move e quero saber da entrada." href="#"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z"/></svg><span data-camp>Quero minha entrada de R$ 1.990</span><span data-fora hidden>Quero falar com a Azit</span></a>
+          </div>
+        </div>
+        <div class="pistas">
+          <h2>Um ano na estrada, com o mesmo valor por semana</h2>
+          <div class="pista">
+            <div class="n">No aluguel <small>52 semanas pagas</small></div>
+            <div class="via aluguel"><div class="rastro"></div><svg class="carro" viewBox="0 0 44 22" aria-hidden="true"><path d="M3 15v-4l6-1 5-6h14l7 6 6 1v4h-3a4 4 0 0 1-8 0H15a4 4 0 0 1-8 0z" fill="#93a3b8"/><circle cx="11" cy="16" r="3" fill="#070f1c"/><circle cx="34" cy="16" r="3" fill="#070f1c"/></svg><span class="fim">devolve a chave</span></div>
+          </div>
+          <div class="pista">
+            <div class="n">Na Azit <small>52 parcelas pagas</small></div>
+            <div class="via azit"><div class="rastro"></div><svg class="carro" viewBox="0 0 44 22" aria-hidden="true"><path d="M3 15v-4l6-1 5-6h14l7 6 6 1v4h-3a4 4 0 0 1-8 0H15a4 4 0 0 1-8 0z" fill="#fa8e0d"/><circle cx="11" cy="16" r="3" fill="#070f1c"/><circle cx="34" cy="16" r="3" fill="#070f1c"/></svg><span class="fim">é do seu carro</span></div>
+          </div>
+          <div class="res">
+            <div class="p"><span>Ficou com você, no aluguel</span><b>R$ 0</b></div>
+            <div class="s"><span>Virou parcela do seu carro</span><b>R$ 36.364</b></div>
+          </div>
+          <p class="rod">Conta ilustrativa com R$ 699,30 por semana, que é R$ 99,90 por dia. <a href="#conta">Faça a conta com o seu aluguel</a>.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="provas"><div class="wrap">
+    <div>Análise pela sua renda, comprovada no extrato bancário</div>
+    <div>Pagamento por semana, quinzena ou mês, via Pix</div>
+    <div>Loja na Grande Vitória e atendimento humano desde 2019</div>
+  </div></div>
+</div>
+<div class="faixa" aria-hidden="true"></div>
+
+<section id="conta">
+  <div class="wrap">
+    <div class="cab"><span class="olho">A conta do aluguel</span><h2 class="h2">Toda semana você paga. No fim do ano, o que é seu?</h2>
+      <p class="lead">Quem aluga carro para trabalhar conhece essa conta. O pagamento sai toda semana, o contrato renova, o valor sobe. E no dia em que você para de pagar, devolve a chave e começa do zero.</p></div>
+    <div class="conta">
+      <div class="trilho" id="trilho"><div class="pin" id="pin">
+      <div class="controle">
+        <div><label for="aluguel">Quanto você paga de aluguel por semana? <output id="aluguel-out" for="aluguel">R$ 700</output></label>
+          <input id="aluguel" type="range" min="400" max="1200" step="10" value="700">
+          <small>Arraste até o valor do seu aluguel. Depois continue descendo a página: cada trecho rolado é uma semana que passa.</small></div>
+      </div>
+      <div class="lados">
+        <article class="lado al">
+          <header>No aluguel <small id="al-sem">52 semanas pagas</small></header>
+          <div class="corpo">
+            <div class="sem" id="al-grade" aria-hidden="true"></div>
+            <div class="metrica"><span>Saiu do seu bolso</span><div class="odo" id="al-pago"></div></div>
+            <div class="metrica"><span>Ficou com você</span><div class="odo zero" id="al-seu"></div></div>
+            <p class="veredito">Nada. Você devolve a chave e começa do zero.</p>
+          </div>
+        </article>
+        <article class="lado az">
+          <header>Na Azit <small id="az-sem">52 parcelas pagas</small></header>
+          <div class="corpo">
+            <div class="sem" id="az-grade" aria-hidden="true"></div>
+            <div class="metrica"><span>Saiu do seu bolso</span><div class="odo" id="az-pago"></div></div>
+            <div class="metrica"><span>Virou parcela do seu carro</span><div class="odo seu" id="az-seu"></div></div>
+            <p class="veredito">Cada semana paga é um pedaço do carro. No fim do contrato, ele é seu.</p>
+          </div>
+        </article>
+      </div>
+      </div></div>
+      <p class="nota">Conta ilustrativa: considera o mesmo valor por semana nos dois casos, durante 52 semanas. O valor da sua parcela e o prazo dependem do carro escolhido e da análise.</p>
+    </div>
+
+    <div class="tres">
+      <div class="dor"><h3>Pagamento que não volta</h3><p>O aluguel sai da sua conta toda semana e não vira patrimônio.</p></div>
+      <div class="dor"><h3>Regra que aperta o caixa</h3><p>Caução, contrato mínimo e limite de quilometragem pesam no seu bolso.</p></div>
+      <div class="dor"><h3>Porta fechada no banco</h3><p>A sua renda existe, mas o banco não enxerga quem trabalha por conta própria.</p></div>
+    </div>
+    <p class="virada">Você trabalha todos os dias. <em>Esse esforço merece virar algo seu.</em></p>
+  </div>
+</section>
+
+<section class="claro">
+  <div class="wrap">
+    <div class="cab"><span class="olho">A saída</span><h2 class="h2">Na Azit, o valor que você pagaria de aluguel vira o seu carro.</h2>
+      <p class="lead">A Azit vende o carro parcelado direto, sem banco no meio. A gente olha para a sua capacidade de pagamento, combina uma parcela que cabe na sua renda e, no fim do contrato, o carro é seu.</p></div>
+    <div class="rolavel"><table class="comp">
+      <thead><tr><th scope="col"></th><th scope="col">Aluguel</th><th scope="col">Azit Move</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">No fim do contrato</th><td>Você devolve a chave</td><td>O carro é seu</td></tr>
+        <tr><th scope="row">Para começar</th><td>Caução e, em muitos casos, cartão de crédito com limite</td><td><span data-camp>Entrada de R$ 1.990 na Black Friday</span><span data-fora hidden>Entrada de R$ 3.990</span></td></tr>
+        <tr><th scope="row">O que conta na análise</th><td>Cartão e score</td><td>Sua renda real, comprovada no extrato</td></tr>
+        <tr><th scope="row">Como você paga</th><td>Por semana</td><td>Por semana, quinzena ou mês</td></tr>
+        <tr><th scope="row">Quem te atende</th><td>Aplicativo ou central</td><td>Pessoas de verdade, no WhatsApp e na loja</td></tr>
+      </tbody></table></div>
+    <p class="depois"><a class="btn" data-zap="Olá! Quero sair do aluguel e conhecer a Azit Move." href="#">Quero sair do aluguel</a></p>
+  </div>
+</section>
+
+<section id="carros">
+  <div class="wrap">
+    <div class="cab"><span class="olho">Os carros</span><h2 class="h2">Carro para trabalhar, dos modelos que a Azit tem na loja.</h2>
+      <p class="lead">A disponibilidade muda ao longo da semana. Peça a lista atualizada no WhatsApp.</p></div>
+    <div class="carros">
+      <div class="carro-c"><div class="foto"><img src="/carros/fiat-mobi.jpg" alt="Fiat Mobi vermelho visto de lado" width="500" height="312" loading="lazy"></div><div class="t"><h3>Fiat Mobi</h3><p>O mais econômico da loja. Bom de cidade e de consumo.</p></div></div>
+      <div class="carro-c"><div class="foto"><img src="/carros/hyundai-hb20s.png" alt="Hyundai HB20S prata visto de frente" width="500" height="287" loading="lazy"></div><div class="t"><h3>Hyundai HB20S</h3><p>Sedã com porta-malas para o dia inteiro de trabalho.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="navy oferta" data-camp>
+  <div class="wrap"><div class="grade">
+    <div class="cab solta"><span class="olho">Só de 23 a 30/11</span><h2 class="h2">Black Friday Azit Move: a entrada caiu pela metade.</h2>
+      <p class="lead">R$ 1.990 é perto do que uma locadora pede só de caução. A diferença é que, aqui, esse valor é o começo do seu carro.</p>
+      <p><a class="btn" data-zap="Olá! Quero garantir a entrada de R$ 1.990 da Black Friday." href="#">Garantir minha entrada de R$ 1.990</a></p></div>
+    <div class="cartao-of"><dl>
+      <div><dt>Entrada</dt><dd><s>de R$ 3.990</s>R$ 1.990</dd></div>
+      <div><dt>Parcela</dt><dd>R$ 99,90<small>por dia, a partir de</small></dd></div>
+      <div><dt>Prazo</dt><dd class="prazo">De 23 a 30/11, enquanto houver carros disponíveis</dd></div>
+    </dl></div>
+  </div></div>
+</section>
+
+<section id="como">
+  <div class="wrap">
+    <div class="cab"><span class="olho">Como funciona</span><h2 class="h2">Do WhatsApp à chave na mão, em 4 passos.</h2></div>
+    <div class="passos">
+      <div class="passo"><h3>Chame no WhatsApp</h3><p>Conte para que você usa o carro e em qual cidade trabalha. A gente apresenta a condição.</p></div>
+      <div class="passo"><h3>Envie seus documentos</h3><p>CNH definitiva com EAR e extrato bancário. A equipe informa o restante pelo WhatsApp e a análise sai em até 24 horas úteis.</p></div>
+      <div class="passo"><h3>Visite a loja</h3><p>Conheça o carro, tire suas dúvidas e assine o contrato pessoalmente.</p></div>
+      <div class="passo"><h3>Saia trabalhando</h3><p>Entrega em até 2 dias após a assinatura, com rastreador ativo.</p></div>
+    </div>
+    <p class="depois"><a class="btn" data-zap="Olá! Quero começar meu atendimento com a Azit Move." href="#">Quero começar pelo WhatsApp</a></p>
+  </div>
+</section>
+
+<section class="claro">
+  <div class="wrap quem">
+    <div class="cab solta"><span class="olho">Para quem é</span><h2 class="h2">A Azit é para você que:</h2>
+      <p class="lead">Ainda vai começar a trabalhar com carro? Chama a gente mesmo assim. A gente te explica qual é o melhor momento para você.</p>
+      <p><a class="fantasma" data-zap="Olá! Quero saber mais sobre a Azit Move." href="#">Quero saber mais</a></p></div>
+    <ul class="lista">
+      <li>Já trabalha com o carro: aplicativo, prestação de serviço, vendas ou comércio</li>
+      <li>Tem renda que aparece no extrato bancário</li>
+      <li>Mora ou trabalha na Grande Vitória</li>
+      <li>Tem CNH definitiva com EAR (atividade remunerada)</li>
+      <li>Quer parar de pagar aluguel e ter um carro seu</li>
+    </ul>
+  </div>
+</section>
+
+<section class="escuro">
+  <div class="wrap">
+    <div class="cab"><span class="olho">Depois da chave</span><h2 class="h2">A relação não acaba na entrega da chave.</h2></div>
+    <div class="quatro">
+      <div class="benef"><h3>Rastreador</h3><p>Seu carro monitorado desde o primeiro dia.</p></div>
+      <div class="benef"><h3>Assistência de guincho</h3><p>Se o carro parar, você não fica sozinho na rua.</p></div>
+      <div class="benef"><h3>Clube de benefícios</h3><p>Junte fichas e troque por serviços como troca de óleo e de pneu.</p></div>
+      <div class="benef"><h3>Gente perto de você</h3><p>Contato semanal com a equipe da Azit durante todo o contrato.</p></div>
+    </div>
+  </div>
+</section>
+<div class="faixa" aria-hidden="true"></div>
+
+<section>
+  <div class="wrap empresa">
+    <div class="cab solta"><span class="olho">Quem é a Azit</span><h2 class="h2">Empresa de verdade, com loja e gente perto de você.</h2>
+      <p class="lead">A Azit Move nasceu em 2019 com uma ideia simples: dar a quem trabalha com o carro a chance de ter o seu, mesmo quando o banco diz não. Hoje, mais de 70 clientes ativos na Grande Vitória pagam o carro deles com a gente, com atendimento no WhatsApp e na nossa loja.</p></div>
+    <div class="numeros"><div><b>2019</b><span>desde</span></div><div><b>+70</b><span>clientes ativos</span></div></div>
+  </div>
+</section>
+
+<section class="claro" id="duvidas">
+  <div class="wrap">
+    <div class="cab"><span class="olho">Dúvidas</span><h2 class="h2">Perguntas frequentes</h2></div>
+    <div class="faq">
+      <details><summary>A Azit é banco ou financeira?</summary><p>Não. É uma venda parcelada feita direto pela Azit, sem banco no meio. Você paga as parcelas para a própria Azit e, no fim do contrato, o carro é seu.</p></details>
+      <details><summary>Tenho restrição no CPF. Posso fazer a análise?</summary><p>Pode. A análise da Azit olha principalmente a sua capacidade de pagamento, comprovada no extrato bancário, e o seu histórico com veículos. Cada caso é avaliado individualmente.</p></details>
+      <details><summary>Quanto tempo leva a análise?</summary><p>Até 24 horas úteis depois que você envia os documentos.</p></details>
+      <details><summary>Quais documentos eu preciso?</summary><p>CNH definitiva com EAR e extrato bancário. A equipe informa o restante pelo WhatsApp.</p></details>
+      <details><summary>Quanto é a entrada?</summary><p><span data-camp>Na Black Friday, R$ 1.990, de 23 a 30/11. Fora da campanha, a entrada é de R$ 3.990.</span><span data-fora hidden>A entrada é de R$ 3.990.</span></p></details>
+      <details><summary>Como funciona o pagamento das parcelas?</summary><p>O carro sai a partir de R$ 99,90 por dia, e você escolhe pagar por semana, quinzena ou mês, via Pix. O valor exato do modelo escolhido é apresentado no atendimento.</p></details>
+      <details><summary>Quais carros estão disponíveis?</summary><p>Modelos de entrada, como Fiat Mobi e Hyundai HB20S. A disponibilidade muda ao longo da semana: peça a lista atualizada no WhatsApp.</p></details>
+      <details><summary>Preciso trabalhar com aplicativo?</summary><p>Não. A Azit é para quem usa o carro para gerar renda: aplicativo, prestação de serviço, vendas ou comércio.</p></details>
+      <details><summary>E se eu precisar encerrar o contrato?</summary><p>O contrato tem regras claras para isso, e a equipe explica cada uma antes da assinatura. Você decide sabendo exatamente como funciona.</p></details>
+      <details><summary>O que vem junto com o carro?</summary><p>Rastreador, assistência de guincho, clube de benefícios e contato semanal com a equipe da Azit.</p></details>
+      <details><summary>Vocês atendem fora da Grande Vitória?</summary><p>A Azit atende quem mora ou trabalha na Grande Vitória.</p></details>
+      <details><summary>Como sei que a Azit é segura?</summary><p>A Azit trabalha com esse modelo desde 2019, tem loja física e mais de 70 clientes ativos. O contrato é assinado pessoalmente, com o carro na sua frente. Venha conhecer antes de decidir.</p></details>
+      <details><summary>Posso levar alguém comigo na visita?</summary><p>Pode e deve. Decisão boa é decisão tomada junto. Traga quem decide com você.</p></details>
+      <details data-camp><summary>Até quando vale a condição de Black Friday?</summary><p>De 23 a 30/11, ou enquanto houver carros disponíveis.</p></details>
+    </div>
+  </div>
+</section>
+
+<section class="escuro final">
+  <div class="wrap">
+    <h2 class="h2"><span data-camp>A Black Friday acaba em 30/11. O aluguel da semana que vem, não.</span><span data-fora hidden>O aluguel da semana que vem já está chegando.</span></h2>
+    <p class="lead">Cada semana de aluguel é um pagamento que não volta. Chama a Azit no WhatsApp, conheça a condição e veja se ela cabe na sua renda.</p>
+    <a class="btn" data-zap="Olá! Vi o site da Azit Move e quero conhecer a condição." href="#"><span data-camp>Quero minha entrada de R$ 1.990</span><span data-fora hidden>Quero falar com a Azit</span></a>
+  </div>
+</section>
+<footer><div class="wrap">
+  <span>Azit Move · Grande Vitória · Desde 2019</span>
+  <span>AZIT COMERCIO DE VEICULOS LTDA · CNPJ 57.265.780/0001-19</span>
+  <span>Loja: Av. Lourival Nunes, 488, Jardim Limoeiro, Serra/ES · CEP 29164-050</span>
+  <span>Imagens ilustrativas dos modelos. Fotos: RL GNZLZ (CC BY-SA 2.0) e Autosdeprimera (CC BY 3.0), via Wikimedia Commons.</span>
+</div></footer>
+<a class="zap" data-zap="Olá! Vi o site da Azit Move." href="#" aria-label="Falar com a Azit no WhatsApp"><svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z"/></svg></a>
+
+<script>
+// ---------- campanha: some sozinha depois de 30/11 e a página vira a versão permanente ----------
+const CAMPANHA = { fim: new Date('2026-11-30T23:59:59-03:00') };
+// WhatsApp do site: provisoriamente o número da API (decisão Luís 15/11), até ele definir o número comercial.
+const WHATS = '5527998337097';
+function aplicarCampanha(){
+  const ativa = Date.now() <= CAMPANHA.fim.getTime();
+  document.querySelectorAll('[data-camp]').forEach(e=>{ e.hidden=!ativa; });
+  document.querySelectorAll('[data-fora]').forEach(e=>{ e.hidden=ativa; });
+  return ativa;
+}
+function relogio(){
+  const falta = Math.max(0, CAMPANHA.fim.getTime()-Date.now());
+  const d=Math.floor(falta/864e5), h=Math.floor(falta%864e5/36e5), m=Math.floor(falta%36e5/6e4), s=Math.floor(falta%6e4/1e3);
+  const p=(n)=>String(n).padStart(2,'0');
+  document.getElementById('cd').textContent=d; document.getElementById('ch').textContent=p(h);
+  document.getElementById('cm').textContent=p(m); document.getElementById('cs').textContent=p(s);
+  if(falta<=0) aplicarCampanha();
+}
+if(aplicarCampanha()){ relogio(); setInterval(relogio,1000); }
+document.querySelectorAll('[data-zap]').forEach(a=>{ a.href='https://wa.me/'+WHATS+'?text='+encodeURIComponent(a.dataset.zap); a.target='_blank'; a.rel='noopener'; });
+
+// ---------- a conta: aluguel x Azit, semana a semana ----------
+const SEMANAS=52;
+const el=(id)=>document.getElementById(id);
+const grades=[el('al-grade'),el('az-grade')];
+grades.forEach(g=>{ g.innerHTML=Array.from({length:SEMANAS},(_,i)=>`<i>${i+1}</i>`).join(''); });
+function odo(valor){ // "R$ 36.400" em células de hodômetro
+  const txt=Math.round(valor).toLocaleString('pt-BR');
+  return '<u>R$</u>'+[...txt].map(c=>/\d/.test(c)?`<b>${c}</b>`:`<u>${c}</u>`).join('');
+}
+// O ano passa com a ROLAGEM (como na página da V4), sem clique. Em tela larga o bloco fica preso
+// enquanto as 52 semanas correm; no celular cada quadro enche conforme atravessa a tela.
+const trilho=el('trilho'), pin=el('pin'), cards=[...document.querySelectorAll('.lado')];
+const semTxt=[el('al-sem'),el('az-sem')], pagoEl=[el('al-pago'),el('az-pago')], seuEl=[el('al-seu'),el('az-seu')];
+const semMov=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let sem=[SEMANAS,SEMANAS], fixa=false, topo=16, pedido=0;
+function desenhar(){
+  const v=+el('aluguel').value;
+  el('aluguel-out').textContent='R$ '+v.toLocaleString('pt-BR');
+  [0,1].forEach(i=>{ const n=sem[i], pago=v*n;
+    [...grades[i].children].forEach((c,k)=>c.classList.toggle('pg', k<n));
+    semTxt[i].textContent = i===0 ? n+(n===1?' semana paga':' semanas pagas') : n+(n===1?' parcela paga':' parcelas pagas');
+    pagoEl[i].innerHTML=odo(pago); seuEl[i].innerHTML=odo(i===0?0:pago); });
+}
+function medir(){
+  trilho.classList.remove('fixa'); trilho.style.height='';
+  const h=pin.offsetHeight;
+  fixa = !semMov && innerWidth>=821 && innerHeight>=h+32;
+  if(fixa){ topo=Math.max(16,Math.round((innerHeight-h)/2)); trilho.style.setProperty('--topo',topo+'px'); trilho.style.height=(h+1100)+'px'; trilho.classList.add('fixa'); }
+  rolar();
+}
+function rolar(){
+  if(semMov){ sem=[SEMANAS,SEMANAS]; desenhar(); return; }
+  const lim=(p)=>Math.round(Math.min(1,Math.max(0,p))*SEMANAS);
+  if(fixa){ const r=trilho.getBoundingClientRect(); const p=(topo-r.top)/(trilho.offsetHeight-pin.offsetHeight); sem=[lim(p),lim(p)]; }
+  else { const vh=innerHeight; sem=cards.map(c=>lim((vh*0.82-c.getBoundingClientRect().top)/(vh*0.55))); }
+  desenhar();
+}
+addEventListener('scroll',()=>{ if(!pedido) pedido=requestAnimationFrame(()=>{ pedido=0; rolar(); }); },{passive:true});
+addEventListener('resize',medir);
+el('aluguel').addEventListener('input',desenhar);
+grades.forEach(g=>g.closest('.lado'));
+medir();
+if(document.fonts&&document.fonts.ready) document.fonts.ready.then(medir);
+</script>
+</body>
+</html>
