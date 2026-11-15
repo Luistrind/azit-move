@@ -66,6 +66,19 @@ describe('GatewayPixAsaas', () => {
     expect(remover).toHaveBeenCalledWith('pay_9');
   });
 
+  it('MEDIÇÃO: loga a duração total e a de cada chamada ao gateway, no sucesso e na falha', async () => {
+    const { gateway, leitura, asaas } = montar({ apiKey: 'chave' });
+    jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ id: 'pay_7', status: 'PENDING' }) } as never);
+    const log = jest.spyOn((gateway as unknown as { logger: { log: (m: string) => void } }).logger, 'log').mockImplementation(() => undefined);
+    await gateway.criarPix(pedido);
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/^criarPix intencao:int_abc \(107243c\): ok em \d+ ms · cliente \d+ ms · POST \/payments \d+ ms · GET pixQrCode \d+ ms$/));
+
+    leitura.pixQrCode.mockRejectedValueOnce(new Error('Asaas GET /payments/pay_7/pixQrCode não respondeu em 8 s'));
+    jest.spyOn(asaas, 'removerCobranca').mockResolvedValue(true);
+    await expect(gateway.criarPix(pedido)).rejects.toThrow('não respondeu em 8 s');
+    expect(log).toHaveBeenLastCalledWith(expect.stringMatching(/FALHOU \(Asaas GET .* não respondeu em 8 s\) em \d+ ms/));
+  });
+
   it('cancelar NUNCA apaga cobrança paga: devolve pago=true para quem chamou enfileirar a baixa', async () => {
     const paga = montar({ apiKey: 'chave', cobranca: { id: 'pay_1', status: 'RECEIVED', value: 600, clientPaymentDate: '2026-11-09' } });
     const removerPaga = jest.spyOn(paga.asaas, 'removerCobranca');

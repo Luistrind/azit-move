@@ -5,12 +5,14 @@ import { formatCurrency } from '@azit/utils';
 import { NotificacaoService } from '../notificacao/notificacao.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { BaixaContaService } from './baixa-conta.service';
-import { IntencaoPagamentoService, type JobBaixaIntencao } from './intencao-pagamento.service';
+import { IntencaoPagamentoService, type JobBaixaIntencao, type JobCancelarPix } from './intencao-pagamento.service';
 
-// Fila do Pix sob demanda (doc 02 §32.4-A). Dois jobs:
-//   · 'baixar'  — Pix de uma intenção foi pago (webhook → 202 → aqui, Regra 4):
-//                 aplica pela conta, na data do pagamento;
-//   · 'expirar' — virada do dia: expira as intenções ativas e cancela os Pix.
+// Fila do Pix sob demanda (doc 02 §32.4-A). Três jobs:
+//   · 'baixar'   — Pix de uma intenção foi pago (webhook → 202 → aqui, Regra 4):
+//                  aplica pela conta, na data do pagamento;
+//   · 'expirar'  — virada do dia: expira as intenções ativas e cancela os Pix;
+//   · 'cancelar' — o cliente pediu outro valor: o Pix da intenção substituída é
+//                  cancelado no gateway aqui, fora da resposta ao cliente.
 @Processor(QUEUE_NAMES.INTENCAO_PAGAMENTO)
 export class IntencaoPagamentoProcessor extends WorkerHost {
   private readonly logger = new Logger(IntencaoPagamentoProcessor.name);
@@ -23,10 +25,15 @@ export class IntencaoPagamentoProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<JobBaixaIntencao | Record<string, never>>) {
+  async process(job: Job<JobBaixaIntencao | JobCancelarPix | Record<string, never>>) {
     if (job.name === 'expirar') {
       const r = await this.intencao.expirarVencidas();
       this.logger.log(`virada do dia: ${r.expiradas} intenção(ões) expirada(s); ${r.pagasEncontradas} já paga(s) no gateway`);
+      return r;
+    }
+    if (job.name === 'cancelar') {
+      const r = await this.intencao.cancelarSubstituida(job.data as JobCancelarPix);
+      this.logger.log(`cancelamento do Pix da intenção ${(job.data as JobCancelarPix).intencaoId}: ${r.resultado}`);
       return r;
     }
     if (job.name === 'baixar') {
@@ -41,6 +48,7 @@ export class IntencaoPagamentoProcessor extends WorkerHost {
   // esgotadas as tentativas, a carteira é avisada.
   @OnWorkerEvent('failed')
   async onFailed(job: Job<JobBaixaIntencao> | undefined, err: Error) {
+    // Só a BAIXA avisa a carteira: cancelamento que esgotou as tentativas não envolve dinheiro parado (e o Pix pago mesmo assim é aceito).
     if (!job || job.name !== 'baixar') return;
     const tentativas = job.opts?.attempts ?? 1;
     if ((job.attemptsMade ?? tentativas) < tentativas) return;

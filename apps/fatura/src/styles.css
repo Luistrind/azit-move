@@ -100,6 +100,12 @@ section.bloco { display: flex; flex-direction: column; gap: 8px; }
 .pagar .qr .box { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 0 4px; text-align: center; }
 .pagar canvas { width: 168px; height: 168px; border-radius: 8px; background: #fff; padding: 8px; max-width: 100%; }
 .pagar code { display: block; width: 100%; font-size: 11.5px; background: var(--surface-input); border-radius: 8px; padding: 9px 10px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-body); }
+.pagar code { user-select: all; -webkit-user-select: all; }
+/* O cliente tocou em Copiar antes de o código chegar: o código aparece inteiro, como botão. */
+.toque-copiar { display: flex; flex-direction: column; gap: 6px; align-items: stretch; width: 100%; border: 1px dashed var(--accent); border-radius: 10px; padding: 10px; background: var(--surface-muted); color: var(--text); text-align: center; }
+.toque-copiar code { white-space: normal; word-break: break-all; overflow: visible; max-height: 4.6em; overflow-y: hidden; font-size: 11px; }
+.toque-copiar b { font-size: 14px; }
+.toque-copiar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .pagar .gerando { font-size: 12.5px; color: var(--text-secondary); padding: 8px 0; }
 .pagar .aviso-teste { font-size: 12px; font-weight: 700; color: var(--warn-ink); background: var(--warn-bg); border-radius: 6px; padding: 3px 8px; }
 .pagar .receb { font-size: 12px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 2px; }

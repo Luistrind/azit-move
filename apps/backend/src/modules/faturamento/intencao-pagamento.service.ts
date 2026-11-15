@@ -55,6 +55,12 @@ export interface JobBaixaIntencao {
   origem: 'GATEWAY' | 'CONFERENCIA';
 }
 
+// Job da mesma fila que cancela, no gateway, o Pix de uma intenção substituída.
+export interface JobCancelarPix {
+  intencaoId: string;
+  gatewayId: string;
+}
+
 // O que a conta permite pagar HOJE (regra única para a página e para a criação
 // da intenção — o servidor valida com a MESMA função que a tela usou).
 export interface OpcoesPagamento {
@@ -191,8 +197,13 @@ export class IntencaoPagamentoService {
       return { criada: nova, substituidas: anteriores };
     }, { timeout: 20_000 });
 
-    // 7) Cancela no gateway o Pix das substituídas (fora da transação; falha não desfaz nada).
-    for (const s of substituidas) await this.cancelarNoGateway(s.id, s.gatewayId);
+    // 7) O Pix das substituídas é cancelado no gateway PELA FILA (15/11): eram
+    //    duas chamadas ao gateway (consultar + remover) aguardadas antes de
+    //    responder ao cliente. Agora a resposta sai na hora; o worker cancela e
+    //    repete se o gateway falhar.
+    for (const s of substituidas) {
+      if (s.gatewayId) await this.fila.add('cancelar', { intencaoId: s.id, gatewayId: s.gatewayId } satisfies JobCancelarPix, { jobId: `cancelar-${s.id}` });
+    }
     return this.mapear(criada, false);
   }
 
@@ -236,6 +247,24 @@ export class IntencaoPagamentoService {
       enfileiradas++;
     }
     return { conferidas: recentes.length, enfileiradas, simulado: false };
+  }
+
+  // Job 'cancelar' (worker): cancela no gateway o Pix de uma intenção
+  // SUBSTITUIDA. Se o gateway disser que já foi pago, a baixa é enfileirada (o
+  // dinheiro manda). Gateway fora do ar ou cancelamento não confirmado LANÇA —
+  // o BullMQ repete com backoff, em vez de deixar um Pix antigo pagável.
+  async cancelarSubstituida(job: JobCancelarPix): Promise<{ resultado: 'cancelado' | 'ja_pago' }> {
+    const r = await this.gateway.cancelarPix(job.gatewayId);
+    if (r.pago) {
+      const pix = await this.gateway.consultarPix(job.gatewayId);
+      if (pix.pago && pix.pagamentoId) {
+        await this.enfileirarBaixa({ intencaoId: job.intencaoId, pagamentoId: pix.pagamentoId, valor: pix.valor, dataPagamento: pix.dataPagamento, recebidoEm: new Date().toISOString(), identificadorPix: null, origem: 'GATEWAY' });
+        this.logger.warn(`Intenção ${job.intencaoId}: o Pix já estava pago ao cancelar — baixa enfileirada`);
+      }
+      return { resultado: 'ja_pago' };
+    }
+    if (!r.cancelado) throw new Error(`O gateway não confirmou o cancelamento do Pix ${job.gatewayId} (intenção ${job.intencaoId})`);
+    return { resultado: 'cancelado' };
   }
 
   // Cancela o Pix de uma intenção que não vale mais. Se o gateway disser que

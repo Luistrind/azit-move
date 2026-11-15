@@ -3509,7 +3509,7 @@ Nada disso altera a régua, o bloqueio (Regra 6) ou a POP; só o **link** que va
   implementação (`GATEWAY_PIX`): Pix avulso, vencimento no dia, valor exato, sem `fine` nem
   `interest`, referência `intencao:<id>`, modo simulado.
 - **Intenção de pagamento:** valor validado no servidor pela regra do motor; reuso do mesmo valor
-  no dia; uma ativa por conta (a anterior vira SUBSTITUIDA e tem o Pix cancelado); teto diário por
+  no dia; uma ativa por conta (a anterior vira SUBSTITUIDA e tem o Pix cancelado pela fila); teto diário por
   conta; job de virada do dia às 00h05 (fila `intencao-pagamento`) que expira e cancela. Cancelar
   nunca apaga cobrança paga: se o gateway disser que pagou, a baixa é enfileirada.
 - **Webhook e baixa:** referência `intencao:` responde 202 e enfileira; o worker trava a conta,
@@ -3538,10 +3538,30 @@ Nada disso altera a régua, o bloqueio (Regra 6) ou a POP; só o **link** que va
    logo após o pagamento); **não** expõe o link das outras (o PDF delas sai por
    `?fatura=<nº>` no link em uso). Se o token de uma fatura vazar, quem o tem vê as faturas em
    aberto da conta — o administrador regenera o token como já previsto.
-4. **Quando o Pix nasce:** ao **pedir** o código (copiar, abrir o QR ou confirmar outro valor), não
-   ao abrir a página. O protótipo mostrava o código pronto; abrir a página não pode criar cobrança
-   (o Asaas avisa o cliente a cada cobrança criada e há teto diário). O Pix ativo do dia reaparece
-   ao reabrir.
+4. **Quando o Pix nasce — pré-geração (ajuste Luís, 15/11; substitui o provisório "só ao pedir o
+   código"):** o tempo entre tocar em "Copiar código Pix" e ter o código precisa ser praticamente
+   zero. A página pede o Pix da opção selecionada **assim que carrega**, e de novo quando o cliente
+   troca a opção ou confirma outro valor (com uma espera curta, para quem só passa pelas opções);
+   o toque em "Copiar" só copia. O reuso por valor/dia evita cobrança repetida a cada abertura, e
+   a página que encontra um Pix ativo de hoje abre na opção dele (não o troca só por abrir).
+   - **Por que pode:** o receio era o Asaas avisar o cliente a cada cobrança criada. A chave do
+     modelo AZIT só é ligada em produção **depois dos lembretes do §28**, e o §28.1 ("sem dobro")
+     já decide que, com o lembrete ligado, o aviso do Asaas é desligado para aquele cliente. Até
+     lá a chave fica desligada.
+   - **Cópia dentro do toque:** com o código pronto, a cópia é feita no próprio toque. Se o cliente
+     tocar antes de o código chegar, o botão mostra "Gerando o código Pix…" e, na chegada, o código
+     aparece com **"Toque para copiar"** — nunca se copia depois de esperar a rede (o Safari do
+     iPhone recusa cópia fora do toque).
+   - **Fora do caminho da resposta:** o cancelamento do Pix da intenção substituída vai para a fila
+     (job `cancelar`, com repetição); as chamadas ao Asaas têm tempo limite de 8 s (erro claro →
+     tela "Não conseguimos gerar o Pix agora"); a leitura do código não espera 30 s quando o Asaas
+     limita requisições.
+   - **Medição:** o backend registra a duração de cada chamada ao gateway (`criarPix`: total,
+     cliente, `POST /payments`, `GET pixQrCode`) e da rota `POST …/intencao`, para medir no homolog
+     com o Asaas de teste.
+   - **A observar no homolog:** cada troca de opção gera um Pix e conta no limite diário por conta
+     (padrão 10, pendência 10 do §32.10). Navegar muito entre opções pode chegar ao limite; a
+     página então avisa só quando o cliente toca em Copiar.
 5. **Dinheiro sem fatura em aberto:** Pix de intenção antiga pago depois de a conta estar quitada
    é registrado **inteiro como excedente** na fatura AZIT mais recente (`PagamentoFatura` de valor
    zero), com aviso à carteira. Nada é devolvido nem vira crédito.

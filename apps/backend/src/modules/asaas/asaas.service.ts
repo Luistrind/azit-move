@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { centavosParaReaisString, dataCalendarioUTC } from '@azit/utils';
 import { IntegracoesService } from '../integracoes/integracoes.service';
+import { corpoJson, fetchAsaas } from './asaas-http';
 
 // Cliente Asaas (Doc 7 item 4.3). "Asaas executa, Azit controla" (Regra nº 1):
 // toda lógica é nossa; o Asaas só cria/recebe cobranças.
@@ -30,19 +31,24 @@ export class AsaasService {
 
   private async call<T>(path: string, body: unknown): Promise<T> {
     const cred = this.integracoes.asaas();
-    const resp = await fetch(`${cred.apiUrl}${path}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        access_token: cred.apiKey,
+    // Com tempo limite (asaas-http): chamada pendurada vira erro claro em ~8 s.
+    const resp = await fetchAsaas(
+      `${cred.apiUrl}${path}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          access_token: cred.apiKey,
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    });
+      `POST ${path}`,
+    );
     if (!resp.ok) {
       const txt = await resp.text().catch(() => '');
       throw new Error(`Asaas ${path} retornou ${resp.status}: ${txt.slice(0, 300)}`);
     }
-    return (await resp.json()) as T;
+    return corpoJson<T>(resp, `POST ${path}`);
   }
 
   // Remove uma cobrança (DELETE /payments/{id}) — usada quando a fatura sai de
@@ -55,10 +61,7 @@ export class AsaasService {
     }
     try {
       const cred = this.integracoes.asaas();
-      const resp = await fetch(`${cred.apiUrl}/payments/${chargeId}`, {
-        method: 'DELETE',
-        headers: { access_token: cred.apiKey },
-      });
+      const resp = await fetchAsaas(`${cred.apiUrl}/payments/${chargeId}`, { method: 'DELETE', headers: { access_token: cred.apiKey } }, 'DELETE /payments/{id}');
       if (!resp.ok) {
         const txt = await resp.text().catch(() => '');
         this.logger.warn(`Asaas DELETE /payments/${chargeId} retornou ${resp.status}: ${txt.slice(0, 200)}`);

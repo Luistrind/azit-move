@@ -101,11 +101,18 @@ export class FaturaPublicaService {
   // O servidor VALIDA o valor pela regra do motor (nunca confia na tela), reusa
   // a intenção ativa de mesmo valor no dia e devolve o código.
   async criarIntencao(token: string, valor: number): Promise<PixSobDemandaPublico> {
+    // MEDIÇÃO (15/11): duração da rota inteira, do pedido à resposta — o tempo
+    // que o cliente espera pelo código. Nunca loga o token (é o acesso à fatura).
+    const t0 = Date.now();
     const f = await this.carregar(token);
     if (f.modeloEncargo !== 'AZIT') {
       throw new UnprocessableEntityException({ erro: 'modelo_antigo', mensagem: 'Esta fatura é paga pelo Pix que já aparece na página.' });
     }
-    const i = await this.intencao.criar({ contaId: f.contaId, valor, origem: 'PAGINA_PUBLICA' });
+    const i = await this.intencao.criar({ contaId: f.contaId, valor, origem: 'PAGINA_PUBLICA' }).catch((e: unknown) => {
+      this.logger.warn(`POST intencao · fatura #${f.numero} conta ${f.contaId} valor ${valor}c: FALHOU em ${Date.now() - t0} ms (${(e as Error).message})`);
+      throw e;
+    });
+    this.logger.log(`POST intencao · fatura #${f.numero} conta ${f.contaId} valor ${valor}c: ${i.reaproveitada ? 'reaproveitada' : 'nova'} em ${Date.now() - t0} ms`);
     return {
       valor: i.valor,
       copiaECola: i.pixCopiaECola,

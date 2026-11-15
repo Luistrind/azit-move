@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { dataHojeBrasil, somarDiasISO } from '@azit/utils';
 import { IntegracoesService } from '../integracoes/integracoes.service';
+import { corpoJson, fetchAsaas } from './asaas-http';
 
 // LEITURA do Asaas para a migração do legado (doc 02 §26): clientes,
 // assinaturas e cobranças como estão lá. Separado do AsaasService (que só
@@ -100,17 +101,26 @@ export class AsaasLeituraService {
   // 21/09 com ~230 chamadas em um minuto). Uma coleta de 107 clientes faz
   // mais de 200 chamadas, então: pausa curta entre chamadas e, ao ser
   // bloqueado, espera e repete em vez de derrubar a coleta inteira.
-  async requisicao<T>(metodo: 'GET' | 'POST' | 'DELETE' | 'PUT', path: string, body?: unknown): Promise<T> {
+  //
+  // TEMPO LIMITE (15/11): cada chamada desiste em ~8 s (asaas-http). `semEspera`
+  // é para quem tem um cliente esperando na tela (o código do Pix): se o Asaas
+  // limitar as requisições, o erro sobe na hora em vez de dormir 30 s.
+  async requisicao<T>(metodo: 'GET' | 'POST' | 'DELETE' | 'PUT', path: string, body?: unknown, opts: { semEspera?: boolean } = {}): Promise<T> {
     const cred = this.integracoes.asaas();
-    const esperas = [30_000, 60_000, 120_000];
+    const esperas = opts.semEspera ? [] : [30_000, 60_000, 120_000];
+    const rotulo = `${metodo} ${path}`;
     for (let tentativa = 0; ; tentativa++) {
       await this.compassar();
-      const resp = await fetch(`${cred.apiUrl}${path}`, {
-        method: metodo,
-        headers: { 'Content-Type': 'application/json', access_token: cred.apiKey },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-      if (resp.ok) return (await resp.json()) as T;
+      const resp = await fetchAsaas(
+        `${cred.apiUrl}${path}`,
+        {
+          method: metodo,
+          headers: { 'Content-Type': 'application/json', access_token: cred.apiKey },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        },
+        rotulo,
+      );
+      if (resp.ok) return corpoJson<T>(resp, rotulo);
       const txt = await resp.text().catch(() => '');
       const bloqueado = resp.status === 429 || (resp.status === 403 && /limite de requisi/i.test(txt));
       if (bloqueado && tentativa < esperas.length) {
@@ -169,7 +179,8 @@ export class AsaasLeituraService {
   // cobra hoje — no modelo ASAAS_NATIVO é o total que a página mostra.
   async pixQrCode(chargeId: string): Promise<{ encodedImage?: string; payload: string; expirationDate?: string | null } | null> {
     if (this.simulado) return null;
-    return this.requisicao('GET', `/payments/${chargeId}/pixQrCode`);
+    // Há um cliente esperando o código na página: sem a espera longa do 429.
+    return this.requisicao('GET', `/payments/${chargeId}/pixQrCode`, undefined, { semEspera: true });
   }
 
   // UMA cobrança, como está no Asaas agora. `null` = o Asaas não a tem mais

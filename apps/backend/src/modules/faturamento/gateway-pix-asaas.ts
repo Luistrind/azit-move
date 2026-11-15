@@ -36,25 +36,44 @@ export class GatewayPixAsaas implements GatewayPix {
   }
 
   async criarPix(pedido: { referencia: string; valor: number; dia: string; descricao: string; titularId: string }): Promise<PixCriado> {
-    const customerId = await this.clienteDoTitular(pedido.titularId);
-    // Sem multaPct/jurosPct: `criarCobranca` só envia fine/interest quando recebem valor.
-    const cobranca = await this.asaas.criarCobranca({
-      externalReference: pedido.referencia,
-      valor: pedido.valor,
-      vencimento: inicioDiaUTC(pedido.dia),
-      descricao: pedido.descricao,
-      customerId,
-    });
-    if (cobranca.simulada) {
-      return { gatewayId: cobranca.id, copiaECola: payloadPixSimulado(pedido.referencia, pedido.valor), qrCodeImagem: null, simulado: true };
-    }
+    // MEDIÇÃO (15/11): quanto demora cada chamada ao gateway — é o que o cliente
+    // espera pelo código. O log sai no sucesso e na falha.
+    const t0 = Date.now();
+    const ms = { cliente: 0, cobranca: 0, qr: 0 };
+    const medir = (resultado: string) =>
+      this.logger.log(
+        `criarPix ${pedido.referencia} (${pedido.valor}c): ${resultado} em ${Date.now() - t0} ms · cliente ${ms.cliente} ms · POST /payments ${ms.cobranca} ms · GET pixQrCode ${ms.qr} ms`,
+      );
+    let cobrancaId: string | null = null;
     try {
-      const qr = await this.leitura.pixQrCode(cobranca.id);
+      const customerId = await this.clienteDoTitular(pedido.titularId);
+      ms.cliente = Date.now() - t0;
+      // Sem multaPct/jurosPct: `criarCobranca` só envia fine/interest quando recebem valor.
+      const t1 = Date.now();
+      const cobranca = await this.asaas.criarCobranca({
+        externalReference: pedido.referencia,
+        valor: pedido.valor,
+        vencimento: inicioDiaUTC(pedido.dia),
+        descricao: pedido.descricao,
+        customerId,
+      });
+      ms.cobranca = Date.now() - t1;
+      if (cobranca.simulada) {
+        medir('simulado');
+        return { gatewayId: cobranca.id, copiaECola: payloadPixSimulado(pedido.referencia, pedido.valor), qrCodeImagem: null, simulado: true };
+      }
+      cobrancaId = cobranca.id;
+      const t2 = Date.now();
+      const qr = await this.leitura.pixQrCode(cobranca.id).finally(() => {
+        ms.qr = Date.now() - t2;
+      });
       if (!qr?.payload) throw new Error('o gateway não devolveu o código Pix');
+      medir('ok');
       return { gatewayId: cobranca.id, copiaECola: qr.payload, qrCodeImagem: qr.encodedImage ?? null, simulado: false };
     } catch (e) {
+      medir(`FALHOU (${(e as Error).message})`);
       // Cobrança criada mas sem código: não deixa cobrança órfã pagável por aí.
-      await this.asaas.removerCobranca(cobranca.id);
+      if (cobrancaId) await this.asaas.removerCobranca(cobrancaId);
       throw e;
     }
   }

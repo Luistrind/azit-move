@@ -1455,7 +1455,11 @@ nome, placa e documento mascarado; nenhum token de outra fatura.
 }
 ```
 
-Pedir de novo o mesmo valor no mesmo dia devolve o **mesmo** Pix; outro valor substitui o anterior.
+Pedir de novo o mesmo valor no mesmo dia devolve o **mesmo** Pix; outro valor substitui o anterior
+(o Pix substituído é cancelado no gateway pela fila `intencao-pagamento`, job `cancelar`, fora da
+resposta). A página chama esta rota **ao carregar** e a cada troca de opção (pré-geração, doc 02
+§32.12 item 4). Chamadas ao gateway têm tempo limite de 8 s; a duração da rota e de cada chamada
+(`criarPix`, `POST /payments`, `GET pixQrCode`) sai no log do backend.
 
 | Status | `erro` | Quando |
 |---|---|---|

@@ -84,14 +84,38 @@ describe('IntencaoPagamentoService', () => {
     expect(tabela).toHaveLength(1);
   });
 
-  it('UMA ATIVA: outro valor marca a anterior como SUBSTITUIDA e cancela o Pix dela no gateway', async () => {
-    const { service, gateway, tabela } = montar(contaFixture([F2()]));
+  it('UMA ATIVA: outro valor marca a anterior como SUBSTITUIDA e manda o cancelamento do Pix dela para a FILA', async () => {
+    const { service, gateway, fila, tabela } = montar(contaFixture([F2()]));
     const a = await service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' });
     const b = await service.criar({ contaId: 'conta-1', valor: 60000, origem: 'PAGINA_PUBLICA' });
     expect(b.outroValor).toBe(true);
     expect(tabela.map((l) => [l.id, l.situacao])).toEqual([[a.id, 'SUBSTITUIDA'], [b.id, 'ATIVA']]);
-    expect(gateway.cancelarPix).toHaveBeenCalledWith('pay-novo-1');
+    // A resposta ao cliente NÃO espera o gateway cancelar: nenhuma chamada de
+    // cancelar/consultar no caminho — só o job na fila, deduplicado pela intenção.
+    expect(gateway.cancelarPix).not.toHaveBeenCalled();
+    expect(gateway.consultarPix).not.toHaveBeenCalled();
+    expect(fila.add).toHaveBeenCalledTimes(1);
+    expect(fila.add).toHaveBeenCalledWith('cancelar', { intencaoId: a.id, gatewayId: 'pay-novo-1' }, { jobId: `cancelar-${a.id}` });
     expect((await service.ativaDaConta('conta-1'))?.id).toBe(b.id);
+  });
+
+  it('job cancelar: cancela no gateway; gateway sem confirmar LANÇA (a fila repete); Pix já pago vira baixa', async () => {
+    const ok = montar(contaFixture([F2()]));
+    await expect(ok.service.cancelarSubstituida({ intencaoId: 'int-a', gatewayId: 'pay-a' })).resolves.toEqual({ resultado: 'cancelado' });
+    expect(ok.gateway.cancelarPix).toHaveBeenCalledWith('pay-a');
+
+    const falhou = montar(contaFixture([F2()]));
+    falhou.gateway.cancelarPix.mockResolvedValueOnce({ cancelado: false, pago: false });
+    await expect(falhou.service.cancelarSubstituida({ intencaoId: 'int-a', gatewayId: 'pay-a' })).rejects.toThrow('não confirmou o cancelamento');
+    const fora = montar(contaFixture([F2()]));
+    fora.gateway.cancelarPix.mockRejectedValueOnce(new Error('Asaas GET /payments/pay-a não respondeu em 8 s'));
+    await expect(fora.service.cancelarSubstituida({ intencaoId: 'int-a', gatewayId: 'pay-a' })).rejects.toThrow('não respondeu em 8 s');
+
+    const pago = montar(contaFixture([F2()]));
+    pago.gateway.cancelarPix.mockResolvedValueOnce({ cancelado: false, pago: true });
+    pago.gateway.consultarPix.mockResolvedValueOnce({ existe: true, pago: true, valor: 107243, dataPagamento: '2026-11-09', pagamentoId: 'pay-a' });
+    await expect(pago.service.cancelarSubstituida({ intencaoId: 'int-a', gatewayId: 'pay-a' })).resolves.toEqual({ resultado: 'ja_pago' });
+    expect(pago.fila.add).toHaveBeenCalledWith('baixar', expect.objectContaining({ intencaoId: 'int-a', pagamentoId: 'pay-a', valor: 107243, origem: 'GATEWAY' }), { jobId: 'baixa-pay-a' });
   });
 
   it('valor fora da regra é recusado no servidor, sem tocar no gateway', async () => {
@@ -129,12 +153,13 @@ describe('IntencaoPagamentoService', () => {
   });
 
   it('falha do gateway: 503 com orientação, nada gravado e a intenção anterior continua ativa', async () => {
-    const { service, gateway, tabela } = montar(contaFixture([F2()]));
+    const { service, gateway, fila, tabela } = montar(contaFixture([F2()]));
     const a = await service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' });
     gateway.criarPix.mockRejectedValueOnce(new Error('timeout'));
     await expect(service.criar({ contaId: 'conta-1', valor: 60000, origem: 'PAGINA_PUBLICA' })).rejects.toMatchObject({ response: { erro: 'pix_indisponivel' }, status: 503 });
     expect(tabela.map((l) => [l.id, l.situacao])).toEqual([[a.id, 'ATIVA']]);
     expect(gateway.cancelarPix).not.toHaveBeenCalled();
+    expect(fila.add).not.toHaveBeenCalled(); // nada a cancelar: a anterior continua valendo
   });
 
   it('VIRADA DO DIA: expira as ativas de ontem e cancela os Pix; a de hoje fica', async () => {
