@@ -45,7 +45,8 @@ fi
 
 sleep 8
 for h in azitmove.com.br www.azitmove.com.br; do
-  cod=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$h/" || echo 000)
+  # Testa pelo próprio Traefik (127.0.0.1): de dentro do servidor o IP público pode não voltar para ele mesmo.
+  cod=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 --resolve "$h:443:127.0.0.1" "https://$h/" || true)
   case "$cod" in
     200|301) ok "https://$h/ respondeu $cod" ;;
     *) aviso "https://$h/ respondeu $cod — confira o DNS (registro A para este servidor). O certificado pode levar alguns minutos na primeira vez." ;;
