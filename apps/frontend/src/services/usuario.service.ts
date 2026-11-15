@@ -1,7 +1,9 @@
 import { api } from '../lib/api';
+import type { AcessoRegistrado } from './auth.service';
 
 // Gestão de Usuários e Permissões por Área (doc 02 §16).
 // Papel carrega as áreas do seu domínio (matriz papel×área); exceções por usuário ajustam.
+// Entrada (doc 06 v1.1 §2): Google é a porta normal; senha é reserva ligada por usuário.
 
 export interface UsuarioInterno {
   id: string;
@@ -11,6 +13,10 @@ export interface UsuarioInterno {
   papeis: string[];
   excecoes: ExcecaoArea[];
   areasEfetivas: string[];
+  permiteSenha: boolean;
+  temSenha: boolean;
+  googleVinculado: boolean;
+  ultimoAcessoEm: string | null;
 }
 
 export interface ExcecaoArea {
@@ -49,7 +55,8 @@ export const usuarioService = {
     const { data } = await api.get<UsuarioInterno[]>('/api/v1/usuarios');
     return data;
   },
-  async criar(body: { nome: string; email: string; senha: string; papeis: string[] }) {
+  // Senha só vai quando o Admin liga "permite senha" na criação (doc 06 §2.3).
+  async criar(body: { nome: string; email: string; papeis: string[]; permiteSenha: boolean; senha?: string }) {
     const { data } = await api.post<{ id: string }>('/api/v1/usuarios', body);
     return data;
   },
@@ -64,6 +71,25 @@ export const usuarioService = {
   },
   async redefinirSenha(id: string, senha: string) {
     const { data } = await api.post(`/api/v1/usuarios/${id}/senha`, { senha });
+    return data;
+  },
+  // Liga/desliga a entrada por senha — só Admin, motivo obrigatório, auditado.
+  async definirPermiteSenha(id: string, body: { permiteSenha: boolean; motivo: string }) {
+    const { data } = await api.patch<{ resultado: string; permiteSenha: boolean; temSenha: boolean }>(`/api/v1/usuarios/${id}/permite-senha`, body);
+    return data;
+  },
+  // Zera o vínculo com a conta Google (e-mail recriado no Workspace) — só Admin.
+  async religarGoogle(id: string) {
+    const { data } = await api.post(`/api/v1/usuarios/${id}/religar-google`);
+    return data;
+  },
+  // Revoga todas as sessões do usuário (cai em até 15 min em todo dispositivo).
+  async encerrarSessoes(id: string) {
+    const { data } = await api.post<{ encerradas: number }>(`/api/v1/usuarios/${id}/encerrar-sessoes`);
+    return data;
+  },
+  async acessos(id: string) {
+    const { data } = await api.get<{ acessos: AcessoRegistrado[]; sessoesAtivas: number }>(`/api/v1/usuarios/${id}/acessos`);
     return data;
   },
   async matriz(): Promise<MatrizPermissao> {
@@ -85,19 +111,8 @@ export const usuarioService = {
 };
 
 // Nomes por extenso em tela — nunca siglas/códigos internos (decisão 2026-08, Luís).
-export const NOME_AREA: Record<string, string> = {
-  COMERCIAL: 'Comercial',
-  FINANCEIRO_ADMINISTRATIVO: 'Financeiro administrativo',
-  ANALISE_CADASTRO: 'Análise de cadastro',
-  CONTRATOS: 'Contratos',
-  CARTEIRA_COBRANCA: 'Carteira e cobrança',
-  PESSOAS: 'Pessoas',
-  ATIVOS_FROTA: 'Ativos e frota',
-  CAPITAL_INVESTIMENTO: 'Capital e investimento',
-  PRODUTOS: 'Produtos',
-  APROVACOES: 'Aprovações',
-  CONFIGURACOES: 'Configurações',
-};
+// Fonte única em @azit/types: a API usa os mesmos nomes no 403 por área (doc 06 §7.5).
+export { NOME_AREA, nomeArea } from '@azit/types';
 
 export const NOME_PAPEL: Record<string, string> = {
   ADMIN: 'Administrador',
@@ -107,9 +122,6 @@ export const NOME_PAPEL: Record<string, string> = {
   FINANCEIRO: 'Financeiro',
 };
 
-export function nomeArea(area: string): string {
-  return NOME_AREA[area] ?? area;
-}
 export function nomePapel(papel: string): string {
   return NOME_PAPEL[papel] ?? papel;
 }

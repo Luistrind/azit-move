@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
-import { VezAprovacao } from '@azit/types';
+import { VezAprovacao, AreaSistema } from '@azit/types';
 import {
   aprovacaoService,
   type AprovacaoDossie,
@@ -21,7 +21,7 @@ import { Botao } from '../components/Botao';
 import { toast } from '../components/Toast';
 import { AceiteWhatsapp, CalculoAcordo, CoberturaAcordo, PERIODICIDADE_LABEL, SelecaoAcordo } from '../components/renegociacao/AcordoBlocos';
 import { ContratosNovacao, DecomposicaoNovacao } from '../components/renegociacao/NovacaoBlocos';
-import { mensagemErro } from '../lib/permissoes';
+import { mensagemErro, AREAS_ROTA_CONTRATO, AREAS_ROTA_FICHA_TITULAR, useIrParaArea, AreaRota } from '../lib/permissoes';
 import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 import { esperaDesde, horaBR, instanteBR, mesAnoBR, dataBR } from '../lib/datas';
 import { motivosDe, notaAoAprovar, tituloHumano, trilhaDaSolicitacao } from '../lib/aprovacao';
@@ -33,6 +33,7 @@ import {
   VEZ_APROVACAO_COLORS,
   VEZ_APROVACAO_LABEL,
 } from '../config/statusColors';
+import { LinkArea } from '../components/LinkArea';
 
 const ESPERA_ALERTA_HORAS = 48;
 const card = { background: 'var(--surface)', border: '1px solid var(--border)' } as const;
@@ -55,7 +56,7 @@ const quando = (iso: string) => `${instanteBR(iso)} às ${horaBR(iso)}`;
 // trechos em <Secao>, tabelas na <Tabela> responsiva, ações em <Botao>.
 export function AprovacaoDossiePage() {
   const { id = '' } = useParams();
-  const navigate = useNavigate();
+  const irParaArea = useIrParaArea();
   const q = useQuery({ queryKey: ['aprovacao-dossie', id], queryFn: () => aprovacaoService.obter(id), enabled: !!id });
   const a = q.data;
   const tipo = a?.tipoOperacao;
@@ -74,7 +75,7 @@ export function AprovacaoDossiePage() {
       </div>
     );
   }
-  const onContrato = (cid: string) => navigate(`/contratos/${cid}`);
+  const onContrato = (cid: string) => irParaArea(AREAS_ROTA_CONTRATO, `/contratos/${cid}`);
   const conta = a.detalhe?.conta ?? null;
   const cab = cabecalho(a, acordo.data, novacao.data);
   const espera = a.status === 'PENDENTE' ? esperaDesde(a.solicitadoEm) : null;
@@ -185,9 +186,10 @@ function Observacao({ autor, em, texto, vazio }: { autor: string | null; em: str
 }
 
 // Link-botão de leitura dentro de um trecho (acento, sem fundo).
-function LinkTexto({ to, children }: { to: string; children: React.ReactNode }) {
+// Link do dossiê para outra área: desabilitado (com o motivo) para quem não a tem.
+function LinkTexto({ to, area, children }: { to: string; area?: AreaRota; children: React.ReactNode }) {
   return (
-    <Link to={to} className="mt-[10px] inline-block text-[12px] font-semibold" style={{ color: 'var(--accent)' }}>{children}</Link>
+    <LinkArea area={area} to={to} className="mt-[10px] inline-block text-[12px] font-semibold" style={{ color: 'var(--accent)' }}>{children}</LinkArea>
   );
 }
 
@@ -274,7 +276,7 @@ function DossieAcordo({ a, d, conta, onContrato }: { a: AprovacaoDossie; d: Acor
       </Trecho>
       <HistoricoRecuperacao a={a} conta={conta} rotuloComprometimento="Comprometimento com o acordo" />
       <Trecho titulo="Na tela de Renegociações">
-        <LinkTexto to={`/acordos?acordo=${d.id}`}>Ver o acordo completo (cotas, entrada, trilha da operação) →</LinkTexto>
+        <LinkTexto area={AreaSistema.CARTEIRA_COBRANCA} to={`/acordos?acordo=${d.id}`}>Ver o acordo completo (cotas, entrada, trilha da operação) →</LinkTexto>
       </Trecho>
     </>
   );
@@ -347,7 +349,7 @@ function DossieNovacao({ a, d, conta, onContrato }: { a: AprovacaoDossie; d: Nov
         </Trecho>
       )}
       <Trecho titulo="Na tela de Renegociações">
-        <LinkTexto to={`/acordos?novacao=${d.id}`}>Ver a novação completa (origens, contratos, assinatura, trilha) →</LinkTexto>
+        <LinkTexto area={AreaSistema.CARTEIRA_COBRANCA} to={`/acordos?novacao=${d.id}`}>Ver a novação completa (origens, contratos, assinatura, trilha) →</LinkTexto>
       </Trecho>
     </>
   );
@@ -399,7 +401,7 @@ function HistoricoRecuperacao({ a, conta, rotuloComprometimento }: { a: Aprovaca
               {conta.contratos.map((c) => (
                 <li key={c.id}>
                   <b className="tabular-nums">{c.parcelasPagas} de {c.numeroParcelas}</b>{' '}
-                  <Link to={`/contratos/${c.id}`} className="text-[11.5px]" style={{ color: 'var(--text-primary)' }}>{c.numero}{c.placa ? ` (${c.placa})` : ''}</Link>
+                  <LinkArea area={AREAS_ROTA_CONTRATO} to={`/contratos/${c.id}`} className="text-[11.5px]" style={{ color: 'var(--text-primary)' }}>{c.numero}{c.placa ? ` (${c.placa})` : ''}</LinkArea>
                   {c.recuperacaoIniciadaEm && <span className="text-[11.5px]" style={{ color: TOM_DOSSIE_FG.alerta }}> · retomada iniciada</span>}
                 </li>
               ))}
@@ -416,7 +418,7 @@ function HistoricoRecuperacao({ a, conta, rotuloComprometimento }: { a: Aprovaca
         )}
         <Campo label="Cliente desde" valor={mesAnoBR(conta.clienteDesde)} />
       </div>
-      {a.titular && <LinkTexto to={`/titulares/${a.titular.id}`}>Abrir ficha do titular →</LinkTexto>}
+      {a.titular && <LinkTexto area={AREAS_ROTA_FICHA_TITULAR} to={`/titulares/${a.titular.id}`}>Abrir ficha do titular →</LinkTexto>}
     </Trecho>
   );
 }
@@ -465,7 +467,7 @@ function DossieAnaliseCadastro({ a, d }: { a: AprovacaoDossie; d: DossieAnalise 
             {abertas.length} pendência(s) aberta(s): {abertas.map((p) => p.descricao).join(' · ')}
           </div>
         )}
-        <LinkTexto to={`/analises/${c.analiseId}`}>Abrir o dossiê completo da análise (consultas, documentos, relatório) →</LinkTexto>
+        <LinkTexto area={AreaSistema.ANALISE_CADASTRO} to={`/analises/${c.analiseId}`}>Abrir o dossiê completo da análise (consultas, documentos, relatório) →</LinkTexto>
       </Trecho>
     </>
   );

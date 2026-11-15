@@ -11,6 +11,8 @@ import { Tabela } from '../components/Tabela';
 import { toast } from '../components/Toast';
 import { mensagemErro } from '../lib/permissoes';
 import { dataBR, hojeBrasilISO } from '../lib/datas';
+import { BotaoArea } from './BotaoArea';
+import { AreaSistema } from '@azit/types';
 
 // Rescisão por inadimplência (doc 02 §29, decisão Luís 04/11/2026). Componentes
 // genéricos configurados por props; a CONTA do acerto é do backend (@azit/utils):
@@ -155,7 +157,7 @@ export function BlocoRescisao({ contratoId, encerradoPorRescisao, podeOperar }: 
       <div className="flex flex-wrap items-center gap-[10px] rounded-card px-[16px] py-[12px] text-[12.5px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-fg)', border: '1px solid var(--border)' }}>
         <span>Rescisão por inadimplência <b>aguardando aprovação</b> na Central (data-base {dataBR(pendente.dataBase)}; crédito {formatCurrency(pendente.acerto.valorCredito)}; {pendente.acerto.valorADevolver > 0 ? `a devolver ${formatCurrency(pendente.acerto.valorADevolver)}` : `saldo remanescente ${formatCurrency(pendente.acerto.saldoRemanescente)}`}).</span>
         {pendente.aprovacaoId && (
-          <Botao variante="secundaria" tamanho="sm" onClick={() => navigate(`/aprovacoes/${pendente.aprovacaoId}`)}>Ver dossiê →</Botao>
+          <BotaoArea area={AreaSistema.APROVACOES} variante="secundaria" tamanho="sm" onClick={() => navigate(`/aprovacoes/${pendente.aprovacaoId}`)}>Ver dossiê →</BotaoArea>
         )}
       </div>
     );

@@ -1,9 +1,10 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query, Res } from '@nestjs/common';
-import { ResponsavelOcorrencia, RoleUsuario, TipoOcorrenciaVeiculo } from '@prisma/client';
+import { AreaSistema, ResponsavelOcorrencia, RoleUsuario, TipoOcorrenciaVeiculo } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { OcorrenciaService, ROTULO_STATUS_OCORRENCIA, ROTULO_TIPO } from './ocorrencia.service';
 import { InfleetService } from './infleet.service';
+import { Area } from '../../common/decorators/area.decorator';
 
 type Resposta = { header: (k: string, v: string) => Resposta; send: (b: Buffer) => void };
 const OPERACAO_FROTA = [RoleUsuario.ADMIN, RoleUsuario.DIRETOR, RoleUsuario.OPERADOR];
@@ -12,6 +13,7 @@ const OPERACAO_FROTA = [RoleUsuario.ADMIN, RoleUsuario.DIRETOR, RoleUsuario.OPER
 // licenciamento) e o desfecho de cada uma. A lista de veículos (modelo, placa,
 // status, cliente, observação) é a tela de Estoque de ativos.
 @Roles(...OPERACAO_FROTA)
+@Area(AreaSistema.ATIVOS_FROTA)
 @Controller('frota')
 export class FrotaController {
   constructor(

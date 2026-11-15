@@ -1,10 +1,11 @@
 import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Res } from '@nestjs/common';
-import { RoleUsuario, StatusTituloPagar } from '@prisma/client';
+import { AreaSistema, RoleUsuario, StatusTituloPagar } from '@prisma/client';
 import { z } from 'zod';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ContasPagarService } from './contas-pagar.service';
+import { Area, AREAS_FICHA_TITULAR } from '../../common/decorators/area.decorator';
 
 // Contas a Pagar (doc 02 §18). Papéis (Processo §8.2): solicitante = OPERADOR;
 // validação/lotes/conciliação = FINANCEIRO; decisões na Central de Aprovações.
@@ -100,6 +101,7 @@ const conciliarSchema = z.object({
   observacao: z.string().optional(),
 });
 
+@Area(AreaSistema.FINANCEIRO_ADMINISTRATIVO)
 @Controller('financeiro')
 export class ContasPagarController {
   constructor(private readonly service: ContasPagarService) {}
@@ -191,12 +193,14 @@ export class ContasPagarController {
 
   // --- Fornecedores (FA-CP-01) ---
   @Roles(...SOLICITANTES)
+  @Area(AreaSistema.FINANCEIRO_ADMINISTRATIVO, ...AREAS_FICHA_TITULAR)
   @Get('fornecedores')
   fornecedores() {
     return this.service.listarFornecedores();
   }
 
   @Roles(...OPERACAO)
+  @Area(AreaSistema.FINANCEIRO_ADMINISTRATIVO, ...AREAS_FICHA_TITULAR)
   @Post('fornecedores')
   @HttpCode(201)
   criarFornecedor(

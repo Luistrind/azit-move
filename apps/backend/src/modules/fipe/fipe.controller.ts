@@ -1,8 +1,10 @@
 import { BadRequestException, Controller, Get, Param, Query } from '@nestjs/common';
 import { FipeService } from './fipe.service';
+import { AreaLivre } from '../../common/decorators/area.decorator';
 
 // Busca na Tabela FIPE para o veículo de REFERÊNCIA do atendimento (doc 02 §31.1):
 // marca → modelo → ano → valor. Só leitura; o valor nunca é digitado.
+@AreaLivre('tabela de referência pública (FIPE), sem dado do negócio — doc 06 §5.4 item 6')
 @Controller('fipe')
 export class FipeController {
   constructor(private readonly fipe: FipeService) {}

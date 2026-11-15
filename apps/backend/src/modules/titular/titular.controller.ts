@@ -10,7 +10,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -24,7 +24,9 @@ import {
   listarTitularesSchema,
   ListarTitularesDto,
 } from './dto/listar-titulares.dto';
+import { Area } from '../../common/decorators/area.decorator';
 
+@Area(AreaSistema.PESSOAS, AreaSistema.COMERCIAL)
 @Controller('titulares')
 export class TitularController {
   constructor(private readonly titularService: TitularService) {}
@@ -39,6 +41,7 @@ export class TitularController {
     return this.titularService.criar(dto);
   }
 
+  @Area(AreaSistema.PESSOAS, AreaSistema.COMERCIAL, AreaSistema.CAPITAL_INVESTIMENTO)
   @Get()
   listar(
     @Query(new ZodValidationPipe(listarTitularesSchema))
@@ -48,6 +51,7 @@ export class TitularController {
   }
 
   // Busca por CPF/CNPJ exato (item 2.1). Declarada antes de :id para não colidir.
+  @Area(AreaSistema.PESSOAS, AreaSistema.COMERCIAL, AreaSistema.CAPITAL_INVESTIMENTO)
   @Get('buscar')
   async buscarPorDocumento(@Query('documento') documento?: string) {
     if (!documento) {

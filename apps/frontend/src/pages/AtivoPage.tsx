@@ -7,7 +7,7 @@ import { capitalService } from '../services/capital.service';
 import { simuladorService } from '../services/simulador.service';
 import { StatusBadge } from '../components/StatusBadge';
 import { ATIVO_STATUS_COLORS } from '../config/statusColors';
-import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
+import { usePodeRole, ROLE_OPERACAO, mensagemErro, AREAS_ROTA_CONTRATO } from '../lib/permissoes';
 import { reaisParaCentavos, inteiroBR } from '../lib/valor';
 import { toast } from '../components/Toast';
 import { instanteBR } from '../lib/datas';
@@ -15,6 +15,8 @@ import { Tabela } from '../components/Tabela';
 import { Chips } from '../components/Chips';
 import { Botao } from '../components/Botao';
 import { Secao } from '../components/Secao';
+import { LinkArea } from '../components/LinkArea';
+import { AreaSistema } from '@azit/types';
 
 // Layout v2 (doc 03 §11): filtro de status em Chips, estoque em Tabela
 // responsiva (celular = cartões), formulário em Secaos, botões do kit.
@@ -339,16 +341,16 @@ export function AtivoPage() {
             celular: 'campo',
             render: (a) =>
               a.cliente ? (
-                <Link to={`/contratos/${a.cliente.contratoId}`} onClick={(e) => e.stopPropagation()} className="hover:underline" style={{ color: 'var(--text-primary)' }}>
+                <LinkArea area={AREAS_ROTA_CONTRATO} to={`/contratos/${a.cliente.contratoId}`} onClick={(e) => e.stopPropagation()} className="hover:underline" style={{ color: 'var(--text-primary)' }}>
                   {a.cliente.nome}
                   <span className="block text-[11px]" style={{ color: 'var(--text-muted)' }}>{a.cliente.contratoNumero}</span>
-                </Link>
+                </LinkArea>
               ) : a.reserva ? (
                 // Reservado (doc 02 §31.4): para quem o carro está preso até a conferência.
-                <Link to="/lista-espera" onClick={(e) => e.stopPropagation()} className="hover:underline" style={{ color: 'var(--text-primary)' }}>
+                <LinkArea area={AreaSistema.COMERCIAL} to="/lista-espera" onClick={(e) => e.stopPropagation()} className="hover:underline" style={{ color: 'var(--text-primary)' }}>
                   {a.reserva.titularNome}
                   <span className="block text-[11px]" style={{ color: 'var(--warn-fg)' }}>reservado · lista de espera</span>
-                </Link>
+                </LinkArea>
               ) : '—',
           },
           {

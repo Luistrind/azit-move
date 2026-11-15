@@ -14,6 +14,9 @@ export interface StatusProvedor {
 export interface StatusIntegracoes {
   asaas: StatusProvedor & { apiKeyConfigurada: boolean; apiKeyFinal: string | null };
   zapsign: StatusProvedor & { apiTokenConfigurado: boolean; apiTokenFinal: string | null };
+  // Entrar com Google (doc 06 v1.1 §2.2): informativo — o client id vem do
+  // ambiente do servidor (stack.env), não é editável pela tela.
+  google: { configurado: boolean; clientIdInicio: string | null; fonte: 'servidor'; console: string };
   atualizadoEm: string | null;
 }
 
