@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { imputarPagamento } from './imputacao';
+import { imputarEmNiveis, imputarPagamento } from './imputacao';
 
 describe('imputarPagamento (Doc §7.3: encargo → serviço → principal)', () => {
   const itens = [
@@ -25,5 +25,37 @@ describe('imputarPagamento (Doc §7.3: encargo → serviço → principal)', () 
   it('pagamento acima do devido gera sobra (troco)', () => {
     const { sobra } = imputarPagamento(110000, itens);
     expect(sobra).toBe(3000);
+  });
+});
+
+describe('imputarEmNiveis (doc 02 §32.5: cascata com rateio proporcional no nível)', () => {
+  it('quita os níveis em ordem e rateia quando o dinheiro acaba no meio de um', () => {
+    const { alocacoes, sobra } = imputarEmNiveis(20000, [
+      { id: 'principal', nivel: 4, saldo: 69900 },
+      { id: 'protecao', nivel: 2, saldo: 5000 },
+      { id: 'reemb', nivel: 3, saldo: 12000 },
+      { id: 'acordo', nivel: 3, saldo: 18000 },
+    ]);
+    expect(alocacoes.map((a) => [a.id, a.alocado, a.saldo])).toEqual([
+      ['protecao', 5000, 0],
+      ['reemb', 6000, 6000],
+      ['acordo', 9000, 9000],
+      ['principal', 0, 69900],
+    ]);
+    expect(sobra).toBe(0);
+  });
+
+  it('o último item com saldo absorve o centavo; item zerado no nível não recebe nada', () => {
+    const { alocacoes } = imputarEmNiveis(100, [
+      { id: 'a', nivel: 1, saldo: 1000 },
+      { id: 'b', nivel: 1, saldo: 1000 },
+      { id: 'c', nivel: 1, saldo: 1000 },
+      { id: 'zerado', nivel: 1, saldo: 0 },
+    ]);
+    expect(alocacoes.map((a) => a.alocado)).toEqual([33, 33, 34, 0]);
+  });
+
+  it('pagamento acima do devido devolve a sobra', () => {
+    expect(imputarEmNiveis(5000, [{ id: 'a', nivel: 1, saldo: 3000 }]).sobra).toBe(2000);
   });
 });
