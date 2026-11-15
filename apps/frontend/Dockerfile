@@ -12,6 +12,11 @@ ENV VITE_API_URL=$VITE_API_URL
 # producao (padrão) | homologacao — liga a faixa de homolog e as ferramentas de teste.
 ARG VITE_AMBIENTE=producao
 ENV VITE_AMBIENTE=$VITE_AMBIENTE
+# Entrar com Google (doc 06 v1.1 §2.2): client id público do cliente OAuth — RESERVA
+# de build time; a tela de login prefere GET /auth/config do backend (mesmo build
+# serve homolog e produção). Vazio é aceitável.
+ARG VITE_GOOGLE_CLIENT_ID=
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 
 RUN pnpm install --frozen-lockfile \
  && pnpm --filter @azit/types build \

@@ -14,14 +14,16 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { AssinaturaService, ParametrosAssinaturaDto } from './assinatura.service';
 import { IntegracoesService } from '../integracoes/integracoes.service';
+import { Area, AREAS_CONTRATO } from '../../common/decorators/area.decorator';
 
 // Assinatura digital ZapSign F1 (doc 02 §21).
+@Area(...AREAS_CONTRATO)
 @Controller()
 export class AssinaturaController {
   constructor(
@@ -34,12 +36,14 @@ export class AssinaturaController {
   // Leitura para papéis de operação (a tela de envio mostra o contexto);
   // escrita restrita a ADMIN/DIRETOR — evento sensível auditado.
   @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR, RoleUsuario.OPERADOR)
+  @Area(AreaSistema.CONFIGURACOES)
   @Get('assinatura/parametros')
   parametros() {
     return this.service.obterParametros();
   }
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  @Area(AreaSistema.CONFIGURACOES)
   @Post('assinatura/parametros')
   @HttpCode(200)
   salvarParametros(@Body() body: Partial<ParametrosAssinaturaDto>, @CurrentUser() user: UsuarioAutenticado) {

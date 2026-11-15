@@ -1,5 +1,5 @@
 import { Body, Controller, HttpCode, Param, Post } from '@nestjs/common';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -10,9 +10,11 @@ import {
   simularCreditoSchema,
   SimularCreditoDto,
 } from './dto/credito.dto';
+import { Area } from '../../common/decorators/area.decorator';
 
 // Crédito avulso para cliente já ativo (Doc 2 §4.7-A). A decisão acontece na
 // Central de Aprovações (motor §7.9-A) — aqui só simulação e originação.
+@Area(AreaSistema.COMERCIAL, AreaSistema.PESSOAS, AreaSistema.CARTEIRA_COBRANCA)
 @Controller()
 export class CreditoController {
   constructor(private readonly credito: CreditoService) {}

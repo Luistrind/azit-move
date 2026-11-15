@@ -19,6 +19,8 @@ import { BlocoAssinaturaDigital } from '../components/BlocoAssinaturaDigital';
 import { toast } from '../components/Toast';
 import { ROTULO_SITUACAO_PROPOSTA as LABEL_STATUS } from '../lib/rotulos';
 import { FERRAMENTAS_TESTE } from '../lib/ambiente';
+import { BotaoArea } from '../components/BotaoArea';
+import { AreaSistema } from '@azit/types';
 const PAPEL_LABEL: Record<string, string> = {
   comprador_principal: 'Comprador principal', comprador_secundario: 'Comprador secundário', garantidor: 'Garantidor',
 };
@@ -469,12 +471,13 @@ export function PropostaDetalhePage() {
           <div className="font-display text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>Análise de Cadastro — Política v1.0</div>
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Workspace oficial: participantes, rendas, autorização, consultas, COCAD e liberação.</div>
         </div>
-        <Botao
+        <BotaoArea
+          area={AreaSistema.ANALISE_CADASTRO}
           variante="primaria"
           onClick={() => { void (async () => { try { const a = await analiseService.iniciar(id); navigate(`/analises/${a.id}`); } catch (e) { toast.erro(mensagemErro(e)); } })(); }}
         >
           Abrir análise →
-        </Botao>
+        </BotaoArea>
       </div>
       )}
 

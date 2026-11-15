@@ -9,6 +9,8 @@ import { Tabela } from '../components/Tabela';
 import { toast } from '../components/Toast';
 import { mensagemErro } from '../lib/permissoes';
 import { instanteBR } from '../lib/datas';
+import { BotaoArea } from './BotaoArea';
+import { AreaSistema } from '@azit/types';
 
 // Dossiê para cobrança judicial (doc 02 §30): o operador escolhe as capturas do
 // WhatsApp (ordem pelo nome do arquivo) e, se tiver, a notificação extrajudicial
@@ -107,7 +109,7 @@ export function ModalDossie({ contratoId, numero, onClose, onGerado }: { contrat
         {semContratoSocial && (
           <div className="flex flex-wrap items-center gap-[8px] rounded-[10px] px-[12px] py-[8px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-fg)' }}>
             <span>Contrato social da Azit ainda não anexado — o dossiê sairá sem essa seção.</span>
-            <Botao variante="secundaria" tamanho="sm" onClick={() => navigate('/configuracoes/documentos-empresa')}>Anexar em Configuração</Botao>
+            <BotaoArea area={AreaSistema.CONFIGURACOES} variante="secundaria" tamanho="sm" onClick={() => navigate('/configuracoes/documentos-empresa')}>Anexar em Configuração</BotaoArea>
           </div>
         )}
         <label className="flex flex-col gap-[4px] text-[12px]">

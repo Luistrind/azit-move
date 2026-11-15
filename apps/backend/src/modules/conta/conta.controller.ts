@@ -8,7 +8,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ContaService } from './conta.service';
@@ -26,7 +26,9 @@ import {
   atualizarContaSchema,
   AtualizarContaDto,
 } from './dto/atualizar-conta.dto';
+import { Area, AREAS_FICHA_TITULAR } from '../../common/decorators/area.decorator';
 
+@Area(AreaSistema.CARTEIRA_COBRANCA)
 @Controller('contas')
 export class ContaController {
   constructor(
@@ -74,11 +76,13 @@ export class ContaController {
   }
 
   // Conta de um titular (1:1). Declarada antes de :id para não colidir.
+  @Area(AreaSistema.CARTEIRA_COBRANCA, ...AREAS_FICHA_TITULAR)
   @Get('por-titular/:titularId')
   buscarPorTitular(@Param('titularId') titularId: string) {
     return this.contaService.buscarPorTitular(titularId);
   }
 
+  @Area(AreaSistema.CARTEIRA_COBRANCA, ...AREAS_FICHA_TITULAR)
   @Get(':id')
   buscarPorId(@Param('id') id: string) {
     return this.contaService.buscarPorId(id);

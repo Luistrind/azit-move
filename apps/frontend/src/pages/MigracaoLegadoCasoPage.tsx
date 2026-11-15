@@ -21,9 +21,10 @@ import { Secao } from '../components/Secao';
 import { StatusBadge } from '../components/StatusBadge';
 import { Tabela, type Coluna } from '../components/Tabela';
 import { toast } from '../components/Toast';
-import { mensagemErro, usePodeRole } from '../lib/permissoes';
+import { mensagemErro, usePodeRole, AREAS_ROTA_FICHA_TITULAR } from '../lib/permissoes';
 import { reaisParaCentavos } from '../lib/valor';
 import { CASO_LEGADO_STATUS_COLORS, COBRANCA_LEGADA_COLORS, CONCILIACAO_LINHA_COLORS, CONFIANCA_LINHA_COLORS, FATURA_SITUACAO_COLORS, FATURA_SITUACAO_LABEL, SITUACAO_LEGADO_COLORS } from '../config/statusColors';
+import { LinkArea } from '../components/LinkArea';
 
 // Caso do legado — F2 (doc 02 §26.7): o lado PopHub (termos + PDF), a leitura
 // das cobranças e a conciliação. Regras propõem, o operador decide; validar
@@ -477,7 +478,7 @@ export function MigracaoLegadoCasoPage() {
           <div className="mt-[10px] rounded-[10px] p-[10px] text-[12px]" style={{ background: CASO_LEGADO_STATUS_COLORS.MIGRADO.bg, color: CASO_LEGADO_STATUS_COLORS.MIGRADO.fg }}>
             <b>Migrado em {dataHoraBR(c.migracao.em)}.</b>{' '}
             {c.contratoId && <Link to={`/contratos/${c.contratoId}`} className="underline">contrato {c.migracao.resumo?.contratoNumero ?? ''}</Link>}
-            {c.titularId && <> · <Link to={`/titulares/${c.titularId}`} className="underline">titular</Link></>}
+            {c.titularId && <> · <LinkArea area={AREAS_ROTA_FICHA_TITULAR} to={`/titulares/${c.titularId}`} className="underline">titular</LinkArea></>}
             {c.migracao.resumo && <> · {c.migracao.resumo.faturas ?? 0} faturas ({c.migracao.resumo.faturasPagas ?? 0} pagas, {c.migracao.resumo.faturasFechadas ?? 0} com a cobrança antiga mantida, {c.migracao.resumo.faturasAbertas ?? 0} a emitir) · {c.migracao.resumo.reembolsos ?? 0} reembolso(s) · {c.migracao.resumo.avulsas ?? 0} avulsa(s){c.migracao.resumo.pdfCopiado === false ? ' · PDF não copiado' : ''}{c.migracao.resumo.cobrancasApagadas != null && <> · {c.migracao.resumo.cobrancasApagadas} cobrança(s) antiga(s) apagada(s), {c.migracao.resumo.emitidasAgora ?? 0} emitida(s) na hora</>}</>}
             <div className="mt-[4px] flex flex-wrap items-center gap-[6px]">
               {(c.migracao.resumo?.orfasApagadas ?? 0) > 0 && <span>{c.migracao.resumo?.orfasApagadas} cobrança(s) órfã(s) da assinatura apagada(s). </span>}

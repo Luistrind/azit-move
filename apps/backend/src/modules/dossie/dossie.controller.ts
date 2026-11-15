@@ -1,10 +1,11 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Res } from '@nestjs/common';
-import { RoleUsuario } from '@prisma/client';
+import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { z } from 'zod';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { DossieService } from './dossie.service';
+import { Area, AREAS_CONTRATO } from '../../common/decorators/area.decorator';
 
 type Resposta = { header: (k: string, v: string) => Resposta; send: (b: Buffer) => void };
 
@@ -27,6 +28,7 @@ const contratoSocialSchema = z.object({
 });
 
 // Dossiê para cobrança judicial (doc 02 §30) + documentos da empresa.
+@Area(...AREAS_CONTRATO)
 @Controller()
 export class DossieController {
   constructor(private readonly dossie: DossieService) {}
@@ -58,12 +60,14 @@ export class DossieController {
 
   // Configuração › Documentos da empresa
   @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR, RoleUsuario.OPERADOR, RoleUsuario.FINANCEIRO)
+  @Area(AreaSistema.CONFIGURACOES, ...AREAS_CONTRATO)
   @Get('empresa/parametros')
   parametrosEmpresa() {
     return this.dossie.parametrosEmpresa();
   }
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  @Area(AreaSistema.CONFIGURACOES)
   @Post('empresa/contrato-social')
   @HttpCode(200)
   salvarContratoSocial(@Body(new ZodValidationPipe(contratoSocialSchema)) dto: z.infer<typeof contratoSocialSchema>, @CurrentUser() user: UsuarioAutenticado) {
@@ -71,6 +75,7 @@ export class DossieController {
   }
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR, RoleUsuario.OPERADOR, RoleUsuario.FINANCEIRO)
+  @Area(AreaSistema.CONFIGURACOES, ...AREAS_CONTRATO)
   @Get('empresa/contrato-social/pdf')
   async baixarContratoSocial(@Res() res: Resposta) {
     const { nome, buffer } = await this.dossie.baixarContratoSocial();

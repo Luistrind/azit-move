@@ -180,6 +180,44 @@ export function IntegracoesPage() {
       <Botao variante="primaria" className="self-start" carregando={ocupado} onClick={() => void salvar()}>
         Salvar integrações
       </Botao>
+
+      {/* Entrar com Google (doc 06 v1.1 §2.2): só informa — o client id é público e vem do
+          ambiente do servidor (stack.env), não é editável aqui. Sem ele o botão não aparece no login. */}
+      <div className={card} style={cardStyle}>
+        <Secao
+          titulo="Google — entrada no sistema (login)"
+          acao={
+            <span className="flex flex-wrap gap-[6px]">
+              <span className={pilula}
+                style={s.google.configurado ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' } : { background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
+                {s.google.configurado ? 'CONFIGURADO' : 'NÃO CONFIGURADO'}
+              </span>
+              <span className={`${pilula} font-normal`} style={{ background: 'var(--surface-input)', color: 'var(--text-muted)' }}>
+                variável do servidor
+              </span>
+            </span>
+          }
+        >
+          <div className="flex flex-col gap-[8px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
+            <div>
+              Client id do cliente OAuth "Azit Hub Web":{' '}
+              <code className="rounded-[6px] px-[6px] py-[2px]" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
+                {s.google.clientIdInicio ?? 'ausente'}
+              </code>
+              {' '}(variável <code>GOOGLE_CLIENT_ID</code> do backend). {s.google.configurado
+                ? 'O botão "Entrar com Google" está ativo na tela de login.'
+                : 'Sem ela o botão "Entrar com Google" não aparece e só a senha de reserva entra. Defina no stack.env do servidor e reinicie o backend.'}
+            </div>
+            <div>
+              Quem entra: contas do Workspace (azit.com.br / azitmove.com.br) que existam em Usuários e permissões.
+              Mudança de domínio ou origem é feita no{' '}
+              <a href={s.google.console} target="_blank" rel="noreferrer" className="underline" style={{ color: 'var(--info-fg)' }}>
+                console do Google Cloud (projeto azit-hub)
+              </a>.
+            </div>
+          </div>
+        </Secao>
+      </div>
     </div>
   );
 }

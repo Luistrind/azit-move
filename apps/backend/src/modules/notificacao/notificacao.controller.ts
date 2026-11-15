@@ -1,8 +1,10 @@
 import { Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { NotificacaoService } from './notificacao.service';
+import { AreaLivre } from '../../common/decorators/area.decorator';
 
 // Sino por USUÁRIO (doc 02 §16.1): a listagem e a leitura são individuais.
+@AreaLivre('sino do próprio usuário, já filtrado pelas suas áreas — doc 06 §5.4 item 6')
 @Controller('notificacoes')
 export class NotificacaoController {
   constructor(private readonly service: NotificacaoService) {}

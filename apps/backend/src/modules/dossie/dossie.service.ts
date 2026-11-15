@@ -4,7 +4,7 @@ import { promises as fs } from 'fs';
 import { join, extname } from 'path';
 import { randomUUID } from 'crypto';
 import { StatusParcela } from '@azit/types';
-import { dataCalendarioUTC, dataHojeBrasil, diaBrasil, formatCurrency, isoParaBR, nomeDiaSemanaISO, resolverStatusParcela } from '@azit/utils';
+import { DIA_MS, dataCalendarioUTC, dataHojeBrasil, diaBrasil, formatCurrency, isoParaBR, nomeDiaSemanaISO, resolverStatusParcela } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { CabecalhoDossie, DadosHistorico, LinhaHistorico, SecaoSumario, htmlCapa, htmlCapaAnexo, htmlCapturas, htmlHistorico, htmlTextoContrato } from './dossie-html';
 import { comNavegador, contarPaginas, htmlParaPdf, juntarPdfs } from './pdf';
@@ -66,7 +66,7 @@ export class DossieService {
   private async limparEntradaAntiga() {
     try {
       const nomes = await fs.readdir(DIR_ENTRADA);
-      const limite = Date.now() - 24 * 60 * 60 * 1000;
+      const limite = Date.now() - DIA_MS;
       for (const n of nomes) {
         const st = await fs.stat(join(DIR_ENTRADA, n));
         if (st.mtimeMs < limite) await fs.unlink(join(DIR_ENTRADA, n));

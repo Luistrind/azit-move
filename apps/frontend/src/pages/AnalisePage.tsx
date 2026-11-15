@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '@azit/utils';
 import { analiseService, DossieAnalise, ParticipanteAnalise } from '../services/analise.service';
@@ -19,6 +19,9 @@ import { Tabela, type Coluna } from '../components/Tabela';
 import { ANALISE_SITUACAO_FG } from '../config/statusColors';
 import { mensagemErro } from '../lib/permissoes';
 import { horaBR, instanteBR } from '../lib/datas';
+import { LinkArea } from '../components/LinkArea';
+import { BotaoArea } from '../components/BotaoArea';
+import { AreaSistema } from '@azit/types';
 
 // UX-3 — Análise de cadastro GUIADA (proposta UX §4.2): stepper de etapas,
 // próximo passo sempre visível, modais no lugar de prompts, status por extenso.
@@ -223,7 +226,7 @@ export function AnalisePage() {
           <div className="min-w-0">
             <h2 className="font-display text-[18px] font-bold" style={{ color: '#fff' }}>{principal?.nome ?? 'Análise de cadastro'}</h2>
             <div className="text-[12px]" style={{ color: 'var(--navy-text-meta)' }}>
-              Política v{d.politicaVersao} · <Link className="font-semibold underline" style={{ color: 'var(--navy-text-body)' }} to={`/propostas/${d.propostaId}`}>abrir proposta</Link>
+              Política v{d.politicaVersao} · <LinkArea area={AreaSistema.COMERCIAL} className="font-semibold underline" style={{ color: 'var(--navy-text-body)' }} to={`/propostas/${d.propostaId}`}>abrir proposta</LinkArea>
               {d.participantes.length > 1 ? ` · ${d.participantes.length} participantes` : ''}
             </div>
           </div>
@@ -640,7 +643,7 @@ function ProximaAcao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean;
     );
   }
   if (d.status === 'AGUARDANDO_COCAD') {
-    return <Botao variante="primaria" onClick={() => navigate('/aprovacoes')}>Abrir Central de Aprovações</Botao>;
+    return <BotaoArea area={AreaSistema.APROVACOES} variante="primaria" onClick={() => navigate('/aprovacoes')}>Abrir Central de Aprovações</BotaoArea>;
   }
   if (['APROVADO_ALCADA_ANALISTA', 'APROVADO_COCAD'].includes(d.status)) {
     return (
@@ -650,7 +653,7 @@ function ProximaAcao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean;
     );
   }
   if (d.status === 'LIBERADO_PARA_FORMALIZACAO') {
-    return <Botao variante="primaria" onClick={() => navigate(`/propostas/${d.propostaId}`)}>Ir para a proposta</Botao>;
+    return <BotaoArea area={AreaSistema.COMERCIAL} variante="primaria" onClick={() => navigate(`/propostas/${d.propostaId}`)}>Ir para a proposta</BotaoArea>;
   }
   return null;
 }
@@ -879,7 +882,7 @@ function Decisao({ d, ocupado, acao }: { d: DossieAnalise; ocupado: boolean; aca
 
       {d.status === 'AGUARDANDO_COCAD' && (
         <div className="flex flex-wrap items-center gap-[8px] text-[12px]" style={{ color: 'var(--text-body)' }}>
-          <span>No Comitê — aprovar/não aprovar acontece na <Link className="font-semibold underline" style={{ color: 'var(--accent)' }} to="/aprovacoes">Central de Aprovações</Link>. Alternativas:</span>
+          <span>No Comitê — aprovar/não aprovar acontece na <LinkArea area={AreaSistema.APROVACOES} className="font-semibold underline" style={{ color: 'var(--accent)' }} to="/aprovacoes">Central de Aprovações</LinkArea>. Alternativas:</span>
           <Botao variante="secundaria" tamanho="sm" disabled={ocupado} onClick={() => setModal('ressalvas')}>Aprovar com ressalvas</Botao>
           <Botao variante="secundaria" tamanho="sm" disabled={ocupado} onClick={() => setModal('complemento')}>Solicitar complemento</Botao>
         </div>

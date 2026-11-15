@@ -19,6 +19,10 @@ POSTGRES_PASSWORD=$PG
 JWT_SECRET=$JWT
 ASAAS_API_KEY=COLE_AQUI_SUA_CHAVE_SANDBOX
 ASAAS_WEBHOOK_SECRET=$WH
+# Entrar com Google (doc 06 v1.1 §2.2): client id do cliente OAuth "Azit Hub Web"
+# (projeto azit-hub — deploy/AMBIENTES.md §1.5). É PÚBLICO; não há client secret.
+# Vai para o backend (GOOGLE_CLIENT_ID) e para o build do frontend (VITE_GOOGLE_CLIENT_ID).
+GOOGLE_CLIENT_ID=43681993535-8orbgnirmtc7p3lbu5ov0f2hvfp46g58.apps.googleusercontent.com
 EOF
 
 echo "=================================================================="

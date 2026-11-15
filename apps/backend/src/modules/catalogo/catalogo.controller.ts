@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, NotFoundException, Param, Patch, Post, UnprocessableEntityException } from '@nestjs/common';
-import { CicloProduto, Prisma, RoleUsuario } from '@prisma/client';
+import { AreaSistema, CicloProduto, Prisma, RoleUsuario } from '@prisma/client';
 import { z } from 'zod';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
@@ -7,6 +7,7 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { PrismaService } from '../../database/prisma.service';
 import { contribuicaoProtecaoVeicular } from '@azit/utils';
 import { CatalogoFonteService } from './catalogo-fonte.service';
+import { Area, AREAS_FICHA_TITULAR } from '../../common/decorators/area.decorator';
 
 // Catálogo de Produtos F1 (doc 02 §17): Produto → Variante → Versão.
 // Alteração MATERIAL cria versão nova (numeração sequencial, fecha a anterior);
@@ -62,6 +63,7 @@ const CICLO: Record<CicloProduto, CicloProduto[]> = {
 
 type Parametros = Record<string, string | number | boolean>;
 
+@Area(AreaSistema.PRODUTOS)
 @Controller('catalogo')
 export class CatalogoController {
   constructor(
@@ -99,6 +101,7 @@ export class CatalogoController {
   // Produtos comerciais contratáveis AVULSOS por cliente ativo (doc 02 §17,
   // 2026-08-16) — fonte ÚNICA do modal "+ Contratar crédito". Sem @Roles:
   // qualquer usuário autenticado da operação lê.
+  @Area(AreaSistema.PRODUTOS, ...AREAS_FICHA_TITULAR, AreaSistema.CARTEIRA_COBRANCA)
   @Get('avulsos')
   async avulsos() {
     const produtos = await this.prisma.db.produtoCatalogo.findMany({

@@ -173,7 +173,21 @@ export class IntegracoesService implements OnModuleInit {
         webhookSecretFinal: final4(z.webhookSecret || null),
         webhookPath: '/api/v1/webhooks/zapsign',
       },
+      // Entrar com Google (doc 06 v1.1 §2.2): só INFORMA se o GOOGLE_CLIENT_ID está no
+      // ambiente (vem do stack.env, não do banco) — a tela mostra o início do id
+      // (é público, mas inteiro não ajuda ninguém) e o link do console.
+      google: this.google(),
       atualizadoEm: l?.updatedAt?.toISOString() ?? null,
+    };
+  }
+
+  private google() {
+    const clientId = (this.config.get<string>('google.clientId') ?? '').trim();
+    return {
+      configurado: clientId.length > 0,
+      clientIdInicio: clientId ? `${clientId.slice(0, 12)}…` : null,
+      fonte: 'servidor' as const, // sempre do ambiente (stack.env), nunca do banco
+      console: 'https://console.cloud.google.com/auth/clients?project=azit-hub',
     };
   }
 

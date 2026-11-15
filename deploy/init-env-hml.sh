@@ -33,6 +33,9 @@ BIGDATACORP_ACCESS_TOKEN=
 ZAPSIGN_API_TOKEN=
 ZAPSIGN_WEBHOOK_SECRET=
 ANTHROPIC_API_KEY=
+# Entrar com Google (doc 06 v1.1 §2.2): o MESMO cliente OAuth serve homolog e produção
+# (origem https://hml.azitmove.com.br já autorizada — deploy/AMBIENTES.md §1.5). É público.
+GOOGLE_CLIENT_ID=43681993535-8orbgnirmtc7p3lbu5ov0f2hvfp46g58.apps.googleusercontent.com
 EOF
 chmod 600 "$ARQ"
 

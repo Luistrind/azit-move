@@ -66,6 +66,18 @@ interface Pagina<T> {
 
 const LIMITE = 100;
 
+// Erro HTTP do Asaas com o status preservado — quem lê UMA cobrança precisa
+// distinguir "não existe mais" (404) de "falhou a consulta" (rede, 5xx, bloqueio).
+export class AsaasHttpError extends Error {
+  constructor(
+    readonly status: number,
+    mensagem: string,
+  ) {
+    super(mensagem);
+    this.name = 'AsaasHttpError';
+  }
+}
+
 @Injectable()
 export class AsaasLeituraService {
   private readonly logger = new Logger(AsaasLeituraService.name);
@@ -106,7 +118,7 @@ export class AsaasLeituraService {
         await new Promise((r) => setTimeout(r, esperas[tentativa]));
         continue;
       }
-      throw new Error(`Asaas ${metodo} ${path} retornou ${resp.status}: ${txt.slice(0, 300)}`);
+      throw new AsaasHttpError(resp.status, `Asaas ${metodo} ${path} retornou ${resp.status}: ${txt.slice(0, 300)}`);
     }
   }
 
@@ -158,6 +170,19 @@ export class AsaasLeituraService {
   async pixQrCode(chargeId: string): Promise<{ encodedImage?: string; payload: string; expirationDate?: string | null } | null> {
     if (this.simulado) return null;
     return this.requisicao('GET', `/payments/${chargeId}/pixQrCode`);
+  }
+
+  // UMA cobrança, como está no Asaas agora. `null` = o Asaas não a tem mais
+  // (404). Qualquer outra falha sobe — a conferência (doc 02 §27.9) não pode
+  // confundir "sumiu" com "não consegui ler".
+  async lerCobranca(chargeId: string): Promise<CobrancaAsaasLida | null> {
+    if (this.simulado) return BASE_SIMULADA.cobrancas.find((c) => c.id === chargeId) ?? null;
+    try {
+      return await this.requisicao<CobrancaAsaasLida>('GET', `/payments/${chargeId}`);
+    } catch (e) {
+      if (e instanceof AsaasHttpError && e.status === 404) return null;
+      throw e;
+    }
   }
 
   async listarCobrancas(customerId: string): Promise<CobrancaAsaasLida[]> {

@@ -5,7 +5,7 @@ import { formatCurrency } from '@azit/utils';
 import { titularService, AtualizarTitularBody } from '../services/titular.service';
 import { StatusBadge } from '../components/StatusBadge';
 import { CONTRATO_STATUS_COLORS } from '../config/statusColors';
-import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
+import { usePodeRole, ROLE_OPERACAO, mensagemErro, AREAS_ROTA_CONTRATO, useIrParaArea } from '../lib/permissoes';
 import { instanteBR } from '../lib/datas';
 import { Tabela } from '../components/Tabela';
 import { Botao } from '../components/Botao';
@@ -24,6 +24,7 @@ const soNumeros = (s: string) => /\d/.test(s) && !/[a-zA-Z]/.test(s);
 export function TitularPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const irParaArea = useIrParaArea();
   const pode = usePodeRole();
   const podeEditar = pode(ROLE_OPERACAO);
   const [ocupado, setOcupado] = useState(false);
@@ -167,7 +168,7 @@ export function TitularPage() {
                   ]}
                   linhas={f.contratosCredito}
                   chave={(c) => c.id}
-                  onClick={(c) => navigate(`/contratos/${c.id}`)}
+                  onClick={(c) => irParaArea(AREAS_ROTA_CONTRATO, `/contratos/${c.id}`)}
                   larguraMinima={360}
                   vazio="Nenhum."
                 />
