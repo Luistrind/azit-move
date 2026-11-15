@@ -1,9 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
   dataCalendarioUTC,
   dataHojeBrasil,
   projetarConta,
+  reconstituirFatura,
+  saldoNominal,
+  saldosPorItem,
   somarDiasISO,
   inicioDiaUTC,
   type AlocacaoMotor,
@@ -11,6 +14,7 @@ import {
   type FaturaMotor,
   type ItemMotor,
   type ParametrosMotorFatura,
+  type SaldoItemFatura,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { tiposDosContratos } from '../contrato/tipo-contrato';
@@ -41,7 +45,7 @@ export interface PagamentoDaFatura {
   pagoEm: Date | null;
   valor: number;
   valorExcedente: number;
-  origem: 'GATEWAY' | 'CONFERENCIA';
+  origem: 'GATEWAY' | 'CONFERENCIA' | 'SINISTRO';
   gatewayPaymentId: string | null;
   identificadorPix: string | null;
   intencaoId: string | null;
@@ -71,6 +75,38 @@ export interface ContaCarregada {
   // alguma, a conta é MISTA (§32.4-A, regra provisória).
   abertasModeloAntigo: { id: string; numero: number; vencimento: string; valor: number; tokenPublico: string | null }[];
   parametros: ParametrosMotorFatura & { multaPadraoPct: number; atualizacaoMesPadraoPct: number; tetoIntencoesDia: number };
+}
+
+// Saldo do MOTOR de uma parcela que está numa fatura AZIT em aberto (doc 02
+// §32.12 item 12): o que acordo, novação, rescisão e sinistro usam no lugar de
+// "nominal cheio + encargo desde o vencimento".
+export interface SaldoParcelaAzit {
+  parcelaId: string;
+  faturaId: string;
+  faturaNumero: number;
+  face: number; // soma dos itens da parcela (= nominal da parcela)
+  saldoNominal: number; // o que falta do valor de face
+  saldoProtecao: number; // parte do saldo que é Proteção veicular
+  multa: number;
+  atualizacao: number;
+  encargo: number; // multa + atualizacao atribuídas à parcela
+  total: number; // saldoNominal + encargo
+  principalPago: number; // já alocado nos itens da parcela, SEM a proteção
+  itens: SaldoItemFatura[];
+}
+
+export interface SaldoItemSemParcelaAzit extends SaldoItemFatura {
+  faturaId: string;
+  faturaNumero: number;
+  titulo: string;
+}
+
+export interface SaldosAzitDaConta {
+  // Faturas AZIT FECHADAS (em aberto) da conta.
+  faturaIds: Set<string>;
+  porParcela: Map<string, SaldoParcelaAzit>;
+  // Itens sem parcela (serviço recorrente, intermediária) dessas faturas.
+  semParcela: SaldoItemSemParcelaAzit[];
 }
 
 // Janela (dias) em que uma fatura AZIT já paga ainda acompanha a conta na
@@ -122,7 +158,7 @@ export class ContaFaturaService {
     return {
       contaId,
       titular: conta.titular,
-      faturas: faturas.map((f) => this.montar(f, tipos, padrao)),
+      faturas: faturas.map((f) => this.montar(f, tipos, padrao)).filter((f) => this.coerente(f)),
       abertasModeloAntigo: antigas.map((a) => ({ id: a.id, numero: a.numero, vencimento: dataCalendarioUTC(a.dataVencimento), valor: cent(a.valorTotal), tokenPublico: a.tokenPublico })),
       parametros: {
         cascata: vigentes.cascata,
@@ -133,6 +169,54 @@ export class ContaFaturaService {
         tetoIntencoesDia: vigentes.tetoIntencoesDia,
       },
     };
+  }
+
+  // Saldo do motor POR PARCELA das faturas AZIT em aberto da conta, na data
+  // pedida (hoje, ou a data-base de uma rescisão). UMA leitura para os fluxos
+  // que olham a dívida por parcela — a conta é a do motor (`saldosPorItem`).
+  async saldosEmAberto(contaId: string, data: string = dataHojeBrasil(), db?: DbFaturamento): Promise<SaldosAzitDaConta> {
+    const conta = await this.carregar(contaId, { db });
+    const r: SaldosAzitDaConta = { faturaIds: new Set(), porParcela: new Map(), semParcela: [] };
+    for (const f of conta.faturas) {
+      if (f.status !== 'FECHADA') continue;
+      r.faturaIds.add(f.id);
+      const saldos = saldosPorItem(f.motor, data);
+      for (const s of saldos.itens) {
+        const item = f.itens.find((i) => i.id === s.itemId);
+        if (!item?.parcelaId) {
+          if (item) r.semParcela.push({ ...s, faturaId: f.id, faturaNumero: f.numero, titulo: item.titulo });
+          continue;
+        }
+        const p: SaldoParcelaAzit = r.porParcela.get(item.parcelaId) ?? {
+          parcelaId: item.parcelaId, faturaId: f.id, faturaNumero: f.numero,
+          face: 0, saldoNominal: 0, saldoProtecao: 0, multa: 0, atualizacao: 0, encargo: 0, total: 0, principalPago: 0, itens: [],
+        };
+        p.face += s.face;
+        p.saldoNominal += s.saldo;
+        if (s.grupo === 'PROTECAO') p.saldoProtecao += s.saldo;
+        else p.principalPago += s.pago;
+        p.multa += s.multa;
+        p.atualizacao += s.atualizacao;
+        p.encargo = p.multa + p.atualizacao;
+        p.total = p.saldoNominal + p.encargo;
+        p.itens.push(s);
+        r.porParcela.set(item.parcelaId, p);
+      }
+    }
+    return r;
+  }
+
+  // Fatura que o BANCO diz paga mas que, pelos pagamentos registrados, o motor
+  // ainda vê em aberto (baixada por um caminho antigo que marcava PAGA sem
+  // registrar o pagamento) NÃO entra na conta: senão reapareceria em aberto na
+  // página do cliente e ele poderia gerar Pix de uma fatura já quitada.
+  private readonly logger = new Logger(ContaFaturaService.name);
+  private coerente(f: FaturaDaConta): boolean {
+    if (f.status === 'FECHADA') return true;
+    const e = reconstituirFatura(f.motor);
+    const quitadaNoMotor = saldoNominal(e) === 0 && e.pendente.multa === 0 && e.pendente.atualizacao === 0;
+    if (!quitadaNoMotor) this.logger.warn(`Fatura ${f.id} (#${f.numero}) está ${f.status} sem os pagamentos que a quitam — fora da conta do Pix sob demanda`);
+    return quitadaNoMotor;
   }
 
   // Projeção do dia (saldo, encargo, situação, acumulado, seleção padrão).

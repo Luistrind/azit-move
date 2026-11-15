@@ -23,6 +23,7 @@ const corpo = { color: 'var(--text-body)' } as const;
 const ORIGEM_PAGAMENTO: Record<OrigemPagamentoFatura, string> = {
   [OrigemPagamentoFatura.GATEWAY]: 'Pix confirmado pelo gateway',
   [OrigemPagamentoFatura.CONFERENCIA]: 'Baixado na conferência do operador',
+  [OrigemPagamentoFatura.SINISTRO]: 'Quitado pela indenização do sinistro',
 };
 const ORIGEM_PIX: Record<OrigemIntencaoPagamento, string> = {
   [OrigemIntencaoPagamento.PAGINA_PUBLICA]: 'pedido pelo cliente na página da fatura',

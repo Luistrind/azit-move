@@ -11,6 +11,7 @@ import {
   projetarEstados,
   reconstituirFatura,
   regraParcial,
+  saldosPorItem,
   totalDevidoEm,
   validarValorPagamento,
   type FaturaMotor,
@@ -268,5 +269,43 @@ describe('grupo da cascata sai da classificação única do item (§32.3 → §3
   });
   it('a cascata padrão é Encargos → Proteção → Acessórios → Principal', () => {
     expect(CASCATA_PADRAO).toEqual(['ENCARGOS', 'PROTECAO', 'ACESSORIOS', 'PRINCIPAL']);
+  });
+});
+
+describe('saldo do motor por item — base dos fluxos por parcela (acordo, novação, rescisão)', () => {
+  // Caso que quebrava: fatura de R$ 1.049 vencida em 02/11, R$ 540 pagos em 07/11; conta em 09/11.
+  const comParcial = (): FaturaMotor => {
+    const f = F2();
+    const { baixas } = aplicarPagamentoNaConta([reconstituirFatura(f)], { data: '2026-11-07', valor: 54000 });
+    return { ...f, pagamentos: [{ data: '2026-11-07', valor: 54000, alocacoes: baixas[0].alocacoes }] };
+  };
+
+  it('paga em parte: falta 532,08 (só o que sobrou do veículo + 2 dias de atualização), nunca nominal cheio + encargo desde o vencimento', () => {
+    const s = saldosPorItem(comParcial(), HOJE);
+    expect(s).toMatchObject({ saldoNominal: 53173, multa: 0, atualizacao: 35, total: 53208, dias: 2 });
+    expect(Object.fromEntries(s.itens.map((i) => [i.itemId, [i.pago, i.saldo, i.multa, i.atualizacao]]))).toEqual({
+      'f2:veiculo': [16727, 53173, 0, 35],
+      'f2:protecao': [5000, 0, 0, 0],
+      'f2:reemb': [12000, 0, 0, 0],
+      'f2:acordo': [18000, 0, 0, 0],
+    });
+    // O que os fluxos calculavam antes (parcela do veículo, nominal 749 + mora de 7 dias): 765,73 — R$ 233,65 a mais.
+    expect(74900 + 1498 + 175).toBe(76573);
+    expect(s.total).toBeLessThan(76573);
+  });
+
+  it('sem pagamento: o encargo da fatura é rateado entre os itens pelo saldo e a soma fecha no total (1.072,43)', () => {
+    const s = saldosPorItem(F2(), HOJE);
+    expect(s).toMatchObject({ saldoNominal: 104900, multa: 2098, atualizacao: 245, total: 107243 });
+    expect(s.itens.reduce((t, i) => t + i.multa, 0)).toBe(2098);
+    expect(s.itens.reduce((t, i) => t + i.atualizacao, 0)).toBe(245);
+    expect(s.itens.find((i) => i.itemId === 'f2:veiculo')).toMatchObject({ saldo: 69900, multa: 1398, atualizacao: 163 });
+  });
+
+  it('fatura a vencer paga em parte: só o saldo, sem encargo', () => {
+    const f = F4();
+    const { baixas } = aplicarPagamentoNaConta([reconstituirFatura(f)], { data: HOJE, valor: 40000 });
+    const s = saldosPorItem({ ...f, pagamentos: [{ data: HOJE, valor: 40000, alocacoes: baixas[0].alocacoes }] }, HOJE);
+    expect(s).toMatchObject({ saldoNominal: 64900, multa: 0, atualizacao: 0, total: 64900 });
   });
 });

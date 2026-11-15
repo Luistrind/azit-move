@@ -407,3 +407,53 @@ export function validarValorPagamento(
   if (valor < regra.minimo) return { ok: false, motivo: 'abaixo_do_minimo', regra };
   return { ok: true, outroValor: true, faturasCobertas: cobertas };
 }
+
+// ------------------------------------------------------------
+// Saldo do motor POR ITEM (acordo, novação, rescisão, sinistro)
+// ------------------------------------------------------------
+// Os fluxos que olham a dívida por PARCELA (não pela fatura) precisam do que o
+// motor diz que falta de cada item — nunca do nominal cheio com encargo desde o
+// vencimento, que cobraria de novo o que um pagamento em parte já quitou.
+// O encargo da fatura (multa pendente/nova + atualização desde o último
+// pagamento) é rateado entre os itens na proporção do saldo de cada um; o
+// último item com saldo absorve o centavo. A soma dos itens é sempre o total
+// da fatura na data (`totalDevidoEm`).
+export interface SaldoItemFatura {
+  itemId: string;
+  grupo: GrupoCascata;
+  face: number; // valor de face do item
+  pago: number; // já alocado neste item
+  saldo: number; // o que falta do valor de face
+  multa: number; // parte da multa da fatura atribuída a este item
+  atualizacao: number; // idem, atualização por dias de atraso
+}
+
+export interface SaldosDaFatura {
+  faturaId: string;
+  itens: SaldoItemFatura[];
+  saldoNominal: number;
+  multa: number;
+  atualizacao: number;
+  total: number; // saldoNominal + multa + atualizacao
+  dias: number; // dias que a atualização cobre (desde o vencimento ou o último pagamento)
+}
+
+export function saldosPorItem(f: FaturaMotor, data: string): SaldosDaFatura {
+  const e = reconstituirFatura(f);
+  const enc = encargoAte(e, data);
+  const base = f.itens.map((i) => ({ id: i.id, nivel: 1, saldo: e.saldos.get(i.id) ?? 0 }));
+  const nominal = soma(base.map((b) => b.saldo));
+  const ratear = (valor: number): Map<string, number> => {
+    if (valor <= 0) return new Map();
+    // Sem saldo de face (só encargo pendente): fica no primeiro item.
+    if (nominal <= 0) return new Map(f.itens.length ? [[f.itens[0].id, valor]] : []);
+    return new Map(imputarEmNiveis(Math.min(valor, nominal), base).alocacoes.map((a) => [a.id, a.alocado]));
+  };
+  const multa = ratear(enc.multa);
+  const atualizacao = ratear(enc.atualizacao);
+  const itens: SaldoItemFatura[] = f.itens.map((i) => {
+    const saldo = e.saldos.get(i.id) ?? 0;
+    return { itemId: i.id, grupo: i.grupo, face: i.valor, pago: i.valor - saldo, saldo, multa: multa.get(i.id) ?? 0, atualizacao: atualizacao.get(i.id) ?? 0 };
+  });
+  return { faturaId: f.id, itens, saldoNominal: nominal, multa: enc.multa, atualizacao: enc.atualizacao, total: nominal + enc.multa + enc.atualizacao, dias: enc.dias };
+}

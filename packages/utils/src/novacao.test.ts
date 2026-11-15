@@ -418,3 +418,16 @@ describe('conversão de prazo (fator padrão 4,3452/2,1726 — correção 14/09)
     expect(r.excecoes.some((e) => e.includes('60 meses'))).toBe(true);
   });
 });
+
+describe('novação com fatura AZIT paga em parte (doc 02 §32.4-A)', () => {
+  it('ANTES: nominal cheio + mora desde o vencimento = 765,73; DEPOIS, com o saldo e o encargo do motor: 532,08', () => {
+    const antes = valorarComponenteNovacao({ origem: 'Parcela 22/104', valorNominal: 74_900, situacao: 'vencido', dias: 7, taxaMultaPercent: 2, taxaJurosMensalPercent: 1 });
+    expect(antes).toEqual({ valor: 76_573, ajuste: 1_673 });
+    const depois = valorarComponenteNovacao({ origem: 'Parcela 22/104', valorNominal: 53_173, situacao: 'vencido', dias: 7, taxaMultaPercent: 2, taxaJurosMensalPercent: 1, encargoCalculado: 35 });
+    expect(depois).toEqual({ valor: 53_208, ajuste: 35 });
+  });
+
+  it('multa já paga e nenhum dia novo: encargo calculado ZERO vale (não cai na fórmula antiga)', () => {
+    expect(valorarComponenteNovacao({ origem: 'x', valorNominal: 47_243, situacao: 'vencido', dias: 7, encargoCalculado: 0 })).toEqual({ valor: 47_243, ajuste: 0 });
+  });
+});

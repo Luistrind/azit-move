@@ -220,6 +220,22 @@ describe('IntencaoPagamentoService', () => {
     expect(fila.add).toHaveBeenCalledWith('baixar', expect.objectContaining({ intencaoId: 'ontem', pagamentoId: 'pay-ontem', valor: 107243, dataPagamento: '2026-11-08', origem: 'GATEWAY' }), { jobId: 'baixa-pay-ontem' });
   });
 
+  it('operação que muda a dívida (acordo, novação, rescisão, sinistro): TODOS os Pix ativos da conta deixam de valer, com o cancelamento na fila', async () => {
+    const { service, gateway, fila, tabela } = montar(contaFixture([F2()]), [
+      { id: 'a', situacao: 'ATIVA', gatewayId: 'pay-a' },
+      { id: 'b', situacao: 'ATIVA', dia: '2026-11-08', gatewayId: 'pay-b' }, // de ontem, ainda não expirada pelo job
+      { id: 'c', situacao: 'PAGA', gatewayId: 'pay-c' },
+    ]);
+    expect(await service.invalidarAtivasDaConta('conta-1', 'acordo efetivado')).toBe(2);
+    expect(tabela.map((l) => [l.id, l.situacao])).toEqual([['a', 'SUBSTITUIDA'], ['b', 'SUBSTITUIDA'], ['c', 'PAGA']]);
+    expect(fila.add.mock.calls).toEqual([
+      ['cancelar', { intencaoId: 'a', gatewayId: 'pay-a' }, { jobId: 'cancelar-pay-a' }],
+      ['cancelar', { intencaoId: 'b', gatewayId: 'pay-b' }, { jobId: 'cancelar-pay-b' }],
+    ]);
+    expect(gateway.cancelarPix).not.toHaveBeenCalled(); // fora do caminho de quem efetivou
+    expect(await service.invalidarAtivasDaConta('conta-1', 'de novo')).toBe(0);
+  });
+
   it('conferência do operador enfileira só o que o gateway confirma como pago', async () => {
     const { service, gateway, fila } = montar(contaFixture([F2()]), [
       { id: 'a', situacao: 'EXPIRADA', gatewayId: 'pay-a' },

@@ -50,6 +50,27 @@ export class QuitacaoService {
       orderBy: { numero: 'asc' },
     });
 
+    // Fatura Azit F2 (doc 02 §32.12 item 12): parcela que está numa fatura do
+    // modelo AZIT já disponível (FECHADA) NÃO é antecipada por aqui. A quitação
+    // gravava a fatura como PAGA pelo valor da parcela — por cima do que já tinha
+    // sido pago em parte, sem registrar o pagamento, e a fatura reaparecia em
+    // aberto na página do cliente. Enquanto a baixa própria não existe, a tela
+    // explica o caminho: essa fatura é paga pela página (Pix), no valor do dia.
+    const faturaIds = [...new Set(parcelas.map((p) => p.faturaId).filter((x): x is string => !!x))];
+    const faturasPix = faturaIds.length
+      ? await this.prisma.db.fatura.findMany({ where: { id: { in: faturaIds }, modeloEncargo: 'AZIT', status: 'FECHADA' }, orderBy: { dataVencimento: 'asc' }, select: { id: true, numero: true } })
+      : [];
+    if (faturasPix.length) {
+      const idsPix = new Set(faturasPix.map((f) => f.id));
+      const presas = parcelas.filter((p) => p.faturaId && idsPix.has(p.faturaId)).map((p) => p.display);
+      throw new UnprocessableEntityException({
+        erro: 'parcela_em_fatura_pix_sob_demanda',
+        mensagem:
+          `${presas.length === 1 ? `A parcela ${presas[0]} está` : `As parcelas ${presas.join(', ')} estão`} em fatura já disponível para pagamento por Pix (${faturasPix.map((f) => `#${f.numero}`).join(', ')}). ` +
+          'Essa fatura é paga pela página da fatura, no valor do dia (o que já foi pago em parte é considerado). Depois de paga, antecipe as demais parcelas — ou selecione só as que ainda não entraram em fatura.',
+      });
+    }
+
     // Versão de parâmetros congelada na simulação que originou o contrato
     // (direto ou como membro do pacote da proposta).
     const proposta = await this.prisma.db.proposta.findFirst({

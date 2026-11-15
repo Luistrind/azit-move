@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { formatCurrency } from '@azit/utils';
 import { NovacaoService } from './novacao.service';
+import { intencoesStub } from './azit.fixture-spec';
 
 // Detalhe da novação (tela Renegociações, 21/10/2026): origens liquidadas com o
 // que foi extinto, snapshot (termos + simulação), contratos novos com assinatura
@@ -94,7 +95,7 @@ function montar(nv: unknown) {
       usuario: { findMany: jest.fn().mockResolvedValue([{ id: 'u-luis', nome: 'Luís' }]) },
     },
   };
-  const service = new NovacaoService(prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never);
+  const service = new NovacaoService(prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, intencoesStub() as never);
   return { service, prisma };
 }
 
@@ -197,7 +198,7 @@ describe('cancelar novação aguardando assinatura — documento cancelado na Za
       },
     };
     const assinatura = { cancelarDocumentoDoContrato: jest.fn().mockResolvedValue(true) };
-    const service = new NovacaoService(prisma as never, {} as never, {} as never, assinatura as never, {} as never, {} as never, {} as never, {} as never);
+    const service = new NovacaoService(prisma as never, {} as never, {} as never, assinatura as never, {} as never, {} as never, {} as never, {} as never, intencoesStub() as never);
     return { service, prisma, assinatura };
   }
 

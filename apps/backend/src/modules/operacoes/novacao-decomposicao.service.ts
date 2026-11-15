@@ -19,6 +19,7 @@ import {
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
+import { ContaFaturaService } from '../faturamento/conta-fatura.service';
 
 const cent = (d: Prisma.Decimal | null): number =>
   d !== null ? Math.round(Number(d.toString()) * 100) : 0;
@@ -54,6 +55,8 @@ export class NovacaoDecomposicaoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly catalogoFonte: CatalogoFonteService,
+    // Fatura Azit F2 (doc 02 §32.12 item 12): saldo do motor por item/parcela.
+    private readonly contaFatura: ContaFaturaService,
   ) {}
 
   // Taxa mensal de origem + comissão recorrente POR PARCELA congelada, por
@@ -193,6 +196,12 @@ export class NovacaoDecomposicaoService {
       },
     });
 
+    // Parcela (e item sem parcela) de fatura do modelo AZIT: o componente entra
+    // pelo SALDO do motor e com o encargo do motor (multa única já paga não volta;
+    // atualização só desde o último pagamento). Sem isto a novação cobrava de
+    // novo o que um pagamento em parte já tinha quitado.
+    const azit = await this.contaFatura.saldosEmAberto(contaId);
+
     const componentes: ComponenteNovacao[] = [];
     // Parcelas em aberto dos planos de acordo, agrupadas por acordo.
     const abertasPorAcordo = new Map<string, ComponenteNovacao[]>();
@@ -207,6 +216,10 @@ export class NovacaoDecomposicaoService {
       if (p.acordoId) continue; // coberta por acordo: entra pela explosão do acordo
       const c = porContrato.get(p.contratoId)!;
       const { situacao, dias } = situacaoDe(p.dataVencimento);
+      const saldoMotor = azit.porParcela.get(p.id);
+      if (saldoMotor && saldoMotor.total === 0) continue; // nada a novar desta parcela
+      // Encargo do motor só vale para o vencido (o futuro é trazido a valor presente).
+      const encargoMotor = (valor: number) => (saldoMotor && situacao === 'vencido' ? { encargoCalculado: valor } : {});
       const base = {
         contratoId: p.contratoId,
         faturaId: p.faturaId ?? undefined,
@@ -219,29 +232,34 @@ export class NovacaoDecomposicaoService {
 
       if (p.itemContratado.origem === 'ACORDO' && p.itemContratado.acordoOrigemId) {
         const grupo = abertasPorAcordo.get(p.itemContratado.acordoOrigemId) ?? [];
-        grupo.push({ ...base, produto: 'outro', origem: `Parcela ${p.display} do acordo`, valorNominal: cent(p.valorNominal) });
+        grupo.push({ ...base, produto: 'outro', origem: `Parcela ${p.display} do acordo`, valorNominal: saldoMotor ? saldoMotor.saldoNominal : cent(p.valorNominal), ...encargoMotor(saldoMotor?.encargo ?? 0) });
         abertasPorAcordo.set(p.itemContratado.acordoOrigemId, grupo);
         continue;
       }
 
-      const nominal = cent(p.valorNominal);
+      const nominal = saldoMotor ? saldoMotor.saldoNominal : cent(p.valorNominal);
       if (!c.ativoId) {
-        componentes.push({ ...base, produto: 'reembolso', origem: `Reembolso ${p.display} · ${c.numero}`, valorNominal: nominal });
+        componentes.push({ ...base, produto: 'reembolso', origem: `Reembolso ${p.display} · ${c.numero}`, valorNominal: nominal, ...encargoMotor(saldoMotor?.encargo ?? 0) });
         continue;
       }
       // Veículo — proteção embutida (ItemFatura SERVICO da parcela) sai como seguro.
+      // Fatura AZIT: cada parte pelo que FALTA dela (a cascata quita a proteção primeiro).
       const servico = p.itensFatura.filter((i) => i.tipo === 'SERVICO').reduce((s, i) => s + cent(i.valor), 0);
-      const protecao = Math.min(Math.max(0, servico), nominal);
-      componentes.push({
-        ...base,
-        produto: 'veiculo',
-        origem: `Parcela ${p.display} · ${c.ativo?.descricao ?? c.numero}`,
-        valorNominal: nominal - protecao,
-        // A4.1: a CR embutida (congelada na origem) sai do FUTURO no motor.
-        comissaoEmbutida: infoOrigem.get(p.contratoId)?.crPorParcela ?? 0,
-      });
+      const protecao = saldoMotor ? saldoMotor.saldoProtecao : Math.min(Math.max(0, servico), nominal);
+      const encargoProtecao = saldoMotor ? saldoMotor.itens.filter((i) => i.grupo === 'PROTECAO').reduce((s, i) => s + i.multa + i.atualizacao, 0) : 0;
+      if (nominal - protecao > 0 || !saldoMotor) {
+        componentes.push({
+          ...base,
+          produto: 'veiculo',
+          origem: `Parcela ${p.display} · ${c.ativo?.descricao ?? c.numero}`,
+          valorNominal: nominal - protecao,
+          // A4.1: a CR embutida (congelada na origem) sai do FUTURO no motor.
+          comissaoEmbutida: infoOrigem.get(p.contratoId)?.crPorParcela ?? 0,
+          ...encargoMotor((saldoMotor?.encargo ?? 0) - encargoProtecao),
+        });
+      }
       if (protecao > 0) {
-        componentes.push({ ...base, produto: 'seguro', origem: `Proteção veicular · ${p.display}`, valorNominal: protecao });
+        componentes.push({ ...base, produto: 'seguro', origem: `Proteção veicular · ${p.display}`, valorNominal: protecao, ...encargoMotor(encargoProtecao) });
       }
     }
 
@@ -257,7 +275,7 @@ export class NovacaoDecomposicaoService {
         id: true,
         numero: true,
         dataVencimento: true,
-        itensFatura: { where: { parcelaId: null }, select: { tipo: true, descricao: true, valor: true } },
+        itensFatura: { where: { parcelaId: null }, select: { id: true, tipo: true, descricao: true, valor: true } },
       },
     });
     for (const f of faturasVencidas) {
@@ -265,13 +283,18 @@ export class NovacaoDecomposicaoService {
       for (const i of f.itensFatura) {
         const produto: ProdutoNovacao =
           i.tipo === 'SERVICO' ? 'seguro' : i.tipo === 'INTERMEDIARIA' ? 'veiculo' : 'outro';
+        // Fatura AZIT: o item sem parcela entra pelo saldo do motor — a cascata
+        // costuma já tê-lo quitado num pagamento em parte (aí não entra).
+        const itemMotor = azit.faturaIds.has(f.id) ? azit.semParcela.find((x) => x.itemId === i.id) : undefined;
+        if (itemMotor && itemMotor.saldo + itemMotor.multa + itemMotor.atualizacao === 0) continue;
         componentes.push({
           origem: `${i.descricao} · fatura ${f.numero}`,
           produto,
           faturaId: f.id,
-          valorNominal: cent(i.valor),
+          valorNominal: itemMotor ? itemMotor.saldo : cent(i.valor),
           situacao: 'vencido',
           dias,
+          ...(itemMotor ? { encargoCalculado: itemMotor.multa + itemMotor.atualizacao } : {}),
         });
       }
     }

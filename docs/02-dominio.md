@@ -3600,10 +3600,67 @@ Nada disso altera a régua, o bloqueio (Regra 6) ou a POP; só o **link** que va
 11. **Origem OPERADOR da intenção:** existe no modelo, mas nenhuma tela cria Pix pelo operador
     nesta entrega (ele manda o link). A origem CONFERENCIA do pagamento é usada por "Conferir Pix
     no gateway".
-12. **Fluxos não revisados para fatura AZIT com pagamento em parte** (fora do escopo, verificar
-    antes de ligar em produção): acordo, novação, rescisão e quitação antecipada continuam lendo a
-    parcela como antes; a Carteira e a régua tratam a fatura parcial como já tratavam
-    (`FECHADA` com `valorPago` parcial).
+12. **Acordo, novação, rescisão, quitação e sinistro com fatura AZIT paga em parte — CORRIGIDO
+    (2026-11-15, após revisão independente).** O defeito: esses fluxos liam a parcela
+    (`valorNominal − valorPago`, encargo desde o vencimento) e cobravam de novo o que o Pix parcial
+    já tinha quitado. No roteiro do Vicente (fatura de R$ 1.049 vencida em 02/11, R$ 540 pagos em
+    07/11, conta em 09/11) o motor dá **532,08** e os fluxos davam 765,73 (acordo, novação, dívida
+    da rescisão) e 749,00 (quitação). O que mudou:
+    - **Uma leitura só, a do motor.** `ContaFaturaService.saldosEmAberto(conta, data)` devolve, por
+      parcela de fatura AZIT em aberto, o que falta (nominal, com a proteção separada), a multa e a
+      atualização na data (com o reinício da contagem a cada pagamento) e o principal já pago. A
+      conta por item é `saldosPorItem`, em `fatura-motor.ts` (Regra 16); o encargo da fatura é
+      repartido entre os itens pelo saldo, o último absorve o centavo.
+    - **Acordo:** seleção das vencidas, parcela vincenda e rateio do plano usam esse saldo (parcela
+      que a baixa já quitou está PAGA e não é selecionável).
+    - **Novação:** os componentes vencidos entram pelo saldo e pelo encargo do motor (veículo e
+      proteção separados); item de fatura sem parcela (reembolso, crédito) entra pelo saldo do item.
+    - **Rescisão:** a dívida usa o saldo e o encargo do motor na data-base; a base dos 20% passa a
+      contar o **principal já pago em parte** de parcela ainda aberta (antes só parcela inteira).
+    - **Sinistro:** a indenização cobre o que **falta** da parcela; a baixa grava `PagamentoFatura`
+      (origem nova `SINISTRO`, migração `20261115200000_fatura_azit_origem_sinistro`) e
+      `AlocacaoPagamento` nos itens da parcela, **soma** ao `valorPago` e a fatura só vira PAGA
+      quando o motor zerar — fatura com parcela de outro contrato continua em aberto pelo resto. Na
+      ficha, o pagamento aparece como "Quitado pela indenização do sinistro".
+    - **Quitação antecipada — recusa provisória (Regra 12).** Parcela que está em fatura AZIT já
+      disponível (FECHADA) **não é antecipada**: a operação é recusada (422
+      `parcela_em_fatura_pix_sob_demanda`) com a explicação na tela — essa fatura é paga pela página,
+      no valor do dia; depois, antecipam-se as demais. Parcelas que ainda não entraram em fatura
+      seguem como antes. **Falta decidir e construir** a baixa própria da quitação nessa fatura
+      (pagamento registrado com origem própria, e se o desconto de antecipação vale para parcela já
+      faturada). Como a quitação não mexe em fatura AZIT em aberto, ela não cancela Pix.
+    - **Pix ativos:** acordo, novação, rescisão e sinistro, ao efetivar, tiram a validade de
+      **todas** as intenções ativas da conta (SUBSTITUIDA) e mandam o cancelamento no gateway para a
+      fila. Pix já pago continua sendo aceito ("o dinheiro manda").
+    - **Rescisão de fatura mista:** item que já recebeu pagamento **não é apagado** — fica na fatura
+      pelo valor pago (a alocação continua apontando para ele); só o que não recebeu nada sai, e o
+      operador é avisado.
+    - **Excedente:** dinheiro sem fatura em aberto vai para a fatura AZIT **viva** mais recente
+      (FECHADA ou paga, não excluída); só se não houver nenhuma cai na mais recente de qualquer
+      estado, com o aviso à carteira que já existia.
+    - **Fatura fantasma:** fatura que o banco diz PAGA sem os pagamentos que a quitam (efeito da
+      quitação e do sinistro antigos) fica fora da conta do motor e não reaparece em aberto na
+      página.
+    - **Testes:** cada fluxo tem o caso acima rodando "antes" (765,73) e "depois" (532,08) em
+      `operacoes/fluxos-fatura-azit.spec.ts`; saldo por parcela em
+      `faturamento/conta-fatura.service.spec.ts`; motor em `fatura-motor.test.ts`.
+
+    **Ainda aberto neste item (não entrou, não trava os fluxos acima):**
+    - Cartão de vencidas da Carteira e `valorVencido` da régua seguem pelo valor cheio da fatura,
+      sem abater o pagamento em parte.
+    - `saldoDevedor` e `valorEmAtraso` da ficha e do resumo do contrato não abatem o parcial.
+    - O extrato não mostra o pagamento em parte como linha própria.
+    - O bloco "Pix sob demanda" da ficha não aparece em fatura extinta (renegociada, novada,
+      rescindida) que tenha recebido Pix.
+    - **Sinistro e a mora da parcela vencida — decisão do Luís.** A indenização sempre cobriu só o
+      nominal da parcela. No modelo antigo a fatura virava PAGA e a mora sumia sem registro; no
+      modelo AZIT a multa e a atualização da parcela vencida **continuam devidas na fatura** (ela
+      segue em aberto só pelo encargo, visível na página e na ficha, e fica fora de um acordo
+      posterior, porque a parcela já está paga). Decidir: a indenização paga também o encargo, o
+      encargo é dispensado, ou fica como está.
+    - Quitação antecipada **não cobra mora** de parcela vencida (já era assim antes da F2).
+    - Nesses fluxos o encargo é repartido por parcela; no motor é por fatura. A soma fecha, mas a
+      repartição entre parcelas pode diferir em centavos de uma conta feita parcela a parcela.
 13. **Modo simulado:** o id de cliente simulado usava 8 caracteres do titular e colidia entre
     cadastros criados juntos; passou a usar o id inteiro. Só afeta ambiente sem chave do gateway.
 

@@ -179,6 +179,26 @@ describe('BaixaContaService.aplicarPagamentoDeIntencao', () => {
     expect(tx.fatura.update).not.toHaveBeenCalled();
   });
 
+  it('excedente sem nada em aberto NÃO cai em fatura extinta: procura a AZIT viva mais recente; sem nenhuma, vai na mais recente e a carteira é avisada', async () => {
+    const viva = montar(contaFixture([]));
+    await viva.service.aplicarPagamentoDeIntencao(job(50000));
+    expect(viva.tx.fatura.findFirst).toHaveBeenCalledTimes(1);
+    expect(viva.tx.fatura.findFirst).toHaveBeenCalledWith({
+      where: { contaId: 'conta-1', modeloEncargo: 'AZIT', deletedAt: null, status: { in: ['FECHADA', 'PAGA', 'PAGA_EM_ATRASO'] } },
+      orderBy: { dataVencimento: 'desc' },
+      select: { id: true },
+    });
+
+    // Conta só com faturas extintas (acordo, novação, rescisão): cai na mais recente, com aviso.
+    const extinta = montar(contaFixture([]));
+    extinta.tx.fatura.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'f-novada' });
+    const r = await extinta.service.aplicarPagamentoDeIntencao(job(50000));
+    expect(r.resultado).toBe('so_excedente');
+    expect(extinta.tx.fatura.findFirst).toHaveBeenCalledTimes(2);
+    expect(criados(extinta.tx)[0]).toMatchObject({ faturaId: 'f-novada', valorExcedente: '500.00' });
+    expect(extinta.notificacao.emitir).toHaveBeenCalledWith(expect.objectContaining({ tipo: 'DINHEIRO', area: 'CARTEIRA_COBRANCA' }));
+  });
+
   it('quitação: contrato sem parcela em aberto é ENCERRADO por QUITACAO', async () => {
     const { service, tx } = montar(contaFixture([F2()]), { parcelasAbertasDoContrato: 0 });
     await service.aplicarPagamentoDeIntencao(job(107243));

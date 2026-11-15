@@ -28,6 +28,7 @@ import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { AssinaturaService } from '../assinatura/assinatura.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
+import { IntencaoPagamentoService } from '../faturamento/intencao-pagamento.service';
 import { NovacaoDecomposicaoService } from './novacao-decomposicao.service';
 import { SimularNovacaoBody } from './dto/novacao.dto';
 import { parcelaParaApi } from '../contrato/contrato.mapper';
@@ -94,6 +95,7 @@ export class NovacaoService implements OnModuleInit {
     private readonly catalogoFonte: CatalogoFonteService,
     private readonly decomposicao: NovacaoDecomposicaoService,
     @InjectQueue(QUEUE_NAMES.EFETIVAR_ACORDO) private readonly filaAcordo: Queue,
+    private readonly intencoes: IntencaoPagamentoService,
   ) {}
 
   onModuleInit() {
@@ -576,6 +578,8 @@ export class NovacaoService implements OnModuleInit {
     // Falha na remoção não propaga (removerCobranca só loga): cobrança órfã é
     // menos grave do que uma ativação pela metade.
     for (const chargeId of cobrancasNovadas) await this.asaas.removerCobranca(chargeId);
+    // As faturas antigas viraram NOVADAS: os Pix sob demanda ativos da conta deixam de valer.
+    await this.intencoes.invalidarAtivasDaConta(novacao.contaId, `novação ${novacaoId} ativada`);
 
     // Etapa 2 — cronogramas (ativarComCronograma é idempotente; job tem retry).
     // Data da 1ª parcela (15/10): a ESCOLHIDA (gravada no contrato — pode ter sido

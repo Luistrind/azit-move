@@ -1493,6 +1493,20 @@ eventos dessa referência são só ACK. Campos lidos de `payment`: `id`, `value`
 
 `POST /api/v1/dev/fechar-faturas` devolve agora `{ fechadas, modelo }` (`AZIT` com a chave ligada).
 
+### Operações com fatura AZIT paga em parte (doc 02 §32.12 item 12)
+
+Acordo, novação, rescisão e sinistro passam a calcular a parcela de fatura AZIT pelo saldo do
+motor (as rotas e os formatos não mudaram; mudam os valores quando há Pix parcial). Ao efetivar,
+as intenções ativas da conta viram `SUBSTITUIDA` e o cancelamento vai para a fila
+`intencao-pagamento` (job `cancelar`).
+
+| Rota | Mudança |
+|---|---|
+| Simulação e efetivação de quitação antecipada | 422 `parcela_em_fatura_pix_sob_demanda` quando alguma parcela pedida está em fatura AZIT `FECHADA`; `mensagem` cita as parcelas e as faturas |
+| `GET /api/v1/faturas/:id` | `azit.pagamentos[].origem` ganha o valor `SINISTRO` (baixa pela indenização, sem Pix) |
+
+Migração `20261115200000_fatura_azit_origem_sinistro`: `ALTER TYPE "OrigemPagamentoFatura" ADD VALUE 'SINISTRO'`.
+
 ### Variáveis de ambiente novas (backend)
 
 | Variável | Padrão | Uso |

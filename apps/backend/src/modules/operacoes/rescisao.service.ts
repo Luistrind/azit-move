@@ -14,6 +14,8 @@ import {
 import { PrismaService } from '../../database/prisma.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { AsaasService } from '../asaas/asaas.service';
+import { ContaFaturaService } from '../faturamento/conta-fatura.service';
+import { IntencaoPagamentoService } from '../faturamento/intencao-pagamento.service';
 
 const reais = (c: number) => centavosParaReaisString(c);
 const cent = (d: Prisma.Decimal | null | undefined): number => (d ? Math.round(Number(d.toString()) * 100) : 0);
@@ -49,6 +51,10 @@ export class RescisaoService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly aprovacao: AprovacaoService,
     private readonly asaas: AsaasService,
+    // Fatura Azit F2 (doc 02 §32.12 item 12): saldo do motor na data-base e
+    // cancelamento dos Pix ativos ao efetivar.
+    private readonly contaFatura: ContaFaturaService,
+    private readonly intencoes: IntencaoPagamentoService,
   ) {}
 
   onModuleInit() {
@@ -98,8 +104,16 @@ export class RescisaoService implements OnModuleInit {
       }),
     ]);
 
+    // Parcela em fatura do modelo AZIT: a dívida é o SALDO do motor na data-base
+    // (o já pago em parte não é cobrado de novo) e o principal que esse parcial
+    // quitou entra na base dos 20%, mesmo com a parcela ainda em aberto.
+    const azit = await this.contaFatura.saldosEmAberto(contrato.contaId, dataBase);
+    const saldoMotor = (parcelaId: string) => azit.porParcela.get(parcelaId);
+    const principalParcial = abertas.reduce((s, p) => s + (saldoMotor(p.id)?.principalPago ?? 0), 0);
+
     const acerto = calcularAcertoRescisao({
       dataBase,
+      principalParcial,
       entradaPaga: cent(contrato.valorEntradaPago),
       parcelasPagas: pagas.map((p) => ({
         display: p.display,
@@ -109,13 +123,22 @@ export class RescisaoService implements OnModuleInit {
         // Proteção veicular embutida: item SERVICO da própria parcela (mesma regra da decomposição da novação).
         protecao: Math.min(cent(p.valorNominal), p.itensFatura.filter((i) => i.tipo === 'SERVICO').reduce((s, i) => s + cent(i.valor), 0)),
       })),
-      parcelasAbertas: abertas.map((p) => ({ id: p.id, display: p.display, valorNominal: cent(p.valorNominal), dataVencimento: dataCalendarioUTC(p.dataVencimento) })),
+      parcelasAbertas: abertas.map((p) => {
+        const s = saldoMotor(p.id);
+        return {
+          id: p.id,
+          display: p.display,
+          valorNominal: cent(p.valorNominal),
+          dataVencimento: dataCalendarioUTC(p.dataVencimento),
+          ...(s ? { saldoNominal: s.saldoNominal, encargoCalculado: s.encargo } : {}),
+        };
+      }),
       taxaMultaPercent: Number(contrato.taxaMultaAtraso.toString()),
       taxaJurosMensalPercent: Number(contrato.taxaJurosAtraso.toString()),
     });
     const maisAntiga = abertas[0]?.dataVencimento;
     const diasAtraso = maisAntiga ? Math.max(0, diasCalendarioEntre(dataCalendarioUTC(maisAntiga), dataHojeBrasil())) : 0;
-    const saldoEmAberto = abertas.reduce((s, p) => s + cent(p.valorNominal), 0);
+    const saldoEmAberto = abertas.reduce((s, p) => s + (saldoMotor(p.id)?.saldoNominal ?? cent(p.valorNominal)), 0);
     return { contrato, acerto, diasAtraso, saldoEmAberto };
   }
 
@@ -243,10 +266,23 @@ export class RescisaoService implements OnModuleInit {
           await tx.fatura.update({ where: { id: f.id }, data: { status: 'RESCINDIDA' } });
           continue;
         }
-        // Mista: remove os itens deste contrato e recalcula o total.
-        const retirado = deste.reduce((s, i) => s + cent(i.valor), 0);
-        await tx.itemFatura.deleteMany({ where: { id: { in: deste.map((i) => i.id) } } });
-        const restante = f.itensFatura.filter((i) => !deste.some((d) => d.id === i.id)).reduce((s, i) => s + cent(i.valor), 0);
+        // Mista: tira os itens deste contrato e recalcula o total. Item que JÁ
+        // RECEBEU pagamento (AlocacaoPagamento da Fatura Azit) NÃO é apagado — o
+        // rastro do Pix sumiria (a FK é SET NULL): ele fica na fatura pelo valor
+        // que foi pago, e só o que ainda faltava dele sai.
+        const alocado = new Map<string, number>(
+          (await tx.alocacaoPagamento.groupBy({ by: ['itemFaturaId'], where: { itemFaturaId: { in: deste.map((i) => i.id) } }, _sum: { valor: true } }))
+            .map((a: { itemFaturaId: string | null; _sum: { valor: Prisma.Decimal | null } }) => [a.itemFaturaId ?? '', cent(a._sum.valor)] as [string, number])
+            .filter(([, v]: [string, number]) => v > 0),
+        );
+        const semPagamento = deste.filter((i) => !alocado.has(i.id));
+        const comPagamento = deste.filter((i) => alocado.has(i.id));
+        const mantido = comPagamento.reduce((s, i) => s + (alocado.get(i.id) ?? 0), 0);
+        const retirado = deste.reduce((s, i) => s + cent(i.valor), 0) - mantido;
+        if (semPagamento.length) await tx.itemFatura.deleteMany({ where: { id: { in: semPagamento.map((i) => i.id) } } });
+        for (const i of comPagamento) await tx.itemFatura.update({ where: { id: i.id }, data: { valor: reais(alocado.get(i.id) ?? 0) } });
+        if (comPagamento.length) avisos.push(`Fatura #${f.numero}: ${formatCurrency(mantido)} já pagos em itens deste contrato continuam registrados nela (o pagamento não é apagado); só o que faltava saiu.`);
+        const restante = f.itensFatura.filter((i) => !deste.some((d) => d.id === i.id)).reduce((s, i) => s + cent(i.valor), 0) + mantido;
         const data: Prisma.FaturaUpdateInput = { valorTotal: reais(restante) };
         if (f.asaasChargeId) {
           cobrancasParaRemover.push(f.asaasChargeId);
@@ -304,6 +340,8 @@ export class RescisaoService implements OnModuleInit {
 
     // Como na novação: falha na remoção não propaga (removerCobranca só loga).
     for (const chargeId of cobrancasParaRemover) await this.asaas.removerCobranca(chargeId);
+    // A dívida da conta mudou: os Pix sob demanda ativos deixam de valer (cancelados pela fila).
+    await this.intencoes.invalidarAtivasDaConta(contrato.contaId, `rescisão do contrato ${contrato.numero}`);
     this.logger.log(`Contrato ${contrato.numero} rescindido (rescisão ${r.id}); ${cobrancasParaRemover.length} cobrança(s) removida(s) do Asaas`);
     return { numero: contrato.numero, acerto, avisos };
   }

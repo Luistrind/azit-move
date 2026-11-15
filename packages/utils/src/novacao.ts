@@ -66,6 +66,13 @@ export interface ComponenteNovacao {
   taxaMultaPercent?: number; // vencido — default 2 (%)
   taxaJurosMensalPercent?: number; // vencido — default 1 (% a.m. pró-rata)
   taxaVpMensal?: number; // futuro — fração a.m. de origem (0/ausente = nominal)
+  /**
+   * Fatura AZIT (doc 02 §32.4-A): encargo JÁ calculado pelo motor para este
+   * componente (multa pendente/nova + atualização desde o último pagamento),
+   * com `valorNominal` = saldo que falta. Quando vem, o vencido NÃO refaz a
+   * conta "nominal + mora desde o vencimento" (cobraria de novo o já pago).
+   */
+  encargoCalculado?: number; // centavos
 }
 
 /** Parcela em aberto de um plano de acordo (produto sai do rateio, não daqui). */
@@ -134,9 +141,10 @@ export function valorarComponenteNovacao(
   c: Omit<ComponenteNovacao, 'produto'> & { produto?: ProdutoNovacao },
 ): { valor: number; ajuste: number } {
   if (c.situacao === 'vencido') {
-    const encargo = Math.round(
-      calcularEncargoAtraso(c.valorNominal, c.dias, c.taxaMultaPercent ?? 2, c.taxaJurosMensalPercent ?? 1),
-    );
+    const encargo =
+      c.encargoCalculado !== undefined
+        ? Math.max(0, Math.round(c.encargoCalculado))
+        : Math.round(calcularEncargoAtraso(c.valorNominal, c.dias, c.taxaMultaPercent ?? 2, c.taxaJurosMensalPercent ?? 1));
     return { valor: c.valorNominal + encargo, ajuste: encargo };
   }
   const vp = Math.round(valorPresenteMensal(c.valorNominal, c.taxaVpMensal ?? 0, c.dias));

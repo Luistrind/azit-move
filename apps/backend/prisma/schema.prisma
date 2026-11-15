@@ -218,10 +218,12 @@ enum CanalEnvioLinkFatura {
 }
 
 // Fatura Azit F2 (doc 02 §32.5): de onde veio a baixa. GATEWAY = webhook do
-// Pix de uma intenção; CONFERENCIA = operador conferiu o pagamento na ficha.
+// Pix de uma intenção; CONFERENCIA = operador conferiu o pagamento na ficha;
+// SINISTRO = indenização do sinistro quitou a parcela (baixa interna, sem Pix).
 enum OrigemPagamentoFatura {
   GATEWAY
   CONFERENCIA
+  SINISTRO
 }
 
 // Encargo calculado pela Azit (doc 02 §32.4) que uma alocação quitou.

@@ -66,3 +66,44 @@ describe('calcularAcertoRescisao', () => {
     expect(a.saldoRemanescente).toBe(0);
   });
 });
+
+describe('rescisão com fatura AZIT paga em parte (doc 02 §32.4-A)', () => {
+  // Caso do Vicente: parcela de nominal 749,00 (veículo 699 + proteção 50) numa fatura de 1.049 vencida em
+  // 02/11; R$ 540 pagos em 07/11 quitaram multa, atualização, proteção, acessórios e 167,27 do veículo.
+  const base = { dataBase: '2026-11-09', entradaPaga: 0, parcelasPagas: [], ...taxas };
+
+  it('ANTES (sem o saldo do motor): cobra nominal cheio + mora desde o vencimento = 765,73 — em dobro', () => {
+    const a = calcularAcertoRescisao({ ...base, parcelasAbertas: [{ id: 'pv', display: '22/104', valorNominal: 74_900, dataVencimento: '2026-11-02' }] });
+    expect(a.dividaTotal).toBe(76_573);
+  });
+
+  it('DEPOIS: a dívida é o saldo do motor (531,73 + 0,35 = 532,08)', () => {
+    const a = calcularAcertoRescisao({
+      ...base,
+      parcelasAbertas: [{ id: 'pv', display: '22/104', valorNominal: 74_900, dataVencimento: '2026-11-02', saldoNominal: 53_173, encargoCalculado: 35 }],
+    });
+    expect(a.vencidas).toEqual([{ id: 'pv', display: '22/104', dataVencimento: '2026-11-02', diasAtraso: 7, valorNominal: 53_173, encargo: 35, total: 53_208 }]);
+    expect(a.dividaVencida).toBe(53_173);
+    expect(a.encargosVencidos).toBe(35);
+    expect(a.dividaTotal).toBe(53_208);
+  });
+
+  it('a base dos 20% conta o principal já pago da parcela ainda em aberto (167,27), sem proteção nem encargo', () => {
+    const a = calcularAcertoRescisao({
+      ...base,
+      entradaPaga: 500_000,
+      principalParcial: 16_727,
+      parcelasAbertas: [{ id: 'pv', display: '22/104', valorNominal: 74_900, dataVencimento: '2026-11-02', saldoNominal: 53_173, encargoCalculado: 35 }],
+    });
+    expect(a.principalParcial).toBe(16_727);
+    expect(a.principalPago).toBe(516_727);
+    expect(a.valorCredito).toBe(Math.round(516_727 * 0.2));
+    expect(a.parcelasPagas).toBe(0); // a parcela não virou "paga" — só o principal dela entrou na base
+  });
+
+  it('parcela futura paga em parte: o que fica de fora é só o saldo', () => {
+    const a = calcularAcertoRescisao({ ...base, parcelasAbertas: [{ id: 'p', display: '23/104', valorNominal: 74_900, dataVencimento: '2026-11-16', saldoNominal: 34_900 }] });
+    expect(a.futuras).toEqual({ quantidade: 1, valorNominal: 34_900 });
+    expect(a.dividaTotal).toBe(0);
+  });
+});

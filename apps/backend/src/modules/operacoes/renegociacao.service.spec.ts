@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { formatCurrency } from '@azit/utils';
 import { RenegociacaoService } from './renegociacao.service';
+import { intencoesStub, semAzit } from './azit.fixture-spec';
 
 // Detalhe do acordo (tela Renegociações, 21/10/2026): o que o operador vê ao
 // clicar — parcelas cobertas com a composição da fatura, entrada, cotas novas
@@ -56,7 +57,7 @@ function montar(acordo: unknown, extras: { aprovacao?: unknown; faturasSnap?: un
       novacao: { findFirst: jest.fn().mockResolvedValue(extras.novacao ?? null) },
     },
   };
-  const service = new RenegociacaoService(prisma as never, {} as never, {} as never, {} as never);
+  const service = new RenegociacaoService(prisma as never, {} as never, {} as never, {} as never, semAzit() as never, intencoesStub() as never);
   return { service, prisma };
 }
 
@@ -330,7 +331,7 @@ describe('parcela durante o acordo (prévia)', () => {
   function montarComFatura(proxima: { venc: string; total: number } | null) {
     const findFirst = jest.fn().mockResolvedValue(proxima ? { dataVencimento: dia(proxima.venc), valorTotal: dec(proxima.total) } : null);
     const prisma = { db: { fatura: { findFirst } } };
-    const service = new RenegociacaoService(prisma as never, {} as never, {} as never, {} as never);
+    const service = new RenegociacaoService(prisma as never, {} as never, {} as never, {} as never, semAzit() as never, intencoesStub() as never);
     return { service, findFirst };
   }
 

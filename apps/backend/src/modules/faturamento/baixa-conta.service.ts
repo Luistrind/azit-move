@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { aplicarPagamentoNaConta, diaBrasil, formatCurrency, imputarEmNiveis, inicioDiaUTC, reconstituirFatura, type BaixaFatura } from '@azit/utils';
+import { aplicarPagamentoNaConta, diaBrasil, formatCurrency, imputarEmNiveis, inicioDiaUTC, reconstituirFatura, saldoNominal, type BaixaFatura } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
 import { cumprirAcordosSePagos } from '../operacoes/acordo-cumprimento';
@@ -118,7 +118,13 @@ export class BaixaContaService {
       // quitado): o valor inteiro é excedente, registrado na fatura AZIT mais
       // recente da conta para não ficar sem rastro (§32.4-A: nunca se recusa).
       if (baixas.length === 0) {
-        const ultimaFatura = await tx.fatura.findFirst({ where: { contaId, modeloEncargo: 'AZIT' }, orderBy: { dataVencimento: 'desc' }, select: { id: true } });
+        // Só em fatura VIVA (em aberto ou paga): excedente em fatura extinta por
+        // acordo, novação ou rescisão ficaria escondido do operador e do cliente.
+        // Sem nenhuma viva, vai na mais recente que houver — a carteira é avisada
+        // de qualquer forma (todo excedente gera aviso, abaixo).
+        const ultimaFatura =
+          (await tx.fatura.findFirst({ where: { contaId, modeloEncargo: 'AZIT', deletedAt: null, status: { in: ['FECHADA', 'PAGA', 'PAGA_EM_ATRASO'] } }, orderBy: { dataVencimento: 'desc' }, select: { id: true } })) ??
+          (await tx.fatura.findFirst({ where: { contaId, modeloEncargo: 'AZIT' }, orderBy: { dataVencimento: 'desc' }, select: { id: true } }));
         if (!ultimaFatura) throw new Error(`Conta ${contaId} sem fatura do modelo AZIT para registrar o pagamento ${job.pagamentoId}`);
         await tx.pagamentoFatura.create({
           data: {
@@ -181,6 +187,53 @@ export class BaixaContaService {
       });
     }
     return { resultado: r.resultado, faturas: r.baixas.length, excedente: r.excedente };
+  }
+
+  // Baixa INTERNA (sem Pix) de UMA parcela que está numa fatura AZIT em aberto —
+  // hoje, a indenização do sinistro (doc 02 §32.12 item 12). Registra o pagamento
+  // na fatura (PagamentoFatura + AlocacaoPagamento nos itens DA PARCELA, pelo que
+  // faltava de cada um), SOMA ao valorPago e só marca a fatura PAGA quando o
+  // motor zerar — fatura com parcela de outro contrato ou com encargo pendente
+  // continua em aberto. Quem chama cuida da parcela e do recebível; roda dentro
+  // da transação de quem chama. `null` = a parcela não está em fatura AZIT em aberto.
+  async baixarParcelaPorOperacao(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tx: any,
+    p: { contaId: string; parcelaId: string; origem: 'SINISTRO'; dia: string },
+  ): Promise<{ faturaId: string; valor: number; faturaQuitada: boolean } | null> {
+    const conta = await this.contaFatura.carregar(p.contaId, { db: tx });
+    const fatura = conta.faturas.find((f) => f.status === 'FECHADA' && f.itens.some((it) => it.parcelaId === p.parcelaId));
+    if (!fatura) return null;
+    const antes = reconstituirFatura(fatura.motor);
+    const alocacoes = fatura.itens
+      .filter((it) => it.parcelaId === p.parcelaId)
+      .map((it) => ({ alvo: 'ITEM' as const, itemId: it.id, valor: antes.saldos.get(it.id) ?? 0, nivel: conta.parametros.cascata.indexOf(it.grupo) + 1, quitou: true }))
+      .filter((a) => a.valor > 0);
+    const valor = alocacoes.reduce((s, a) => s + a.valor, 0);
+    const dataPagamento = inicioDiaUTC(p.dia);
+    if (valor > 0) {
+      await tx.pagamentoFatura.create({
+        data: {
+          faturaId: fatura.id,
+          valor: reais(valor),
+          dataPagamento,
+          origem: p.origem,
+          alocacoes: { create: alocacoes.map((a) => ({ itemFaturaId: a.itemId, tipoEncargo: null, valor: reais(a.valor), nivel: a.nivel, quitou: true })) },
+        },
+      });
+    }
+    // Refaz a conta COM este pagamento: quitada = sem saldo de face e sem encargo pendente.
+    const depois = reconstituirFatura({ ...fatura.motor, pagamentos: [...fatura.motor.pagamentos, ...(valor > 0 ? [{ data: p.dia, valor, alocacoes }] : [])] });
+    const faturaQuitada = saldoNominal(depois) === 0 && depois.pendente.multa === 0 && depois.pendente.atualizacao === 0;
+    const algumAtraso = depois.pagamentos.some((x) => x.data > fatura.vencimento);
+    await tx.fatura.update({
+      where: { id: fatura.id },
+      data: {
+        valorPago: reais(fatura.valorPago + valor),
+        ...(faturaQuitada ? { status: algumAtraso ? ('PAGA_EM_ATRASO' as const) : ('PAGA' as const), dataPagamento } : {}),
+      },
+    });
+    return { faturaId: fatura.id, valor, faturaQuitada };
   }
 
   // Efeitos nas PARCELAS da fatura (os mesmos da conciliação antiga): a parcela

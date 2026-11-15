@@ -123,6 +123,20 @@ export class IntencaoPagamentoService {
     });
   }
 
+  // A dívida da conta MUDOU por uma operação (acordo, novação, rescisão,
+  // sinistro efetivados): todos os Pix ativos deixam de corresponder ao que se
+  // deve. Marca SUBSTITUIDA e manda o cancelamento no gateway para a fila —
+  // chamar DEPOIS da transação da operação. Se o cliente pagar um deles antes
+  // do cancelamento, o dinheiro é aceito e aplicado no que ainda estiver em aberto.
+  async invalidarAtivasDaConta(contaId: string, motivo: string): Promise<number> {
+    const ativas = await this.prisma.db.intencaoPagamento.findMany({ where: { contaId, situacao: 'ATIVA' }, select: { id: true, gatewayId: true } });
+    if (ativas.length === 0) return 0;
+    await this.prisma.db.intencaoPagamento.updateMany({ where: { id: { in: ativas.map((a) => a.id) }, situacao: 'ATIVA' }, data: { situacao: 'SUBSTITUIDA' } });
+    for (const a of ativas) await this.enfileirarCancelamento(a.id, a.gatewayId);
+    this.logger.log(`Conta ${contaId}: ${ativas.length} Pix ativo(s) cancelado(s) — ${motivo}`);
+    return ativas.length;
+  }
+
   // Manda para a fila o cancelamento, no gateway, do Pix de uma intenção que
   // deixou de valer. jobId pelo Pix: pedir duas vezes não gera dois jobs.
   async enfileirarCancelamento(intencaoId: string, gatewayId: string | null): Promise<void> {

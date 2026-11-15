@@ -11,6 +11,7 @@ export enum ModeloEncargoFatura {
 export enum OrigemPagamentoFatura {
   GATEWAY = 'GATEWAY',
   CONFERENCIA = 'CONFERENCIA',
+  SINISTRO = 'SINISTRO', // indenização do sinistro quitou a parcela (baixa interna, sem Pix)
 }
 
 // Encargo calculado pela Azit que uma alocação quitou (§32.4).

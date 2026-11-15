@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { RescisaoService } from './rescisao.service';
+import { intencoesStub, semAzit } from './azit.fixture-spec';
 
 // Rescisão por inadimplência (doc 02 §29, decisões Luís 04/11/2026). Sem banco:
 // a conta é de @azit/utils (testada lá); aqui conferimos os fatos que o service
@@ -41,7 +42,9 @@ function montar(over: Partial<typeof contrato> = {}) {
       ]),
       update: jest.fn().mockResolvedValue({}),
     },
-    itemFatura: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    itemFatura: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }), update: jest.fn().mockResolvedValue({}) },
+    // Nenhum item recebeu pagamento (faturas do modelo antigo): tudo como antes.
+    alocacaoPagamento: { groupBy: jest.fn().mockResolvedValue([]) },
     contratoCredito: { count: jest.fn().mockResolvedValue(0), update: jest.fn().mockResolvedValue({}) },
     acordo: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn().mockResolvedValue({}) },
     ativo: { update: jest.fn().mockResolvedValue({}) },
@@ -66,7 +69,7 @@ function montar(over: Partial<typeof contrato> = {}) {
   };
   const aprovacao = { registrarEfetivador: jest.fn(), criar: jest.fn().mockResolvedValue({ id: 'ap1', status: 'pendente' }) };
   const asaas = { removerCobranca: jest.fn().mockResolvedValue(true) };
-  const service = new RescisaoService(prisma as never, aprovacao as never, asaas as never);
+  const service = new RescisaoService(prisma as never, aprovacao as never, asaas as never, semAzit() as never, intencoesStub() as never);
   return { service, prisma, tx, aprovacao, asaas };
 }
 

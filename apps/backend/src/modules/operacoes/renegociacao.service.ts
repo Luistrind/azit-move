@@ -24,6 +24,8 @@ import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { CatalogoFonteService } from '../catalogo/catalogo-fonte.service';
 import { parcelaParaApi } from '../contrato/contrato.mapper';
 import { novoTokenFatura } from '../cobranca/fatura-link';
+import { ContaFaturaService } from '../faturamento/conta-fatura.service';
+import { IntencaoPagamentoService } from '../faturamento/intencao-pagamento.service';
 
 const reais = (c: number) => centavosParaReaisString(c);
 const cent = (d: Prisma.Decimal | null): number =>
@@ -125,6 +127,10 @@ export class RenegociacaoService implements OnModuleInit {
     private readonly asaas: AsaasService,
     private readonly aprovacao: AprovacaoService,
     private readonly catalogoFonte: CatalogoFonteService,
+    // Fatura Azit F2 (doc 02 §32.12 item 12): saldo do motor para parcela de
+    // fatura AZIT paga em parte, e cancelamento dos Pix ativos ao efetivar.
+    private readonly contaFatura: ContaFaturaService,
+    private readonly intencoes: IntencaoPagamentoService,
   ) {}
 
   // Frequência HERDADA do contrato principal da conta (doc 02 §7.7, 2026-08-18):
@@ -304,6 +310,10 @@ export class RenegociacaoService implements OnModuleInit {
     }
 
     const hoje = this.hojeUTC();
+    // Parcela de fatura do modelo AZIT (Pix sob demanda): o que falta e o encargo
+    // vêm do MOTOR — pagamento em parte já abateu itens e encargos, e somar
+    // "nominal cheio + mora desde o vencimento" cobraria de novo o já pago.
+    const azit = await this.contaFatura.saldosEmAberto(contaId);
     const contratos = [];
     let valorTotal = 0;
     let valorNominalTotal = 0;
@@ -321,9 +331,13 @@ export class RenegociacaoService implements OnModuleInit {
       const multaPct = Number(c.taxaMultaAtraso.toString()) / 100;
       const jurosMensalPct = Number(c.taxaJurosAtraso.toString()) / 100;
       const comMora = parcelas.map((p) => {
-        const nominal = cent(p.valorNominal);
         // Dias de CALENDÁRIO (correção 31/08) — venceu ontem = 1 dia de mora.
         const diasAtraso = diasAtrasoCalendario(p.dataVencimento);
+        const saldoMotor = azit.porParcela.get(p.id);
+        if (saldoMotor) {
+          return { ...p, nominal: saldoMotor.saldoNominal, diasAtraso, encargo: saldoMotor.encargo, atualizado: saldoMotor.total };
+        }
+        const nominal = cent(p.valorNominal);
         // Fonte ÚNICA da fórmula (Bloco C da auditoria, P2-16): mesmo cálculo
         // da fatura/novação — antes era reimplementada aqui.
         const encargo = Math.round(
@@ -412,7 +426,7 @@ export class RenegociacaoService implements OnModuleInit {
         dataVencimento: true,
         parcelas: {
           where: { status: null, acordoId: null, contratoId: { in: contratoIds } },
-          select: { display: true, valorNominal: true, contrato: { select: { numero: true } } },
+          select: { id: true, display: true, valorNominal: true, contrato: { select: { numero: true } } },
         },
       },
     });
@@ -420,7 +434,9 @@ export class RenegociacaoService implements OnModuleInit {
       .filter((f) => f.parcelas.length > 0)
       .slice(0, 1) // só a próxima fatura (doc 02 §7.7, 09/09)
       .map((f) => {
-        const nominal = f.parcelas.reduce((s, p) => s + cent(p.valorNominal), 0);
+        // Vincenda já paga em parte (fatura AZIT): entra pelo que falta, não pelo nominal.
+        const falta = (p: { id: string; valorNominal: Prisma.Decimal }) => azit.porParcela.get(p.id)?.saldoNominal ?? cent(p.valorNominal);
+        const nominal = f.parcelas.reduce((s, p) => s + falta(p), 0);
         return {
           faturaId: f.id,
           numero: f.numero as number | null,
@@ -431,7 +447,7 @@ export class RenegociacaoService implements OnModuleInit {
           itens: f.parcelas.map((p) => ({
             display: p.display,
             contratoNumero: p.contrato.numero,
-            valorAtualizado: cent(p.valorNominal),
+            valorAtualizado: falta(p),
           })),
         };
       });
@@ -719,10 +735,13 @@ export class RenegociacaoService implements OnModuleInit {
       origemCapitalId: string | null; // null = contrato sem ativo (RP — 12/09)
       faturaIds: string[];
     }[] = [];
+    // Rateio do plano entre os contratos: pelo que FALTA de cada um (fatura AZIT
+    // paga em parte entra pelo saldo do motor, não pelo nominal cheio).
+    const azitEfetivar = await this.contaFatura.saldosEmAberto(acordo.contaId);
     for (const c of contratos) {
       const parcelas = await this.prisma.db.parcela.findMany({
         where: { contratoId: c.id, status: null, acordoId: null, ...filtroCobertura },
-        select: { valorNominal: true, faturaId: true },
+        select: { id: true, valorNominal: true, faturaId: true },
       });
       if (parcelas.length === 0) continue;
       // Recebível do acordo nasce sem origem de capital (doc 02 §19, 20/09): o
@@ -736,7 +755,7 @@ export class RenegociacaoService implements OnModuleInit {
         : null;
       porContrato.push({
         contratoId: c.id,
-        atraso: parcelas.reduce((s, p) => s + cent(p.valorNominal), 0),
+        atraso: parcelas.reduce((s, p) => s + (azitEfetivar.porParcela.get(p.id)?.saldoNominal ?? cent(p.valorNominal)), 0),
         origemCapitalId: origem?.id ?? null,
         faturaIds: parcelas.map((p) => p.faturaId).filter((x): x is string => !!x),
       });
@@ -952,6 +971,8 @@ export class RenegociacaoService implements OnModuleInit {
     for (const f of cobertasComCobranca) {
       if (f.asaasChargeId) await this.asaas.removerCobranca(f.asaasChargeId);
     }
+    // A dívida da conta mudou: os Pix sob demanda ativos deixam de valer (cancelados pela fila).
+    await this.intencoes.invalidarAtivasDaConta(acordo.contaId, `acordo ${acordoId} efetivado`);
 
     this.logger.log(
       `Acordo ${acordoId} efetivado: ${planos.length} contrato(s), ${acordo.numeroParcelasNovas} parcela(s) nova(s)`,
