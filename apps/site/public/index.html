@@ -474,7 +474,8 @@ footer a{color:var(--sobre-escuro)}
 </section>
 <footer><div class="wrap">
   <span>Azit Move · Grande Vitória · Desde 2019</span>
-  <span>AZIT COMERCIO DE VEICULOS LTDA · CNPJ 57.265.780/0001-19 · Rua José Machado, 103, Tabuazeiro, Vitória/ES</span>
+  <span>AZIT COMERCIO DE VEICULOS LTDA · CNPJ 57.265.780/0001-19</span>
+  <span>Loja: Av. Lourival Nunes, 488, Jardim Limoeiro, Serra/ES · CEP 29164-050</span>
   <span>Imagens ilustrativas dos modelos. Fotos: RL GNZLZ (CC BY-SA 2.0) e Autosdeprimera (CC BY 3.0), via Wikimedia Commons.</span>
 </div></footer>
 <a class="zap" data-zap="Olá! Vi o site da Azit Move." href="#" aria-label="Falar com a Azit no WhatsApp"><svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z"/></svg></a>
@@ -482,8 +483,8 @@ footer a{color:var(--sobre-escuro)}
 <script>
 // ---------- campanha: some sozinha depois de 30/11 e a página vira a versão permanente ----------
 const CAMPANHA = { fim: new Date('2026-11-30T23:59:59-03:00') };
-// WhatsApp COMERCIAL (o mesmo da página da V4). O número da API (cobrança) não recebe leads.
-const WHATS = '5527992337053';
+// WhatsApp do site: provisoriamente o número da API (decisão Luís 15/11), até ele definir o número comercial.
+const WHATS = '5527998337097';
 function aplicarCampanha(){
   const ativa = Date.now() <= CAMPANHA.fim.getTime();
   document.querySelectorAll('[data-camp]').forEach(e=>{ e.hidden=!ativa; });

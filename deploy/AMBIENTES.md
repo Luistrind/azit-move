@@ -280,4 +280,4 @@ Página estática em `apps/site/public` (protótipo aprovado pelo Luís a partir
 2. **Publicar:** `cd /opt/azit && git fetch -q origin && bash deploy/deploy-site.sh origin/feat/site-institucional` (depois do merge, `origin/main`). O certificado sai sozinho pelo Traefik na primeira requisição, depois que o DNS propagar. `www` redireciona para o endereço sem `www`.
 3. **Reverter:** o mesmo comando com o ref anterior.
 
-O botão de WhatsApp do site leva ao número **comercial** (o mesmo da página da V4), constante `WHATS` no fim do `index.html`. O número da API (cobrança, §28) não recebe leads. A campanha (Black Friday) some sozinha depois da data em `CAMPANHA.fim`. Política de privacidade e termos entram no rodapé só depois da validação do jurídico.
+O botão de WhatsApp do site leva, provisoriamente, ao número da API (27) 99833-7097, até o Luís definir o comercial (constante `WHATS` no fim do `index.html`). A campanha (Black Friday) some sozinha depois da data em `CAMPANHA.fim`. Política de privacidade e termos entram no rodapé só depois da validação do jurídico.
