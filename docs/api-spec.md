@@ -1411,3 +1411,85 @@ Detalhe da proposta: `ativo` pode ser nulo; `referencia`, `veiculo` (rótulo ún
 
 **Dossiê da análise** (`GET /analises/:id`): `veiculo` (tipo `ativo` com km/origem/contratos anteriores/
 FIPE × venda, ou `referencia`) e `conferenciaVeiculo` (parcela aprovada × ajuste, pendente ou não).
+
+## 6-F. Fatura Azit — página pública, Pix sob demanda e Configurações › Faturamento — doc 02 §32 (11–15/11/2026)
+
+Valores em **centavos**; datas-calendário em `YYYY-MM-DD` (dia do Brasil).
+
+### Rotas públicas (sem login; acesso pelo token de 64 hex da fatura)
+
+Limite em memória por IP e por token (`LimitePublicoGuard`): 90/min por IP, 60/min por token,
+10 PDFs/min por IP e **12 pedidos de Pix/min por token**. Estouro → 429 `muitas_requisicoes`.
+Token inexistente, malformado ou de fatura extinta → 404 `fatura_indisponivel`, com
+`atendimentoWhatsapp` e `atendimentoWhatsappLink` (o WhatsApp da Azit; nada da conta).
+
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/api/v1/publico/faturas/:token` | Projeção da fatura (`FaturaPublica`, `@azit/types`). Fatura do modelo **AZIT** traz `conta` |
+| GET | `/api/v1/publico/faturas/:token/situacao` | Polling (~30 s). No modelo AZIT inclui `assinatura`: muda quando entra pagamento na conta, o dia vira ou o Pix ativo muda |
+| POST | `/api/v1/publico/faturas/:token/intencao` | **Pix sob demanda** (só modelo AZIT). Body `{ "valor": 107243 }` |
+| GET | `/api/v1/publico/faturas/:token/pdf` | PDF: fatura (em aberto) ou comprovante (paga). `?fatura=<nº>` imprime outra fatura da mesma conta que a página mostra |
+
+**`FaturaPublica.conta` (modelo AZIT)** — `ContaFaturaPublica`: `hoje`, `faturaDoLink`, `faturas[]`
+(id, número, vencimento, nome dos itens, Pix recebidos com data, hora e identificador),
+`motor { faturas[], parametros }` (entrada do motor de `@azit/utils`: itens com grupo da cascata e
+percentuais, pagamentos com alocações; a página refaz a conta com a mesma função do servidor),
+`mista`, `antigasEmAberto[]`, `pix` (o Pix ativo de hoje, se houver), `recebedor`,
+`atendimentoWhatsappLink`, `proximoVencimento`, `assinatura`. Nenhum dado pessoal além de primeiro
+nome, placa e documento mascarado; nenhum token de outra fatura.
+
+**`POST …/intencao`** — resposta 200 (`PixSobDemandaPublico`):
+
+```json
+{
+  "valor": 1023500,
+  "copiaECola": "000201…",
+  "qrCodeImagem": null,
+  "validoAte": "2026-11-16T02:59:59.999Z",
+  "simulado": false,
+  "outroValor": false,
+  "faturas": [
+    { "numero": 1, "vencimento": "2026-11-01", "valor": 512333 },
+    { "numero": 2, "vencimento": "2026-11-08", "valor": 511167 }
+  ]
+}
+```
+
+Pedir de novo o mesmo valor no mesmo dia devolve o **mesmo** Pix; outro valor substitui o anterior.
+
+| Status | `erro` | Quando |
+|---|---|---|
+| 400 | `validacao` | `valor` ausente, não inteiro ou ≤ 0 |
+| 422 | `valor_invalido` | fora da regra do dia; `motivo`: `abaixo_do_minimo`, `acima_do_total`, `sem_parcial`, `nada_em_aberto`; `mensagem` pronta para o cliente |
+| 422 | `modelo_antigo` | fatura `ASAAS_NATIVO` (paga pela cobrança que já tem) |
+| 429 | `limite_pix_dia` | teto de valores distintos por conta no dia (padrão 10) |
+| 503 | `pix_indisponivel` | o gateway não respondeu; nada é gravado e o Pix anterior continua valendo |
+
+### Webhook do gateway — referência `intencao:<id>`
+
+Entra por `POST /api/v1/webhooks/asaas` (§3), mesma autenticação. `externalReference` começando
+por `intencao:` é lido pelo `GatewayPix`; em `PAYMENT_RECEIVED`/`PAYMENT_CONFIRMED` responde
+**202** e enfileira `baixar` na fila `intencao-pagamento` (jobId pelo id do pagamento). Outros
+eventos dessa referência são só ACK. Campos lidos de `payment`: `id`, `value`,
+`clientPaymentDate` → `paymentDate` → `confirmedDate`, `pixTransaction`. A baixa é pela conta
+(doc 02 §32.4-A), idempotente pelo id do pagamento.
+
+### Operador (autenticado)
+
+| Método | Rota | Área / papéis | O que faz |
+|---|---|---|---|
+| GET | `/api/v1/faturamento/parametros` | Configurações | `{ vigente, faturasEmAberto { azit, asaasNativo }, historico[] }` |
+| POST | `/api/v1/faturamento/parametros` | Configurações · ADMIN, DIRETOR | Salva **nova versão**. Campos opcionais: `pixSobDemanda`, `multaPadraoPct`, `atualizacaoMesPadraoPct`, `cascata` (os 4 grupos), `minimoParcialPct`, `minimoParcialPiso` (centavos), `tetoIntencoesDia`, `motivo`. 400 `validacao` / `sem_alteracao` |
+| GET | `/api/v1/faturas/:id` | Carteira e cobrança, ficha | Passa a trazer `modeloEncargo` e, em fatura AZIT, `azit { situacao, totalHoje, saldoNominal, multa, atualizacao, diasAtraso, pagoTotal, pagamentos[] (com alocacoes[]), intencaoAtiva, contaMista, gatewaySimulado }` |
+| POST | `/api/v1/contas/:contaId/pix/conferir` | Carteira e cobrança, ficha · ADMIN, OPERADOR, FINANCEIRO, DIRETOR | 202. Pergunta ao gateway pelos Pix recentes da conta e enfileira a baixa dos pagos: `{ conferidas, enfileiradas, simulado }` |
+| POST | `/api/v1/faturas/:id/gerar-cobranca` | — | Fatura AZIT → 422 `fatura_pix_sob_demanda` |
+| POST | `/api/v1/dev/simular-pagamento-pix/:intencaoId` | fora de produção · ADMIN, OPERADOR | 202. Enfileira o mesmo job do webhook para o Pix da intenção |
+
+`POST /api/v1/dev/fechar-faturas` devolve agora `{ fechadas, modelo }` (`AZIT` com a chave ligada).
+
+### Variáveis de ambiente novas (backend)
+
+| Variável | Padrão | Uso |
+|---|---|---|
+| `FATURA_RECEBEDOR_NOME` | `Azit Comércio de Veículos Ltda` | Recebedor mostrado ao lado do Pix e no PDF |
+| `FATURA_RECEBEDOR_CNPJ` | `57.265.780/0001-19` | idem |

@@ -3471,8 +3471,104 @@ gatewayId, payload do copia-e-cola; `PagamentoFatura.intencaoId` liga cada baixa
   (§32.6-A) e a ordem de blocos do v3; Configurações › Faturamento com a chave e os parâmetros.
   Marco: cenários A, B, C e D do FAT e os do roteiro do Vicente reproduzidos em homolog com os
   valores conferidos à mão; chave desligada em produção.
-- **F3 — Parcial com mínimo:** botão, validação, atualização da cobrança, saldo remanescente.
-  Marco: dois parciais e a quitação, com encargo só sobre o resto.
+  > **Construída em 2026-11-15 (branch `claude/fatura-azit-f2-dcb0a4`, a partir de `feat/fatura-azit` +
+  > `main`)** — detalhe e divergências em §32.12. Aguarda homologação do Luís; a chave nasce
+  > desligada e nada vai para `main` antes disso.
+- **F3 — Parcial com mínimo:** ~~botão, validação, atualização da cobrança, saldo remanescente.~~
+  **Entregue junto com a F2 (15/11):** com o Pix sob demanda não há cobrança para atualizar; o
+  "Pagar outro valor" (botão, mínimo, validação no servidor, saldo remanescente) já faz parte da
+  página do modelo AZIT. Marco: dois parciais e a quitação, com encargo só sobre o resto.
 - **F4 — E-mail** como canal da régua. **F5 — Crédito do cliente** (quando a pendência 4 fechar).
 
 Nada disso altera a régua, o bloqueio (Regra 6) ou a POP; só o **link** que vai nas mensagens.
+
+### 32.12 F2 — o que foi aplicado e o que ficou sinalizado (2026-11-15)
+
+**Aplicado.**
+
+- **Motor único** em `packages/utils/src/fatura-motor.ts` (centavos, datas do Brasil, sem estado
+  gravado): `encargoAte`, `aplicarPagamentoNaConta`, `reconstituirFatura`, `projetarConta`,
+  `regraParcial`, `minimoParcialFatura`, `validarValorPagamento`. A cascata com rateio é
+  `imputarEmNiveis` (`imputacao.ts`); a ordem fixa do §7.3 (`imputarPagamento`, modelo antigo)
+  passou a rodar sobre a mesma função. Encargo reaproveita `detalharEncargoAtraso` (§7.2). Os
+  testes reproduzem os valores conferidos pelo Vicente: 1.072,43 · 532,08 · 472,43 · 1.072,08
+  (encargos pagos 20,98 e 2,10) · 3.196,31 → 1.196,31 · 849,00 · mínimo 367,15.
+- **Refazer a conta usa as alocações gravadas**, não recalcula a cascata: mudar o FAT003 vale para
+  os próximos pagamentos e não reescreve o que os anteriores quitaram.
+- **Dados** (migração aditiva `20261115120000_fatura_azit_f2`): `pagamentos_fatura`,
+  `alocacoes_pagamento`, `intencoes_pagamento`, `parametros_faturamento`. Enums e contratos em
+  `@azit/types` (inclusive os tipos de entrada do motor, que trafegam até a página).
+- **Configurações › Faturamento** (área Configurações; escrita ADMIN/DIRETOR, auditada): chave do
+  Pix sob demanda, FAT001–FAT004, ordem de quitação reordenável, limite de Pix por dia, histórico
+  de versões. Sem nada salvo valem os padrões, com a chave **desligada**.
+- **Emissão:** chave ligada, `fechar` marca `modeloEncargo = AZIT` e não enfileira cobrança;
+  varredura e alerta de "fatura sem cobrança" só olham o modelo antigo; emissão manual é recusada
+  para fatura AZIT e a ação não aparece na ficha. Chave desligada: idêntico ao anterior (teste de
+  regressão). Fatura AZIT sem link público ganha o token no fechamento.
+- **Gateway:** interface `GatewayPix` (criar, cancelar, consultar, ler webhook) com o Asaas como
+  implementação (`GATEWAY_PIX`): Pix avulso, vencimento no dia, valor exato, sem `fine` nem
+  `interest`, referência `intencao:<id>`, modo simulado.
+- **Intenção de pagamento:** valor validado no servidor pela regra do motor; reuso do mesmo valor
+  no dia; uma ativa por conta (a anterior vira SUBSTITUIDA e tem o Pix cancelado); teto diário por
+  conta; job de virada do dia às 00h05 (fila `intencao-pagamento`) que expira e cancela. Cancelar
+  nunca apaga cobrança paga: se o gateway disser que pagou, a baixa é enfileirada.
+- **Webhook e baixa:** referência `intencao:` responde 202 e enfileira; o worker trava a conta,
+  aplica da fatura mais antiga para a mais nova na data do pagamento, grava `PagamentoFatura` +
+  `AlocacaoPagamento` e mantém parcela, recebível, encerramento por quitação,
+  `cumprirAcordosSePagos` e status da fatura. Idempotente pelo id do pagamento. Pix de intenção
+  substituída ou expirada é aceito. Faturas `ASAAS_NATIVO` seguem em `conciliarPagamento`, que
+  passou a ignorar fatura AZIT.
+- **Página pública:** tela do protótipo v3 para fatura AZIT (lista "Suas faturas", Pagar no topo,
+  outro valor com prévia, recebidos com o que cada Pix quitou, comprovante, telas de erro);
+  `POST /publico/faturas/:token/intencao`; PDF de fatura e de comprovante. Fatura do modelo antigo
+  continua na tela da F1.
+- **Ficha do titular:** bloco "Pix sob demanda" no detalhe da fatura (saldo de hoje, pagamentos e
+  alocações, Pix ativo), "Conferir Pix no gateway" e, fora de produção, "Simular pagamento do Pix".
+
+**Divergências e padrões provisórios — para validação do Luís (Regra 12).**
+
+1. **Cascata de itens que o §32.5 não cita:** *Termo de novação* entra como **Principal** (substitui
+   o contrato do veículo) e *Crédito avulso* como **Acessórios** (análogo ao Reembolso Parcelado).
+2. **Correção sobre o protótipo:** pagamento feito **antes** do vencimento não antecipa a contagem
+   da atualização (o protótipo contaria os dias desde esse pagamento). A atualização conta do
+   vencimento ou do último pagamento, o que for mais recente.
+3. **Alcance do link (§32.2 × §32.6-A):** o §32.2 diz que o token dá acesso só àquela fatura; a
+   lista do §32.6-A exige mostrar as demais em aberto. Aplicado: o link de uma fatura AZIT mostra
+   as faturas AZIT **em aberto da mesma conta** e as pagas nos últimos 7 dias (para o comprovante
+   logo após o pagamento); **não** expõe o link das outras (o PDF delas sai por
+   `?fatura=<nº>` no link em uso). Se o token de uma fatura vazar, quem o tem vê as faturas em
+   aberto da conta — o administrador regenera o token como já previsto.
+4. **Quando o Pix nasce:** ao **pedir** o código (copiar, abrir o QR ou confirmar outro valor), não
+   ao abrir a página. O protótipo mostrava o código pronto; abrir a página não pode criar cobrança
+   (o Asaas avisa o cliente a cada cobrança criada e há teto diário). O Pix ativo do dia reaparece
+   ao reabrir.
+5. **Dinheiro sem fatura em aberto:** Pix de intenção antiga pago depois de a conta estar quitada
+   é registrado **inteiro como excedente** na fatura AZIT mais recente (`PagamentoFatura` de valor
+   zero), com aviso à carteira. Nada é devolvido nem vira crédito.
+6. **Depois de qualquer baixa**, outra intenção ativa da conta passa a SUBSTITUIDA e o Pix dela é
+   cancelado (o valor já não corresponde ao que se deve).
+7. **`Parcela.valorEncargo` no modelo AZIT:** o encargo é da fatura; para o extrato, o encargo
+   pago é rateado entre as parcelas pelo valor nominal (informativo — a verdade é a
+   `AlocacaoPagamento`).
+8. **FAT001/FAT002** passaram a ser o padrão de contrato criado **sem** percentual informado
+   (antes: default fixo do schema, com os mesmos 2% e 1%).
+9. **Recebedor na página:** nome e CNPJ vêm do ambiente (`FATURA_RECEBEDOR_NOME`,
+   `FATURA_RECEBEDOR_CNPJ`); padrão = a vendedora dos contratos (Azit Comércio de Veículos Ltda,
+   57.265.780/0001-19). Conferir com o titular da conta no gateway. A linha da empresa da proteção
+   no PDF não foi incluída (depende do split, §32.8).
+10. **Notificações do Asaas (pendência 8):** a API não tem campo para desligar notificação **por
+    cobrança** (conferido na documentação em 15/11); só `notificationDisabled` no cadastro do
+    cliente, que **não** foi alterado. Enquanto o gateway for o Asaas, cada Pix gerado pode disparar
+    o aviso do Asaas ao cliente, conforme o cadastro dele.
+11. **Origem OPERADOR da intenção:** existe no modelo, mas nenhuma tela cria Pix pelo operador
+    nesta entrega (ele manda o link). A origem CONFERENCIA do pagamento é usada por "Conferir Pix
+    no gateway".
+12. **Fluxos não revisados para fatura AZIT com pagamento em parte** (fora do escopo, verificar
+    antes de ligar em produção): acordo, novação, rescisão e quitação antecipada continuam lendo a
+    parcela como antes; a Carteira e a régua tratam a fatura parcial como já tratavam
+    (`FECHADA` com `valorPago` parcial).
+13. **Modo simulado:** o id de cliente simulado usava 8 caracteres do titular e colidia entre
+    cadastros criados juntos; passou a usar o id inteiro. Só afeta ambiente sem chave do gateway.
+
+**Pendências que continuam valendo antes de ligar em produção:** 8 (quem avisa o cliente) e 9
+(transição das faturas já emitidas) do §32.10, e o teste com o Asaas em ambiente de teste (7).
