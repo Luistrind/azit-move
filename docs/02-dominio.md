@@ -3286,8 +3286,9 @@ dinâmico torna a cobrança descartável.
 **Intenção de pagamento.** É o registro do Azit para "o cliente pediu um Pix de R$ X para a conta
 Y": conta, valor, as faturas que o valor pretende cobrir (retrato do momento), validade, origem
 (página pública ou operador), identificador e copia-e-cola devolvidos pelo gateway, situação
-(ATIVA, PAGA, EXPIRADA, SUBSTITUIDA). A referência enviada ao gateway é `intencao:<id>`, e é por
-ela que o webhook volta.
+(ATIVA, PAGA, EXPIRADA, SUBSTITUIDA). A referência enviada ao gateway é `intencao:<id>`. No modo
+**cobrança** o webhook volta por ela; no modo **QR estático** (padrão, abaixo) volta pelo
+**identificador do QR**, que é o identificador guardado na intenção.
 
 - **Reuso:** pedir de novo o mesmo valor para a mesma conta no mesmo dia devolve a intenção ativa
   **daquele valor**; não cria outra. Há teto de **valores distintos** por conta por dia (padrão
@@ -3309,6 +3310,42 @@ ela que o webhook volta.
   pagamento: o segundo cai na próxima fatura em aberto ou, se não houver, fica registrado como
   excedente (§32.5). Nunca se recusa nem se devolve dinheiro automaticamente.
 
+**Como o Pix nasce no gateway — QR estático com valor (decisão Luís, 2026-11-15, noite).** O Pix
+sob demanda passa a ser um **QR Code estático com valor**, e não mais uma cobrança Pix seguida da
+consulta do código.
+
+- **Por quê (medido no homolog em 15/11):** no ambiente de teste do Asaas a cobrança nascia em
+  ~0,7 s, mas a consulta do código Pix dela não respondia nem em 30 s — toda intenção falhava e a
+  cobrança era removida. O "dinâmico" do Asaas não dava nada em troca (não deixa mudar o valor
+  mantendo o código); era usado só por reaproveitar a cobrança.
+- **O que é pedido ao gateway, em UMA chamada:** QR com o **valor exato**, **pagamento único**,
+  **validade até 23h59 do dia** (fuso do Brasil, Regra 15), descrição curta e a referência
+  `intencao:<id>`. A resposta já traz o copia-e-cola e a imagem. **Não se cria cobrança nem
+  cadastro de cliente** no gateway para gerar o Pix.
+- **Quem recebe:** a **chave Pix ativa** da conta da Azit no gateway (a primeira ativa). Sem chave
+  ativa não há Pix: a geração falha com erro claro ("Pix indisponível") e Configurações ›
+  Faturamento mostra o aviso com o motivo.
+- **Baixa:** ao receber, o gateway **cria sozinho** uma cobrança já recebida, que traz o
+  identificador do QR. É por esse identificador que o pagamento é ligado à intenção; a referência
+  `intencao:<id>` pode não vir copiada e **não é condição**. O pagador que o gateway registra
+  nessa cobrança (dados importados do banco de quem pagou) **não é usado para nada**: não cria nem
+  altera titular ou cliente, e quem paga pode ser um terceiro.
+- **Cancelar** (virada do dia, outras ativas depois de um pagamento, operação que muda a dívida):
+  antes de apagar o QR, pergunta-se ao gateway se ele já recebeu; se recebeu, **não apaga** e o
+  pagamento é baixado ("o dinheiro manda").
+- **Aviso do gateway ao cliente:** como não existe cobrança aberta em nome do cliente, o gateway
+  **não avisa o cliente** a cada Pix gerado. Isso resolve, para o modelo AZIT, o receio do aviso
+  em dobro (§32.12 item 10). Continua valendo que alguém precisa avisar o cliente da fatura
+  (lembretes do §28, pendência 8 do §32.10).
+- **Sem desvio:** o recebimento de um QR de intenção vai **só** para a baixa da conta
+  (idempotente pelo id do pagamento). Não passa pela conciliação de fatura do modelo antigo, não
+  entra como "Pix recebido na chave sem fatura" (proposta de 31/10, ainda fora desta branch: quando
+  entrar, vem **depois** desta identificação) e não aparece como divergência
+  na conferência com o gateway (§27.9), que parte das faturas que têm cobrança.
+- **Modo do Pix é parâmetro versionado** (Configurações › Faturamento, §32.8): **ESTATICO**
+  (padrão) ou **COBRANCA** (o anterior, mantido como opção de volta). Trocar o modo vale para os
+  Pix gerados dali em diante; os já gerados seguem pelo modo em que nasceram.
+
 **Baixa pela conta.** O pagamento recebido é **da conta**, não de uma fatura: aplica-se fatura a
 fatura, da mais antiga para a mais nova (§32.6-A), com a cascata do §32.5 dentro de cada uma,
 calculando o encargo na **data do pagamento**. O resultado são os `PagamentoFatura` e
@@ -3321,8 +3358,9 @@ pela baixa e pela ficha. O motor do protótipo v3 é a referência, com os núme
 Vicente.
 
 **Gateway atrás de interface.** O domínio fala com `GatewayPix` (criar Pix de valor X com
-validade e referência; cancelar; ler o webhook). A implementação de hoje é o Asaas (cobrança
-avulsa PIX com vencimento no dia, **sem multa nem juros nativos**); trocar por um banco no padrão
+validade e referência; cancelar; consultar; ler o webhook; dizer qual chave recebe). A
+implementação de hoje é o Asaas, em dois modos: **QR estático com valor** (padrão) e cobrança
+avulsa PIX com vencimento no dia, **sem multa nem juros nativos**; trocar por um banco no padrão
 do Banco Central (Itaú foi avaliado em 15/11) ou acrescentar split (§32.8) é trocar a
 implementação, não a regra. Nada fora do adaptador conhece o Asaas.
 
@@ -3438,6 +3476,7 @@ a vencida para trás. O FAT v1.0 não trata; o protótipo v2 propôs e o Vicente
 | FAT003 | Cascata de baixa | Encargos → Proteção → Acessórios → Principal |
 | FAT004 | Mínimo do pagamento parcial | **35% do valor de face ou R$ 200, o maior** (14/11; dois campos: percentual e piso) |
 | FAT007 | Pagamento a maior | Só registrar (crédito desligado) |
+| — | Modo do Pix sob demanda (§32.4-A) | **ESTATICO** (QR estático com valor); alternativa **COBRANCA** (cobrança Pix + consulta do código) |
 
 FAT005/FAT006 (régua do FAT) **não existem**: a régua é a do §28/§23. Os parâmetros ficam em
 **Configurações › Faturamento** (D-14 do Vicente), versionados (`ParametroFaturamento`), e a
@@ -3454,9 +3493,10 @@ rodapé do PDF informa a empresa da proteção. Nomes e CNPJs no protótipo são
 `Fatura.tokenPublico` (único), `Fatura.modeloEncargo` (ASAAS_NATIVO | AZIT), `PagamentoFatura`
 (faturaId, valor, data, origem, gatewayPaymentId, valorExcedente), `AlocacaoPagamento`
 (pagamentoId, itemFaturaId | encargo, tipoEncargo, valor, nivel), `EnvioLinkFatura` (faturaId,
-usuarioId, canal, data), `ParametroFaturamento` (versões, com cascata em JSON ordenado),
+usuarioId, canal, data), `ParametroFaturamento` (versões, com cascata em JSON ordenado e
+`modoPix` ESTATICO | COBRANCA),
 `IntencaoPagamento` (contaId, valor, faturas pretendidas em JSON, validoAte, origem, situação,
-gatewayId, payload do copia-e-cola; `PagamentoFatura.intencaoId` liga cada baixa à intenção). O
+gatewayId — identificador do QR estático ou da cobrança, conforme o modo —, payload do copia-e-cola; `PagamentoFatura.intencaoId` liga cada baixa à intenção). O
 `asaasInvoiceUrl` do §28.2 **não é mais necessário** no fluxo novo (fica para faturas antigas).
 
 ### 32.10 Pendências (decisão do Luís antes da fase correspondente)
@@ -3477,6 +3517,9 @@ gatewayId, payload do copia-e-cola; `PagamentoFatura.intencaoId` liga cada baixa
 8. **Quem avisa o cliente quando o Asaas parar de avisar** (§32.4-A): lembretes do §28 por e-mail
    (o módulo de e-mail do doc 06 §12 já existe, aguardando homolog) e por WhatsApp (Meta, parado),
    ou envio manual pelo operador enquanto isso. Pré-requisito para ligar a chave em produção.
+   **Atualização 15/11 (QR estático, §32.4-A):** no modo ESTATICO o Asaas não tem cobrança em
+   nome do cliente e portanto não o avisa de nada — some o risco de aviso em dobro, e o aviso da
+   fatura passa a ser **só** dos lembretes do §28 (que continuam pré-requisito).
 9. **Transição das faturas já emitidas** (§32.4-A): ficam no modelo antigo até liquidar (padrão
    provisório) ou o operador converte a conta, apagando as cobranças antigas? Contas em atraso
    ficam mistas por mais tempo.
@@ -3622,7 +3665,9 @@ Nada disso altera a régua, o bloqueio (Regra 6) ou a POP; só o **link** que va
 10. **Notificações do Asaas (pendência 8):** a API não tem campo para desligar notificação **por
     cobrança** (conferido na documentação em 15/11); só `notificationDisabled` no cadastro do
     cliente, que **não** foi alterado. Enquanto o gateway for o Asaas, cada Pix gerado pode disparar
-    o aviso do Asaas ao cliente, conforme o cadastro dele.
+    o aviso do Asaas ao cliente, conforme o cadastro dele. **Resolvido para o modo ESTATICO
+    (decisão 15/11, §32.4-A):** o QR estático não cria cobrança em nome do cliente, então não há o
+    que o Asaas avisar. O texto acima só vale para o modo COBRANCA.
 11. **Origem OPERADOR da intenção:** existe no modelo, mas nenhuma tela cria Pix pelo operador
     nesta entrega (ele manda o link). A origem CONFERENCIA do pagamento é usada por "Conferir Pix
     no gateway".
