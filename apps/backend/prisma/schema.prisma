@@ -404,6 +404,8 @@ model Titular {
   classificacoes TitularClassificacao[]
   investimentosEstrutura InvestidorEstrutura[]
   mensagensWhatsapp MensagemWhatsapp[]
+  lembretesPagamento LembretePagamento[]
+  lembrete          LembreteTitular?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1258,6 +1260,7 @@ model Fatura {
   modeloEncargo     ModeloEncargoFatura @default(ASAAS_NATIVO)
 
   conta       Conta        @relation(fields: [contaId], references: [id])
+  lembretes   LembretePagamento[]
   itensFatura ItemFatura[]
   parcelas    Parcela[]
   acordo      Acordo?      @relation(fields: [acordoId], references: [id])
@@ -2874,4 +2877,82 @@ model MensagemWhatsapp {
   @@index([numero, momento])
   @@index([titularId])
   @@map("mensagens_whatsapp")
+}
+
+// Momento do lembrete de pagamento (§28.1).
+enum MomentoLembrete {
+  D_MENOS_2 // 2 dias antes do vencimento: fatura disponível
+  D_ZERO // dia do vencimento, se ainda em aberto
+}
+
+// Situação REAL do lembrete (gravada). SIMULADO só existe fora de produção;
+// RETIDO só em produção sem credencial (§23.1).
+enum SituacaoLembrete {
+  PREPARADO
+  ENVIADO
+  ENTREGUE
+  LIDO
+  FALHOU
+  SIMULADO
+  RETIDO
+}
+
+// Lembrete de pagamento enviado (ou não) ao cliente (§28.4). UM por fatura por
+// momento — a chave única é a garantia contra dobro entre rodadas e réplicas.
+// Não é prova formal da POP.
+model LembretePagamento {
+  id            String           @id @default(cuid())
+  faturaId      String
+  titularId     String
+  momento       MomentoLembrete
+  diaReferencia String // 'YYYY-MM-DD' (fuso do Brasil) em que o momento valeu
+  destino       String? // WhatsApp canônico; null = titular sem WhatsApp válido
+  texto         String // corpo do modelo já preenchido — o que o cliente recebeu
+  modeloNome    String
+  modeloIdioma  String
+  mensagemId    String?          @unique // id da mensagem na Meta
+  situacao      SituacaoLembrete @default(PREPARADO)
+  motivo        String? // por que não saiu de verdade, ou por que falhou
+  enviadoEm     DateTime?
+  entregueEm    DateTime?
+  lidoEm        DateTime?
+  falhaEm       DateTime?
+
+  fatura  Fatura  @relation(fields: [faturaId], references: [id])
+  titular Titular @relation(fields: [titularId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([faturaId, momento])
+  @@index([titularId])
+  @@index([situacao])
+  @@map("lembretes_pagamento")
+}
+
+// Lembrete por titular (§28.3): nasce DESLIGADO; ligar é ato do operador na
+// ficha, com quem e quando. O aviso do próprio Asaas (cadastro do cliente lá,
+// notificationDisabled) é decisão SEPARADA e explícita (§28.1, "sem dobro").
+model LembreteTitular {
+  id             String    @id @default(cuid())
+  titularId      String    @unique
+  ativo          Boolean   @default(false)
+  ligadoEm       DateTime?
+  ligadoPorId    String?
+  desligadoEm    DateTime?
+  desligadoPorId String?
+
+  asaasAvisoDesligado     Boolean   @default(false) // decisão do operador
+  asaasAvisoAlteradoEm    DateTime?
+  asaasAvisoAlteradoPorId String?
+  // true = a decisão ainda não está no Asaas (cliente não existe lá, ou a
+  // alteração falhou); é aplicada quando o cliente for criado/na nova tentativa.
+  asaasAvisoPendente      Boolean   @default(false)
+
+  titular Titular @relation(fields: [titularId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("lembretes_titular")
 }

@@ -4,6 +4,7 @@ import { getQueueToken } from '@nestjs/bullmq';
 import { DatabaseModule } from '../../database/database.module';
 import { PrismaService } from '../../database/prisma.service';
 import { IntegracoesModule } from '../integracoes/integracoes.module';
+import { AsaasModule } from '../asaas/asaas.module';
 import { NotificacaoModule } from '../notificacao/notificacao.module';
 import { PermissoesModule } from '../permissoes/permissoes.module';
 import { QUEUE_NAMES } from '../queues/queues.module';
@@ -13,6 +14,8 @@ import { WhatsappEventosService } from './whatsapp-eventos.service';
 import { WhatsappProcessor } from './whatsapp.processor';
 import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 import { WhatsappConfigController } from './whatsapp-config.controller';
+import { LembreteService } from './lembrete.service';
+import { LembreteController } from './lembrete.controller';
 
 // Compila o WhatsappModule de verdade (DI do Nest), com banco dublado, fila
 // dublada e configuração mínima — sem abrir conexão nem porta. Os testes
@@ -31,6 +34,7 @@ describe('WhatsappModule (injeção de dependências)', () => {
         PermissoesModule,
         NotificacaoModule,
         IntegracoesModule,
+        AsaasModule,
         WhatsappModule,
       ],
     })
@@ -45,6 +49,8 @@ describe('WhatsappModule (injeção de dependências)', () => {
     expect(modulo.get(WhatsappProcessor)).toBeInstanceOf(WhatsappProcessor);
     expect(modulo.get(WhatsappWebhookController)).toBeInstanceOf(WhatsappWebhookController);
     expect(modulo.get(WhatsappConfigController)).toBeInstanceOf(WhatsappConfigController);
+    expect(modulo.get(LembreteService)).toBeInstanceOf(LembreteService);
+    expect(modulo.get(LembreteController)).toBeInstanceOf(LembreteController);
     await modulo.close();
   });
 });

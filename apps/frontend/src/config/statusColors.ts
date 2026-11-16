@@ -399,3 +399,28 @@ export const ENTRADA_USUARIO_COLORS: Record<string, StatusColor> = {
   'Senha ligada': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
   'Senha desligada': { bg: 'var(--surface-input)', fg: 'var(--text-muted)' },
 };
+
+// Lembrete de pagamento pelo WhatsApp (doc 02 §28.4) — chaves são os rótulos de
+// @azit/types (NOME_SITUACAO_LEMBRETE). Simulado e retido NUNCA usam a cor de
+// "enviado": não podem ser confundidos com mensagem que saiu.
+export const LEMBRETE_SITUACAO_COLORS: Record<string, StatusColor> = {
+  Enviando: { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
+  Enviado: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  Entregue: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  Lido: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  Falhou: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  'Simulado — não enviado': { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' },
+  'Retido — não enviado': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+};
+
+// Mensagem de SAÍDA nas Conversas do WhatsApp (doc 02 §24) — chaves são os
+// rótulos de @azit/types (NOME_SITUACAO_MENSAGEM_WHATSAPP).
+export const MENSAGEM_WHATSAPP_COLORS: Record<string, StatusColor> = {
+  Enviando: { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
+  Enviada: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  Entregue: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  Lida: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  Falhou: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  'Simulada — não enviada': { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' },
+  'Retida — não enviada': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+};

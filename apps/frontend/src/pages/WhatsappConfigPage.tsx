@@ -2,7 +2,14 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AreaSistema, nomeMomentoLembrete } from '@azit/types';
 import { formatarWhatsapp, normalizarWhatsapp } from '@azit/utils';
+import { nomeSituacaoLembrete } from '@azit/types';
 import { whatsappService, ParametrosWhatsapp, ModeloWhatsapp } from '../services/whatsapp.service';
+import { lembretesService, ResumoVarredura } from '../services/lembretes.service';
+import { LEMBRETE_SITUACAO_COLORS } from '../config/statusColors';
+import { FERRAMENTAS_TESTE } from '../lib/ambiente';
+import { dataBR } from '../lib/datas';
+import { StatusBadge } from '../components/StatusBadge';
+import { Tabela } from '../components/Tabela';
 import { toast } from '../components/Toast';
 import { mensagemErro } from '../lib/permissoes';
 import { instanteBR, horaBR } from '../lib/datas';
@@ -75,6 +82,77 @@ function CartaoModelo({ modelo, valor, onChange }: { modelo: ModeloWhatsapp; val
           </div>
         </div>
       </details>
+    </div>
+  );
+}
+
+// O que os lembretes fizeram hoje, o que está retido e os últimos registros.
+function LembretesRecentes() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['lembretes-resumo'], queryFn: () => lembretesService.resumo(), refetchInterval: 60_000 });
+  const [rodando, setRodando] = useState(false);
+  const [ultima, setUltima] = useState<ResumoVarredura | null>(null);
+  const r = q.data;
+
+  async function rodarAgora() {
+    setRodando(true);
+    try {
+      const v = await lembretesService.varrerAgora();
+      setUltima(v);
+      if (!v.executada) toast.info(`Varredura não executada: ${v.motivo}.`);
+      else toast.sucesso(`Varredura feita: ${v.enviados} enviado(s), ${v.simulados} simulado(s), ${v.retidos} retido(s), ${v.falhas} falha(s).`);
+      await qc.invalidateQueries({ queryKey: ['lembretes-resumo'] });
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+    } finally {
+      setRodando(false);
+    }
+  }
+
+  const contagem = (situacao: string) => r?.hoje[situacao] ?? 0;
+  return (
+    <div className={card} style={cardStyle}>
+      <Secao titulo="Lembretes de pagamento — acompanhamento" tag={r ? `${r.titularesComLembrete} titular(es) com o lembrete ligado` : undefined}>
+        <div className="flex flex-col gap-[12px]">
+          {!r ? (
+            <div className="text-[12.5px]" style={muted}>{q.isLoading ? 'Carregando…' : mensagemErro(q.error)}</div>
+          ) : (
+            <>
+              <div className="text-[12.5px]" style={{ color: 'var(--text-body)' }}>
+                Hoje ({dataBR(r.dia)}): {contagem('ENVIADO') + contagem('ENTREGUE') + contagem('LIDO')} enviado(s), {contagem('SIMULADO')} simulado(s),{' '}
+                {contagem('RETIDO')} retido(s), {contagem('FALHOU')} falha(s).
+              </div>
+              {r.retidos > 0 && (
+                <div className="rounded-[10px] px-[12px] py-[8px] text-[12px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-fg)' }}>
+                  {r.retidos} lembrete(s) retido(s) por falta de credencial. Os de hoje saem sozinhos na próxima varredura depois que a credencial
+                  for cadastrada; os de dias anteriores não são enviados com atraso.
+                </div>
+              )}
+              <Tabela
+                colunas={[
+                  { chave: 'titular', titulo: 'Titular', celular: 'titulo', render: (l) => <LinkArea to={`/titulares/${l.titular.id}`} area={[AreaSistema.PESSOAS, AreaSistema.COMERCIAL]} className="font-semibold hover:underline">{l.titular.nome}</LinkArea> },
+                  { chave: 'fatura', titulo: 'Fatura', celular: 'subtitulo', classe: 'tabular-nums', render: (l) => `#${l.faturaNumero} · vence ${dataBR(l.vencimento)}` },
+                  { chave: 'momento', titulo: 'Lembrete', celular: 'campo', render: (l) => nomeMomentoLembrete(l.momento) },
+                  { chave: 'situacao', titulo: 'Situação', celular: 'destaque', render: (l) => <StatusBadge label={nomeSituacaoLembrete(l.situacao)} colors={LEMBRETE_SITUACAO_COLORS} /> },
+                  { chave: 'quando', titulo: 'Registrado', celular: 'campo', classe: 'tabular-nums', render: (l) => `${instanteBR(l.registradoEm)} ${horaBR(l.registradoEm)}` },
+                ]}
+                linhas={r.ultimos}
+                chave={(l) => l.id}
+                vazio="Nenhum lembrete registrado ainda."
+              />
+            </>
+          )}
+          {FERRAMENTAS_TESTE && (
+            <div className="flex flex-wrap items-center gap-[10px]">
+              <Botao variante="secundaria" carregando={rodando} onClick={() => void rodarAgora()}>Teste: rodar a varredura agora</Botao>
+              <span className="text-[12px]" style={muted}>
+                Ignora a janela de horário. A regra de envio continua valendo: neste ambiente só sai de verdade para número autorizado.
+                {ultima?.executada ? ` Última: ${ultima.candidatas} fatura(s) avaliada(s), ${ultima.ignoradas} sem lembrete a enviar.` : ''}
+              </span>
+            </div>
+          )}
+        </div>
+      </Secao>
     </div>
   );
 }
@@ -250,6 +328,8 @@ export function WhatsappConfigPage() {
       <Botao variante="primaria" className="self-start" carregando={ocupado} disabled={!mudou} onClick={() => void salvar()}>
         Salvar nova versão
       </Botao>
+
+      <LembretesRecentes />
     </div>
   );
 }
