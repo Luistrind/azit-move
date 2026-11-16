@@ -330,3 +330,14 @@ também seriam apagadas — decida antes o que precisa ser preservado.
 `update-backend.sh` e `update-frontend.sh` agora só mostram o fluxo novo (a
 produção não é mais publicada da `main`). `reset-db.sh` e `db-clean.sh` pedem
 confirmação `APAGAR-PRODUCAO`.
+
+---
+**1.8 Site institucional — azitmove.com.br (15/11/2026)**
+
+Página estática em `apps/site/public` (protótipo aprovado pelo Luís a partir da landing da V4), servida por nginx num serviço próprio do Swarm, **fora dos stacks** `azit` e `azit-hml`: publicar o site não mexe no Hub, na API nem na fatura.
+
+1. **DNS (uma vez, pelo Luís):** registros `A` de `azitmove.com.br` e `www.azitmove.com.br` apontando para `147.79.81.186`. Não mexer nos registros `MX`/`TXT` do e-mail do Workspace.
+2. **Publicar:** `cd /opt/azit && git fetch -q origin && bash deploy/deploy-site.sh origin/feat/site-institucional` (depois do merge, `origin/main`). O certificado sai sozinho pelo Traefik na primeira requisição, depois que o DNS propagar. `www` redireciona para o endereço sem `www`.
+3. **Reverter:** o mesmo comando com o ref anterior.
+
+O botão de WhatsApp do site leva, provisoriamente, ao número da API (27) 99833-7097, até o Luís definir o comercial (constante `WHATS` no fim do `index.html`). A campanha (Black Friday) some sozinha depois da data em `CAMPANHA.fim`. Política de privacidade e termos entram no rodapé só depois da validação do jurídico.
