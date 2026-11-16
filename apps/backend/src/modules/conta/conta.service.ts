@@ -33,7 +33,8 @@ export class ContaService {
       where: { titular: { deletedAt: null } },
       include: {
         titular: { select: { id: true, nome: true, cpfCnpj: true } },
-        contratosCredito: { select: { id: true, status: true, veiculoBloqueadoEm: true } },
+        // Contrato apagado não conta (o filtro de soft delete do cliente não alcança o include).
+        contratosCredito: { where: { deletedAt: null }, select: { id: true, status: true, veiculoBloqueadoEm: true } },
         acordos: { where: { status: 'ATIVO' }, select: { id: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -91,7 +92,10 @@ export class ContaService {
           valorEmAtraso,
           faturasVencidas: vencidasPorConta.get(conta.id) ?? 0,
           bloqueada,
-          situacao: bloqueada ? 'bloqueada' : valorEmAtraso > 0 ? 'em_atraso' : emAcordo ? 'em_acordo' : 'em_dia',
+          // Conta sem contrato ATIVO (tudo encerrado, ou contrato ainda em formalização) continua
+          // na grade — é histórico —, mas com situação própria: não é cliente ativo nem "em dia"
+          // (doc 02 §27.10, 16/11: a grade dizia 67 contas e a visão geral, 66 clientes ativos).
+          situacao: vigentes.length === 0 ? 'sem_contrato_ativo' : bloqueada ? 'bloqueada' : valorEmAtraso > 0 ? 'em_atraso' : emAcordo ? 'em_acordo' : 'em_dia',
         };
       })
       .filter((c) => c.contratosTotal > 0);
@@ -117,7 +121,10 @@ export class ContaService {
       valorNominal += sim.valorNominalTotal;
     }
     return {
-      contas: posicoes.length,
+      // `contas` = clientes ATIVOS (conta com contrato ATIVO) — o mesmo número da visão geral
+      // (doc 02 §27.10). As demais contas da grade vêm à parte.
+      contas: posicoes.filter((p) => p.contratosAtivos > 0).length,
+      contasSemContratoAtivo: posicoes.filter((p) => p.contratosAtivos === 0).length,
       contasEmAtraso: posicoes.filter((p) => p.valorEmAtraso > 0).length,
       contasBloqueadas: posicoes.filter((p) => p.bloqueada).length,
       contratosAtivos: contratos.length,

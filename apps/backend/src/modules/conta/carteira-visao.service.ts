@@ -164,7 +164,8 @@ export class CarteiraVisaoService {
   // Contas com pelo menos um contrato em status ATIVO — o "cliente ativo" da tela.
   private async contasAtivas(): Promise<{ contaId: string; titularId: string; titular: string }[]> {
     const rows = await this.prisma.db.conta.findMany({
-      where: { contratosCredito: { some: { status: 'ATIVO', deletedAt: null } } },
+      // Mesmo recorte da grade de clientes (ContaService.carteira): titular não apagado.
+      where: { titular: { deletedAt: null }, contratosCredito: { some: { status: 'ATIVO', deletedAt: null } } },
       select: { id: true, titularId: true, titular: { select: { nome: true } } },
     });
     return rows.map((c) => ({ contaId: c.id, titularId: c.titularId, titular: c.titular.nome }));
