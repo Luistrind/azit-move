@@ -642,22 +642,59 @@ export class FaturaService {
   // saem da lista por padrão (decisão Luís 13/10: a ficha ficava longa e confusa
   // com dezenas de faturas que não existem mais); `ocultas` diz quantas são e
   // `incluirNovadas` as traz de volta.
-  async faturasDaConta(contaId: string, page = 1, limit = 8, incluirNovadas = false) {
-    const skip = (Math.max(1, page) - 1) * limit;
+  // `page = 'atual'` (16/11, Luís: "sempre abre na página 1"): a lista abre na
+  // página da fatura mais antiga ainda em aberto — onde está o trabalho; conta
+  // sem nada em aberto abre na última página.
+  // Cada linha leva `faltaHoje`: o que falta pagar HOJE. Em fatura AZIT fechada
+  // é o total do motor (saldo + multa + atualização — a mesma conta da página
+  // do cliente, Regra 16); nas demais em aberto, o valor de face menos o já pago.
+  async faturasDaConta(contaId: string, page: number | 'atual' = 1, limit = 8, incluirNovadas = false) {
     // RESCINDIDA (doc 02 §29) segue a mesma regra da NOVADA: histórico, oculta por padrão.
     const where: Prisma.FaturaWhereInput = incluirNovadas ? { contaId } : { contaId, status: { notIn: ['NOVADA', 'RESCINDIDA'] } };
-    const [total, ocultas, faturas] = await Promise.all([
+    const [total, ocultas] = await Promise.all([
       this.prisma.db.fatura.count({ where }),
       incluirNovadas ? Promise.resolve(0) : this.prisma.db.fatura.count({ where: { contaId, status: { in: ['NOVADA', 'RESCINDIDA'] } } }),
-      this.prisma.db.fatura.findMany({
-        where,
-        orderBy: { dataVencimento: 'asc' },
-        skip,
-        take: limit,
-        include: { itensFatura: { orderBy: { tipo: 'asc' } } },
-      }),
     ]);
-    return { total, ocultas, page: Math.max(1, page), limit, data: faturas.map((f) => this.mapearFatura(f)) };
+    const ultimaPagina = Math.max(1, Math.ceil(total / limit));
+    let pagina = ultimaPagina;
+    if (page === 'atual') {
+      const aberta = await this.prisma.db.fatura.findFirst({
+        where: { contaId, status: { in: ['ABERTA', 'FECHADA'] } },
+        orderBy: [{ dataVencimento: 'asc' }, { numero: 'asc' }],
+        select: { dataVencimento: true },
+      });
+      if (aberta) {
+        const antes = await this.prisma.db.fatura.count({ where: { ...where, dataVencimento: { lt: aberta.dataVencimento } } });
+        pagina = Math.floor(antes / limit) + 1;
+      }
+    } else {
+      pagina = Math.min(Math.max(1, page), ultimaPagina);
+    }
+    const faturas = await this.prisma.db.fatura.findMany({
+      where,
+      orderBy: [{ dataVencimento: 'asc' }, { numero: 'asc' }],
+      skip: (pagina - 1) * limit,
+      take: limit,
+      include: { itensFatura: { orderBy: { tipo: 'asc' } } },
+    });
+    // Posição do motor só quando a página tem fatura AZIT fechada (uma leitura da conta).
+    const totalHojeAzit = new Map<string, number>();
+    if (faturas.some((f) => f.modeloEncargo === 'AZIT' && f.status === 'FECHADA')) {
+      const conta = await this.contaFatura.carregar(contaId);
+      for (const x of this.contaFatura.projetar(conta).faturas) totalHojeAzit.set(x.id, x.totalHoje);
+    }
+    return {
+      total,
+      ocultas,
+      page: pagina,
+      limit,
+      data: faturas.map((f) => {
+        const linha = this.mapearFatura(f);
+        const emAberto = f.status === 'ABERTA' || f.status === 'FECHADA';
+        const faltaHoje = !emAberto ? null : (totalHojeAzit.get(f.id) ?? Math.max(0, linha.valorTotal - linha.valorPago));
+        return { ...linha, faltaHoje };
+      }),
+    };
   }
 
   // Detalhe de uma fatura (modal): composição completa + datas + valores.

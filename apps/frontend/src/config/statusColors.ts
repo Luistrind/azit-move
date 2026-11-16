@@ -133,6 +133,7 @@ export const FATURA_SITUACAO_COLORS: Record<string, StatusColor> = {
   vencida: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
   paga: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
   paga_em_atraso: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  paga_em_parte: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' }, // selo: em aberto com pagamento já recebido
   renegociada: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' },
   novada: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' },
   rescindida: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' }, // extinta pela rescisão (doc 02 §29)
@@ -143,6 +144,7 @@ export const FATURA_SITUACAO_LABEL: Record<string, string> = {
   vencida: 'Vencida',
   paga: 'Paga',
   paga_em_atraso: 'Paga (em atraso)',
+  paga_em_parte: 'Paga em parte',
   renegociada: 'Renegociada',
   novada: 'Novada',
   rescindida: 'Rescindida',
