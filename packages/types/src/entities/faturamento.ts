@@ -62,6 +62,10 @@ export interface PagamentoFaturaOperador {
   pagoEm: string | null; // ISO, quando o gateway informou a hora
   valor: number; // aplicado a ESTA fatura
   valorExcedente: number;
+  // O Pix inteiro e onde o resto dele foi parar (baixa pela conta, §32.5): um
+  // Pix de R$ 900 pode quitar esta fatura e seguir para a próxima.
+  valorPix: number;
+  outrasFaturas: { numero: number; valor: number }[];
   origem: OrigemPagamentoFatura;
   identificadorPix: string | null;
   intencaoId: string | null;

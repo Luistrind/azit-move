@@ -52,6 +52,11 @@ export interface PagamentoDaFatura {
   alocacoes: AlocacaoMotor[];
 }
 
+export interface DivisaoPix {
+  valorPix: number;
+  outrasFaturas: { numero: number; valor: number }[];
+}
+
 export interface FaturaDaConta {
   id: string;
   numero: number;
@@ -121,6 +126,27 @@ const DIAS_PAGAS_RECENTES = 7;
 @Injectable()
 export class ContaFaturaService {
   constructor(private readonly prisma: PrismaService) {}
+
+  // Divisão de cada Pix entre as faturas (baixa pela conta, §32.5): para cada
+  // id de pagamento do gateway, o valor inteiro do Pix (aplicado + sobra) e as
+  // OUTRAS faturas que receberam parte dele. Chave: gatewayPaymentId.
+  async divisaoDosPix(faturaId: string, gatewayIds: (string | null)[]): Promise<Map<string, DivisaoPix>> {
+    const ids = [...new Set(gatewayIds.filter((x): x is string => !!x))];
+    const mapa = new Map<string, DivisaoPix>();
+    if (ids.length === 0) return mapa;
+    const linhas = await this.prisma.db.pagamentoFatura.findMany({
+      where: { gatewayPaymentId: { in: ids } },
+      select: { gatewayPaymentId: true, faturaId: true, valor: true, valorExcedente: true, fatura: { select: { numero: true } } },
+      orderBy: { fatura: { dataVencimento: 'asc' } },
+    });
+    for (const l of linhas) {
+      const d = mapa.get(l.gatewayPaymentId!) ?? { valorPix: 0, outrasFaturas: [] };
+      d.valorPix += cent(l.valor) + cent(l.valorExcedente);
+      if (l.faturaId !== faturaId && cent(l.valor) > 0) d.outrasFaturas.push({ numero: l.fatura.numero, valor: cent(l.valor) });
+      mapa.set(l.gatewayPaymentId!, d);
+    }
+    return mapa;
+  }
 
   async carregar(contaId: string, opts: { incluirFaturaId?: string; db?: DbFaturamento } = {}): Promise<ContaCarregada> {
     const db: PrismaService['db'] = opts.db ?? this.prisma.db;

@@ -457,6 +457,11 @@ export function ContaAzit({ f, token, avisar }: { f: FaturaPublica; token: strin
                   <b className="num">{brl(a.valor)}</b>
                 </div>
               ))}
+              {r.valorPix > r.valor && (
+                <div className="q meta">
+                  <span>Pix de {brl(r.valorPix)} · {brl(r.valor)} nesta fatura{r.outrasFaturas.map((o) => ` · ${brl(o.valor)} na fatura nº ${o.numero}`).join('')}</span>
+                </div>
+              )}
               {r.identificador && <div className="q meta"><span>Identificador do Pix</span><span className="num">{r.identificador}</span></div>}
             </div>
           </details>

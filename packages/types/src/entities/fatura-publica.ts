@@ -84,6 +84,8 @@ export interface RecebidoFaturaPublica {
   hora: string | null; // 'HH:MM' (Brasil), quando o gateway informou
   valor: number;
   identificador: string | null; // identificador da transação Pix
+  valorPix: number; // o Pix inteiro (pode ser maior que o aplicado nesta fatura)
+  outrasFaturas: { numero: number; valor: number }[]; // onde o resto do mesmo Pix foi aplicado
 }
 
 export interface FaturaContaPublica {

@@ -101,6 +101,12 @@ export function FaturaAzitBloco({ fd, contaId, recarregar }: { fd: FaturaDetalhe
                   <b className="tabular-nums">{formatCurrency(p.valor)}</b>
                 </div>
                 <div style={mudo}>{ORIGEM_PAGAMENTO[p.origem]}{p.identificadorPix ? ` · ${p.identificadorPix}` : ''}</div>
+                {p.valorPix > p.valor && (
+                  <div className="mt-[2px]" style={corpo}>
+                    Pix de {formatCurrency(p.valorPix)} · {formatCurrency(p.valor)} nesta fatura
+                    {p.outrasFaturas.map((o) => ` · ${formatCurrency(o.valor)} foi para a fatura nº ${o.numero}`).join('')}
+                  </div>
+                )}
                 {p.alocacoes.length > 0 && (
                   <div className="mt-[4px] flex flex-col gap-[2px]">
                     {p.alocacoes.map((al, i) => (

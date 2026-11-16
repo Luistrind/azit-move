@@ -708,12 +708,15 @@ export class FaturaService {
     const projetada = this.contaFatura.projetar(conta).faturas.find((x) => x.id === faturaId);
     if (!f || !projetada) return null;
     const nomeDoItem = new Map(f.itens.map((it) => [it.id, it.titulo]));
+    const divisao = await this.contaFatura.divisaoDosPix(faturaId, f.pagamentos.map((p) => p.gatewayPaymentId));
     const pagamentos: PagamentoFaturaOperador[] = f.pagamentos.map((p) => ({
       id: p.id,
       data: p.data,
       pagoEm: p.pagoEm?.toISOString() ?? null,
       valor: p.valor,
       valorExcedente: p.valorExcedente,
+      valorPix: (p.gatewayPaymentId && divisao.get(p.gatewayPaymentId)?.valorPix) || p.valor + p.valorExcedente,
+      outrasFaturas: (p.gatewayPaymentId && divisao.get(p.gatewayPaymentId)?.outrasFaturas) || [],
       origem: p.origem as PagamentoFaturaOperador['origem'],
       identificadorPix: p.identificadorPix,
       intencaoId: p.intencaoId,
