@@ -16,6 +16,8 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 import { WhatsappConfigController } from './whatsapp-config.controller';
 import { LembreteService } from './lembrete.service';
 import { LembreteController } from './lembrete.controller';
+import { ConversaService } from './conversa.service';
+import { ConversaController } from './conversa.controller';
 
 // Compila o WhatsappModule de verdade (DI do Nest), com banco dublado, fila
 // dublada e configuração mínima — sem abrir conexão nem porta. Os testes
@@ -51,6 +53,8 @@ describe('WhatsappModule (injeção de dependências)', () => {
     expect(modulo.get(WhatsappConfigController)).toBeInstanceOf(WhatsappConfigController);
     expect(modulo.get(LembreteService)).toBeInstanceOf(LembreteService);
     expect(modulo.get(LembreteController)).toBeInstanceOf(LembreteController);
+    expect(modulo.get(ConversaService)).toBeInstanceOf(ConversaService);
+    expect(modulo.get(ConversaController)).toBeInstanceOf(ConversaController);
     await modulo.close();
   });
 });

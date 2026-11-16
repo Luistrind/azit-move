@@ -43,6 +43,7 @@ import { MigracaoLegadoPage } from './pages/MigracaoLegadoPage';
 import { MigracaoLegadoCasoPage } from './pages/MigracaoLegadoCasoPage';
 import { MinhaContaPage } from './pages/MinhaContaPage';
 import { WhatsappConfigPage } from './pages/WhatsappConfigPage';
+import { ConversasPage } from './pages/ConversasPage';
 
 // Rotas client-side — Doc 4 §5.1. /login é pública; o restante é protegido pela sessão.
 //
@@ -92,6 +93,7 @@ export const router = createBrowserRouter([
           rota('carteira/clientes', <CarteiraClientesPage />, CARTEIRA_COBRANCA),
           rota('regua', <ReguaPage />, CARTEIRA_COBRANCA),
           rota('acordos', <AcordosPage />, CARTEIRA_COBRANCA),
+          rota('conversas', <ConversasPage />, CARTEIRA_COBRANCA),
           rota('migracao-legado', <MigracaoLegadoPage />, CARTEIRA_COBRANCA),
           rota('migracao-legado/:id', <MigracaoLegadoCasoPage />, CARTEIRA_COBRANCA),
 

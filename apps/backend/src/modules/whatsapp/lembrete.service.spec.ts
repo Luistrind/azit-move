@@ -47,7 +47,7 @@ function montar(opts: { faturas?: Fatura[]; ativo?: boolean; envio?: ResultadoEn
           if (lembretes.some((l) => l.faturaId === data.faturaId && l.momento === data.momento)) {
             throw new Prisma.PrismaClientKnownRequestError('único', { code: 'P2002', clientVersion: 'teste' });
           }
-          const l = { id: `l${++seq}`, mensagemId: null, motivo: null, enviadoEm: null, entregueEm: null, lidoEm: null, falhaEm: null, createdAt: new Date(), ...data } as Lembrete;
+          const l = { id: `l${++seq}`, mensagemId: null, motivo: null, enviadoEm: null, entregueEm: null, lidoEm: null, falhaEm: null, createdAt: new Date(), ...data } as unknown as Lembrete;
           lembretes.push(l);
           return l;
         },

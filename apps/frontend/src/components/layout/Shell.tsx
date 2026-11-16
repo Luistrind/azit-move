@@ -23,6 +23,7 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
   '/configuracoes/usuarios': { title: 'Usuários e permissões', subtitle: 'Acesso por papel e por área' },
   '/regua': { title: 'Régua de Cobrança', subtitle: 'Gestão de inadimplência' },
   '/acordos': { title: 'Renegociações', subtitle: 'Acompanhamento de acordos e novações' },
+  '/conversas': { title: 'Conversas do WhatsApp', subtitle: 'Respostas dos clientes ao número da Azit' },
   '/aprovacoes': { title: 'Central de Aprovações', subtitle: 'Solicitações pendentes de alçada' },
   '/configuracoes/alcadas': { title: 'Alçadas', subtitle: 'Matriz de aprovação por papel' },
   '/configuracoes/simulador': { title: 'Simulador', subtitle: 'Parâmetros versionados e ofertas fixas' },

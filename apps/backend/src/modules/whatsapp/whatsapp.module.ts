@@ -11,6 +11,8 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 import { WhatsappConfigController } from './whatsapp-config.controller';
 import { LembreteService } from './lembrete.service';
 import { LembreteController } from './lembrete.controller';
+import { ConversaService } from './conversa.service';
+import { ConversaController } from './conversa.controller';
 
 // WhatsApp enxuto (doc 02 §23, §24 e §28 — decisão Luís 15/11/2026): o canal
 // (cliente da Meta, parâmetros versionados, regra única de envio, webhook e
@@ -18,7 +20,7 @@ import { LembreteController } from './lembrete.controller';
 // fica fora (§23.5).
 @Module({
   imports: [BullModule.registerQueue({ name: QUEUE_NAMES.WHATSAPP })],
-  controllers: [WhatsappWebhookController, WhatsappConfigController, LembreteController],
+  controllers: [WhatsappWebhookController, WhatsappConfigController, LembreteController, ConversaController],
   providers: [
     WhatsappMetaService,
     WhatsappParametrosService,
@@ -27,7 +29,8 @@ import { LembreteController } from './lembrete.controller';
     WhatsappEventosService,
     WhatsappProcessor,
     LembreteService,
+    ConversaService,
   ],
-  exports: [WhatsappEnvioService, WhatsappParametrosService, LembreteService],
+  exports: [WhatsappEnvioService, WhatsappParametrosService, LembreteService, ConversaService],
 })
 export class WhatsappModule {}
