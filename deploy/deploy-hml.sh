@@ -26,11 +26,21 @@ docker build -t azit-frontend:hml \
   --build-arg VITE_AMBIENTE=homologacao \
   --build-arg VITE_GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}" \
   -f "$WT/apps/frontend/Dockerfile" "$WT"
-docker build -t azit-fatura:hml \
-  --build-arg VITE_API_URL=https://api-hml.azitmove.com.br \
-  -f "$WT/apps/fatura/Dockerfile" "$WT"
+# Página pública da Fatura Azit (doc 02 §32.2): só existe a partir da F1. O script
+# roda SEMPRE da main do servidor, mas o ref publicado pode ser uma branch — então
+# a imagem é construída quando o ref TEM o app, e não quando a main tem (15/11:
+# o homolog da F2 subiu sem a imagem e o serviço azit-hml_fatura ficou em "No such image").
+FATURA=0
+if [ -f "$WT/apps/fatura/Dockerfile" ]; then
+  docker build -t azit-fatura:hml \
+    --build-arg VITE_API_URL=https://api-hml.azitmove.com.br \
+    -f "$WT/apps/fatura/Dockerfile" "$WT"
+  FATURA=1
+elif grep -q "azit-fatura:hml" "$WT/deploy/azit-hml-stack.swarm.yml"; then
+  erro "O stack de $REF pede a imagem azit-fatura:hml, mas o ref não tem apps/fatura/Dockerfile"; exit 1
+fi
 [ -n "${GOOGLE_CLIENT_ID:-}" ] || aviso "GOOGLE_CLIENT_ID ausente em deploy/stack-hml.env — o botão 'Entrar com Google' NÃO vai aparecer (doc 06 §2.2; valor em deploy/AMBIENTES.md §1.5)"
-ok "Imagens azit-backend:hml, azit-frontend:hml e azit-fatura:hml prontas"
+ok "Imagens azit-backend:hml e azit-frontend:hml prontas$([ "$FATURA" = 1 ] && echo " (+ azit-fatura:hml)")"
 
 etapa "3/5 Stack $STACK"
 docker stack deploy -c "$WT/deploy/azit-hml-stack.swarm.yml" "$STACK"
@@ -38,7 +48,9 @@ docker stack deploy -c "$WT/deploy/azit-hml-stack.swarm.yml" "$STACK"
 if docker service inspect "${STACK}_backend" >/dev/null 2>&1; then
   docker service update --force --quiet --image azit-backend:hml "${STACK}_backend" >/dev/null
   docker service update --force --quiet --image azit-frontend:hml "${STACK}_frontend" >/dev/null
-  docker service inspect "${STACK}_fatura" >/dev/null 2>&1 && docker service update --force --quiet --image azit-fatura:hml "${STACK}_fatura" >/dev/null
+  if [ "$FATURA" = 1 ] && docker service inspect "${STACK}_fatura" >/dev/null 2>&1; then
+    docker service update --force --quiet --image azit-fatura:hml "${STACK}_fatura" >/dev/null
+  fi
 fi
 CID=$(aguardar_servico "${STACK}_backend")
 DBCID=$(aguardar_servico "${STACK}_azit-db")

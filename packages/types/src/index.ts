@@ -20,6 +20,7 @@ export * from './enums/area-sistema';
 export * from './enums/aprovacao';
 export * from './enums/acesso';
 export * from './enums/faturamento';
+export * from './enums/whatsapp';
 
 // Entidades
 export * from './entities/titular';

@@ -28,6 +28,7 @@ import { Bloco } from '../components/Bloco';
 import { Secao } from '../components/Secao';
 import { LinkFaturaAcoes } from '../components/LinkFaturaAcoes';
 import { FaturaAzitBloco } from '../components/FaturaAzitBloco';
+import { LembretesPagamento } from '../components/LembretesPagamento';
 
 // Layout v2 (doc 03 §11): a ficha do titular (hub da conta) em Secaos — uma
 // coluna no celular, duas no desktop —, relacionamento em Bloco com Leitura,
@@ -482,6 +483,9 @@ export function TitularDetalhePage() {
           />
         </Secao>
       )}
+
+      {/* Lembretes de pagamento pelo WhatsApp (doc 02 §28.4) — ao lado das faturas. */}
+      {contaId && <LembretesPagamento titularId={id} />}
 
       {/* Bloco 4 — Histórico de faturas (paginado) */}
       <Secao

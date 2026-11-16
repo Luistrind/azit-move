@@ -23,6 +23,7 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
   '/configuracoes/usuarios': { title: 'Usuários e permissões', subtitle: 'Acesso por papel e por área' },
   '/regua': { title: 'Régua de Cobrança', subtitle: 'Gestão de inadimplência' },
   '/acordos': { title: 'Renegociações', subtitle: 'Acompanhamento de acordos e novações' },
+  '/conversas': { title: 'Conversas do WhatsApp', subtitle: 'Respostas dos clientes ao número da Azit' },
   '/aprovacoes': { title: 'Central de Aprovações', subtitle: 'Solicitações pendentes de alçada' },
   '/configuracoes/alcadas': { title: 'Alçadas', subtitle: 'Matriz de aprovação por papel' },
   '/configuracoes/simulador': { title: 'Simulador', subtitle: 'Parâmetros versionados e ofertas fixas' },
@@ -38,7 +39,8 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
   '/produtos': { title: 'Itens avulsos de contrato', subtitle: 'Itens contratáveis avulsos (legado §9)' },
   '/configuracoes/assinatura': { title: 'Assinatura digital', subtitle: 'Signatários padrão e validade do contrato' },
   '/configuracoes/faturamento': { title: 'Faturamento', subtitle: 'Regras da Fatura Azit e Pix sob demanda' },
-  '/configuracoes/integracoes': { title: 'Integrações', subtitle: 'Credenciais do Asaas e da ZapSign — sem redeploy' },
+  '/configuracoes/integracoes': { title: 'Integrações', subtitle: 'Credenciais do Asaas, da ZapSign e da Meta — sem redeploy' },
+  '/configuracoes/whatsapp': { title: 'WhatsApp', subtitle: 'Envios automáticos, números autorizados e modelos de mensagem' },
 };
 
 export function Shell() {

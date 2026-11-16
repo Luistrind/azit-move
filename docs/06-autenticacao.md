@@ -662,12 +662,13 @@ Os destinatários de "pode decidir" saem da mesma função que a Central usa par
 | `simulador` (parâmetros, ofertas fixas) | CONFIGURACOES | `GET simulador/ofertas-fixas` + ATIVOS_FROTA (tela de ativos mostra a oferta vinculada) |
 | `usuarios`, `permissoes/matriz` | CONFIGURACOES | `GET me/areas`, `GET/PUT me/preferencias` `@AreaLivre` |
 | `integracoes` | CONFIGURACOES | — |
+| `whatsapp` (canal, lembretes de pagamento e Conversas — doc 02 §23, §24, §28) | CARTEIRA_COBRANCA (`conversas-whatsapp/*`; ligar/desligar o lembrete e o aviso do Asaas na ficha) | `GET/PUT whatsapp/parametros` → CONFIGURACOES; `GET titulares/:id/lembretes` + `AREAS_FICHA_TITULAR` (a ficha mostra o estado; só a carteira age); `GET whatsapp/lembretes/resumo` e `POST dev/whatsapp/lembretes/varrer` → CONFIGURACOES, CARTEIRA_COBRANCA; `GET/POST webhooks/whatsapp` `@Public` (assinatura da Meta) |
 | `auth`, `notificacao`, `inicio` | `@AreaLivre` | sessão, sino e fila de trabalho do próprio usuário |
 | `health`, `webhooks/*`, `mcp` | `@Public` (fora do JWT) | autenticação própria (§7.4); `/publico` da Fatura Azit ainda não está nesta branch |
 
 **Rotas da tela (`router.tsx`, `handle.area`)** — mesmo mapa: `/atendimento`, `/simulacoes`, `/propostas(/:id)`,
 `/lista-espera` → COMERCIAL · `/analises(/:id)` → ANALISE_CADASTRO · `/carteira`, `/carteira/clientes`, `/regua`,
-`/acordos`, `/migracao-legado(/:id)` → CARTEIRA_COBRANCA · `/contratos/:id` → `AREAS_CONTRATO` · `/titulares`,
+`/acordos`, `/conversas`, `/migracao-legado(/:id)` → CARTEIRA_COBRANCA · `/contratos/:id` → `AREAS_CONTRATO` · `/titulares`,
 `/pessoas` → PESSOAS · `/titulares/:id` → `AREAS_FICHA_TITULAR` · `/contas-a-pagar`, `/fornecedores-financeiro`,
 `/financeiro-configuracao` → FINANCEIRO_ADMINISTRATIVO · `/ativos`, `/frota/ocorrencias` → ATIVOS_FROTA ·
 `/centros-custo` → ATIVOS_FROTA ou FINANCEIRO_ADMINISTRATIVO · `/estruturas` → CAPITAL_INVESTIMENTO · `/produtos`,

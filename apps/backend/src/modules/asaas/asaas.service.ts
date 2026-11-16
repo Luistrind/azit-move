@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { centavosParaReaisString, dataCalendarioUTC } from '@azit/utils';
 import { IntegracoesService } from '../integracoes/integracoes.service';
 import { corpoJson, fetchAsaas } from './asaas-http';
+import { PrismaService } from '../../database/prisma.service';
 
 // Cliente Asaas (Doc 7 item 4.3). "Asaas executa, Azit controla" (Regra nº 1):
 // toda lógica é nossa; o Asaas só cria/recebe cobranças.
@@ -23,7 +24,10 @@ export class AsaasService {
 
   // Credencial EFETIVA via central de integrações (decisão 15/09): banco >
   // env, trocável pela tela sem redeploy — inclusive sandbox → produção.
-  constructor(private readonly integracoes: IntegracoesService) {}
+  constructor(
+    private readonly integracoes: IntegracoesService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   get simulado(): boolean {
     return !this.integracoes.asaas().apiKey;
@@ -93,15 +97,62 @@ export class AsaasService {
       this.logger.log(`[simulado] cliente ${id} (${params.nome})`);
       return id;
     }
+    // "Sem dobro" (doc 02 §28.1): se o operador desligou o aviso do Asaas para
+    // este titular, o cliente JÁ NASCE sem notificação (ponto único de criação).
+    const semAviso = await this.avisoDesligadoPara(params.titularId);
     const data = await this.call<{ id: string }>('/customers', {
       name: params.nome,
       cpfCnpj: params.cpfCnpj.replace(/\D/g, ''),
       email: params.email ?? undefined,
       mobilePhone: params.telefone ? params.telefone.replace(/\D/g, '') : undefined,
       externalReference: params.titularId,
+      ...(semAviso ? { notificationDisabled: true } : {}),
     });
-    this.logger.log(`Cliente Asaas criado ${data.id} (${params.nome})`);
+    if (semAviso) {
+      await this.prisma.db.lembreteTitular
+        .updateMany({ where: { titularId: params.titularId }, data: { asaasAvisoPendente: false } })
+        .catch((e) => this.logger.warn(`aviso do Asaas aplicado na criação, mas o registro não foi atualizado: ${(e as Error).message}`));
+    }
+    this.logger.log(`Cliente Asaas criado ${data.id} (${params.nome})${semAviso ? ' — sem aviso do Asaas' : ''}`);
     return data.id;
+  }
+
+  private async avisoDesligadoPara(titularId: string): Promise<boolean> {
+    try {
+      const l = await this.prisma.db.lembreteTitular.findUnique({ where: { titularId }, select: { asaasAvisoDesligado: true } });
+      return !!l?.asaasAvisoDesligado;
+    } catch (e) {
+      // Nunca impede a criação do cliente (e da cobrança) por causa do lembrete.
+      this.logger.warn(`não consegui ler a decisão de aviso do titular ${titularId}: ${(e as Error).message}`);
+      return false;
+    }
+  }
+
+  // Liga/desliga o aviso de cobrança do PRÓPRIO Asaas no cadastro de um cliente
+  // existente (PUT /customers/{id}, campo notificationDisabled — doc 02 §28.1).
+  // Altera cadastro fora do sistema: só é chamado por ação explícita do operador.
+  // Falha PROPAGA: o operador precisa saber que o Asaas não aceitou.
+  async definirAvisoCliente(customerId: string, desligado: boolean): Promise<void> {
+    if (this.simulado) {
+      this.logger.log(`[simulado] cliente ${customerId}: aviso do Asaas ${desligado ? 'desligado' : 'religado'}`);
+      return;
+    }
+    const cred = this.integracoes.asaas();
+    // Integração F2 + WhatsApp: mesmo tempo limite das demais chamadas (asaas-http).
+    const resp = await fetchAsaas(
+      `${cred.apiUrl}/customers/${customerId}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', access_token: cred.apiKey },
+        body: JSON.stringify({ notificationDisabled: desligado }),
+      },
+      'PUT /customers/{id}',
+    );
+    if (!resp.ok) {
+      const txt = await resp.text().catch(() => '');
+      throw new Error(`Asaas PUT /customers/${customerId} retornou ${resp.status}: ${txt.slice(0, 300)}`);
+    }
+    this.logger.log(`Cliente Asaas ${customerId}: aviso ${desligado ? 'desligado' : 'religado'}`);
   }
 
   // Id de cliente gravado em modo SIMULADO não existe no Asaas real (correção

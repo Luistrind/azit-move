@@ -31,7 +31,7 @@ describe('fetchAsaas — tempo limite', () => {
 
   it('AsaasService.criarCobranca: Asaas pendurado → erro de tempo limite (a rota do Pix responde 503 em vez de ficar esperando)', async () => {
     jest.spyOn(global, 'fetch').mockRejectedValueOnce(estouro());
-    const asaas = new AsaasService(integracoes as never);
+    const asaas = new AsaasService(integracoes as never, {} as never);
     await expect(asaas.criarCobranca({ externalReference: 'intencao:int_1', valor: 1000, vencimento: new Date('2026-11-09T00:00:00Z'), descricao: 'x', customerId: 'cus_1' })).rejects.toThrow('Asaas POST /payments não respondeu em 8 s');
   });
 
@@ -75,7 +75,7 @@ describe("limite da consulta do código Pix (ASAAS_PIX_QR_TIMEOUT_MS)", () => {
     const leitura = new AsaasLeituraService(integracoes as never);
     await leitura.pixQrCode("pay_1");
     expect(limite).toHaveBeenLastCalledWith(30000);
-    const asaas = new AsaasService(integracoes as never);
+    const asaas = new AsaasService(integracoes as never, {} as never);
     await asaas.criarCobranca({ externalReference: "intencao:int_1", valor: 1000, vencimento: new Date("2026-11-09T00:00:00Z"), descricao: "x", customerId: "cus_1" }).catch(() => undefined);
     expect(limite).toHaveBeenLastCalledWith(8000);
   });

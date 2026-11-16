@@ -442,6 +442,9 @@ model Titular {
 
   classificacoes TitularClassificacao[]
   investimentosEstrutura InvestidorEstrutura[]
+  mensagensWhatsapp MensagemWhatsapp[]
+  lembretesPagamento LembretePagamento[]
+  lembrete          LembreteTitular?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1063,6 +1066,12 @@ model ParametroIntegracao {
   zapsignAmbiente      String  @default("sandbox") // sandbox | producao
   zapsignApiToken      String?
   zapsignWebhookSecret String?
+  // WhatsApp Business Platform — Cloud API da Meta (doc 02 §22 item 7, §23).
+  whatsappPhoneNumberId String? // id do número (não é segredo)
+  whatsappWabaId        String? // id da conta do WhatsApp Business (não é segredo)
+  whatsappAccessToken   String?
+  whatsappAppSecret     String? // assinatura X-Hub-Signature-256 do webhook
+  whatsappVerifyToken   String? // cadastro (GET) do webhook
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1291,6 +1300,7 @@ model Fatura {
   modeloEncargo     ModeloEncargoFatura @default(ASAAS_NATIVO)
 
   conta       Conta        @relation(fields: [contaId], references: [id])
+  lembretes   LembretePagamento[]
   itensFatura ItemFatura[]
   parcelas    Parcela[]
   acordo      Acordo?      @relation(fields: [acordoId], references: [id])
@@ -2960,4 +2970,148 @@ model ColetaLegado {
 
   @@index([iniciadaEm])
   @@map("coletas_legado")
+}
+
+// ============================================================
+// WhatsApp enxuto — canal, Conversas e lembretes de pagamento
+// (doc 02 §23, §24 e §28 — decisão Luís 2026-11-15)
+// ============================================================
+
+// Parâmetros do canal, VERSIONADOS (§23.3): cada alteração grava uma linha
+// nova; vale a de maior `versao`. Sem linha nenhuma, valem os padrões (chave
+// geral desligada, lista vazia, modelos padrão).
+model ParametroWhatsapp {
+  id                 String   @id @default(cuid())
+  versao             Int      @unique
+  ativo              Boolean  @default(false) // chave geral dos envios automáticos
+  // Fora de produção, SÓ estes destinos recebem de verdade (número real único
+  // em todos os ambientes — §23.2). Canônicos: 55 + DDD + celular com nono dígito.
+  numerosAutorizados String[] @default([])
+  // Modelo aprovado na Meta por momento: o botão de link tem domínio fixo, e
+  // homologação e produção usam domínios diferentes (§23.3).
+  modeloD2Nome       String   @default("azit_fatura_disponivel")
+  modeloD2Idioma     String   @default("pt_BR")
+  modeloD0Nome       String   @default("azit_fatura_vence_hoje")
+  modeloD0Idioma     String   @default("pt_BR")
+  usuarioId          String? // quem gravou esta versão
+
+  createdAt DateTime @default(now())
+
+  @@map("parametros_whatsapp")
+}
+
+enum DirecaoMensagemWhatsapp {
+  ENTRADA
+  SAIDA
+}
+
+// Mensagens trocadas com o cliente pelo número dedicado (§24). A conversa é do
+// NÚMERO (canônico), ligada ao titular quando casa com o cadastro. Os lembretes
+// enviados NÃO são duplicados aqui: continuam em LembretePagamento.
+model MensagemWhatsapp {
+  id          String                  @id @default(cuid())
+  direcao     DirecaoMensagemWhatsapp
+  numero      String // contraparte, canônico
+  titularId   String?
+  nomePerfil  String? // nome do perfil do WhatsApp (entrada)
+  mensagemId  String?                 @unique // id da mensagem na Meta (wamid)
+  tipo        String // text | image | audio | document | video | sticker | location | button | interactive | reaction | unsupported
+  texto       String?
+  midiaId     String? // id da mídia na Meta (entrada)
+  midiaRef    String? // arquivo guardado em uploads/whatsapp
+  midiaTipo   String?
+  midiaNome   String?
+  status      String? // saída: enviando | enviada | entregue | lida | falhou | simulada | retida
+  falhaMotivo String?
+  usuarioId   String? // saída: operador que respondeu
+  momento     DateTime // horário da Meta (entrada) ou do envio (saída)
+  lidaEm      DateTime? // entrada: quando um operador abriu a conversa
+  bruto       Json? // conteúdo original recebido
+
+  titular Titular? @relation(fields: [titularId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([numero, momento])
+  @@index([titularId])
+  @@map("mensagens_whatsapp")
+}
+
+// Momento do lembrete de pagamento (§28.1).
+enum MomentoLembrete {
+  D_MENOS_2 // 2 dias antes do vencimento: fatura disponível
+  D_ZERO // dia do vencimento, se ainda em aberto
+}
+
+// Situação REAL do lembrete (gravada). SIMULADO só existe fora de produção;
+// RETIDO só em produção sem credencial (§23.1).
+enum SituacaoLembrete {
+  PREPARADO
+  ENVIADO
+  ENTREGUE
+  LIDO
+  FALHOU
+  SIMULADO
+  RETIDO
+}
+
+// Lembrete de pagamento enviado (ou não) ao cliente (§28.4). UM por fatura por
+// momento — a chave única é a garantia contra dobro entre rodadas e réplicas.
+// Não é prova formal da POP.
+model LembretePagamento {
+  id            String           @id @default(cuid())
+  faturaId      String
+  titularId     String
+  momento       MomentoLembrete
+  diaReferencia String // 'YYYY-MM-DD' (fuso do Brasil) em que o momento valeu
+  destino       String? // WhatsApp canônico; null = titular sem WhatsApp válido
+  texto         String // corpo do modelo já preenchido — o que o cliente recebeu
+  modeloNome    String
+  modeloIdioma  String
+  mensagemId    String?          @unique // id da mensagem na Meta
+  situacao      SituacaoLembrete @default(PREPARADO)
+  motivo        String? // por que não saiu de verdade, ou por que falhou
+  enviadoEm     DateTime?
+  entregueEm    DateTime?
+  lidoEm        DateTime?
+  falhaEm       DateTime?
+
+  fatura  Fatura  @relation(fields: [faturaId], references: [id])
+  titular Titular @relation(fields: [titularId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([faturaId, momento])
+  @@index([titularId])
+  @@index([situacao])
+  @@map("lembretes_pagamento")
+}
+
+// Lembrete por titular (§28.3): nasce DESLIGADO; ligar é ato do operador na
+// ficha, com quem e quando. O aviso do próprio Asaas (cadastro do cliente lá,
+// notificationDisabled) é decisão SEPARADA e explícita (§28.1, "sem dobro").
+model LembreteTitular {
+  id             String    @id @default(cuid())
+  titularId      String    @unique
+  ativo          Boolean   @default(false)
+  ligadoEm       DateTime?
+  ligadoPorId    String?
+  desligadoEm    DateTime?
+  desligadoPorId String?
+
+  asaasAvisoDesligado     Boolean   @default(false) // decisão do operador
+  asaasAvisoAlteradoEm    DateTime?
+  asaasAvisoAlteradoPorId String?
+  // true = a decisão ainda não está no Asaas (cliente não existe lá, ou a
+  // alteração falhou); é aplicada quando o cliente for criado/na nova tentativa.
+  asaasAvisoPendente      Boolean   @default(false)
+
+  titular Titular @relation(fields: [titularId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("lembretes_titular")
 }
