@@ -25,6 +25,8 @@ export interface LembretesDoTitular {
   titularId: string;
   whatsapp: string | null;
   whatsappValido: boolean;
+  // Conversa do número do cadastro em Conversas do WhatsApp (mensagens = 0: o cliente nunca escreveu).
+  conversa: { numero: string | null; mensagens: number; naoLidas: number };
   lembrete: { ativo: boolean; ligadoEm: string | null; ligadoPor: string | null; desligadoEm: string | null; desligadoPor: string | null };
   avisoAsaas: { desligado: boolean; alteradoEm: string | null; alteradoPor: string | null; pendente: boolean; clienteNoAsaas: boolean };
   semAvisoNenhum: boolean;

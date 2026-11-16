@@ -166,6 +166,12 @@ export function LembretesPagamento({ titularId }: { titularId: string }) {
             <div className="text-[12px] font-semibold" style={{ color: 'var(--text-label)' }}>Lembrete do sistema (2 dias antes e no dia do vencimento)</div>
             <div className="text-[12.5px]" style={{ color: 'var(--text-body)' }}>{estadoLembrete}</div>
             {d.whatsapp && <div className="text-[12px] tabular-nums" style={muted}>Vai para {d.whatsapp}, o WhatsApp do cadastro.</div>}
+            {/* Atalho para a conversa (doc 02 §24) — só existe se o cliente já escreveu. */}
+            {d.conversa.numero && d.conversa.mensagens > 0 && (
+              <LinkArea to={`/conversas?numero=${d.conversa.numero}`} area={AreaSistema.CARTEIRA_COBRANCA} className="text-[12px] font-semibold underline" style={{ color: 'var(--accent)' }}>
+                {d.conversa.naoLidas > 0 ? `Abrir a conversa no WhatsApp — ${d.conversa.naoLidas} mensagem(ns) não lida(s) →` : 'Abrir a conversa no WhatsApp →'}
+              </LinkArea>
+            )}
             {podeAgir && (
               <div>
                 {lembrete.ativo ? (

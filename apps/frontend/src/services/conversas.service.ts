@@ -46,6 +46,11 @@ export const conversasService = {
     const { data } = await api.get<ResumoConversa[]>('/api/v1/conversas-whatsapp');
     return data;
   },
+  // Contador do menu.
+  async naoLidas(): Promise<number> {
+    const { data } = await api.get<{ total: number }>('/api/v1/conversas-whatsapp/nao-lidas');
+    return data.total;
+  },
   async conversa(numero: string): Promise<Conversa> {
     const { data } = await api.get<Conversa>(`/api/v1/conversas-whatsapp/${numero}`);
     return data;

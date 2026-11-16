@@ -20,6 +20,12 @@ export class ConversaController {
     return this.service.listar();
   }
 
+  // Contador do menu (mensagens de clientes ainda não abertas).
+  @Get('conversas-whatsapp/nao-lidas')
+  naoLidas() {
+    return this.service.naoLidas();
+  }
+
   // Antes de `:numero` — rota fixa não pode ser engolida pelo parâmetro.
   @Get('conversas-whatsapp/midia/:id')
   async midia(@Param('id') id: string, @Res() res: Resposta) {

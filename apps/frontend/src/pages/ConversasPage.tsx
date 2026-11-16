@@ -87,6 +87,7 @@ function Conversa_({ numero, onVoltar }: { numero: string; onVoltar: () => void 
     if (naoLidas > 0) {
       void svc.marcarLida(numero).then(() => {
         void qc.invalidateQueries({ queryKey: ['conversas'] });
+        void qc.invalidateQueries({ queryKey: ['conversas-nao-lidas'] }); // contador do menu
         void qc.invalidateQueries({ queryKey: ['conversa', numero] });
       });
     }

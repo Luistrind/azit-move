@@ -70,6 +70,7 @@ function montar(opts: { faturas?: Fatura[]; ativo?: boolean; envio?: ResultadoEn
         findFirst: async () => (opts.titular === null ? null : { id: 't1', nome: 'João Pedro', whatsapp: '11987654321', asaasCustomerId: null, ...opts.titular }),
       },
       usuario: { findMany: async () => [{ id: 'u1', nome: 'Operadora' }] },
+      mensagemWhatsapp: { count: async ({ where }: { where: { lidaEm?: null } }) => ('lidaEm' in where ? 1 : 3) },
       logAuditoria: { create: async ({ data }: { data: { acao: string; depois: unknown } }) => { auditoria.push(data); } },
     },
   };
@@ -265,6 +266,7 @@ describe('LembreteService — lembrete por titular e aviso do Asaas (doc 02 §28
     const antes = await m.service.doTitular('t1');
     expect(antes.lembrete.ativo).toBe(false);
     expect(antes.avisoAsaas.desligado).toBe(false);
+    expect(antes.conversa).toEqual({ numero: '5511987654321', mensagens: 3, naoLidas: 1 }); // atalho da ficha para a conversa
     const depois = await m.service.ligar('t1', 'u1');
     expect(depois.lembrete).toMatchObject({ ativo: true, ligadoPor: 'Operadora' });
     expect(depois.lembrete.ligadoEm).not.toBeNull();

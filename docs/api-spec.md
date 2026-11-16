@@ -1432,7 +1432,8 @@ FIPE × venda, ou `referencia`) e `conferenciaVeiculo` (parcela aprovada × ajus
   `webhook_sem_segredo` (produção sem segredo cadastrado).
 
 **Lembretes de pagamento**
-- `GET /titulares/:id/lembretes` (CARTEIRA_COBRANCA + ficha) → `{ whatsapp, whatsappValido, lembrete: { ativo,
+- `GET /titulares/:id/lembretes` (CARTEIRA_COBRANCA + ficha) → `{ whatsapp, whatsappValido, conversa: { numero,
+  mensagens, naoLidas } (atalho para a conversa), lembrete: { ativo,
   ligadoEm, ligadoPor, desligadoEm, desligadoPor }, avisoAsaas: { desligado, alteradoEm, alteradoPor, pendente,
   clienteNoAsaas }, semAvisoNenhum, canal: { enviosAutomaticos, producao, decisao: ENVIA | SIMULADO | RETIDO,
   motivo, enviaDeVerdade }, lembretes: [{ id, faturaId, faturaNumero, vencimento, momento: D_MENOS_2 | D_ZERO,
@@ -1452,6 +1453,7 @@ FIPE × venda, ou `referencia`) e `conferenciaVeiculo` (parcela aprovada × ajus
 **Conversas (área CARTEIRA_COBRANCA)**
 - `GET /conversas-whatsapp` → `[{ numero (canônico), titular, nomePerfil, ultimaEm, ultimaDirecao, ultimaPrevia, naoLidas }]`,
   com não lidas primeiro.
+- `GET /conversas-whatsapp/nao-lidas` → `{ total }` (contador do menu).
 - `GET /conversas-whatsapp/:numero` → `{ numero, titular, nomePerfil, contratos[], janela: { aberta, ate, horas },
   envio: { producao, decisao, motivo, enviaDeVerdade }, itens: [{ id, origem: mensagem | lembrete, direcao:
   ENTRADA | SAIDA, momento, tipo, texto, temMidia, midiaDisponivel, midiaNome, situacao, motivo, autor, lida }] }`.

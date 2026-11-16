@@ -303,7 +303,9 @@ export class LembreteService implements OnModuleInit, ReceptorStatusMeta {
   // aconteceria com um envio agora e os lembretes já registrados por fatura.
   async doTitular(titularId: string) {
     const t = await this.titularOuErro(titularId);
-    const [cfg, params, lembretes] = await Promise.all([
+    const numeroCanonico = normalizarWhatsapp(t.whatsapp);
+    const daConversa = { numero: numeroCanonico ?? '__sem_numero__' };
+    const [cfg, params, lembretes, mensagensConversa, naoLidasConversa] = await Promise.all([
       this.prisma.db.lembreteTitular.findUnique({ where: { titularId } }),
       this.parametros.vigente(),
       this.prisma.db.lembretePagamento.findMany({
@@ -312,9 +314,12 @@ export class LembreteService implements OnModuleInit, ReceptorStatusMeta {
         take: 60,
         include: { fatura: { select: { id: true, numero: true, dataVencimento: true } } },
       }),
+      // Atalho da ficha para a conversa do número do cadastro (doc 02 §24).
+      this.prisma.db.mensagemWhatsapp.count({ where: daConversa }),
+      this.prisma.db.mensagemWhatsapp.count({ where: { ...daConversa, direcao: 'ENTRADA', lidaEm: null } }),
     ]);
     const nomes = await this.nomes([cfg?.ligadoPorId, cfg?.desligadoPorId, cfg?.asaasAvisoAlteradoPorId]);
-    const destino = normalizarWhatsapp(t.whatsapp);
+    const destino = numeroCanonico;
     const decisao = destino ? await this.envio.decidir(destino) : null;
     const ativo = cfg?.ativo ?? false;
     const avisoDesligado = cfg?.asaasAvisoDesligado ?? false;
@@ -322,6 +327,8 @@ export class LembreteService implements OnModuleInit, ReceptorStatusMeta {
       titularId: t.id,
       whatsapp: destino ? formatarWhatsapp(destino) : null,
       whatsappValido: !!destino,
+      // Conversa deste número em Carteira › Conversas do WhatsApp (se o cliente já escreveu).
+      conversa: { numero: destino, mensagens: mensagensConversa, naoLidas: naoLidasConversa },
       lembrete: {
         ativo,
         ligadoEm: cfg?.ligadoEm?.toISOString() ?? null,

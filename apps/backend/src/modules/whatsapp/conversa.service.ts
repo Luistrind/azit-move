@@ -39,6 +39,11 @@ export class ConversaService {
     return normalizarWhatsapp(bruto) ?? bruto.replace(/\D/g, '');
   }
 
+  // Quantas mensagens de clientes ninguém abriu ainda — contador do menu.
+  async naoLidas() {
+    return { total: await this.prisma.db.mensagemWhatsapp.count({ where: { direcao: 'ENTRADA', lidaEm: null } }) };
+  }
+
   // ---------------- Lista ----------------
 
   async listar() {
