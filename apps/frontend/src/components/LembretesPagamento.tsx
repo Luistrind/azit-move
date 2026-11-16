@@ -26,10 +26,13 @@ const quando = (iso: string | null) => (iso ? `${instanteBR(iso)} às ${horaBR(i
 type Acao = 'ligar' | 'desligar' | 'asaas-desligar' | 'asaas-religar';
 
 function linhaDoTempo(l: LembreteRegistrado): string {
+  // Lembrete simulado nunca saiu: carimbo que ele tiver veio da ferramenta de
+  // teste e é dito como tal — não pode parecer entrega de verdade.
+  const teste = l.situacao === 'SIMULADO';
   const partes = [
     l.enviadoEm ? `enviado ${quando(l.enviadoEm)}` : null,
-    l.entregueEm ? `entregue ${quando(l.entregueEm)}` : null,
-    l.lidoEm ? `lido ${quando(l.lidoEm)}` : null,
+    l.entregueEm ? `${teste ? 'entrega de teste' : 'entregue'} ${quando(l.entregueEm)}` : null,
+    l.lidoEm ? `${teste ? 'leitura de teste' : 'lido'} ${quando(l.lidoEm)}` : null,
     l.falhaEm ? `falhou ${quando(l.falhaEm)}` : null,
   ].filter(Boolean);
   return partes.length > 0 ? partes.join(' · ') : `registrado ${quando(l.registradoEm)}`;

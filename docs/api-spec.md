@@ -1411,3 +1411,52 @@ Detalhe da proposta: `ativo` pode ser nulo; `referencia`, `veiculo` (rótulo ún
 
 **Dossiê da análise** (`GET /analises/:id`): `veiculo` (tipo `ativo` com km/origem/contratos anteriores/
 FIPE × venda, ou `referencia`) e `conferenciaVeiculo` (parcela aprovada × ajuste, pendente ou não).
+
+## 6-F. WhatsApp — canal, lembretes de pagamento e Conversas — doc 02 §23, §24 e §28 (15/11/2026)
+
+**Canal (Configuração › WhatsApp — área CONFIGURACOES, ADMIN/DIRETOR)**
+- `GET /whatsapp/parametros` → `{ versao, ativo, numerosAutorizados[], modelos: [{ momento, nome, idioma, cadastro: { categoria, corpo, variaveis[], botaoTexto, botaoUrl, botaoVariavel } }], janela: { inicio, fim }, alteradoEm, alteradoPor, ambiente: { producao, credencialConfigurada } }`.
+  `versao: 0` = padrões (nunca salvo). Nenhum segredo.
+- `PUT /whatsapp/parametros { ativo?, numerosAutorizados?, modeloD2Nome?, modeloD2Idioma?, modeloD0Nome?, modeloD0Idioma? }`
+  → grava uma **versão nova** e devolve a tela. 422: `numeros_invalidos`, `modelo_invalido`, `idioma_invalido`,
+  `sem_credencial` (produção não liga os envios sem credencial).
+- Credenciais: `GET/PUT /integracoes` ganham o bloco `whatsapp` (`phoneNumberId`, `wabaId` inteiros;
+  `accessToken`, `appSecret`, `verifyToken` write-only, só o final); `POST /integracoes/whatsapp/testar`
+  lê o próprio número na Meta, sem enviar mensagem.
+
+**Webhook da Meta (público)**
+- `GET /webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=…&hub.challenge=…` → devolve o desafio em
+  texto puro; 403 se o token de verificação não bate.
+- `POST /webhooks/whatsapp` com `X-Hub-Signature-256: sha256=<HMAC do corpo com o segredo do aplicativo>` →
+  `200 { recebido: true }` e enfileira (fila `whatsapp`, job `evento-meta`). 401: `assinatura_invalida`,
+  `webhook_sem_segredo` (produção sem segredo cadastrado).
+
+**Lembretes de pagamento**
+- `GET /titulares/:id/lembretes` (CARTEIRA_COBRANCA + ficha) → `{ whatsapp, whatsappValido, lembrete: { ativo,
+  ligadoEm, ligadoPor, desligadoEm, desligadoPor }, avisoAsaas: { desligado, alteradoEm, alteradoPor, pendente,
+  clienteNoAsaas }, semAvisoNenhum, canal: { enviosAutomaticos, producao, decisao: ENVIA | SIMULADO | RETIDO,
+  motivo, enviaDeVerdade }, lembretes: [{ id, faturaId, faturaNumero, vencimento, momento: D_MENOS_2 | D_ZERO,
+  situacao: PREPARADO | ENVIADO | ENTREGUE | LIDO | FALHOU | SIMULADO | RETIDO, motivo, destino, texto, modelo,
+  registradoEm, enviadoEm, entregueEm, lidoEm, falhaEm }] }`.
+- `POST /titulares/:id/lembretes/ligar` · `POST /titulares/:id/lembretes/desligar` (CARTEIRA_COBRANCA) →
+  mesma resposta do GET. 422: `whatsapp_invalido`.
+- `POST /titulares/:id/lembretes/aviso-asaas { desligado: boolean }` (CARTEIRA_COBRANCA) → altera
+  `notificationDisabled` no cadastro do cliente no Asaas (ou registra a decisão, se o cliente ainda não existe lá).
+  422: `lembrete_desligado` (só desliga o Asaas com o lembrete ligado), `asaas_recusou`.
+- `GET /whatsapp/lembretes/resumo` (CONFIGURACOES, CARTEIRA_COBRANCA) → `{ dia, titularesComLembrete,
+  hoje: { <situacao>: n }, retidos, ultimos[] }`.
+- Fora de produção: `POST /dev/whatsapp/lembretes/varrer` (roda a varredura ignorando a janela; devolve
+  `{ dia, executada, motivo, candidatas, enviados, simulados, retidos, falhas, ignoradas }`) e
+  `POST /dev/whatsapp/lembretes/:id/simular-status { status: delivered | read | failed }`.
+
+**Conversas (área CARTEIRA_COBRANCA)**
+- `GET /conversas-whatsapp` → `[{ numero (canônico), titular, nomePerfil, ultimaEm, ultimaDirecao, ultimaPrevia, naoLidas }]`,
+  com não lidas primeiro.
+- `GET /conversas-whatsapp/:numero` → `{ numero, titular, nomePerfil, contratos[], janela: { aberta, ate, horas },
+  envio: { producao, decisao, motivo, enviaDeVerdade }, itens: [{ id, origem: mensagem | lembrete, direcao:
+  ENTRADA | SAIDA, momento, tipo, texto, temMidia, midiaDisponivel, midiaNome, situacao, motivo, autor, lida }] }`.
+- `POST /conversas-whatsapp/:numero/lida` → `{ marcadas }` (manda o visto azul pela regra de envio).
+- `POST /conversas-whatsapp/:numero/responder { texto }` → `{ resultado: enviada | simulada | retida | falhou, motivo? }`.
+  422: `janela_fechada`, `texto_invalido`, `numero_invalido`.
+- `GET /conversas-whatsapp/midia/:id` → arquivo recebido do cliente.
+- Fora de produção: `POST /dev/conversas-whatsapp/simular-entrada { numero, texto }`.
