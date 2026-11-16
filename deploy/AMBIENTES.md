@@ -130,7 +130,7 @@ Regra de envio (doc 02 §23.1 e §23.2), igual em todo lugar:
 - **Homologação e desenvolvimento usam o MESMO número real.** Só recebem de verdade os **números autorizados** em Configuração › WhatsApp (lista do banco de cada ambiente). Qualquer outro destino vira SIMULADO. Lista vazia = nada real sai.
 - Chave geral dos envios automáticos **desligada por padrão**; o lembrete também nasce desligado por titular (liga-se na ficha).
 
-Modelos de mensagem (WhatsApp Manager › Modelos de mensagem) — categoria **Utilidade**, idioma **Português (BR)** (`pt_BR`), botão "Acessar o site" com URL **dinâmica**. O botão tem domínio fixo, então homolog e produção usam modelos diferentes; o nome de cada um é informado em Configuração › WhatsApp de cada ambiente (a tela mostra o texto e o endereço a cadastrar):
+Modelos de mensagem (WhatsApp Manager › Modelos de mensagem) — categoria **Utilidade**, idioma **Português (BR)** (`pt_BR`), botão "Acessar o site" com URL **dinâmica**. O botão tem domínio fixo, então homolog e produção usam modelos diferentes; o nome de cada um é parâmetro de Configuração › WhatsApp de cada ambiente (a tela mostra o texto e o endereço a cadastrar). O padrão já vem certo — produção sem sufixo, homologação com `_hml` — e só precisa ser trocado se o modelo for criado com outro nome:
 
 | Ambiente | Momento | Nome do modelo | URL do botão |
 |---|---|---|---|

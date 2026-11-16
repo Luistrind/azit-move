@@ -166,6 +166,13 @@ export const MODELO_PADRAO_LEMBRETE: Record<MomentoLembrete, string> = {
 };
 export const IDIOMA_PADRAO_MODELO = 'pt_BR';
 
+// Fora de produção o padrão leva o sufixo: o botão do modelo aponta para o
+// domínio de homologação da Fatura Azit, e o modelo de produção não serve lá.
+export const SUFIXO_MODELO_FORA_DE_PRODUCAO = '_hml';
+export function modeloPadraoLembrete(momento: MomentoLembrete, producao: boolean): string {
+  return `${MODELO_PADRAO_LEMBRETE[momento]}${producao ? '' : SUFIXO_MODELO_FORA_DE_PRODUCAO}`;
+}
+
 export interface DadosLembrete {
   nomeTitular: string;
   numeroFatura: number;

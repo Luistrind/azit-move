@@ -8,6 +8,7 @@ import {
   faturaElegivelLembrete,
   formatarWhatsapp,
   janelaRespostaWhatsapp,
+  modeloPadraoLembrete,
   momentoLembreteDaFatura,
   normalizarNumerosAutorizados,
   normalizarWhatsapp,
@@ -142,6 +143,12 @@ describe('lembretes de pagamento (doc 02 §28)', () => {
       expect(corpo).not.toMatch(/financia|taxa|juros/i);
     }
     expect(BOTAO_MODELO_LEMBRETE.length).toBeLessThanOrEqual(25);
+  });
+  it('nome padrão do modelo: produção sem sufixo, fora de produção com _hml', () => {
+    expect(modeloPadraoLembrete(MomentoLembrete.D_MENOS_2, true)).toBe('azit_fatura_disponivel');
+    expect(modeloPadraoLembrete(MomentoLembrete.D_ZERO, true)).toBe('azit_fatura_vence_hoje');
+    expect(modeloPadraoLembrete(MomentoLembrete.D_MENOS_2, false)).toBe('azit_fatura_disponivel_hml');
+    expect(modeloPadraoLembrete(MomentoLembrete.D_ZERO, false)).toBe('azit_fatura_vence_hoje_hml');
   });
   it('situação nunca regride com o status da Meta', () => {
     expect(situacaoLembreteAposStatusMeta('ENVIADO', 'delivered')).toBe(SituacaoLembrete.ENTREGUE);

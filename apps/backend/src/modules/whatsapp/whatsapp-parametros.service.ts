@@ -8,7 +8,7 @@ import {
   IDIOMA_PADRAO_MODELO,
   LEMBRETE_HORA_FIM,
   LEMBRETE_HORA_INICIO,
-  MODELO_PADRAO_LEMBRETE,
+  modeloPadraoLembrete,
   normalizarNumerosAutorizados,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
@@ -41,17 +41,21 @@ export interface SalvarParametrosWhatsapp {
 const NOME_MODELO_RE = /^[a-z0-9_]{1,512}$/;
 const IDIOMA_RE = /^[a-z]{2,3}(_[A-Z]{2})?$/;
 
-const PADRAO: ParametrosWhatsapp = {
-  versao: 0,
-  ativo: false,
-  numerosAutorizados: [],
-  modelos: {
-    [MomentoLembrete.D_MENOS_2]: { nome: MODELO_PADRAO_LEMBRETE[MomentoLembrete.D_MENOS_2], idioma: IDIOMA_PADRAO_MODELO },
-    [MomentoLembrete.D_ZERO]: { nome: MODELO_PADRAO_LEMBRETE[MomentoLembrete.D_ZERO], idioma: IDIOMA_PADRAO_MODELO },
-  },
-  alteradoEm: null,
-  usuarioId: null,
-};
+// Padrões de quem nunca salvou nada. O nome do modelo depende do ambiente:
+// produção sem sufixo, fora de produção com "_hml" (§23.3).
+function padrao(producao: boolean): ParametrosWhatsapp {
+  return {
+    versao: 0,
+    ativo: false,
+    numerosAutorizados: [],
+    modelos: {
+      [MomentoLembrete.D_MENOS_2]: { nome: modeloPadraoLembrete(MomentoLembrete.D_MENOS_2, producao), idioma: IDIOMA_PADRAO_MODELO },
+      [MomentoLembrete.D_ZERO]: { nome: modeloPadraoLembrete(MomentoLembrete.D_ZERO, producao), idioma: IDIOMA_PADRAO_MODELO },
+    },
+    alteradoEm: null,
+    usuarioId: null,
+  };
+}
 
 @Injectable()
 export class WhatsappParametrosService {
@@ -67,7 +71,7 @@ export class WhatsappParametrosService {
 
   async vigente(): Promise<ParametrosWhatsapp> {
     const p = await this.prisma.db.parametroWhatsapp.findFirst({ orderBy: { versao: 'desc' } });
-    if (!p) return PADRAO;
+    if (!p) return padrao(this.producao());
     return {
       versao: p.versao,
       ativo: p.ativo,

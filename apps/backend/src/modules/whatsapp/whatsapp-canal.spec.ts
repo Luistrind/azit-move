@@ -125,8 +125,12 @@ describe('WhatsappParametrosService (versionado — doc 02 §23.3)', () => {
     const { servico } = parametrosDe('homologacao', false);
     const p = await servico.vigente();
     expect(p).toMatchObject({ versao: 0, ativo: false, numerosAutorizados: [] });
-    expect(p.modelos.D_MENOS_2).toEqual({ nome: 'azit_fatura_disponivel', idioma: 'pt_BR' });
-    expect(p.modelos.D_ZERO).toEqual({ nome: 'azit_fatura_vence_hoje', idioma: 'pt_BR' });
+    // Fora de produção o padrão é o modelo com o domínio de homologação no botão.
+    expect(p.modelos.D_MENOS_2).toEqual({ nome: 'azit_fatura_disponivel_hml', idioma: 'pt_BR' });
+    expect(p.modelos.D_ZERO).toEqual({ nome: 'azit_fatura_vence_hoje_hml', idioma: 'pt_BR' });
+    const prod = await parametrosDe('producao', true).servico.vigente();
+    expect(prod.modelos.D_MENOS_2.nome).toBe('azit_fatura_disponivel');
+    expect(prod.modelos.D_ZERO.nome).toBe('azit_fatura_vence_hoje');
   });
 
   it('cada alteração grava uma versão nova, normaliza os números e audita', async () => {

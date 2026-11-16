@@ -2112,7 +2112,8 @@ Mensagem iniciada pela empresa exige **modelo aprovado** pela Meta. O botão de 
 modelo tem o **domínio fixo** (só o final do endereço varia), e homologação e produção usam
 domínios diferentes para a Fatura Azit. Logo, o **nome e o idioma do modelo de cada momento**
 (D-2 e D0) são parâmetros do canal, gravados no banco de cada ambiente: produção aponta para os
-modelos com o domínio de produção, homologação para os modelos com o domínio de homologação. O
+modelos com o domínio de produção, homologação para os modelos com o domínio de homologação (o
+padrão do sistema já segue isso: mesmo nome, com o sufixo `_hml` fora de produção). O
 **texto** do modelo vive na Meta (é ela quem aprova); o sistema guarda, por envio, o texto que
 montou com as variáveis, para o operador ver o que o cliente recebeu.
 
