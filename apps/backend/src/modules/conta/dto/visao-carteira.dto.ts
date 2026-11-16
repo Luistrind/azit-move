@@ -15,6 +15,10 @@ export const visaoMensalSchema = z
   .refine((q) => q.de <= q.ate, { message: '"de" deve ser anterior ou igual a "ate"', path: ['ate'] });
 export type VisaoMensalQuery = z.infer<typeof visaoMensalSchema>;
 
+// Variação do teto entre dois meses quaisquer (doc 02 §27.10).
+export const visaoVariacaoSchema = z.object({ de: MES, para: MES });
+export type VisaoVariacaoQuery = z.infer<typeof visaoVariacaoSchema>;
+
 export const ESTADOS_VISAO = ['recebidas', 'vencidas', 'a_vencer'] as const;
 export type EstadoVisaoQuery = (typeof ESTADOS_VISAO)[number];
 

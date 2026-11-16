@@ -31,7 +31,7 @@
 //     período (por vencimento) e recebido (caixa).
 // ============================================================
 import { TipoContrato } from './tipo-contrato';
-import { diasCalendarioEntre, somarDiasISO } from './datas';
+import { diaSemanaISO, diasCalendarioEntre, somarDiasISO } from './datas';
 
 export type EstadoFaturaVisao = 'recebida' | 'vencida' | 'a_vencer' | 'fora';
 
@@ -373,4 +373,131 @@ export function periodoAnteriorMesmoTrecho(
   const total = diasCalendarioEntre(periodo.de, periodo.ate) + 1;
   const deAnt = somarDiasISO(periodo.de, -total);
   return { atual, anterior: { de: deAnt, ate: somarDiasISO(deAnt, tamanho) } };
+}
+
+// ------------------------------------------------------------
+// POR QUE O TETO MUDA DE UM MÊS PARA O OUTRO (doc 02 §27.10, 16/11/2026).
+// "Dezembro é bem maior, janeiro cai" (Luís): o número estava certo, mas a tela
+// não dizia que 31 clientes têm 5 vencimentos em dezembro e 4 em janeiro.
+// Esta função decompõe a diferença entre o teto de dois meses, cliente a
+// cliente, em cinco motivos que SOMAM exatamente a diferença:
+//   · calendario — o dia de vencimento do cliente cai mais (ou menos) vezes no mês;
+//   · entrou     — cliente com fatura no mês de destino e nenhuma no de origem;
+//   · saiu       — o contrário;
+//   · faturas    — fatura a mais ou a menos que o calendário não explica (algo
+//                  com fatura própria que começa ou termina);
+//   · valor      — mesma fatura, valor diferente (item que começa ou termina).
+// Como casa as faturas de um cliente: valores iguais nos dois meses se anulam;
+// do que sobra, casa do maior para o menor (diferença = "valor"); o que não tem
+// par é fatura a mais/a menos ("calendario" quando o nº de ocorrências do dia
+// da semana explica a diferença de quantidade; senão "faturas").
+// ------------------------------------------------------------
+export type MotivoVariacaoTeto = 'calendario' | 'entrou' | 'saiu' | 'faturas' | 'valor';
+
+export interface ContaVariacaoTeto {
+  contaId: string;
+  valor: number; // centavos, com sinal
+  faturas: number; // diferença de quantidade, com sinal
+}
+
+export interface GrupoVariacaoTeto {
+  motivo: MotivoVariacaoTeto;
+  // Quem sobe e quem desce NÃO se misturam: 31 clientes com um vencimento a
+  // menos e 7 com um a mais são duas linhas, não um saldo.
+  sentido: 'mais' | 'menos';
+  valor: number; // centavos, com sinal
+  faturas: number; // diferença de quantidade, com sinal
+  clientes: number;
+  contas: ContaVariacaoTeto[]; // maior impacto primeiro
+}
+
+export interface VariacaoTeto {
+  de: string; // YYYY-MM
+  para: string; // YYYY-MM
+  tetoDe: number;
+  tetoPara: number;
+  diferenca: number; // tetoPara − tetoDe = soma dos grupos
+  grupos: GrupoVariacaoTeto[]; // só os que têm valor ou fatura, na ordem de ORDEM_MOTIVOS ('menos' antes de 'mais')
+}
+
+const ORDEM_MOTIVOS: MotivoVariacaoTeto[] = ['calendario', 'entrou', 'saiu', 'faturas', 'valor'];
+
+// Quantas vezes um dia da semana (0 = domingo) cai no mês.
+export function ocorrenciasDoDiaNoMes(anoMes: string, diaSemana: number): number {
+  const { de, ate } = periodoDoMes(anoMes);
+  let n = 0;
+  for (let d = de; d <= ate; d = somarDiasISO(d, 1)) if (diaSemanaISO(d) === diaSemana) n += 1;
+  return n;
+}
+
+export function explicarVariacaoTeto(faturasDe: FaturaVisao[], faturasPara: FaturaVisao[], meses: { de: string; para: string }, hoje: string): VariacaoTeto {
+  type Lado = { valores: number[]; dias: Set<number> };
+  const porConta = new Map<string, { a: Lado; b: Lado }>();
+  const lado = (): Lado => ({ valores: [], dias: new Set<number>() });
+  const juntar = (faturas: FaturaVisao[], qual: 'a' | 'b') => {
+    for (const f of faturas) {
+      if (estadoFaturaVisao(f.status, f.vencimento, hoje) === 'fora') continue;
+      let c = porConta.get(f.contaId);
+      if (!c) { c = { a: lado(), b: lado() }; porConta.set(f.contaId, c); }
+      c[qual].valores.push(f.valorTotal);
+      c[qual].dias.add(diaSemanaISO(f.vencimento));
+    }
+  };
+  juntar(faturasDe, 'a');
+  juntar(faturasPara, 'b');
+
+  const grupos = new Map<string, GrupoVariacaoTeto>();
+  const lancar = (motivo: MotivoVariacaoTeto, contaId: string, valor: number, faturas: number) => {
+    if (!valor && !faturas) return;
+    // Sentido pela quantidade quando ela muda (uma fatura a mais/a menos); senão pelo valor.
+    const sentido = (faturas || valor) > 0 ? 'mais' : 'menos';
+    const chave = `${motivo}:${sentido}`;
+    let g = grupos.get(chave);
+    if (!g) { g = { motivo, sentido, valor: 0, faturas: 0, clientes: 0, contas: [] }; grupos.set(chave, g); }
+    g.valor += valor;
+    g.faturas += faturas;
+    g.contas.push({ contaId, valor, faturas });
+  };
+  const soma = (xs: number[]) => xs.reduce((s, x) => s + x, 0);
+  let tetoDe = 0;
+  let tetoPara = 0;
+
+  for (const [contaId, { a, b }] of porConta) {
+    tetoDe += soma(a.valores);
+    tetoPara += soma(b.valores);
+    if (a.valores.length === 0) { lancar('entrou', contaId, soma(b.valores), b.valores.length); continue; }
+    if (b.valores.length === 0) { lancar('saiu', contaId, -soma(a.valores), -a.valores.length); continue; }
+
+    // Valores iguais nos dois meses se anulam (multiconjunto).
+    const restoB = [...b.valores];
+    const restoA: number[] = [];
+    for (const v of a.valores) {
+      const i = restoB.indexOf(v);
+      if (i >= 0) restoB.splice(i, 1); else restoA.push(v);
+    }
+    restoA.sort((x, y) => y - x);
+    restoB.sort((x, y) => y - x);
+    const pares = Math.min(restoA.length, restoB.length);
+    let valor = 0;
+    for (let i = 0; i < pares; i++) valor += restoB[i] - restoA[i];
+    lancar('valor', contaId, valor, 0);
+
+    // Sem par: fatura a mais (em B) ou a menos (em A).
+    const sobra = restoB.slice(pares);
+    const falta = restoA.slice(pares);
+    const dq = sobra.length - falta.length;
+    if (dq !== 0) {
+      const dias = new Set([...a.dias, ...b.dias]);
+      const dia = dias.size === 1 ? [...dias][0] : null;
+      const peloCalendario = dia !== null && ocorrenciasDoDiaNoMes(meses.para, dia) - ocorrenciasDoDiaNoMes(meses.de, dia) === dq;
+      lancar(peloCalendario ? 'calendario' : 'faturas', contaId, soma(sobra) - soma(falta), dq);
+    }
+  }
+
+  const lista = ORDEM_MOTIVOS.flatMap((m) => [grupos.get(`${m}:menos`), grupos.get(`${m}:mais`)]).filter((g): g is GrupoVariacaoTeto => !!g);
+  for (const g of lista) {
+    g.clientes = g.contas.length;
+    g.contas.sort((x, y) => Math.abs(y.valor) - Math.abs(x.valor));
+  }
+  return { de: meses.de, para: meses.para, tetoDe, tetoPara, diferenca: tetoPara - tetoDe, grupos: lista };
 }
