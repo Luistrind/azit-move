@@ -20,6 +20,9 @@ export interface Fatura {
   situacao: string; // em_aberto | vence_hoje | vencida | paga | ...
   valorTotal: number;
   valorPago: number;
+  // Só na lista da conta: o que falta pagar HOJE (fatura AZIT fechada: saldo +
+  // multa + atualização do motor); null em fatura que não está em aberto.
+  faltaHoje?: number | null;
   // false em fatura FECHADA = a cobrança automática falhou (estado de exceção).
   temCobrancaAsaas: boolean;
   // Fatura Azit F2 (doc 02 §32.4-A): 'AZIT' = Pix sob demanda. Não ter cobrança
@@ -97,7 +100,8 @@ export interface PaginaFaturas {
 
 export const faturaService = {
   // Faturas NOVADAS ficam fora da lista por padrão (histórico fica, tela não).
-  async daConta(contaId: string, page = 1, limit = 8, mostrarNovadas = false): Promise<PaginaFaturas> {
+  // `page = 'atual'` abre na página da fatura mais antiga em aberto (a resposta diz qual é).
+  async daConta(contaId: string, page: number | 'atual' = 1, limit = 8, mostrarNovadas = false): Promise<PaginaFaturas> {
     const { data } = await api.get(`/api/v1/contas/${contaId}/faturas`, { params: { page, limit, novadas: mostrarNovadas ? 'mostrar' : 'ocultar' } });
     return data;
   },

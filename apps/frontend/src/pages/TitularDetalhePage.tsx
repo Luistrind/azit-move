@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
 import { titularService } from '../services/titular.service';
@@ -63,7 +63,10 @@ export function TitularDetalhePage() {
   const navigate = useNavigate();
   const irParaArea = useIrParaArea();
   const queryClient = useQueryClient();
-  const [pagina, setPagina] = useState(1);
+  // A lista de faturas abre na página da fatura mais antiga em aberto ('atual');
+  // o servidor devolve o número, e as setas andam a partir dele.
+  const [pagina, setPagina] = useState<number | 'atual'>('atual');
+  useEffect(() => setPagina('atual'), [id]); // outro titular: volta para a fatura atual dele
   // Faturas NOVADAS (extintas pela novação) ficam fora do histórico por padrão (13/10).
   const [mostrarNovadas, setMostrarNovadas] = useState(false);
   const [faturaSel, setFaturaSel] = useState<string | null>(null);
@@ -252,6 +255,8 @@ export function TitularDetalhePage() {
     queryKey: ['titular-faturas', contaId, pagina, mostrarNovadas],
     queryFn: () => faturaService.daConta(contaId!, pagina, PAGE, mostrarNovadas),
     enabled: !!contaId,
+    // Trocar de página mantém as linhas atuais até as novas chegarem (não pisca).
+    placeholderData: keepPreviousData,
   });
   // Lançamentos avulsos da conta (entradas de contrato/acordo — doc 02 §4-A.3, 30/08).
   const lancamentos = useQuery({
@@ -269,6 +274,7 @@ export function TitularDetalhePage() {
   if (!det.data) return <div className="p-[24px] text-[13px]" style={{ color: 'var(--text-primary)' }}>Titular não encontrado.</div>;
   const { titular: t, resumoFinanceiro: rf, documentos, contratosCredito } = det.data;
   const totalPaginas = faturas.data ? Math.max(1, Math.ceil(faturas.data.total / PAGE)) : 1;
+  const paginaServidor = faturas.data?.page ?? 1;
   const bloqueados = contratosCredito.filter((c) => c.status.toLowerCase() === 'bloqueado');
 
   // Leitura do Hub sobre o relacionamento: uma frase, só com números reais.
@@ -492,7 +498,7 @@ export function TitularDetalhePage() {
             {faturas.data && (faturas.data.ocultas > 0 || mostrarNovadas) && (
               <button
                 type="button"
-                onClick={() => { setMostrarNovadas((v) => !v); setPagina(1); }}
+                onClick={() => { setMostrarNovadas((v) => !v); setPagina('atual'); }}
                 className="ml-[10px] font-semibold"
                 style={{ color: 'var(--text-muted)' }}
                 title="Faturas extintas pela novação ficam no histórico, mas fora da lista"
@@ -505,9 +511,12 @@ export function TitularDetalhePage() {
         acao={
           faturas.data && faturas.data.total > PAGE ? (
             <div className="flex items-center gap-[8px] text-[12px]">
-              <Botao variante="secundaria" tamanho="sm" disabled={pagina <= 1} onClick={() => setPagina((p) => p - 1)} aria-label="Página anterior">←</Botao>
-              <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>{pagina} / {totalPaginas}</span>
-              <Botao variante="secundaria" tamanho="sm" disabled={pagina >= totalPaginas} onClick={() => setPagina((p) => p + 1)} aria-label="Próxima página">→</Botao>
+              {pagina !== 'atual' && (
+                <Botao variante="fantasma" tamanho="sm" onClick={() => setPagina('atual')}>voltar para a atual</Botao>
+              )}
+              <Botao variante="secundaria" tamanho="sm" disabled={paginaServidor <= 1} onClick={() => setPagina(paginaServidor - 1)} aria-label="Página anterior">←</Botao>
+              <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>{paginaServidor} / {totalPaginas}</span>
+              <Botao variante="secundaria" tamanho="sm" disabled={paginaServidor >= totalPaginas} onClick={() => setPagina(paginaServidor + 1)} aria-label="Próxima página">→</Botao>
             </div>
           ) : undefined
         }
@@ -535,20 +544,66 @@ export function TitularDetalhePage() {
                 },
               },
               { chave: 'vencimento', titulo: 'Vencimento', celular: 'subtitulo', classe: 'tabular-nums', render: (f) => fmtData(f.dataVencimento) },
-              { chave: 'valor', titulo: 'Valor', alinhar: 'right', celular: 'destaque', classe: 'tabular-nums', render: (f) => formatCurrency(f.valorTotal) },
+              { chave: 'valor', titulo: 'Valor da fatura', alinhar: 'right', celular: 'campo', classe: 'tabular-nums', render: (f) => formatCurrency(f.valorTotal) },
+              {
+                // O que entrou de fato nesta fatura (com encargo, quando houve) e quando.
+                chave: 'pago',
+                titulo: 'Pago',
+                alinhar: 'right',
+                celular: 'campo',
+                classe: 'tabular-nums',
+                render: (f) =>
+                  f.valorPago > 0 ? (
+                    <>
+                      <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{formatCurrency(f.valorPago)}</span>
+                      {f.dataPagamento && <span className="ml-[6px] text-[11px]" style={{ color: 'var(--text-muted)' }}>em {fmtData(f.dataPagamento).slice(0, 5)}</span>}
+                    </>
+                  ) : (
+                    <span style={{ color: 'var(--text-muted)' }}>—</span>
+                  ),
+              },
+              {
+                // O que falta pagar HOJE: na fatura vencida já vem com multa e atualização
+                // (a mesma conta da página do cliente); na que ainda vai vencer, é o valor dela.
+                chave: 'falta',
+                titulo: 'Falta hoje',
+                alinhar: 'right',
+                celular: 'destaque',
+                classe: 'tabular-nums',
+                render: (f) =>
+                  f.faltaHoje == null ? (
+                    <span style={{ color: 'var(--text-muted)' }}>—</span>
+                  ) : (
+                    <span
+                      className={f.faltaHoje !== f.valorTotal ? 'font-bold' : undefined}
+                      style={{ color: f.situacao === 'vencida' ? 'var(--danger-fg)' : f.faltaHoje !== f.valorTotal ? 'var(--text-primary)' : 'var(--text-muted)' }}
+                      title={f.faltaHoje !== f.valorTotal ? 'Diferente do valor da fatura: já houve pagamento, ou há multa e atualização por atraso. O detalhe mostra a conta.' : undefined}
+                    >
+                      {formatCurrency(f.faltaHoje)}
+                    </span>
+                  ),
+              },
               {
                 chave: 'situacao',
                 titulo: 'Situação',
                 celular: 'campo',
                 render: (f) => {
                   const s = SITUACAO[f.situacao] ?? { bg: 'var(--surface-muted)', fg: 'var(--text-body)', label: f.situacao };
-                  return <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: s.bg, color: s.fg }}>{s.label}</span>;
+                  // Em aberto com dinheiro já recebido: paga em parte (o detalhe mostra o que cada pagamento quitou).
+                  const parcial = f.faltaHoje != null && f.valorPago > 0 ? SITUACAO.paga_em_parte : null;
+                  return (
+                    <span className="inline-flex flex-wrap items-center gap-[5px]">
+                      <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: s.bg, color: s.fg }}>{s.label}</span>
+                      {parcial && <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: parcial.bg, color: parcial.fg }}>{parcial.label}</span>}
+                    </span>
+                  );
                 },
               },
             ]}
             linhas={faturas.data?.data ?? []}
             chave={(f) => f.id}
             carregando={faturas.isLoading}
+            larguraMinima={860}
             vazio="Nenhuma fatura."
             acoes={(f) => (
               <span className="inline-flex items-center gap-[6px]">

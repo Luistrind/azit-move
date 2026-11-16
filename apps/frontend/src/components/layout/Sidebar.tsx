@@ -47,7 +47,8 @@ const GRUPOS_NAV: GrupoNav[] = [
       { to: '/carteira/clientes', label: 'Clientes da carteira' },
       { to: '/regua', label: 'Régua de cobrança' },
       { to: '/acordos', label: 'Renegociações' },
-      { to: '/migracao-legado', label: 'Migração do legado' },
+      // Migração do legado saiu do menu (16/11, Luís: todas as migrações possíveis já
+      // foram feitas). A rota continua: a bancada de um caso migrado segue acessível pelo link.
     ],
   },
   {

@@ -412,6 +412,12 @@ Histórico de faturas da conta (ficha do titular), paginado por `page`/`limit`. 
 quantas são; `novadas=mostrar` as traz de volta. (Decisão 13/10/2026: o histórico fica gravado, a
 tela não lista o que não existe mais.)
 
+`page=atual` (16/11/2026) devolve a página da fatura mais antiga ainda em aberto (sem nada em aberto, a
+última); a resposta traz o número em `page`. Cada fatura leva `valorPago` (o que entrou nela) e
+`faltaHoje`: o que falta pagar hoje — em fatura do modelo AZIT fechada é o total do motor (saldo +
+multa + atualização, a mesma conta da página do cliente); nas demais em aberto, valor de face menos o
+pago; `null` em fatura que não está em aberto.
+
 #### GET `/api/v1/contratos/:id/extrato`
 Extrato completo do contrato — todos os eventos financeiros em ordem cronológica.
 
