@@ -4,6 +4,8 @@ import {
   agregarVisaoMensal,
   chaveProdutoItemFatura,
   estadoFaturaVisao,
+  explicarVariacaoTeto,
+  ocorrenciasDoDiaNoMes,
   variacaoPct,
   FaturaVisao,
   RecebimentoVisao,
@@ -203,5 +205,81 @@ describe('períodos da visão — mesmo trecho do mês anterior (doc 02 §27.4)'
     expect(mesAnterior('2026-01')).toBe('2025-12');
     expect(mesSeguinte('2026-12')).toBe('2027-01');
     expect(periodoDoMes('2026-02')).toEqual({ de: '2026-02-01', ate: '2026-02-28' });
+  });
+});
+
+describe('explicarVariacaoTeto — por que o teto muda de um mês para o outro (doc 02 §27.10)', () => {
+  const MESES = { de: '2026-12', para: '2027-01' };
+  const f = (contaId: string, vencimento: string, valorTotal = 99700, status = 'ABERTA'): FaturaVisao => ({ contaId, status, vencimento, valorTotal, valorPago: null, itens: [] });
+  const semanais = (contaId: string, dias: string[], valor = 99700) => dias.map((d) => f(contaId, d, valor));
+  const TER_DEZ = ['2026-12-01', '2026-12-08', '2026-12-15', '2026-12-22', '2026-12-29'];
+  const TER_JAN = ['2027-01-05', '2027-01-12', '2027-01-19', '2027-01-26'];
+  const grupo = (r: ReturnType<typeof explicarVariacaoTeto>, m: string) => r.grupos.find((g) => g.motivo === m);
+
+  it('conta as ocorrências do dia da semana no mês', () => {
+    expect(ocorrenciasDoDiaNoMes('2026-12', 2)).toBe(5); // terças de dez/2026
+    expect(ocorrenciasDoDiaNoMes('2027-01', 2)).toBe(4);
+    expect(ocorrenciasDoDiaNoMes('2027-01', 5)).toBe(5); // sextas de jan/2027
+  });
+
+  it('calendário: o dia do cliente cai 5 vezes em dezembro e 4 em janeiro — uma fatura a menos, sem perda', () => {
+    const r = explicarVariacaoTeto(semanais('c1', TER_DEZ), semanais('c1', TER_JAN), MESES, HOJE);
+    expect(r.diferenca).toBe(-99700);
+    expect(r.grupos).toHaveLength(1);
+    expect(grupo(r, 'calendario')).toMatchObject({ valor: -99700, faturas: -1, clientes: 1 });
+  });
+
+  it('calendário ao contrário: sextas caem 4 vezes em dezembro e 5 em janeiro', () => {
+    const sexDez = ['2026-12-04', '2026-12-11', '2026-12-18', '2026-12-25'];
+    const sexJan = ['2027-01-01', '2027-01-08', '2027-01-15', '2027-01-22', '2027-01-29'];
+    const r = explicarVariacaoTeto(semanais('c1', sexDez), semanais('c1', sexJan), MESES, HOJE);
+    expect(grupo(r, 'calendario')).toMatchObject({ valor: 99700, faturas: 1 });
+  });
+
+  it('fatura que some sem o calendário explicar (reembolso mensal que acaba) é "faturas", não calendário', () => {
+    const dez = [f('saulo', '2026-12-25', 170330), f('saulo', '2026-12-10', 200000)];
+    const jan = [f('saulo', '2027-01-25', 170330)];
+    const r = explicarVariacaoTeto(dez, jan, MESES, HOJE);
+    expect(r.grupos).toHaveLength(1);
+    expect(grupo(r, 'faturas')).toMatchObject({ valor: -200000, faturas: -1, clientes: 1 });
+  });
+
+  it('separa o que é calendário do que é valor que acabou, no mesmo cliente', () => {
+    const quaDez = ['2026-12-02', '2026-12-09', '2026-12-16', '2026-12-23', '2026-12-30'];
+    const quaJan = ['2027-01-06', '2027-01-13', '2027-01-20', '2027-01-27'];
+    const dez = quaDez.map((d, i) => f('edvan', d, i < 2 ? 132110 : 99700));
+    const r = explicarVariacaoTeto(dez, semanais('edvan', quaJan), MESES, HOJE);
+    expect(grupo(r, 'calendario')).toMatchObject({ valor: -132110, faturas: -1 });
+    expect(grupo(r, 'valor')).toMatchObject({ valor: -32410, faturas: 0 });
+    expect(r.diferenca).toBe(-164520);
+  });
+
+  it('quem entra e quem sai; fatura novada não conta; os grupos somam a diferença do teto', () => {
+    const dez = [...semanais('fica', TER_DEZ), f('sai', '2026-12-07'), f('fica', '2026-12-08', 99700, 'NOVADA')];
+    const jan = [...semanais('fica', TER_JAN), f('novo', '2027-01-05', 150000)];
+    const r = explicarVariacaoTeto(dez, jan, MESES, HOJE);
+    expect(grupo(r, 'entrou')).toMatchObject({ valor: 150000, faturas: 1, clientes: 1 });
+    expect(grupo(r, 'saiu')).toMatchObject({ valor: -99700, faturas: -1, clientes: 1 });
+    expect(r.tetoDe).toBe(6 * 99700);
+    expect(r.tetoPara).toBe(4 * 99700 + 150000);
+    expect(r.grupos.reduce((s, g) => s + g.valor, 0)).toBe(r.diferenca);
+    expect(r.grupos.map((g) => g.motivo)).toEqual(['calendario', 'entrou', 'saiu']);
+  });
+
+  it('quem sobe e quem desce pelo calendário ficam em linhas separadas', () => {
+    const sexDez = ['2026-12-04', '2026-12-11', '2026-12-18', '2026-12-25'];
+    const sexJan = ['2027-01-01', '2027-01-08', '2027-01-15', '2027-01-22', '2027-01-29'];
+    const r = explicarVariacaoTeto([...semanais('ter', TER_DEZ), ...semanais('sex', sexDez, 80000)], [...semanais('ter', TER_JAN), ...semanais('sex', sexJan, 80000)], MESES, HOJE);
+    expect(r.grupos.map((g) => [g.motivo, g.sentido, g.valor, g.faturas, g.clientes])).toEqual([
+      ['calendario', 'menos', -99700, -1, 1],
+      ['calendario', 'mais', 80000, 1, 1],
+    ]);
+    expect(r.diferenca).toBe(-19700);
+  });
+
+  it('meses iguais não geram grupo nenhum', () => {
+    const r = explicarVariacaoTeto(semanais('c1', TER_JAN), semanais('c1', TER_JAN), { de: '2027-01', para: '2027-01' }, HOJE);
+    expect(r.grupos).toEqual([]);
+    expect(r.diferenca).toBe(0);
   });
 });

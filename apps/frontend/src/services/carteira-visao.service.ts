@@ -1,11 +1,24 @@
 import { api } from '../lib/api';
-import type { VisaoCarteira, VisaoMensal } from '@azit/utils';
+import type { GrupoVariacaoTeto, VariacaoTeto, VisaoCarteira, VisaoMensal } from '@azit/utils';
 
 // Visão da carteira por período (doc 02 §27) — três rotas, uma agregação.
 // Teto/pagas/vencidas/a vencer por VENCIMENTO; `recebido` é CAIXA (data de pagamento).
 export interface VisaoPeriodo extends VisaoCarteira {
   periodo: { de: string; ate: string };
   hoje: string;
+  // Clientes ativos (conta com contrato ATIVO) e quem deles não tem fatura no período.
+  ativos: { clientes: number; semFatura: ClienteSemFatura[] };
+}
+export interface ClienteSemFatura {
+  contaId: string;
+  titularId: string;
+  titular: string;
+  proximaFatura: string | null; // YYYY-MM-DD
+}
+// Por que o teto muda de um mês para o outro (doc 02 §27.10) — a conta é de `explicarVariacaoTeto`.
+export interface ContaVariacao { contaId: string; titularId: string; titular: string; valor: number; faturas: number }
+export interface VariacaoTetoNomeada extends Omit<VariacaoTeto, 'grupos'> {
+  grupos: (Omit<GrupoVariacaoTeto, 'contas'> & { contas: ContaVariacao[] })[];
 }
 export type EstadoVisao = 'recebidas' | 'vencidas' | 'a_vencer';
 export interface ClienteVisao {
@@ -26,6 +39,10 @@ export const carteiraVisaoService = {
   },
   async mensal(de: string, ate: string): Promise<VisaoMensal[]> {
     const { data } = await api.get<VisaoMensal[]>('/api/v1/contas/carteira/visao/mensal', { params: { de, ate } });
+    return data;
+  },
+  async variacao(de: string, para: string): Promise<VariacaoTetoNomeada> {
+    const { data } = await api.get<VariacaoTetoNomeada>('/api/v1/contas/carteira/visao/variacao', { params: { de, para } });
     return data;
   },
   async clientes(de: string, ate: string, estado: EstadoVisao): Promise<ClienteVisao[]> {

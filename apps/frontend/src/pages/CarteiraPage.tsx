@@ -10,10 +10,11 @@ import {
   periodoDoMes,
   somarDiasISO,
   variacaoPct,
+  type MotivoVariacaoTeto,
   type VisaoCarteira,
   type VisaoMensal,
 } from '@azit/utils';
-import { carteiraVisaoService, type EstadoVisao } from '../services/carteira-visao.service';
+import { carteiraVisaoService, type ClienteSemFatura, type EstadoVisao, type VariacaoTetoNomeada } from '../services/carteira-visao.service';
 import { Bloco } from '../components/Bloco';
 import { CartaoIndicador } from '../components/CartaoIndicador';
 import { SeletorPeriodo, intervaloDoPeriodo, rotuloDoPeriodo, type PeriodoSelecionado } from '../components/SeletorPeriodo';
@@ -123,8 +124,9 @@ export function CarteiraPage() {
                 <span className="ml-[6px] text-[14px] font-semibold" style={{ color: 'var(--text-muted)' }}>teto</span>
               </div>
               <div className="-mt-[4px] text-[12.5px]" style={{ color: 'var(--text-body)' }}>
-                {plural(v.teto.faturas, 'fatura', 'faturas')} · {plural(v.teto.clientes, 'cliente', 'clientes')}
+                {plural(v.teto.faturas, 'fatura', 'faturas')} · {plural(v.teto.clientes, 'cliente', 'clientes')} com fatura no período · {plural(v.ativos.clientes, 'cliente ativo', 'clientes ativos')}
               </div>
+              <AtivosSemFatura lista={v.ativos.semFatura} />
               <div className="flex h-[12px] gap-[2px] overflow-hidden rounded-[6px]" style={{ background: 'var(--surface-muted)' }} aria-hidden>
                 {/* A barra é o progresso do TETO (por vencimento): faturas do período pagas / vencidas / a vencer. */}
                 {(['recebidas', 'vencidas', 'a_vencer'] as const).map((e) => {
@@ -389,13 +391,126 @@ export function CarteiraPage() {
         {/* E — Mês a mês */}
         <Bloco titulo="Mês a mês" className="col-span-12">
           {mensal.data ? (
-            <MesAMes janela={janela} dados={mesesAnteriores} mesHoje={mesHoje} selecionado={sel.modo === 'mes' ? sel.anoMes : null} onSelecionar={(m) => { setSel({ modo: 'mes', anoMes: m }); setLista(null); }} />
+            <>
+              <MesAMes janela={janela} dados={mesesAnteriores} mesHoje={mesHoje} selecionado={sel.modo === 'mes' ? sel.anoMes : null} onSelecionar={(m) => { setSel({ modo: 'mes', anoMes: m }); setLista(null); }} />
+              {/* Por que o teto muda de um mês para o outro (doc 02 §27.10): os dois meses depois do selecionado. */}
+              <div className="text-[10.5px] font-medium uppercase tracking-[0.08em]" style={{ color: 'var(--text-muted)' }}>Por que o teto muda de um mês para o outro</div>
+              <div className="grid grid-cols-1 gap-[10px] lg:grid-cols-2">
+                <VariacaoEntreMeses de={sel.anoMes} para={mesSeguinte(sel.anoMes)} />
+                <VariacaoEntreMeses de={mesSeguinte(sel.anoMes)} para={mesSeguinte(mesSeguinte(sel.anoMes))} />
+              </div>
+            </>
           ) : (
             <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
           )}
         </Bloco>
       </div>
 
+    </div>
+  );
+}
+
+// Clientes ATIVOS sem fatura no período (doc 02 §27.10): o número de clientes do
+// teto é "quem tem fatura vencendo aqui", não "quem está ativo" — a tela diz quem
+// falta e quando vem a próxima fatura, para a diferença nunca parecer um furo.
+function AtivosSemFatura({ lista }: { lista: ClienteSemFatura[] }) {
+  const [todos, setTodos] = useState(false);
+  if (lista.length === 0) return null;
+  const mostrados = todos ? lista : lista.slice(0, 3);
+  return (
+    <div className="text-[12px] leading-[1.5]" style={{ color: 'var(--text-body)' }}>
+      {plural(lista.length, 'cliente ativo não tem', 'clientes ativos não têm')} fatura neste período:{' '}
+      {mostrados.map((c, i) => (
+        <span key={c.contaId}>
+          {i > 0 ? '; ' : ''}
+          <LinkArea area={AREAS_ROTA_FICHA_TITULAR} to={`/titulares/${c.titularId}`} className="font-semibold" style={{ color: 'var(--text-primary)' }}>{c.titular}</LinkArea>
+          {c.proximaFatura ? ` (próxima fatura em ${ddmm(c.proximaFatura)})` : ' (sem fatura à frente)'}
+        </span>
+      ))}
+      {lista.length > 3 ? (
+        <button type="button" onClick={() => setTodos((t) => !t)} className="ml-[6px] font-semibold" style={{ color: 'var(--accent)' }}>
+          {todos ? 'ver menos' : `ver todos (${lista.length})`}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+// Por que o teto muda de um mês para o outro (doc 02 §27.10). Os números vêm de
+// `explicarVariacaoTeto` pela API — aqui só o texto de cada motivo. Quem sobe e
+// quem desce ficam em linhas separadas; a soma das linhas é a diferença do teto.
+// Com centavos: as linhas precisam somar exatamente a diferença que o título mostra.
+const sinal = (c: number) => `${c > 0 ? '+' : c < 0 ? '−' : ''}${formatCurrency(Math.abs(c))}`;
+function rotuloVariacao(g: VariacaoTetoNomeada['grupos'][number], de: string, para: string): { titulo: string; nota: string } {
+  const quem = plural(g.clientes, 'cliente', 'clientes');
+  const mais = g.sentido === 'mais';
+  const porMotivo: Record<MotivoVariacaoTeto, { titulo: string; nota: string }> = {
+    calendario: {
+      titulo: `${quem} com ${mais ? 'mais' : 'menos'} vencimentos no mês`,
+      nota: `calendário: o dia de vencimento cai ${mais ? 'mais' : 'menos'} vezes em ${mesNome(para)} · ${plural(Math.abs(g.faturas), 'fatura', 'faturas')}`,
+    },
+    entrou: { titulo: `${quem} sem fatura em ${mesNome(de)}`, nota: `passa${g.clientes === 1 ? '' : 'm'} a ter fatura em ${mesNome(para)}` },
+    saiu: { titulo: `${quem} sem fatura em ${mesNome(para)}`, nota: `tinha${g.clientes === 1 ? '' : 'm'} fatura em ${mesNome(de)}` },
+    faturas: {
+      titulo: `${quem} com fatura ${mais ? 'a mais' : 'a menos'}, fora do calendário`,
+      nota: mais ? 'algo com fatura própria começa (ex.: reembolso parcelado)' : 'algo com fatura própria termina (ex.: reembolso parcelado)',
+    },
+    valor: {
+      titulo: `${quem} com fatura de valor ${mais ? 'maior' : 'menor'}`,
+      nota: mais ? 'item que começa a ser cobrado na fatura' : 'item que deixa de ser cobrado na fatura',
+    },
+  };
+  return porMotivo[g.motivo];
+}
+
+function VariacaoEntreMeses({ de, para }: { de: string; para: string }) {
+  const q = useQuery({ queryKey: ['carteira-variacao', de, para], queryFn: () => carteiraVisaoService.variacao(de, para) });
+  const [aberto, setAberto] = useState<string | null>(null);
+  const r = q.data;
+  return (
+    <div className="flex flex-col gap-[4px] rounded-[12px] p-[14px]" style={{ background: 'var(--surface-muted)' }}>
+      <div className="text-[12.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+        {mesCurto(para)} × {mesCurto(de)}
+      </div>
+      {!r ? (
+        <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>{q.isError ? 'Não foi possível carregar.' : 'Carregando…'}</div>
+      ) : (
+        <>
+          <div className="text-[12.5px]" style={{ color: 'var(--text-body)' }}>
+            Teto de {formatCurrency(r.tetoPara)}, contra {formatCurrency(r.tetoDe)} em {mesNome(de)}:{' '}
+            <b className="tabular-nums" style={{ color: 'var(--text-primary)' }}>{r.diferenca === 0 ? 'igual' : sinal(r.diferenca)}</b>.
+            {r.grupos.length === 0 ? ' Mesmos clientes, mesmas faturas.' : ''}
+          </div>
+          {r.grupos.map((g) => {
+            const chave = `${g.motivo}:${g.sentido}`;
+            const t = rotuloVariacao(g, de, para);
+            return (
+              <div key={chave} className="py-[7px]" style={{ borderTop: '1px solid var(--border-light)' }}>
+                <div className="grid grid-cols-[1fr_auto] items-baseline gap-x-[10px] text-[12.5px]">
+                  <div className="min-w-0">
+                    <span style={{ color: 'var(--text-primary)' }}>{t.titulo}</span>
+                    <button type="button" onClick={() => setAberto((a) => (a === chave ? null : chave))} className="ml-[8px] text-[11.5px] font-semibold" style={{ color: 'var(--accent)' }} aria-expanded={aberto === chave}>
+                      {aberto === chave ? 'ocultar' : 'ver quem'}
+                    </button>
+                    <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{t.nota}</div>
+                  </div>
+                  <span className="whitespace-nowrap font-display font-semibold tabular-nums" style={{ color: 'var(--text-primary)' }}>{sinal(g.valor)}</span>
+                </div>
+                {aberto === chave ? (
+                  <div className="mt-[4px] flex flex-col">
+                    {g.contas.map((c) => (
+                      <div key={c.contaId} className="grid grid-cols-[1fr_auto] gap-x-[10px] py-[3px] text-[12px]">
+                        <LinkArea area={AREAS_ROTA_FICHA_TITULAR} to={`/titulares/${c.titularId}`} className="truncate" style={{ color: 'var(--text-body)' }}>{c.titular}</LinkArea>
+                        <span className="whitespace-nowrap tabular-nums" style={{ color: 'var(--text-body)' }}>{sinal(c.valor)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }
