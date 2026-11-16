@@ -1480,6 +1480,28 @@ eventos dessa referência são só ACK. Campos lidos de `payment`: `id`, `value`
 `clientPaymentDate` → `paymentDate` → `confirmedDate`, `pixTransaction`. A baixa é pela conta
 (doc 02 §32.4-A), idempotente pelo id do pagamento.
 
+### Webhook do gateway — pagamento de QR estático (modo `ESTATICO`, padrão desde 15/11)
+
+O Pix sob demanda é lido **antes** dos demais fluxos. No modo ESTATICO o Asaas cria, ao receber,
+uma cobrança já recebida com `payment.pixQrCodeId` (= `gatewayId` da intenção) e, em geral, sem
+`externalReference`. Sempre **202**:
+
+| Aviso (`PAYMENT_RECEIVED`/`PAYMENT_CONFIRMED`) | O que acontece |
+|---|---|
+| `externalReference = intencao:<id>` | enfileira `baixar` (como acima) |
+| `pixQrCodeId` presente | enfileira `identificar` na fila `intencao-pagamento` (jobId pelo id do pagamento); o worker acha a intenção por `gatewayId` e enfileira `baixar` |
+| Pix sem referência e sem `pixQrCodeId`, que não é cobrança amarrada a fatura (`asaasChargeId`) | enfileira `identificar` sem id; o worker lê `GET /payments/{id}` no Asaas para obter o `pixQrCodeId` |
+| qualquer outro evento com `pixQrCodeId` | só ACK |
+
+Resultados do job `identificar`: `baixa_enfileirada`, `pix_desconhecido` (não é intenção deste
+ambiente) e `sem_pix_de_origem` (o pagamento não veio de QR) — os dois últimos sem efeito.
+Campos novos lidos de `payment`: `pixQrCodeId`, `billingType`. `payment.customer` não é lido.
+
+Chamadas ao Asaas no modo ESTATICO: `GET /pix/addressKeys?status=ACTIVE` (chave que recebe, em
+memória), `POST /pix/qrCodes/static` (criar; limite de tempo `ASAAS_PIX_QR_TIMEOUT_MS`),
+`GET /payments?pixQrCodeId=` (consultar) e `DELETE /pix/qrCodes/static/{id}` (cancelar, só se não
+recebeu).
+
 ### Webhook do gateway — entradas (`ativacao:`, `acordo:`, `novacao:`)
 
 Decisão de 15/11 (doc 02 §32.6): pagamento em parte vale só para fatura. Em
@@ -1494,12 +1516,12 @@ por pagamento) e emite notificação `FALHA` para a área Carteira e cobrança. 
 
 | Método | Rota | Área / papéis | O que faz |
 |---|---|---|---|
-| GET | `/api/v1/faturamento/parametros` | Configurações | `{ vigente, faturasEmAberto { azit, asaasNativo }, historico[] }` |
-| POST | `/api/v1/faturamento/parametros` | Configurações · ADMIN, DIRETOR | Salva **nova versão**. Campos opcionais: `pixSobDemanda`, `multaPadraoPct`, `atualizacaoMesPadraoPct`, `cascata` (os 4 grupos), `minimoParcialPct`, `minimoParcialPiso` (centavos), `tetoIntencoesDia`, `motivo`. 400 `validacao` / `sem_alteracao` |
+| GET | `/api/v1/faturamento/parametros` | Configurações | `{ vigente, faturasEmAberto { azit, asaasNativo }, recebimentoPix { simulado, disponivel, chaveMascarada, tipoChave, motivo }, historico[] }`; `vigente.modoPix` = `ESTATICO` (padrão) ou `COBRANCA` |
+| POST | `/api/v1/faturamento/parametros` | Configurações · ADMIN, DIRETOR | Salva **nova versão**. Campos opcionais: `pixSobDemanda`, `modoPix` (`ESTATICO` \| `COBRANCA`), `multaPadraoPct`, `atualizacaoMesPadraoPct`, `cascata` (os 4 grupos), `minimoParcialPct`, `minimoParcialPiso` (centavos), `tetoIntencoesDia`, `motivo`. 400 `validacao` / `sem_alteracao` |
 | GET | `/api/v1/faturas/:id` | Carteira e cobrança, ficha | Passa a trazer `modeloEncargo` e, em fatura AZIT, `azit { situacao, totalHoje, saldoNominal, multa, atualizacao, diasAtraso, pagoTotal, pagamentos[] (com alocacoes[]), intencoesAtivas[], contaMista, gatewaySimulado }` |
 | POST | `/api/v1/contas/:contaId/pix/conferir` | Carteira e cobrança, ficha · ADMIN, OPERADOR, FINANCEIRO, DIRETOR | 202. Pergunta ao gateway pelos Pix recentes da conta e enfileira a baixa dos pagos: `{ conferidas, enfileiradas, simulado }` |
 | POST | `/api/v1/faturas/:id/gerar-cobranca` | — | Fatura AZIT → 422 `fatura_pix_sob_demanda` |
-| POST | `/api/v1/dev/simular-pagamento-pix/:intencaoId` | fora de produção · ADMIN, OPERADOR | 202. Enfileira o mesmo job do webhook para o Pix da intenção |
+| POST | `/api/v1/dev/simular-pagamento-pix/:intencaoId` | fora de produção · ADMIN, OPERADOR | 202. Enfileira `identificar` com o id do Pix da intenção — o mesmo caminho do webhook do QR estático |
 
 `POST /api/v1/dev/fechar-faturas` devolve agora `{ fechadas, modelo }` (`AZIT` com a chave ligada).
 
@@ -1523,3 +1545,4 @@ Migração `20261115200000_fatura_azit_origem_sinistro`: `ALTER TYPE "OrigemPaga
 |---|---|---|
 | `FATURA_RECEBEDOR_NOME` | `Azit Comércio de Veículos Ltda` | Recebedor mostrado ao lado do Pix e no PDF |
 | `FATURA_RECEBEDOR_CNPJ` | `57.265.780/0001-19` | idem |
+| `ASAAS_PIX_QR_TIMEOUT_MS` | `8000` (1000–60000) | Limite de tempo da geração do código Pix: a criação do QR estático e, no modo COBRANCA, a consulta do código da cobrança. O homolog usa 30000 para medir |

@@ -3584,9 +3584,10 @@ Nada disso altera a régua, o bloqueio (Regra 6) ou a POP; só o **link** que va
   varredura e alerta de "fatura sem cobrança" só olham o modelo antigo; emissão manual é recusada
   para fatura AZIT e a ação não aparece na ficha. Chave desligada: idêntico ao anterior (teste de
   regressão). Fatura AZIT sem link público ganha o token no fechamento.
-- **Gateway:** interface `GatewayPix` (criar, cancelar, consultar, ler webhook) com o Asaas como
-  implementação (`GATEWAY_PIX`): Pix avulso, vencimento no dia, valor exato, sem `fine` nem
-  `interest`, referência `intencao:<id>`, modo simulado.
+- **Gateway:** interface `GatewayPix` (criar, cancelar, consultar, ler webhook, dizer de qual Pix
+  veio um pagamento, dizer qual chave recebe) com o Asaas como implementação (`GATEWAY_PIX`), em
+  dois modos (item 14): QR estático com valor (padrão) e cobrança Pix avulsa com vencimento no
+  dia, sem `fine` nem `interest`. Valor exato, referência `intencao:<id>`, modo simulado.
 - **Intenção de pagamento:** valor validado no servidor pela regra do motor; reuso do mesmo valor
   no dia; **várias ativas por conta, uma por valor** (regra de 15/11: nada é cancelado na criação);
   teto diário de valores distintos por conta; job de virada do dia às 00h05 (fila
@@ -3743,6 +3744,60 @@ Nada disso altera a régua, o bloqueio (Regra 6) ou a POP; só o **link** que va
       repartição entre parcelas pode diferir em centavos de uma conta feita parcela a parcela.
 13. **Modo simulado:** o id de cliente simulado usava 8 caracteres do titular e colidia entre
     cadastros criados juntos; passou a usar o id inteiro. Só afeta ambiente sem chave do gateway.
+14. **Pix por QR estático com valor — construído (decisão 15/11, §32.4-A).**
+    - **Parâmetro versionado** `modoPix` (ESTATICO padrão | COBRANCA), em Configurações ›
+      Faturamento, com a explicação de cada modo; migração aditiva
+      `20261115230000_fatura_azit_modo_pix`. As versões salvas antes desta data aparecem como
+      ESTATICO no histórico, embora os Pix daquele período tenham nascido como cobrança.
+    - **Criar (ESTATICO):** a chave Pix ativa da conta (primeira ativa, guardada em memória) e uma
+      chamada só, `POST /pix/qrCodes/static`, com valor, pagamento único, validade
+      `<dia> 23:59:59`, texto curto ("Azit Move fatura 22") e a referência da intenção. Não cria
+      cobrança nem cliente. Se a criação falhar com a chave guardada, a chave é recarregada e, se
+      for outra, tenta-se mais uma vez. O log de tempo continua: `criarPix … [QR estático]: ok em
+      X ms · chave Y ms · POST /pix/qrCodes/static Z ms`.
+    - **Sem chave Pix ativa:** a geração falha ("Pix indisponível" para o cliente, motivo no log) e
+      Configurações › Faturamento mostra a chave que recebe (mascarada) ou o motivo de não haver.
+      A tela **avisa, não trava**: dá para salvar o modo ESTATICO sem chave (provisório).
+    - **Cancelar e consultar seguem o modo em que o Pix nasceu**, não o parâmetro do dia: o
+      identificador guardado na intenção diz qual é (cobrança do Asaas começa com `pay_`; o resto
+      é QR). QR: consulta `GET /payments?pixQrCodeId=` antes de apagar; recebido não é apagado.
+    - **Webhook (roteamento):** o Pix sob demanda é lido **antes** de qualquer outro fluxo.
+      (1) referência `intencao:<id>` → baixa enfileirada; (2) `pixQrCodeId` no aviso → job
+      `identificar`, que acha a intenção pelo identificador do QR e enfileira a mesma baixa;
+      (3) Pix recebido sem referência, sem `pixQrCodeId` e que não é cobrança de fatura nossa →
+      o mesmo job, que pergunta ao Asaas de qual QR veio (o webhook nunca consulta o gateway).
+      Pagamento que não é de nenhuma intenção deste ambiente termina sem efeito. Tudo idempotente
+      pelo id do pagamento (o job de baixa é o mesmo dos outros caminhos). Se a identificação
+      falhar em todas as tentativas (gateway fora do ar), a Carteira recebe a mesma notificação de
+      FALHA "Pix recebido e NÃO aplicado à conta" da baixa.
+    - **Varredura de integração:** conciliação de fatura do modelo antigo (só casa por referência
+      de fatura ou pelo id da cobrança amarrada), conferência com o Asaas (§27.9, parte das faturas
+      com cobrança), limpeza de cobranças órfãs da migração (só cobrança pendente) e "Conferir Pix
+      no gateway" da ficha (consulta por identificador, nos dois modos) — nenhum deles pega a
+      cobrança que o Asaas cria ao receber o QR. O pagador registrado nela não é lido.
+    - **Simulador de pagamento** (fora de produção) passa pelo job `identificar` com o
+      identificador do Pix: o mesmo caminho do webhook do QR.
+
+    **Provisório ou a confirmar no homolog (Regra 12):**
+    - O Asaas **não documenta** se o aviso de pagamento traz `pixQrCodeId` nem se copia a
+      referência; por isso os três caminhos acima. Conferir no log qual deles acontece.
+    - Fuso do `expirationDate`: a documentação mostra só o formato; assumido horário do Brasil.
+      Se o Asaas ler em outro fuso, o QR expira na hora errada — a virada do dia (00h05) remove o
+      QR de qualquer forma.
+    - Limite do texto do QR: 37 caracteres, sem acento (espaço que sobra no QR com chave aleatória).
+    - Chave usada: a **primeira** ativa que o Asaas devolve. Com mais de uma chave ativa, não há
+      escolha na tela.
+    - O Asaas liga a cobrança criada a um cliente pelos dados de quem pagou; se coincidir com um
+      cliente ainda **não migrado**, ela aparece na coleta da migração do legado como uma cobrança
+      a mais. Não tratado.
+    - A remoção de QR estático no ambiente de teste do Asaas não está confirmada na documentação.
+      Se falhar, o job de cancelamento repete e desiste sem avisar a carteira; o QR expira sozinho
+      às 23h59.
+    - "Pix recebido na chave sem fatura" (proposta de 31/10, outra branch): quando for construído,
+      entra **depois** da identificação — só para o pagamento que o job devolve como
+      `pix_desconhecido` ou `sem_pix_de_origem`.
+    - **Evolução, só se o estático não resolver a latência:** tela "gerando seu Pix" e pré-geração
+      na virada do dia. Fora desta entrega.
 
 **Pendências que continuam valendo antes de ligar em produção:** 8 (quem avisa o cliente) e 9
 (transição das faturas já emitidas) do §32.10, e o teste com o Asaas em ambiente de teste (7).

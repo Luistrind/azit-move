@@ -51,6 +51,8 @@ function montar(conta: ContaCarregada, existentes: Partial<Linha>[] = []) {
     cancelarPix: jest.fn().mockResolvedValue({ cancelado: true, pago: false }),
     consultarPix: jest.fn().mockResolvedValue({ existe: true, pago: false, valor: 0, dataPagamento: null, pagamentoId: null }),
     interpretarWebhook: jest.fn(),
+    pixDoPagamento: jest.fn().mockResolvedValue(null),
+    chaveRecebimento: jest.fn(),
   };
   const fila = { add: jest.fn().mockResolvedValue({}) };
   const service = new IntencaoPagamentoService(prisma as never, contaFatura, gateway as never, fila as never);
@@ -64,7 +66,7 @@ describe('IntencaoPagamentoService', () => {
   it('cria o Pix do valor exato, com referência intencao:<id>, válido até 23h59 de hoje, e o retrato das faturas', async () => {
     const { service, gateway, tabela } = montar(contaFixture([F2(), F3()]));
     const r = await service.criar({ contaId: 'conta-1', valor: 212143, origem: 'PAGINA_PUBLICA' });
-    expect(gateway.criarPix).toHaveBeenCalledWith(expect.objectContaining({ valor: 212143, dia: HOJE, titularId: 'tit-1', referencia: `intencao:${r.id}` }));
+    expect(gateway.criarPix).toHaveBeenCalledWith(expect.objectContaining({ valor: 212143, dia: HOJE, titularId: 'tit-1', referencia: `intencao:${r.id}`, descricaoCurta: 'Azit Move faturas 22 a 23' }));
     expect(r).toMatchObject({ valor: 212143, pixCopiaECola: 'pix-212143', outroValor: false, reaproveitada: false });
     expect(r.validoAte.toISOString()).toBe('2026-11-10T02:59:59.999Z');
     expect(r.faturas).toEqual([
@@ -234,6 +236,51 @@ describe('IntencaoPagamentoService', () => {
     ]);
     expect(gateway.cancelarPix).not.toHaveBeenCalled(); // fora do caminho de quem efetivou
     expect(await service.invalidarAtivasDaConta('conta-1', 'de novo')).toBe(0);
+  });
+
+  describe('pagamento de QR ESTÁTICO: o gateway avisa sem a referência da intenção (15/11)', () => {
+    const aviso = { pagamentoId: 'pay_9', valor: 107243, dataPagamento: '2026-11-09', recebidoEm: '2026-11-09T21:22:00.000Z', identificadorPix: 'E182' };
+
+    it('o webhook só enfileira a identificação (jobId pelo pagamento: RECEIVED e CONFIRMED não viram dois jobs)', async () => {
+      const { service, fila } = montar(contaFixture([F2()]));
+      await service.enfileirarIdentificacao({ ...aviso, gatewayId: 'qr_abc123' });
+      expect(fila.add).toHaveBeenCalledWith('identificar', { ...aviso, gatewayId: 'qr_abc123' }, { jobId: 'identificar-pay_9' });
+    });
+
+    it('com o id do QR: acha a intenção pelo id do Pix e manda para a MESMA baixa pela conta, sem perguntar ao gateway', async () => {
+      const { service, gateway, fila } = montar(contaFixture([F2()]), [{ id: 'a', gatewayId: 'qr_outro' }, { id: 'b', gatewayId: 'qr_abc123' }]);
+      expect(await service.identificarPagamento({ ...aviso, gatewayId: 'qr_abc123' })).toEqual({ resultado: 'baixa_enfileirada', intencaoId: 'b' });
+      expect(gateway.pixDoPagamento).not.toHaveBeenCalled();
+      expect(fila.add).toHaveBeenCalledTimes(1);
+      expect(fila.add).toHaveBeenCalledWith(
+        'baixar',
+        { intencaoId: 'b', pagamentoId: 'pay_9', valor: 107243, dataPagamento: '2026-11-09', recebidoEm: '2026-11-09T21:22:00.000Z', identificadorPix: 'E182', origem: 'GATEWAY' },
+        { jobId: 'baixa-pay_9' }, // idempotente pelo id do pagamento, igual aos outros caminhos
+      );
+    });
+
+    it('intenção já expirada ou cancelada também é achada: o dinheiro manda', async () => {
+      const { service, fila } = montar(contaFixture([F2()]), [{ id: 'velha', situacao: 'EXPIRADA', dia: '2026-11-08', gatewayId: 'qr_abc123' }]);
+      expect(await service.identificarPagamento({ ...aviso, gatewayId: 'qr_abc123' })).toMatchObject({ resultado: 'baixa_enfileirada', intencaoId: 'velha' });
+      expect(fila.add).toHaveBeenCalledWith('baixar', expect.objectContaining({ intencaoId: 'velha' }), expect.anything());
+    });
+
+    it('aviso SEM o id do QR: o worker pergunta ao gateway de qual Pix veio o pagamento', async () => {
+      const { service, gateway, fila } = montar(contaFixture([F2()]), [{ id: 'b', gatewayId: 'qr_abc123' }]);
+      gateway.pixDoPagamento.mockResolvedValueOnce('qr_abc123');
+      expect(await service.identificarPagamento({ ...aviso, gatewayId: null })).toEqual({ resultado: 'baixa_enfileirada', intencaoId: 'b' });
+      expect(gateway.pixDoPagamento).toHaveBeenCalledWith('pay_9');
+      expect(fila.add).toHaveBeenCalledWith('baixar', expect.objectContaining({ intencaoId: 'b', pagamentoId: 'pay_9' }), expect.anything());
+    });
+
+    it('Pix que não é de nenhuma intenção daqui (outro ambiente, Pix avulso na chave): nada é enfileirado nem criado', async () => {
+      const { service, fila, intencaoPagamento } = montar(contaFixture([F2()]), [{ id: 'b', gatewayId: 'qr_abc123' }]);
+      expect(await service.identificarPagamento({ ...aviso, gatewayId: 'qr_de_outro_ambiente' })).toEqual({ resultado: 'pix_desconhecido' });
+      expect(await service.identificarPagamento({ ...aviso, gatewayId: null })).toEqual({ resultado: 'sem_pix_de_origem' }); // o gateway diz que não veio de QR
+      expect(fila.add).not.toHaveBeenCalled();
+      expect(intencaoPagamento.create).not.toHaveBeenCalled();
+      expect(intencaoPagamento.updateMany).not.toHaveBeenCalled();
+    });
   });
 
   it('conferência do operador enfileira só o que o gateway confirma como pago', async () => {

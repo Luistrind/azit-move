@@ -22,6 +22,11 @@ export const webhookAsaasSchema = z.object({
       clientPaymentDate: z.string().nullish(),
       confirmedDate: z.string().nullish(),
       pixTransaction: z.unknown(),
+      // QR estático (doc 02 §32.4-A, 15/11): a cobrança que o Asaas cria ao
+      // receber traz o id do QR; e o tipo, para saber se é Pix. O pagador
+      // (`customer`) fica de fora de propósito — não é usado para nada.
+      pixQrCodeId: z.string().nullish(),
+      billingType: z.string().nullish(),
       dueDate: z.string().nullish(),
       fineValue: z.number().nullish(),
       interestValue: z.number().nullish(),

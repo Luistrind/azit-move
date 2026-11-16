@@ -27,23 +27,24 @@ export class PagamentoContaController {
     return this.intencao.conferirConta(contaId);
   }
 
-  // Dev/homologação: simula o pagamento do Pix de uma intenção — enfileira o
-  // MESMO job que o webhook do gateway geraria. Em produção a rota não existe.
+  // Dev/homologação: simula o pagamento do Pix de uma intenção pelo MESMO
+  // caminho do webhook do QR estático — job 'identificar' com o id do Pix, que
+  // acha a intenção e enfileira a baixa pela conta. Vale para os dois modos (a
+  // intenção é achada pelo id do Pix). Em produção a rota não existe.
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @UseGuards(DevOnlyGuard)
   @Post('dev/simular-pagamento-pix/:intencaoId')
   @HttpCode(202)
   async simularPagamento(@Param('intencaoId') intencaoId: string) {
-    const i = await this.prisma.db.intencaoPagamento.findFirst({ where: { id: intencaoId }, select: { id: true, valor: true } });
-    if (!i) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Pix não encontrado' });
-    await this.intencao.enfileirarBaixa({
-      intencaoId: i.id,
+    const i = await this.prisma.db.intencaoPagamento.findFirst({ where: { id: intencaoId }, select: { id: true, valor: true, gatewayId: true } });
+    if (!i || !i.gatewayId) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Pix não encontrado' });
+    await this.intencao.enfileirarIdentificacao({
       pagamentoId: `pay_sim_${i.id}`,
+      gatewayId: i.gatewayId,
       valor: Math.round(Number(i.valor.toString()) * 100),
       dataPagamento: dataHojeBrasil(),
       recebidoEm: new Date().toISOString(),
       identificadorPix: `SIMULADO-${i.id}`,
-      origem: 'GATEWAY',
     });
     return { enfileirado: true, intencaoId: i.id };
   }

@@ -55,6 +55,19 @@ export interface JobBaixaIntencao {
   origem: 'GATEWAY' | 'CONFERENCIA';
 }
 
+// Job da mesma fila que descobre DE QUAL intenção é um pagamento Pix que o
+// gateway avisou sem a referência `intencao:<id>` — é o caso do QR estático
+// (doc 02 §32.4-A, 15/11): a cobrança que o gateway cria ao receber traz o id do
+// QR, ou nem isso (aí o worker pergunta ao gateway).
+export interface JobIdentificarPix {
+  pagamentoId: string;
+  gatewayId: string | null; // id do Pix, quando o aviso trouxe
+  valor: number; // centavos
+  dataPagamento: string | null;
+  recebidoEm: string; // ISO
+  identificadorPix: string | null;
+}
+
 // Job da mesma fila que cancela, no gateway, o Pix de uma intenção que deixou de valer.
 export interface JobCancelarPix {
   intencaoId: string;
@@ -111,6 +124,35 @@ export class IntencaoPagamentoService {
   async enfileirarBaixa(job: JobBaixaIntencao): Promise<void> {
     // BullMQ não aceita ":" em jobId — o id simulado carrega a referência.
     await this.fila.add('baixar', job, { jobId: `baixa-${job.pagamentoId.replace(/[^A-Za-z0-9_-]/g, '_')}` });
+  }
+
+  // Enfileira a identificação de um pagamento Pix sem referência (Regra 4: o
+  // webhook responde e sai; quem pergunta ao gateway é o worker). jobId pelo
+  // pagamento: RECEIVED e CONFIRMED do mesmo Pix não geram dois jobs.
+  async enfileirarIdentificacao(job: JobIdentificarPix): Promise<void> {
+    await this.fila.add('identificar', job, { jobId: `identificar-${job.pagamentoId.replace(/[^A-Za-z0-9_-]/g, '_')}` });
+  }
+
+  // Job 'identificar' (worker): liga o pagamento à intenção pelo id do Pix
+  // (`gatewayId`) e manda para a MESMA baixa pela conta dos outros caminhos
+  // (idempotente pelo id do pagamento). Pagamento que não é de nenhuma intenção
+  // daqui (outro ambiente na mesma conta do gateway, Pix avulso na chave) é
+  // ignorado — nada é criado nem alterado por causa dele.
+  async identificarPagamento(job: JobIdentificarPix): Promise<{ resultado: 'baixa_enfileirada' | 'sem_pix_de_origem' | 'pix_desconhecido'; intencaoId?: string }> {
+    const gatewayId = job.gatewayId ?? (await this.gateway.pixDoPagamento(job.pagamentoId));
+    if (!gatewayId) return { resultado: 'sem_pix_de_origem' };
+    const intencao = await this.prisma.db.intencaoPagamento.findFirst({ where: { gatewayId }, select: { id: true } });
+    if (!intencao) return { resultado: 'pix_desconhecido' };
+    await this.enfileirarBaixa({
+      intencaoId: intencao.id,
+      pagamentoId: job.pagamentoId,
+      valor: job.valor,
+      dataPagamento: job.dataPagamento,
+      recebidoEm: job.recebidoEm,
+      identificadorPix: job.identificadorPix,
+      origem: 'GATEWAY',
+    });
+    return { resultado: 'baixa_enfileirada', intencaoId: intencao.id };
   }
 
   // Intenções que ainda valem AGORA para a conta, da mais recente para a mais
@@ -191,6 +233,7 @@ export class IntencaoPagamentoService {
         valor,
         dia: hoje,
         descricao: this.descricao(faturas, valor),
+        descricaoCurta: this.descricaoCurta(faturas),
         titularId: conta.titular.id,
       });
     } catch (e) {
@@ -326,6 +369,13 @@ export class IntencaoPagamentoService {
     const brl = formatCurrency;
     const nums = faturas.map((f) => `#${f.numero}`).join(', ');
     return `Azit Move — pagamento de fatura${faturas.length > 1 ? 's' : ''} ${nums} — ${brl(valor)}`.slice(0, 490);
+  }
+
+  // O que aparece para quem paga, no app do banco (o QR tem pouco espaço).
+  private descricaoCurta(faturas: FaturaPretendida[]): string {
+    const nums = faturas.map((f) => f.numero);
+    if (nums.length === 0) return 'Azit Move fatura';
+    return nums.length === 1 ? `Azit Move fatura ${nums[0]}` : `Azit Move faturas ${nums[0]} a ${nums[nums.length - 1]}`;
   }
 
   private mapear(i: Prisma.IntencaoPagamentoGetPayload<object>, reaproveitada: boolean): IntencaoCriada {

@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 // do Pix sob demanda (§32.4-A). Dinheiro em centavos; percentuais em pontos.
 export interface SalvarParametrosFaturamento {
   pixSobDemanda?: boolean;
+  modoPix?: 'ESTATICO' | 'COBRANCA';
   multaPadraoPct?: number;
   atualizacaoMesPadraoPct?: number;
   cascata?: GrupoCascata[];

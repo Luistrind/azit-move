@@ -8,7 +8,7 @@ import { WebhookController } from './webhook.controller';
 function montar() {
   const fila = () => ({ add: jest.fn().mockResolvedValue({}) });
   const filas = { recebido: fila(), vencido: fila(), acordo: fila(), ativacao: fila() };
-  const intencao = { enfileirarBaixa: jest.fn().mockResolvedValue(undefined) };
+  const intencao = { enfileirarBaixa: jest.fn().mockResolvedValue(undefined), enfileirarIdentificacao: jest.fn().mockResolvedValue(undefined) };
   const prisma = { db: { fatura: { findFirst: jest.fn().mockResolvedValue(null) } } };
   const gateway = new GatewayPixAsaas(prisma as never, { simulado: true } as never, {} as never);
   const controller = new WebhookController(
@@ -65,10 +65,73 @@ describe('WebhookController — prefixo intencao:', () => {
     for (const f of Object.values(filas)) expect(f.add).not.toHaveBeenCalled();
   });
 
+  it('REGRESSÃO: cobrança LEGADA sem referência (amarrada à fatura pelo id) continua no conciliar — não vira identificação de Pix', async () => {
+    const { controller, filas, intencao, prisma } = montar();
+    prisma.db.fatura.findFirst.mockResolvedValueOnce({ id: 'fat_legada' });
+    await controller.asaas(undefined, { event: 'PAYMENT_RECEIVED', payment: { id: 'pay_legado', billingType: 'PIX', value: 997, paymentDate: '2026-11-09', dueDate: '2026-11-09' } });
+    expect(filas.recebido.add).toHaveBeenCalledWith('conciliar', { faturaId: 'fat_legada', paymentDate: '2026-11-09', dueDate: '2026-11-09', valor: 99700 });
+    expect(intencao.enfileirarIdentificacao).not.toHaveBeenCalled();
+  });
+
   it('REGRESSÃO: fatura sem prefixo (modelo ASAAS_NATIVO) continua no job conciliar de sempre', async () => {
     const { controller, filas, intencao } = montar();
     await controller.asaas(undefined, { event: 'PAYMENT_RECEIVED', payment: { id: 'pay_9', externalReference: 'fat_1', value: 1049, paymentDate: '2026-11-09', dueDate: '2026-11-09' } });
     expect(filas.recebido.add).toHaveBeenCalledWith('conciliar', { faturaId: 'fat_1', paymentDate: '2026-11-09', dueDate: '2026-11-09', valor: 104900 });
     expect(intencao.enfileirarBaixa).not.toHaveBeenCalled();
+  });
+});
+
+// QR estático (doc 02 §32.4-A, 15/11): o pagamento chega como cobrança criada
+// pelo gateway, com o id do QR e SEM a nossa referência. Vai SÓ para a
+// identificação → baixa pela conta; nunca para a conciliação de fatura.
+describe('WebhookController — pagamento de QR estático', () => {
+  beforeAll(() => jest.useFakeTimers().setSystemTime(new Date('2026-11-09T21:22:00.000Z')));
+  afterAll(() => jest.useRealTimers());
+
+  it('com pixQrCodeId: enfileira só a identificação — sem tocar no banco, na conciliação nem nos outros fluxos', async () => {
+    const { controller, filas, intencao, prisma } = montar();
+    const r = await controller.asaas(undefined, {
+      event: 'PAYMENT_RECEIVED',
+      // `customer` é o pagador que o gateway registrou (pode ser um terceiro): ignorado.
+      payment: { id: 'pay_9', externalReference: null, pixQrCodeId: 'qr_abc123', billingType: 'PIX', customer: 'cus_de_terceiro', value: 1072.43, paymentDate: '2026-11-10', clientPaymentDate: '2026-11-09', pixTransaction: 'E182' },
+    } as never);
+    expect(r).toEqual({ received: true });
+    expect(intencao.enfileirarIdentificacao).toHaveBeenCalledWith({ pagamentoId: 'pay_9', gatewayId: 'qr_abc123', valor: 107243, dataPagamento: '2026-11-09', recebidoEm: '2026-11-09T21:22:00.000Z', identificadorPix: 'E182' });
+    expect(intencao.enfileirarBaixa).not.toHaveBeenCalled();
+    for (const f of Object.values(filas)) expect(f.add).not.toHaveBeenCalled();
+    expect(prisma.db.fatura.findFirst).not.toHaveBeenCalled(); // nem procura fatura pela cobrança
+  });
+
+  it('se a referência da intenção vier copiada, a baixa é enfileirada direto (sem identificação)', async () => {
+    const { controller, intencao } = montar();
+    await controller.asaas(undefined, { event: 'PAYMENT_RECEIVED', payment: { id: 'pay_9', externalReference: 'intencao:int_abc', pixQrCodeId: 'qr_abc123', value: 600 } });
+    expect(intencao.enfileirarBaixa).toHaveBeenCalledWith(expect.objectContaining({ intencaoId: 'int_abc', pagamentoId: 'pay_9', valor: 60000 }));
+    expect(intencao.enfileirarIdentificacao).not.toHaveBeenCalled();
+  });
+
+  it('outros eventos da cobrança do QR (criada, estornada…) são só ACK', async () => {
+    const { controller, filas, intencao } = montar();
+    for (const event of ['PAYMENT_CREATED', 'PAYMENT_OVERDUE', 'PAYMENT_DELETED']) {
+      expect(await controller.asaas(undefined, { event, payment: { id: 'pay_9', pixQrCodeId: 'qr_abc123', value: 600 } })).toEqual({ received: true });
+    }
+    expect(intencao.enfileirarIdentificacao).not.toHaveBeenCalled();
+    for (const f of Object.values(filas)) expect(f.add).not.toHaveBeenCalled();
+  });
+
+  it('Pix recebido SEM referência e SEM pixQrCodeId, que não é cobrança de fatura nossa: a identificação fica para o worker (o webhook não consulta o gateway)', async () => {
+    const { controller, filas, intencao, prisma } = montar();
+    const r = await controller.asaas(undefined, { event: 'PAYMENT_RECEIVED', payment: { id: 'pay_5', billingType: 'PIX', value: 600, paymentDate: '2026-11-09' } });
+    expect(r).toEqual({ received: true });
+    expect(prisma.db.fatura.findFirst).toHaveBeenCalled(); // primeiro vê se é cobrança legada de fatura
+    expect(intencao.enfileirarIdentificacao).toHaveBeenCalledWith({ pagamentoId: 'pay_5', gatewayId: null, valor: 60000, dataPagamento: '2026-11-09', recebidoEm: '2026-11-09T21:22:00.000Z', identificadorPix: null });
+    for (const f of Object.values(filas)) expect(f.add).not.toHaveBeenCalled();
+  });
+
+  it('o que não é Pix, ou não é recebimento, continua ignorado como antes', async () => {
+    const { controller, intencao } = montar();
+    expect(await controller.asaas(undefined, { event: 'PAYMENT_RECEIVED', payment: { id: 'pay_6', billingType: 'BOLETO', value: 600 } })).toEqual({ received: true, ignored: true });
+    expect(await controller.asaas(undefined, { event: 'PAYMENT_CREATED', payment: { id: 'pay_7', billingType: 'PIX', value: 600 } })).toEqual({ received: true, ignored: true });
+    expect(await controller.asaas(undefined, { event: 'PAYMENT_RECEIVED' })).toEqual({ received: true, ignored: true });
+    expect(intencao.enfileirarIdentificacao).not.toHaveBeenCalled();
   });
 });

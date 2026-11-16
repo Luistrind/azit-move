@@ -1,4 +1,4 @@
-import type { OrigemIntencaoPagamento, OrigemPagamentoFatura, SituacaoIntencaoPagamento } from '../enums/faturamento';
+import type { ModoPixSobDemanda, OrigemIntencaoPagamento, OrigemPagamentoFatura, SituacaoIntencaoPagamento } from '../enums/faturamento';
 import type { GrupoCascata } from './fatura-motor';
 
 // Parâmetros de faturamento (doc 02 §32.8) — Configurações › Faturamento.
@@ -9,6 +9,8 @@ export interface ParametrosFaturamento {
   // Chave de virada (§32.4-A): ligada, as faturas que fecharem dali em diante
   // nascem no modelo AZIT, sem cobrança pré-criada no gateway.
   pixSobDemanda: boolean;
+  // Como o Pix nasce no gateway (§32.4-A): QR estático com valor (padrão) ou cobrança Pix.
+  modoPix: ModoPixSobDemanda;
   multaPadraoPct: number; // FAT001
   atualizacaoMesPadraoPct: number; // FAT002
   cascata: GrupoCascata[]; // FAT003
@@ -28,7 +30,19 @@ export interface ParametrosFaturamentoResposta {
   // Quantas faturas FECHADAS em aberto existem em cada modelo — o que a chave
   // já produziu e o que segue no modelo antigo até liquidar (§32.4-A).
   faturasEmAberto: { azit: number; asaasNativo: number };
+  // Quem recebe o Pix do QR estático: a chave Pix ativa da conta no gateway.
+  recebimentoPix: RecebimentoPix;
   historico: VersaoParametrosFaturamento[];
+}
+
+// Situação da chave Pix que recebe o QR estático (§32.4-A). Sem chave ativa
+// não há Pix no modo ESTATICO — a tela mostra o motivo.
+export interface RecebimentoPix {
+  simulado: boolean; // ambiente sem gateway real: o Pix gerado não é pagável
+  disponivel: boolean;
+  chaveMascarada: string | null;
+  tipoChave: string | null; // CPF | CNPJ | EMAIL | PHONE | EVP
+  motivo: string | null; // por que não há chave (ou por que não deu para consultar)
 }
 
 // ------------------------------------------------------------

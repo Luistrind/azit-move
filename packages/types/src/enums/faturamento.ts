@@ -26,6 +26,17 @@ export const ROTULO_ENCARGO_FATURA: Record<TipoEncargoFatura, string> = {
   [TipoEncargoFatura.ATUALIZACAO]: 'Atualização por dias de atraso',
 };
 
+// Como o Pix sob demanda nasce no gateway (§32.4-A, decisão 15/11).
+export enum ModoPixSobDemanda {
+  ESTATICO = 'ESTATICO', // QR estático com valor: uma chamada, sem cobrança nem cliente no gateway (padrão)
+  COBRANCA = 'COBRANCA', // cobrança Pix + consulta do código (modo anterior, opção de volta)
+}
+
+export const ROTULO_MODO_PIX: Record<ModoPixSobDemanda, string> = {
+  [ModoPixSobDemanda.ESTATICO]: 'QR estático com valor',
+  [ModoPixSobDemanda.COBRANCA]: 'Cobrança Pix',
+};
+
 // Intenção de pagamento (§32.4-A).
 export enum OrigemIntencaoPagamento {
   PAGINA_PUBLICA = 'PAGINA_PUBLICA',

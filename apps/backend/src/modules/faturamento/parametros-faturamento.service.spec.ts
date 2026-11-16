@@ -6,7 +6,9 @@ import { ParametrosFaturamentoService, PARAMETROS_FATURAMENTO_PADRAO } from './p
 
 const D = (v: number | string) => new Prisma.Decimal(v);
 
-function montar(linhas: Record<string, unknown>[] = []) {
+const CHAVE_OK = { simulado: false, disponivel: true, chaveMascarada: 'b629•••60d9', tipoChave: 'EVP', motivo: null };
+
+function montar(linhas: Record<string, unknown>[] = [], chave: Record<string, unknown> = CHAVE_OK) {
   const tabela = [...linhas];
   const parametroFaturamento = {
     findFirst: jest.fn().mockImplementation(async () => [...tabela].sort((a, b) => (b.versao as number) - (a.versao as number))[0] ?? null),
@@ -29,7 +31,8 @@ function montar(linhas: Record<string, unknown>[] = []) {
   const logAuditoria = { create: jest.fn().mockResolvedValue({}) };
   const fatura = { count: jest.fn().mockResolvedValue(0) };
   const prisma = { db: { parametroFaturamento, logAuditoria, fatura } };
-  return { service: new ParametrosFaturamentoService(prisma as never), parametroFaturamento, logAuditoria };
+  const gateway = { chaveRecebimento: jest.fn().mockResolvedValue(chave) };
+  return { service: new ParametrosFaturamentoService(prisma as never, gateway as never), parametroFaturamento, logAuditoria, gateway };
 }
 
 describe('ParametrosFaturamentoService', () => {
@@ -62,6 +65,32 @@ describe('ParametrosFaturamentoService', () => {
     await expect(service.salvar({ tetoIntencoesDia: 0 }, 'u')).rejects.toMatchObject({ response: { erro: 'validacao' } });
     await expect(service.salvar({ pixSobDemanda: false }, 'u')).rejects.toMatchObject({ response: { erro: 'sem_alteracao' } });
     expect(parametroFaturamento.create).not.toHaveBeenCalled();
+  });
+
+  it('MODO DO PIX é parâmetro versionado: nasce ESTATICO; trocar para COBRANCA cria versão nova, auditada, e dá para voltar', async () => {
+    const { service, parametroFaturamento, logAuditoria } = montar();
+    expect((await service.vigente()).modoPix).toBe('ESTATICO');
+
+    const r1 = await service.salvar({ modoPix: 'COBRANCA', motivo: 'QR estático fora do ar' }, 'u-luis');
+    expect(parametroFaturamento.create).toHaveBeenCalledWith({ data: expect.objectContaining({ versao: 1, modoPix: 'COBRANCA', pixSobDemanda: false }) });
+    expect(r1.vigente).toMatchObject({ versao: 1, modoPix: 'COBRANCA' });
+    expect(logAuditoria.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({ acao: 'parametros_faturamento_alterados', antes: expect.objectContaining({ modoPix: 'ESTATICO' }), depois: expect.objectContaining({ modoPix: 'COBRANCA' }) }),
+    });
+
+    // Mexer em outro parâmetro não muda o modo; voltar é outra versão.
+    expect((await service.salvar({ tetoIntencoesDia: 12 }, 'u-luis')).vigente).toMatchObject({ versao: 2, modoPix: 'COBRANCA', tetoIntencoesDia: 12 });
+    const r3 = await service.salvar({ modoPix: 'ESTATICO' }, 'u-luis');
+    expect(r3.vigente).toMatchObject({ versao: 3, modoPix: 'ESTATICO' });
+    expect(r3.historico.map((h) => [h.versao, h.modoPix])).toEqual([[3, 'ESTATICO'], [2, 'COBRANCA'], [1, 'COBRANCA']]);
+    await expect(service.salvar({ modoPix: 'ESTATICO' }, 'u-luis')).rejects.toMatchObject({ response: { erro: 'sem_alteracao' } });
+  });
+
+  it('a tela recebe a chave Pix que recebe o QR (mascarada) — ou o motivo de não haver', async () => {
+    const ok = montar();
+    expect((await ok.service.tela()).recebimentoPix).toEqual(CHAVE_OK);
+    const semChave = montar([], { simulado: false, disponivel: false, chaveMascarada: null, tipoChave: null, motivo: 'A conta no Asaas não tem chave Pix ativa.' });
+    expect((await semChave.service.tela()).recebimentoPix).toMatchObject({ disponivel: false, motivo: expect.stringMatching(/não tem chave Pix ativa/) });
   });
 
   it('a ordem da cascata é parâmetro: outra ordem vale para o motor', async () => {

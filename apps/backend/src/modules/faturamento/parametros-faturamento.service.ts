@@ -1,8 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { ParametrosFaturamento, ParametrosFaturamentoResposta, VersaoParametrosFaturamento } from '@azit/types';
 import { cascataValida, CASCATA_PADRAO, PARAMETROS_MOTOR_PADRAO, type GrupoCascata, type ParametrosMotorFatura } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
+import { GATEWAY_PIX, type GatewayPix } from './gateway-pix';
 
 const cent = (d: Prisma.Decimal): number => Math.round(Number(d.toString()) * 100);
 const num = (d: Prisma.Decimal): number => Number(d.toString());
@@ -12,6 +13,8 @@ const num = (d: Prisma.Decimal): number => Number(d.toString());
 export const PARAMETROS_FATURAMENTO_PADRAO: ParametrosFaturamento = {
   versao: 0,
   pixSobDemanda: false,
+  // QR estático com valor é o padrão (decisão Luís 15/11, §32.4-A).
+  modoPix: 'ESTATICO' as ParametrosFaturamento['modoPix'],
   multaPadraoPct: 2,
   atualizacaoMesPadraoPct: 1,
   cascata: [...CASCATA_PADRAO],
@@ -22,6 +25,7 @@ export const PARAMETROS_FATURAMENTO_PADRAO: ParametrosFaturamento = {
 
 export interface SalvarParametrosFaturamentoDto {
   pixSobDemanda?: boolean;
+  modoPix?: 'ESTATICO' | 'COBRANCA';
   multaPadraoPct?: number;
   atualizacaoMesPadraoPct?: number;
   cascata?: string[];
@@ -38,6 +42,7 @@ function mapear(l: LinhaBase): VersaoParametrosFaturamento {
   return {
     versao: l.versao,
     pixSobDemanda: l.pixSobDemanda,
+    modoPix: l.modoPix as ParametrosFaturamento['modoPix'],
     multaPadraoPct: num(l.multaPadraoPct),
     atualizacaoMesPadraoPct: num(l.atualizacaoMesPadraoPct),
     // Cascata gravada inválida (não deveria existir) cai no padrão — nunca trava a baixa.
@@ -68,7 +73,11 @@ export async function parametrosFaturamentoVigentes(db: {
 // Pix sob demanda), o motor (cascata, mínimo do parcial) e a intenção (teto).
 @Injectable()
 export class ParametrosFaturamentoService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // Só para a tela dizer qual chave Pix recebe o QR estático (ou por que não há).
+    @Inject(GATEWAY_PIX) private readonly gateway: GatewayPix,
+  ) {}
 
   vigente(): Promise<ParametrosFaturamento> {
     return parametrosFaturamentoVigentes(this.prisma.db);
@@ -91,12 +100,13 @@ export class ParametrosFaturamentoService {
   }
 
   async tela(): Promise<ParametrosFaturamentoResposta> {
-    const [linhas, azit, asaasNativo] = await Promise.all([
+    const [linhas, azit, asaasNativo, recebimentoPix] = await Promise.all([
       this.prisma.db.parametroFaturamento.findMany({ orderBy: { versao: 'desc' }, take: 30, include: { criadoPor: { select: { nome: true } } } }),
       this.prisma.db.fatura.count({ where: { status: 'FECHADA', modeloEncargo: 'AZIT' } }),
       this.prisma.db.fatura.count({ where: { status: 'FECHADA', modeloEncargo: 'ASAAS_NATIVO' } }),
+      this.gateway.chaveRecebimento(),
     ]);
-    return { vigente: await this.vigente(), faturasEmAberto: { azit, asaasNativo }, historico: linhas.map(mapear) };
+    return { vigente: await this.vigente(), faturasEmAberto: { azit, asaasNativo }, recebimentoPix, historico: linhas.map(mapear) };
   }
 
   async salvar(dto: SalvarParametrosFaturamentoDto, usuarioId: string): Promise<ParametrosFaturamentoResposta> {
@@ -104,6 +114,7 @@ export class ParametrosFaturamentoService {
     const novo: ParametrosFaturamento = {
       versao: atual.versao + 1,
       pixSobDemanda: dto.pixSobDemanda ?? atual.pixSobDemanda,
+      modoPix: (dto.modoPix ?? atual.modoPix) as ParametrosFaturamento['modoPix'],
       multaPadraoPct: dto.multaPadraoPct ?? atual.multaPadraoPct,
       atualizacaoMesPadraoPct: dto.atualizacaoMesPadraoPct ?? atual.atualizacaoMesPadraoPct,
       cascata: (dto.cascata ?? atual.cascata) as GrupoCascata[], // validada logo abaixo (cascataValida)
@@ -130,6 +141,7 @@ export class ParametrosFaturamentoService {
       data: {
         versao: novo.versao,
         pixSobDemanda: novo.pixSobDemanda,
+        modoPix: novo.modoPix,
         multaPadraoPct: novo.multaPadraoPct,
         atualizacaoMesPadraoPct: novo.atualizacaoMesPadraoPct,
         cascata: novo.cascata,

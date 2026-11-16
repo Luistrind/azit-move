@@ -10,6 +10,7 @@ import { ParametrosFaturamentoService, type SalvarParametrosFaturamentoDto } fro
 
 const SALVAR = z.object({
   pixSobDemanda: z.boolean().optional(),
+  modoPix: z.enum(['ESTATICO', 'COBRANCA']).optional(),
   multaPadraoPct: z.number().optional(),
   atualizacaoMesPadraoPct: z.number().optional(),
   cascata: z.array(z.enum(GRUPOS_CASCATA)).optional(),

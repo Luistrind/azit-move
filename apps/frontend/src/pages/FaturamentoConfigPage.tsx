@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { GrupoCascata, ParametrosFaturamento, VersaoParametrosFaturamento } from '@azit/types';
+import { ModoPixSobDemanda, ROTULO_MODO_PIX, type GrupoCascata, type ParametrosFaturamento, type VersaoParametrosFaturamento } from '@azit/types';
 import { formatCurrency, formatarInstanteBR, minimoParcialFatura, ROTULO_GRUPO_CASCATA } from '@azit/utils';
 import { faturamentoService } from '../services/faturamento.service';
 import { toast } from '../components/Toast';
@@ -22,6 +22,14 @@ const ROLE_FATURAMENTO = ['ADMIN', 'DIRETOR'];
 
 type Form = Omit<ParametrosFaturamento, 'versao'>;
 const semVersao = ({ versao: _v, ...resto }: ParametrosFaturamento): Form => resto;
+
+// Como o Pix nasce no gateway (doc 02 §32.4-A, decisão 15/11) — o que cada modo faz, para o operador.
+const AJUDA_MODO_PIX: Record<ModoPixSobDemanda, string> = {
+  [ModoPixSobDemanda.ESTATICO]:
+    'Recomendado. O código Pix é gerado em uma única chamada, já com o valor, vale para um pagamento só e até 23h59 do dia. Não cria cobrança nem cadastro em nome do cliente no Asaas, então o Asaas não manda aviso nenhum ao cliente.',
+  [ModoPixSobDemanda.COBRANCA]:
+    'Modo anterior, mantido como opção de volta. Cria uma cobrança Pix no Asaas em nome do cliente e depois consulta o código dela (duas chamadas). O Asaas pode avisar o cliente dessa cobrança, conforme o cadastro dele.',
+};
 
 // "35" / "1,5" → número; vazio ou inválido → null (o botão de salvar trava).
 function lerNumero(txt: string): number | null {
@@ -46,6 +54,7 @@ function CampoNumero({ rotulo, sufixo, valor, onChange, travado, ajuda }: { rotu
 function resumoVersao(v: VersaoParametrosFaturamento): string {
   return [
     `Pix sob demanda ${v.pixSobDemanda ? 'ligado' : 'desligado'}`,
+    `código gerado por: ${ROTULO_MODO_PIX[v.modoPix]}`,
     `multa ${pct(v.multaPadraoPct)}%`,
     `atualização ${pct(v.atualizacaoMesPadraoPct)}% ao mês`,
     `mínimo ${pct(v.minimoParcialPct)}% ou ${formatCurrency(v.minimoParcialPiso)}`,
@@ -80,7 +89,9 @@ export function FaturamentoConfigPage() {
 
   if (q.isError) return <div className="text-[13px]" style={{ color: 'var(--danger-fg)' }}>{mensagemErro(q.error)}</div>;
   if (!form || !q.data) return <div className="text-[13px]" style={mudo}>Carregando…</div>;
-  const { vigente, faturasEmAberto, historico } = q.data;
+  const { vigente, faturasEmAberto, recebimentoPix, historico } = q.data;
+  // Sem chave Pix ativa não há como gerar o QR estático: a tela diz o motivo.
+  const semChaveParaEstatico = form.modoPix === ModoPixSobDemanda.ESTATICO && !recebimentoPix.simulado && !recebimentoPix.disponivel;
 
   const multa = lerNumero(txt.multa);
   const atualizacao = lerNumero(txt.atualizacao);
@@ -154,6 +165,40 @@ export function FaturamentoConfigPage() {
               </span>
             ) : null}
           </div>
+
+          <div className="mt-[14px] text-[12.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>Como o código Pix é gerado</div>
+          <div className="mt-[6px] flex flex-col gap-[8px]">
+            {[ModoPixSobDemanda.ESTATICO, ModoPixSobDemanda.COBRANCA].map((modo) => (
+              <label key={modo} className="flex items-start gap-[8px] text-[12.5px]">
+                <input type="radio" name="modoPix" className="mt-[3px]" checked={form.modoPix === modo} disabled={!podeEditar} onChange={() => setForm({ ...form, modoPix: modo })} />
+                <span className="flex min-w-0 flex-col">
+                  <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{ROTULO_MODO_PIX[modo]}</span>
+                  <span className="text-[12px]" style={mudo}>{AJUDA_MODO_PIX[modo]}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-[8px] text-[12px]" style={mudo}>
+            Trocar o modo vale para os Pix gerados daqui em diante; os já gerados continuam valendo como nasceram.
+          </div>
+
+          <div className="mt-[14px] text-[12.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>Chave Pix que recebe</div>
+          <div className="mt-[4px] text-[12px]" style={mudo}>
+            {recebimentoPix.simulado ? (
+              <span>Ambiente sem integração com o Asaas: o código Pix gerado é de teste e não pode ser pago.</span>
+            ) : recebimentoPix.disponivel ? (
+              <span>
+                O Pix das faturas cai na chave <b style={{ color: 'var(--text-primary)' }}>{recebimentoPix.chaveMascarada}</b>
+                {recebimentoPix.tipoChave ? ` (${recebimentoPix.tipoChave === 'EVP' ? 'chave aleatória' : recebimentoPix.tipoChave})` : ''} da conta no Asaas.
+                {form.modoPix === ModoPixSobDemanda.COBRANCA ? ' No modo cobrança Pix quem escolhe a chave é o próprio Asaas.' : ''}
+              </span>
+            ) : (
+              <span className="block rounded-[8px] px-[10px] py-[6px]" style={semChaveParaEstatico ? { background: 'var(--warn-bg)', color: 'var(--warn-ink)' } : undefined}>
+                {recebimentoPix.motivo ?? 'Nenhuma chave Pix ativa encontrada na conta do Asaas.'}
+                {semChaveParaEstatico ? ' Enquanto isso, o cliente que tentar pagar vê "Pix indisponível".' : ''}
+              </span>
+            )}
+          </div>
         </Secao>
       </div>
 
@@ -220,7 +265,7 @@ export function FaturamentoConfigPage() {
             valor={txt.teto}
             travado={!podeEditar}
             onChange={(v) => setTxt({ ...txt, teto: v })}
-            ajuda="Pedir de novo o mesmo valor reaproveita o Pix já gerado e não conta. Só existe um Pix ativo por conta: pedir outro valor cancela o anterior."
+            ajuda="Pedir de novo o mesmo valor reaproveita o Pix já gerado e não conta. Cada valor diferente gera um Pix próprio, que vale até o fim do dia ou até um pagamento entrar na conta."
           />
         </Secao>
       </div>

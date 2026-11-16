@@ -16,7 +16,7 @@ import { QUEUE_NAMES } from '../queues/queues.module';
 import { webhookAsaasSchema, WebhookAsaasDto } from './dto/webhook-asaas.dto';
 import { IntegracoesService } from '../integracoes/integracoes.service';
 import { PrismaService } from '../../database/prisma.service';
-import { GATEWAY_PIX, PREFIXO_INTENCAO, intencaoDaReferencia, type GatewayPix } from '../faturamento/gateway-pix';
+import { GATEWAY_PIX, intencaoDaReferencia, type GatewayPix } from '../faturamento/gateway-pix';
 import { IntencaoPagamentoService } from '../faturamento/intencao-pagamento.service';
 
 @Controller('webhooks')
@@ -63,6 +63,46 @@ export class WebhookController {
     // fluxo) → ACK 202 e ignora. Nunca devolver erro: o Asaas pausa a fila após falhas.
     const pg = dto.payment;
     let ref = pg?.externalReference ?? null;
+
+    // PIX SOB DEMANDA primeiro (doc 02 §32.4-A). O corpo é lido pelo GatewayPix
+    // (nada aqui conhece o formato do gateway). Dois jeitos de o dinheiro dizer
+    // de qual Pix veio, e os dois vão SÓ para a baixa PELA CONTA, na fila
+    // (Regra 4: 202 e fila) — nunca para a conciliação de fatura abaixo:
+    //   · referência `intencao:<id>` (cobrança Pix) → baixa enfileirada direto;
+    //   · id do Pix (QR estático: a cobrança que o gateway cria ao receber traz
+    //     o id do QR, sem a nossa referência) → job que acha a intenção pelo id.
+    // Outros eventos desses Pix (vencido, removido) são só ACK: a validade do
+    // Pix é nossa (virada do dia), não do gateway.
+    const eventoPix = this.gatewayPix.interpretarWebhook(dto);
+    const agora = () => new Date().toISOString();
+    const intencaoId = intencaoDaReferencia(eventoPix?.referencia);
+    if (eventoPix && intencaoId) {
+      if (eventoPix.pago) {
+        await this.intencao.enfileirarBaixa({
+          intencaoId,
+          pagamentoId: eventoPix.pagamentoId,
+          valor: eventoPix.valor,
+          dataPagamento: eventoPix.dataPagamento,
+          recebidoEm: agora(),
+          identificadorPix: eventoPix.identificadorPix,
+          origem: 'GATEWAY',
+        });
+      }
+      return { received: true };
+    }
+    const identificar = (e: NonNullable<typeof eventoPix>) =>
+      this.intencao.enfileirarIdentificacao({
+        pagamentoId: e.pagamentoId,
+        gatewayId: e.gatewayId,
+        valor: e.valor,
+        dataPagamento: e.dataPagamento,
+        recebidoEm: agora(),
+        identificadorPix: e.identificadorPix,
+      });
+    if (eventoPix?.gatewayId) {
+      if (eventoPix.pago) await identificar(eventoPix);
+      return { received: true };
+    }
     // Cobrança LEGADA (doc 02 §26.5): emitida pela assinatura antiga do Asaas,
     // não tem externalReference — mas a migração amarrou o id dela à fatura
     // (asaasChargeId). Fallback payment.id → fatura, e segue o fluxo normal.
@@ -71,31 +111,17 @@ export class WebhookController {
       if (fatura) ref = fatura.id;
     }
     if (!pg || !ref) {
+      // Pix recebido SEM referência, sem id do Pix e que não é cobrança de fatura
+      // nossa: pode ser de um QR estático cujo aviso veio sem o campo. Não se
+      // consulta o gateway aqui (webhook nunca é síncrono) — o worker pergunta.
+      // Se não for de nenhuma intenção, o job termina sem fazer nada.
+      if (eventoPix?.pago) {
+        await identificar(eventoPix);
+        return { received: true };
+      }
       return { received: true, ignored: true };
     }
     const recebido = dto.event === 'PAYMENT_RECEIVED' || dto.event === 'PAYMENT_CONFIRMED';
-
-    // "intencao:" = Pix sob demanda da Fatura Azit (doc 02 §32.4-A). O corpo é
-    // lido pelo GatewayPix (nada aqui conhece o formato do gateway) e, se o
-    // dinheiro entrou, a baixa PELA CONTA vai para a fila (Regra 4: 202 e fila).
-    // Qualquer outro evento dessa referência (vencida, removida) é só ACK: a
-    // validade do Pix é nossa (virada do dia), não do gateway.
-    if (ref.startsWith(PREFIXO_INTENCAO)) {
-      const evento = this.gatewayPix.interpretarWebhook(dto);
-      const intencaoId = intencaoDaReferencia(evento?.referencia);
-      if (evento?.pago && intencaoId) {
-        await this.intencao.enfileirarBaixa({
-          intencaoId,
-          pagamentoId: evento.pagamentoId,
-          valor: evento.valor,
-          dataPagamento: evento.dataPagamento,
-          recebidoEm: new Date().toISOString(),
-          identificadorPix: evento.identificadorPix,
-          origem: 'GATEWAY',
-        });
-      }
-      return { received: true };
-    }
 
     // Entrada de contrato, de acordo e recebimento inicial de novação só valem
     // pelo valor INTEIRO (decisão Luís 15/11, doc 02 §32.6: pagamento em parte

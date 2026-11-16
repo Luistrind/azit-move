@@ -238,6 +238,14 @@ enum OrigemIntencaoPagamento {
   OPERADOR
 }
 
+// Como o Pix sob demanda nasce no gateway (doc 02 §32.4-A, decisão 15/11):
+// ESTATICO = QR estático com valor, uma chamada (padrão); COBRANCA = cobrança
+// Pix + consulta do código (o modo anterior, mantido como opção de volta).
+enum ModoPixSobDemanda {
+  ESTATICO
+  COBRANCA
+}
+
 enum SituacaoIntencaoPagamento {
   ATIVA
   PAGA
@@ -1388,7 +1396,7 @@ model IntencaoPagamento {
   origem             OrigemIntencaoPagamento
   usuarioId          String? // operador, quando origem = OPERADOR
   situacao           SituacaoIntencaoPagamento @default(ATIVA)
-  gatewayId          String? // id da cobrança no gateway
+  gatewayId          String? // id do Pix no gateway: QR estático ou cobrança, conforme o modo em que nasceu
   pixCopiaECola      String?
   pixQrCodeImagem    String? // PNG em base64, quando o gateway devolve
   simulado           Boolean                   @default(false)
@@ -1417,6 +1425,7 @@ model ParametroFaturamento {
   // Chave de virada (§32.4-A): ligada, as faturas que fecharem dali em diante
   // nascem no modelo AZIT, sem cobrança pré-criada no gateway.
   pixSobDemanda           Boolean @default(false)
+  modoPix                 ModoPixSobDemanda @default(ESTATICO)
   multaPadraoPct          Decimal @default(2) @db.Decimal(5, 2) // FAT001 — padrão de novos contratos
   atualizacaoMesPadraoPct Decimal @default(1) @db.Decimal(5, 2) // FAT002 — idem
   cascata                 Json // FAT003 — lista ordenada de grupos
