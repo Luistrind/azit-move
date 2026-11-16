@@ -196,12 +196,14 @@ export const CONTA_SITUACAO_COLORS: Record<string, StatusColor> = {
   em_atraso: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
   em_acordo: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
   bloqueada: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  sem_contrato_ativo: { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
 };
 export const CONTA_SITUACAO_LABEL: Record<string, string> = {
   em_dia: 'Em dia',
   em_atraso: 'Em atraso',
   em_acordo: 'Em acordo',
   bloqueada: 'Bloqueada',
+  sem_contrato_ativo: 'Sem contrato ativo',
 };
 
 // Situação da análise (alçada do analista / complemento / COCAD) — cor de texto.

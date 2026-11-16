@@ -2978,6 +2978,13 @@ em dezembro e quatro em janeiro. Faltava a tela dizer isso.
   PAGA_EM_ATRASO) vencendo no período. Os dois números aparecem juntos, e a tela lista quem é ativo
   e não tem fatura no período, com a data da próxima fatura.
 
+**Uma definição, as duas telas.** A grade "Clientes da carteira" lista toda conta que tem contrato,
+inclusive as que não têm mais nenhum contrato ATIVO (tudo encerrado, ou contrato ainda em
+formalização) — é histórico. Ela dizia "68 contratos ativos · 67 contas", e o 67 era o total da grade,
+não os clientes ativos; a visão geral dizia 66. Agora o cartão diz "68 contratos ativos em 66 clientes
+ativos · 1 conta sem contrato ativo", essas contas têm situação própria (**Sem contrato ativo**, com
+filtro) e o "em atraso" é contado sobre os clientes ativos. Contrato apagado não conta.
+
 **Por que o teto muda de um mês para o outro.** A diferença entre o teto de dois meses é decomposta
 cliente a cliente em cinco motivos, que **somam exatamente a diferença** (função única
 `explicarVariacaoTeto`, em `packages/utils`, Regra 16):

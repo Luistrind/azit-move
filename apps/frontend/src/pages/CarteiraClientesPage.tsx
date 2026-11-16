@@ -13,7 +13,7 @@ import { AREAS_ROTA_FICHA_TITULAR, useIrParaArea } from '../lib/permissoes';
 // (?situacao=em_atraso — é para cá que os cartões da visão geral apontam) e o
 // valor sob gestão a VALOR PRESENTE (mesma conta da quitação antecipada). Os
 // indicadores de cobrança ficaram na visão geral.
-const SITUACOES = ['em_dia', 'em_atraso', 'em_acordo', 'bloqueada'] as const;
+const SITUACOES = ['em_dia', 'em_atraso', 'em_acordo', 'bloqueada', 'sem_contrato_ativo'] as const;
 const pct = (a: number, b: number) => (b ? Math.round((100 * a) / b) : 0);
 
 export function CarteiraClientesPage() {
@@ -41,12 +41,14 @@ export function CarteiraClientesPage() {
           valor={r ? formatCurrency(r.valorSobGestaoPresente) : '—'}
           detalhe={r ? `a valor presente · ${formatCurrency(r.valorSobGestaoNominal)} nominal` : 'a valor presente'}
         />
-        <CartaoIndicador rotulo="Contratos ativos" tom="neutro" valor={r ? String(r.contratosAtivos) : '—'} detalhe={r ? `${r.contas} contas` : undefined} />
+        <CartaoIndicador rotulo="Contratos ativos" tom="neutro" valor={r ? String(r.contratosAtivos) : '—'} detalhe={r ? `em ${r.contas} cliente${r.contas === 1 ? '' : 's'} ativo${r.contas === 1 ? '' : 's'}${r.contasSemContratoAtivo ? ` · ${r.contasSemContratoAtivo} conta${r.contasSemContratoAtivo === 1 ? '' : 's'} sem contrato ativo` : ''}` : undefined}
+          onClick={r?.contasSemContratoAtivo ? () => setParams({ situacao: 'sem_contrato_ativo' }) : undefined}
+        />
         <CartaoIndicador
           rotulo="Em atraso"
           tom="bad"
           valor={r ? formatCurrency(r.valorEmAtraso) : '—'}
-          detalhe={r ? `${r.contasEmAtraso} de ${r.contas} contas · ${pct(r.contasEmAtraso, r.contas)}%` : undefined}
+          detalhe={r ? `${r.contasEmAtraso} de ${r.contas} clientes ativos · ${pct(r.contasEmAtraso, r.contas)}%` : undefined}
           onClick={() => setParams({ situacao: 'em_atraso' })}
           ativo={filtro === 'em_atraso'}
         />
