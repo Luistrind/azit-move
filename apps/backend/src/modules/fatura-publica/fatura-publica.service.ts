@@ -152,6 +152,12 @@ export class FaturaPublicaService {
       this.prisma.db.fatura.findFirst({ where: { contaId: f.contaId, status: 'ABERTA', dataVencimento: { gt: inicioDiaUTC(hoje) } }, orderBy: { dataVencimento: 'asc' }, select: { dataVencimento: true } }),
     ]);
     const k = this.contaFatura.projetar(conta, hoje);
+    // Pix que se dividiu entre faturas: o valor inteiro e onde caiu o resto.
+    const divisao = await this.contaFatura.divisaoDosPix('', conta.faturas.flatMap((x) => x.pagamentos.map((p) => p.gatewayPaymentId)));
+    const dividir = (numero: number, p: { valor: number; valorExcedente: number; gatewayPaymentId: string | null }) => {
+      const d = p.gatewayPaymentId ? divisao.get(p.gatewayPaymentId) : undefined;
+      return { valorPix: d?.valorPix || p.valor + p.valorExcedente, outrasFaturas: (d?.outrasFaturas ?? []).filter((o) => o.numero !== numero) };
+    };
     const opcoes = opcoesDePagamento(conta, k);
     const daConta = conta.faturas.find((x) => x.id === f.id);
     const projetada = k.faturas.find((x) => x.id === f.id);
@@ -186,7 +192,7 @@ export class FaturaPublicaService {
         contratos: x.id === f.id ? contratosDoLink.map((c) => c.numero) : [],
         itens: x.itens.map((it) => ({ id: it.id, titulo: it.titulo, subtitulo: it.subtitulo, produto: it.produto })),
         // Mesma ordem dos pagamentos do motor (valor zero = só registro de excedente, fica fora).
-        recebidos: x.pagamentos.filter((p) => p.valor > 0).map((p) => ({ data: p.data, hora: p.pagoEm ? horaBrasil(p.pagoEm) : null, valor: p.valor, identificador: p.identificadorPix })),
+        recebidos: x.pagamentos.filter((p) => p.valor > 0).map((p) => ({ data: p.data, hora: p.pagoEm ? horaBrasil(p.pagoEm) : null, valor: p.valor, identificador: p.identificadorPix, ...dividir(x.numero, p) })),
       })),
       motor: {
         faturas: conta.faturas.map((x) => x.motor),
