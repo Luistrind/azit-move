@@ -105,6 +105,7 @@ const GRUPOS_NAV: GrupoNav[] = [
       { to: '/configuracoes/integracoes', label: 'Integrações' },
       { to: '/configuracoes/simulador', label: 'Simulador' },
       { to: '/configuracoes/usuarios', label: 'Usuários e permissões' },
+      { to: '/configuracoes/whatsapp', label: 'WhatsApp' },
     ],
   },
 ];

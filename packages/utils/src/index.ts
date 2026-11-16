@@ -27,3 +27,4 @@ export * from './conferencia-asaas';
 export * from './rescisao';
 export * from './lista-espera';
 export * from './acesso';
+export * from './whatsapp';

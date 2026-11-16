@@ -37,7 +37,8 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
   '/migracao-legado': { title: 'Migração do legado', subtitle: 'Clientes que já existem no Asaas — conciliação caso a caso' },
   '/produtos': { title: 'Itens avulsos de contrato', subtitle: 'Itens contratáveis avulsos (legado §9)' },
   '/configuracoes/assinatura': { title: 'Assinatura digital', subtitle: 'Signatários padrão e validade do contrato' },
-  '/configuracoes/integracoes': { title: 'Integrações', subtitle: 'Credenciais do Asaas e da ZapSign — sem redeploy' },
+  '/configuracoes/integracoes': { title: 'Integrações', subtitle: 'Credenciais do Asaas, da ZapSign e da Meta — sem redeploy' },
+  '/configuracoes/whatsapp': { title: 'WhatsApp', subtitle: 'Envios automáticos, números autorizados e modelos de mensagem' },
 };
 
 export function Shell() {

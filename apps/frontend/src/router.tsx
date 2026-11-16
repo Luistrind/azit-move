@@ -42,6 +42,7 @@ import { OcorrenciasPage } from './pages/OcorrenciasPage';
 import { MigracaoLegadoPage } from './pages/MigracaoLegadoPage';
 import { MigracaoLegadoCasoPage } from './pages/MigracaoLegadoCasoPage';
 import { MinhaContaPage } from './pages/MinhaContaPage';
+import { WhatsappConfigPage } from './pages/WhatsappConfigPage';
 
 // Rotas client-side — Doc 4 §5.1. /login é pública; o restante é protegido pela sessão.
 //
@@ -132,6 +133,7 @@ export const router = createBrowserRouter([
           rota('configuracoes/simulador', <SimuladorConfigPage />, CONFIGURACOES),
           rota('configuracoes/usuarios', <UsuariosPage />, CONFIGURACOES),
           rota('configuracoes/integracoes', <IntegracoesPage />, CONFIGURACOES),
+          rota('configuracoes/whatsapp', <WhatsappConfigPage />, CONFIGURACOES),
 
           // Catch-all (auditoria 15/09, Bloco D): URL desconhecida não pode cair
           // no erro cru do React Router (já aconteceu com /originacao) — mostra

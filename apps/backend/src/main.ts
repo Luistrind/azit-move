@@ -17,6 +17,9 @@ async function bootstrap() {
     // proxy — o limite por IP e o registro de acessos precisam do IP do cliente
     // (X-Forwarded-For). O backend não é exposto fora da rede do Swarm.
     new FastifyAdapter({ logger: true, bodyLimit: 30 * 1024 * 1024, trustProxy: true }),
+    // Corpo cru em req.rawBody: o webhook da Meta é autenticado pela assinatura
+    // HMAC do corpo exatamente como chegou (doc 02 §23.4).
+    { rawBody: true },
   );
 
   const configService = app.get(ConfigService);

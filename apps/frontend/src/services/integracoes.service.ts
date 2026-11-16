@@ -14,6 +14,21 @@ export interface StatusProvedor {
 export interface StatusIntegracoes {
   asaas: StatusProvedor & { apiKeyConfigurada: boolean; apiKeyFinal: string | null };
   zapsign: StatusProvedor & { apiTokenConfigurado: boolean; apiTokenFinal: string | null };
+  // WhatsApp — Cloud API da Meta (doc 02 §22 item 7, §23). Os dois ids não são
+  // segredo e vêm inteiros; token, chave secreta e token de verificação só o final.
+  whatsapp: {
+    fonte: 'banco' | 'env';
+    simulado: boolean; // sem id do número + token de acesso
+    phoneNumberId: string | null;
+    wabaId: string | null;
+    accessTokenConfigurado: boolean;
+    accessTokenFinal: string | null;
+    appSecretConfigurado: boolean;
+    appSecretFinal: string | null;
+    verifyTokenConfigurado: boolean;
+    verifyTokenFinal: string | null;
+    webhookPath: string;
+  };
   // Entrar com Google (doc 06 v1.1 §2.2): informativo — o client id vem do
   // ambiente do servidor (stack.env), não é editável pela tela.
   google: { configurado: boolean; clientIdInicio: string | null; fonte: 'servidor'; console: string };
@@ -27,6 +42,11 @@ export interface AtualizarIntegracoes {
   zapsignAmbiente?: string;
   zapsignApiToken?: string;
   zapsignWebhookSecret?: string;
+  whatsappPhoneNumberId?: string;
+  whatsappWabaId?: string;
+  whatsappAccessToken?: string;
+  whatsappAppSecret?: string;
+  whatsappVerifyToken?: string;
 }
 
 export const integracoesService = {
@@ -40,6 +60,11 @@ export const integracoesService = {
   },
   async testarAsaas(): Promise<{ ok: boolean; simulado: boolean; ambiente: string; mensagem: string }> {
     const { data } = await api.post('/api/v1/integracoes/asaas/testar');
+    return data;
+  },
+  // Lê o próprio número na Meta — não envia mensagem.
+  async testarWhatsapp(): Promise<{ ok: boolean; simulado: boolean; mensagem: string }> {
+    const { data } = await api.post('/api/v1/integracoes/whatsapp/testar');
     return data;
   },
 };

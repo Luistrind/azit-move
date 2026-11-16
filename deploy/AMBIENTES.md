@@ -107,6 +107,53 @@ docker exec $(docker ps -qf name=azit-hml_azit-db) psql -U azit -d azit -c "upda
 3. Para cada colaborador: confira em Usuários e permissões que o e-mail cadastrado é o do Workspace (a parte local é o que vale; `@azit.com.br` e `@azitmove.com.br` são a mesma caixa). Quem tiver e-mail de fora do domínio não entra pelo Google — corrija o e-mail ou ligue a senha com motivo.
 4. Senha de reserva só por exceção, ligada por usuário em Usuários e permissões (auditada com motivo).
 
+**1.7 WhatsApp — Cloud API da Meta (doc 02 §23, §24 e §28; 15/11/2026)**
+
+O que entra: o canal (credenciais, regra de envio, webhook), os lembretes de pagamento D-2 e D0 com o link da Fatura Azit e a tela Conversas. A notificação formal da POP fica para depois.
+
+Variáveis do backend — **todas opcionais**; o caminho normal é a tela **Configuração › Integrações › WhatsApp (Meta)** (banco tem precedência; o que estiver no `stack.env` é adotado no boot quando o campo está vazio):
+
+| Variável | O que é | Segredo? |
+|---|---|---|
+| `WHATSAPP_PHONE_NUMBER_ID` | id do número na Cloud API | não |
+| `WHATSAPP_WABA_ID` | id da conta do WhatsApp Business | não |
+| `WHATSAPP_ACCESS_TOKEN` | token permanente do usuário do sistema | **sim** |
+| `WHATSAPP_APP_SECRET` | chave secreta do aplicativo (assina o webhook) | **sim** |
+| `WHATSAPP_VERIFY_TOKEN` | token inventado por você, repetido no painel da Meta ao cadastrar o webhook | **sim** |
+| `WHATSAPP_GRAPH_VERSION` | versão da Graph API (padrão `v23.0`) | não |
+
+Os stacks já passam as seis (`${VAR:-}`); os `init-env*.sh` escrevem as cinco primeiras vazias em arquivo NOVO. Em `stack.env` existente não é preciso acrescentar nada: cadastre pela tela. Token e chave secreta nunca vão para log, repositório ou conversa.
+
+Regra de envio (doc 02 §23.1 e §23.2), igual em todo lugar:
+
+- **Produção nunca simula.** Sem id do número + token, o lembrete fica RETIDO; a chave geral nem liga.
+- **Homologação e desenvolvimento usam o MESMO número real.** Só recebem de verdade os **números autorizados** em Configuração › WhatsApp (lista do banco de cada ambiente). Qualquer outro destino vira SIMULADO. Lista vazia = nada real sai.
+- Chave geral dos envios automáticos **desligada por padrão**; o lembrete também nasce desligado por titular (liga-se na ficha).
+
+Modelos de mensagem (WhatsApp Manager › Modelos de mensagem) — categoria **Utilidade**, idioma **Português (BR)** (`pt_BR`), botão "Acessar o site" com URL **dinâmica**. O botão tem domínio fixo, então homolog e produção usam modelos diferentes; o nome de cada um é informado em Configuração › WhatsApp de cada ambiente (a tela mostra o texto e o endereço a cadastrar):
+
+| Ambiente | Momento | Nome do modelo | URL do botão |
+|---|---|---|---|
+| produção | 2 dias antes | `azit_fatura_disponivel` | `https://fatura.azitmove.com.br/{{1}}` |
+| produção | dia do vencimento | `azit_fatura_vence_hoje` | `https://fatura.azitmove.com.br/{{1}}` |
+| homologação | 2 dias antes | `azit_fatura_disponivel_hml` | `https://fatura-hml.azitmove.com.br/{{1}}` |
+| homologação | dia do vencimento | `azit_fatura_vence_hoje_hml` | `https://fatura-hml.azitmove.com.br/{{1}}` |
+
+Corpo (variáveis: `{{1}}` primeiro nome, `{{2}}` número da fatura, `{{3}}` valor, `{{4}}` vencimento) — texto provisório, fonte única em `packages/utils/src/whatsapp.ts`:
+
+- 2 dias antes: `Olá, {{1}}! Aqui é da Azit Move. Sua fatura nº {{2}}, de {{3}}, vence em {{4}}. Toque no botão abaixo para ver os itens e pagar com Pix. O valor da página é atualizado em tempo real.`
+- dia do vencimento: `Olá, {{1}}! Aqui é da Azit Move. Sua fatura nº {{2}}, de {{3}}, vence hoje ({{4}}). Toque no botão abaixo para pagar com Pix. Se já pagou, desconsidere esta mensagem.`
+- Texto do botão: `Ver fatura`. Exemplos para a aprovação: `João`, `12`, `R$ 699,00`, `16/11/2026` e, no botão, um código de 64 caracteres.
+
+Webhook — o aplicativo da Meta aponta para **uma** URL, assinando o campo **messages**:
+
+- durante a homologação: `https://api-hml.azitmove.com.br/api/v1/webhooks/whatsapp`
+- na entrada em produção: `https://api.azitmove.com.br/api/v1/webhooks/whatsapp` (o homolog deixa de receber entrega e leitura; as ferramentas de teste simulam esses carimbos)
+
+Ordem no painel: (1) salve o token de verificação e a chave secreta em Configuração › Integrações; (2) na Meta, Webhooks › WhatsApp Business Account › informe a URL e o mesmo token de verificação; (3) assine **messages**. Produção recusa webhook sem a chave secreta cadastrada.
+
+Migrações (aditivas, rodam no deploy): `20261115120000_whatsapp_canal` e `20261115130000_lembretes_pagamento`.
+
 ---
 ## 2. Dia a dia — do seu computador até a produção
 
@@ -233,6 +280,19 @@ bash deploy/restaurar-backup.sh azit /opt/azit-backups/azit/banco_XXXX_pre-v1.1.
       ficar só com o `api-hml`
 - [ ] ZapSign: token de produção (Integrações) + webhook no painel
 - [ ] BigDataCorp: credenciais reais conferidas (a produção cobra por consulta)
+- [ ] WhatsApp dos lembretes de pagamento (doc 02 §23, §24 e §28 — detalhes em 1.7):
+      0. o número dedicado fica **só na API** (se estiver no aplicativo WhatsApp Business, faça
+         backup das conversas e apague a conta do aplicativo antes de registrá-lo na Cloud API);
+         as respostas dos clientes passam a ser atendidas em **Carteira › Conversas do WhatsApp**;
+      1. Meta for Developers: aplicativo de negócios + número na Cloud API + usuário do sistema
+         com token permanente;
+      2. **Configuração › Integrações › WhatsApp (Meta)**: id do número, id da conta, token,
+         chave secreta do aplicativo e token de verificação → Salvar → Testar conexão;
+      3. no painel da Meta, webhook para `https://api.azitmove.com.br/api/v1/webhooks/whatsapp`
+         com o mesmo token de verificação, assinando o campo **messages**;
+      4. criar e aprovar os dois modelos de produção (texto em Configuração › WhatsApp);
+      5. jurídico confirma o consentimento → ligar o lembrete por titular, na ficha;
+      6. só então **ligar a chave geral** em Configuração › WhatsApp.
 - [ ] Monitoramento externo (UptimeRobot em `api.azitmove.com.br/api/v1/health`)
 
 ## 6-A. Reconstrução do banco (produção, 17/09) — resolve backup + limpeza

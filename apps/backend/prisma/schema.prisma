@@ -403,6 +403,7 @@ model Titular {
 
   classificacoes TitularClassificacao[]
   investimentosEstrutura InvestidorEstrutura[]
+  mensagensWhatsapp MensagemWhatsapp[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1023,6 +1024,12 @@ model ParametroIntegracao {
   zapsignAmbiente      String  @default("sandbox") // sandbox | producao
   zapsignApiToken      String?
   zapsignWebhookSecret String?
+  // WhatsApp Business Platform — Cloud API da Meta (doc 02 §22 item 7, §23).
+  whatsappPhoneNumberId String? // id do número (não é segredo)
+  whatsappWabaId        String? // id da conta do WhatsApp Business (não é segredo)
+  whatsappAccessToken   String?
+  whatsappAppSecret     String? // assinatura X-Hub-Signature-256 do webhook
+  whatsappVerifyToken   String? // cadastro (GET) do webhook
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2801,4 +2808,70 @@ model ColetaLegado {
 
   @@index([iniciadaEm])
   @@map("coletas_legado")
+}
+
+// ============================================================
+// WhatsApp enxuto — canal, Conversas e lembretes de pagamento
+// (doc 02 §23, §24 e §28 — decisão Luís 2026-11-15)
+// ============================================================
+
+// Parâmetros do canal, VERSIONADOS (§23.3): cada alteração grava uma linha
+// nova; vale a de maior `versao`. Sem linha nenhuma, valem os padrões (chave
+// geral desligada, lista vazia, modelos padrão).
+model ParametroWhatsapp {
+  id                 String   @id @default(cuid())
+  versao             Int      @unique
+  ativo              Boolean  @default(false) // chave geral dos envios automáticos
+  // Fora de produção, SÓ estes destinos recebem de verdade (número real único
+  // em todos os ambientes — §23.2). Canônicos: 55 + DDD + celular com nono dígito.
+  numerosAutorizados String[] @default([])
+  // Modelo aprovado na Meta por momento: o botão de link tem domínio fixo, e
+  // homologação e produção usam domínios diferentes (§23.3).
+  modeloD2Nome       String   @default("azit_fatura_disponivel")
+  modeloD2Idioma     String   @default("pt_BR")
+  modeloD0Nome       String   @default("azit_fatura_vence_hoje")
+  modeloD0Idioma     String   @default("pt_BR")
+  usuarioId          String? // quem gravou esta versão
+
+  createdAt DateTime @default(now())
+
+  @@map("parametros_whatsapp")
+}
+
+enum DirecaoMensagemWhatsapp {
+  ENTRADA
+  SAIDA
+}
+
+// Mensagens trocadas com o cliente pelo número dedicado (§24). A conversa é do
+// NÚMERO (canônico), ligada ao titular quando casa com o cadastro. Os lembretes
+// enviados NÃO são duplicados aqui: continuam em LembretePagamento.
+model MensagemWhatsapp {
+  id          String                  @id @default(cuid())
+  direcao     DirecaoMensagemWhatsapp
+  numero      String // contraparte, canônico
+  titularId   String?
+  nomePerfil  String? // nome do perfil do WhatsApp (entrada)
+  mensagemId  String?                 @unique // id da mensagem na Meta (wamid)
+  tipo        String // text | image | audio | document | video | sticker | location | button | interactive | reaction | unsupported
+  texto       String?
+  midiaId     String? // id da mídia na Meta (entrada)
+  midiaRef    String? // arquivo guardado em uploads/whatsapp
+  midiaTipo   String?
+  midiaNome   String?
+  status      String? // saída: enviando | enviada | entregue | lida | falhou | simulada | retida
+  falhaMotivo String?
+  usuarioId   String? // saída: operador que respondeu
+  momento     DateTime // horário da Meta (entrada) ou do envio (saída)
+  lidaEm      DateTime? // entrada: quando um operador abriu a conversa
+  bruto       Json? // conteúdo original recebido
+
+  titular Titular? @relation(fields: [titularId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([numero, momento])
+  @@index([titularId])
+  @@map("mensagens_whatsapp")
 }
