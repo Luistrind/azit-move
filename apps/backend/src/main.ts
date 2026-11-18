@@ -3,6 +3,7 @@ import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 
@@ -26,6 +27,9 @@ async function bootstrap() {
   // navegador exige a origem liberada no CORS.
   const faturaPublicaUrl = configService.get<string>('faturaPublicaUrl');
   const origens = [...new Set([frontendUrl, faturaPublicaUrl].filter((o): o is string => !!o))];
+  if (!faturaPublicaUrl) {
+    new Logger('Bootstrap').error('FATURA_PUBLICA_URL ausente: os links da Fatura Azit NÃO serão montados e a página pública não passa no CORS. Confira o stack (deploy/azit-stack.swarm.yml) e publique de novo.');
+  }
 
   // Métodos explícitos: o default do adapter não incluía PATCH/DELETE, e o
   // preflight do navegador bloqueava essas operações (curl não faz preflight).

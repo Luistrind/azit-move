@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Publica a PRODUÇÃO a partir de uma TAG de release (17/09). Nunca da main.
 # Uso no servidor:   cd /opt/azit && git pull && bash deploy/deploy-prod.sh v1.0.0
+# (o `git pull` é obrigatório: o script recusa rodar com o checkout atrás da tag)
 #
 # Faz: mostra o que muda  →  pede confirmação  →  BACKUP (banco + documentos)
 #      →  build das imagens da tag (ou reaproveita se já existem)  →  atualiza
@@ -24,6 +25,16 @@ if [ -z "$TAG" ]; then
 fi
 git -C "$REPO_DIR" fetch --tags --prune origin >/dev/null
 git -C "$REPO_DIR" rev-parse -q --verify "refs/tags/$TAG" >/dev/null || { erro "Tag $TAG não existe no repositório"; exit 1; }
+# Este roteiro (e o stack) são os do CHECKOUT do servidor, não os da tag. Se o
+# checkout está ATRÁS da tag, quem roda é o roteiro velho — caso real 18/11: a
+# v1.9.0 foi publicada sem `git pull`, o roteiro antigo não conhecia a página da
+# fatura, e a produção ficou sem o serviço e com o link em localhost. Rollback
+# (tag mais antiga que o checkout) passa: a tag está contida nele.
+if ! git -C "$REPO_DIR" merge-base --is-ancestor "$TAG^{commit}" HEAD; then
+  erro "O checkout do servidor está ATRÁS da $TAG — o roteiro de deploy que rodaria é o antigo."
+  erro "Atualize e rode de novo:  cd $REPO_DIR && git pull && bash deploy/deploy-prod.sh $TAG"
+  exit 1
+fi
 carregar_env deploy/stack.env
 
 etapa "O que vai para a PRODUÇÃO"

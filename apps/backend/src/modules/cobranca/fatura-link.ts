@@ -15,7 +15,8 @@ export function novoTokenFatura(): string {
 export const TOKEN_FATURA_RE = /^[a-f0-9]{64}$/;
 
 export function montarLinkFatura(baseUrl: string, token: string | null | undefined): string | null {
-  if (!token) return null;
+  // Sem endereço-base configurado não existe link — melhor a tela dizer que não há do que entregar um link quebrado.
+  if (!token || !baseUrl.trim()) return null;
   return `${baseUrl.replace(/\/+$/, '')}/${token}`;
 }
 

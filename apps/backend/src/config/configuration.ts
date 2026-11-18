@@ -41,7 +41,9 @@ export default (): AppConfig => ({
         : 'desenvolvimento',
   port: parseInt(process.env.PORT ?? '3001', 10),
   frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:3000',
-  faturaPublicaUrl: process.env.FATURA_PUBLICA_URL ?? 'http://localhost:3002',
+  // Fora do desenvolvimento NÃO há padrão: sem a variável o link da fatura não é montado
+  // (18/11: produção subiu sem ela e o operador copiou um link com localhost).
+  faturaPublicaUrl: process.env.FATURA_PUBLICA_URL ?? ((process.env.NODE_ENV ?? 'development') === 'production' ? '' : 'http://localhost:3002'),
   atendimentoWhatsapp: process.env.AZIT_WHATSAPP_ATENDIMENTO ?? '',
   // Padrão = a vendedora dos contratos (templates do funil). PROVISÓRIO (Regra
   // 12): confirmar com o titular da conta no gateway antes de ligar em produção.
