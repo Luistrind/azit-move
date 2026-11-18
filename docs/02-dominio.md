@@ -3961,8 +3961,12 @@ Bloco do topo, calculado na leitura (Regra 7) por `GET /contas/:contaId/posicao`
 - **Falta pagar hoje** — soma do que falta em cada fatura **vencida**, a quantidade delas e os dias
   de atraso da mais antiga. Em fatura do Pix sob demanda (§32.4-A) o valor é o do motor, com multa e
   atualização, igual ao da página do cliente. Em fatura do modelo antigo é o valor da fatura menos
-  o que já entrou: o encargo dela é aplicado pelo Asaas na hora do pagamento, **não está na soma** e
-  a tela diz isso em palavras. Sem nada vencido, o bloco mostra a situação da conta.
+  o que já entrou, **mais a multa e a atualização de hoje**, pela mesma função que a página do
+  cliente usa (`encargoHojeDaFatura`, Regra 16). Sem nada vencido, o bloco mostra a situação da conta.
+  > **Correção 2026-11-18 (Luís, em produção):** a primeira versão mostrava o valor de face da
+  > fatura antiga vencida (R$ 989,54) enquanto a página do cliente mostrava o atualizado
+  > (R$ 1.011,64). Duas telas, dois números. Agora as duas chamam a mesma conta. A cobrança do Asaas
+  > pode diferir em centavos; a página do cliente continua ajustando pelo valor da cobrança.
 - **Próxima fatura** — a primeira disponível que ainda não venceu; sem ela, a primeira ainda não
   emitida. Diz se já está disponível para o cliente.
 - **Último pagamento** — o dinheiro mais recente que entrou e para qual fatura ele foi.

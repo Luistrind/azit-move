@@ -5,7 +5,7 @@ import type { ContaFaturaPublica, FaturaPublica, ItemFaturaPublica, PixFaturaPub
 import {
   dataCalendarioUTC,
   dataHojeBrasil,
-  detalharEncargoAtraso,
+  encargoHojeDaFatura,
   diasAtrasoCalendario,
   faturaQuitada,
   horaBrasil,
@@ -299,23 +299,16 @@ export class FaturaPublicaService {
     let diasAtraso = 0;
     if (!quitada) {
       const agora = new Date();
-      if (f.parcelas.length > 0) {
-        for (const p of f.parcelas) {
-          const dias = diasAtrasoCalendario(p.dataVencimento, agora);
-          if (dias <= 0) continue;
-          diasAtraso = Math.max(diasAtraso, dias);
-          const e = detalharEncargoAtraso(cent(p.valorNominal), dias, Number(p.contrato.taxaMultaAtraso.toString()), Number(p.contrato.taxaJurosAtraso.toString()));
-          multa += e.multa;
-          atualizacao += e.atualizacao;
-        }
-      } else {
-        diasAtraso = diasAtrasoCalendario(f.dataVencimento, agora);
-        const e = detalharEncargoAtraso(saldoNominal, diasAtraso);
-        multa = e.multa;
-        atualizacao = e.atualizacao;
-      }
-      multa = Math.round(multa);
-      atualizacao = Math.round(atualizacao);
+      // A mesma função da ficha do titular (Regra 16) — as duas telas dão o mesmo número.
+      ({ multa, atualizacao, diasAtraso } = encargoHojeDaFatura(
+        f.parcelas.map((p) => ({
+          valor: cent(p.valorNominal),
+          diasAtraso: diasAtrasoCalendario(p.dataVencimento, agora),
+          taxaMultaPercent: Number(p.contrato.taxaMultaAtraso.toString()),
+          taxaJurosMensalPercent: Number(p.contrato.taxaJurosAtraso.toString()),
+        })),
+        { saldo: saldoNominal, diasAtraso: diasAtrasoCalendario(f.dataVencimento, agora) },
+      ));
     }
 
     // PIX da cobrança (modelo ASAAS_NATIVO, F1): o total da página é o que o PIX

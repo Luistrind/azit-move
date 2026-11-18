@@ -157,3 +157,32 @@ export function detalharEncargoAtraso(
   const atualizacao = valor * (taxaJurosMensalPercent / 100 / 30) * diasAtraso;
   return { multa, atualizacao, total: multa + atualizacao };
 }
+
+// Encargo de HOJE de uma fatura cujo atraso é cobrado pela cobrança do Asaas
+// (modelo antigo, doc 02 §7.2): multa e atualização somadas parcela a parcela,
+// pelas taxas de cada contrato, e arredondadas UMA vez no total. Fatura sem
+// parcelas (legado) usa o saldo e as taxas padrão. É o número da página do
+// cliente e da ficha do titular — as duas chamam esta função (Regra 16).
+export function encargoHojeDaFatura(
+  parcelas: { valor: number; diasAtraso: number; taxaMultaPercent: number; taxaJurosMensalPercent: number }[],
+  semParcelas: { saldo: number; diasAtraso: number },
+): { multa: number; atualizacao: number; diasAtraso: number } {
+  let multa = 0;
+  let atualizacao = 0;
+  let diasAtraso = 0;
+  if (parcelas.length > 0) {
+    for (const p of parcelas) {
+      if (p.diasAtraso <= 0) continue;
+      diasAtraso = Math.max(diasAtraso, p.diasAtraso);
+      const e = detalharEncargoAtraso(p.valor, p.diasAtraso, p.taxaMultaPercent, p.taxaJurosMensalPercent);
+      multa += e.multa;
+      atualizacao += e.atualizacao;
+    }
+  } else {
+    diasAtraso = Math.max(0, semParcelas.diasAtraso);
+    const e = detalharEncargoAtraso(semParcelas.saldo, diasAtraso);
+    multa = e.multa;
+    atualizacao = e.atualizacao;
+  }
+  return { multa: Math.round(multa), atualizacao: Math.round(atualizacao), diasAtraso };
+}

@@ -113,7 +113,7 @@ describe('Ficha do titular — leituras da conta (doc 02 §33)', () => {
       expect(arg.where).toEqual({ contaId: 'c1', status: 'ABERTA', dataVencimento: { gte: dia('2026-11-17') } });
     });
 
-    it('falta hoje: Pix sob demanda usa o total do motor; modelo antigo, o valor menos o que entrou; paga não tem', async () => {
+    it('falta hoje: Pix sob demanda usa o total do motor; modelo antigo vencido, o saldo com multa e atualização de hoje; paga não tem', async () => {
       const { service, contaFatura } = montar({
         agora: [fatura('f36', 'FECHADA', { modeloEncargo: 'AZIT', valorPago: 540 }), fatura('f37', 'FECHADA', { valorPago: 100 })],
         pagas: [fatura('f35', 'PAGA', { valorPago: 849 })],
@@ -122,7 +122,8 @@ describe('Ficha do titular — leituras da conta (doc 02 §33)', () => {
       const agora = await service.faturasDaConta('c1', 'agora');
       expect(agora.data.map((f) => [f.faltaHoje, f.encargoHoje])).toEqual([
         [32737, 54],
-        [74900, 0],
+        // modelo antigo, vencida há 15 dias, saldo 749,00: multa 2% (14,98) + atualização 1% a.m. por 15 dias (3,75)
+        [74900 + 1498 + 375, 1498 + 375],
       ]);
       const pagas = await service.faturasDaConta('c1', 'pagas');
       expect(pagas.data[0].faltaHoje).toBeNull();
@@ -144,10 +145,11 @@ describe('Ficha do titular — leituras da conta (doc 02 §33)', () => {
       });
       const r = await service.posicaoDaConta('c1');
       expect(r.hoje).toBe('2026-11-17');
-      expect(r.atraso).toEqual({ faturas: 2, valorHoje: 32737 + 84900, encargos: 54, diasMaisAntiga: 8, comEncargoNoAsaas: 1 });
+      // f37 (modelo antigo, vencida há 1 dia): 849,00 + multa 16,98 + atualização 0,28 = 866,26
+      expect(r.atraso).toEqual({ faturas: 2, valorHoje: 32737 + 86626, encargos: 54 + 1726, diasMaisAntiga: 8 });
       expect(r.proxima).toMatchObject({ numero: 38, valor: 84900, disponivel: true });
       expect(r.faturaComLinkId).toBe('f36');
-      expect(r.trilho).toEqual({ pagas: 1, emAtraso: 2, valorEmAtraso: 117637, aVencer: 2, valorAVencer: 169800 });
+      expect(r.trilho).toEqual({ pagas: 1, emAtraso: 2, valorEmAtraso: 119363, aVencer: 2, valorAVencer: 169800 });
       expect(r.contagem).toEqual({ agora: 3, vencer: 2, pagas: 1, outras: 0 });
     });
 
