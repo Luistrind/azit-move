@@ -3871,3 +3871,81 @@ Nada disso altera a régua, o bloqueio (Regra 6) ou a POP; só o **link** que va
 
 **Pendências que continuam valendo antes de ligar em produção:** 8 (quem avisa o cliente) e 9
 (transição das faturas já emitidas) do §32.10, e o teste com o Asaas em ambiente de teste (7).
+
+---
+
+## 33. Ficha do titular — posição de hoje, faturas por visão e pagamentos (pedido Luís, 2026-11-16/18)
+
+**Origem.** A ficha foi desenhada antes da Fatura Azit, do pagamento parcial e da Carteira. Pedido do
+Luís em 16/11: ver na lista quanto foi pago e quanto falta de verdade, acabar com a paginação que
+volta para a página 1 e pisca, e rever a tela inteira. Protótipo publicado em 17/11 e aprovado em
+18/11 ("gostei muito do protótipo, pode desenvolver").
+
+A ficha continua sendo o hub da conta (Regra 8: um titular, uma conta). O que muda é a ordem: a
+tela responde primeiro **como está este cliente hoje** e guarda o resto em abas.
+
+### 33.1 Posição de hoje
+
+Bloco do topo, calculado na leitura (Regra 7) por `GET /contas/:contaId/posicao`:
+
+- **Falta pagar hoje** — soma do que falta em cada fatura **vencida**, a quantidade delas e os dias
+  de atraso da mais antiga. Em fatura do Pix sob demanda (§32.4-A) o valor é o do motor, com multa e
+  atualização, igual ao da página do cliente. Em fatura do modelo antigo é o valor da fatura menos
+  o que já entrou: o encargo dela é aplicado pelo Asaas na hora do pagamento, **não está na soma** e
+  a tela diz isso em palavras. Sem nada vencido, o bloco mostra a situação da conta.
+- **Próxima fatura** — a primeira disponível que ainda não venceu; sem ela, a primeira ainda não
+  emitida. Diz se já está disponível para o cliente.
+- **Último pagamento** — o dinheiro mais recente que entrou e para qual fatura ele foi.
+- **Cronograma da conta** — pagas, em atraso e a vencer em uma barra, com o valor de cada parte.
+- O aviso "bloqueio do veículo disponível" aparece a partir do limiar da Regra 6
+  (`bloqueioDisponivel`); o bloqueio em si continua sendo feito pela régua.
+- Entrada de contrato ou de acordo com cobrança gerada e ainda não paga aparece como aviso acima
+  do bloco.
+
+**Situação da conta** (selo ao lado do nome): sem contrato ativo → bloqueada → em atraso → em acordo
+→ em dia, nessa ordem. É **uma** função, `situacaoDaConta` (`packages/utils`, Regra 16), usada pela
+grade "Clientes da carteira" (§27.10) e pela ficha, com as mesmas entradas.
+
+### 33.2 Faturas por visão
+
+A lista paginada dá lugar a quatro visões calculadas (Regra 7 — nenhuma é estado gravado):
+
+| Visão | O que entra | Ordem |
+|---|---|---|
+| **Agora** | fatura disponível (FECHADA) ou vencida | da mais antiga para a mais nova, inteira |
+| **A vencer** | ainda não disponível (ABERTA, vence de hoje em diante) | idem, em blocos |
+| **Pagas** | PAGA e PAGA_EM_ATRASO | da mais recente para a mais antiga, em blocos |
+| **Fora do cronograma** | RENEGOCIADA, NOVADA, RESCINDIDA | idem; só aparece se houver alguma |
+
+- A tela abre sempre em **Agora**. As demais crescem com "carregar mais" — nada volta ao começo.
+- Selos: o "em aberto" calculado se desdobra pelo estado real — FECHADA ainda não vencida é
+  **Disponível**; ABERTA é **Prevista**. Vencida mostra há quantos dias; fatura em aberto com
+  dinheiro recebido leva também **Paga em parte**.
+- A fatura abre **na própria linha** (composição, o que já entrou, link para o cliente, Pix sob
+  demanda e as ações de contingência) — o modal por cima da lista deixa de existir.
+- Substitui o filtro "novadas ocultas" de 13/10: faturas extintas ficam na visão própria.
+
+### 33.3 Pagamentos da conta
+
+Aba nova, por `GET /contas/:contaId/pagamentos`: **cada dinheiro que entrou**, do mais recente
+para o mais antigo, e a fatura que ele quitou. Três origens na mesma linha do tempo:
+
+1. pagamentos do Pix sob demanda, da conferência no gateway e da indenização de sinistro
+   (`PagamentoFatura`) — um Pix que cobre mais de uma fatura aparece **uma vez**, com os destinos
+   lado a lado e a parte de multa e atualização separada;
+2. fatura paga pela cobrança do Asaas (modelo antigo), que não tem registro de pagamento próprio:
+   vale o que a fatura guarda (valor e dia);
+3. lançamentos da conta — entrada de contrato e de acordo (§4-A.3).
+
+"Quitou" é do último pagamento de uma fatura que está quitada; os anteriores foram "em parte".
+
+### 33.4 O que saiu da frente
+
+- Dados pessoais, documentos e consultas de birô foram para a aba **Cadastro e documentos**.
+- Os sete indicadores do bloco "Relacionamento" viraram os três números do cronograma. "Em contrato
+  ativo" e a contagem de acordos deixam de ser indicador; o atalho para os acordos e novações do
+  titular continua, ao lado do cronograma. "Multa e atualização pagas" ficou na aba Pagamentos.
+- Contratos e "Entradas e lançamentos" ficam na aba **Contratos**.
+- O link da fatura para o cliente (copiar / WhatsApp do operador, §32.7) fica no topo e dentro da
+  fatura aberta, não mais em cada linha.
+

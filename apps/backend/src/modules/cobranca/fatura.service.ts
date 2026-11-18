@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { calcularEncargoAtraso, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, dataCalendarioUTC, diasAtrasoCalendario, DIA_MS, FUSO_NEGOCIO, inicioDiaUTC, somarDiasISO, situacaoFaturaRuntime } from '@azit/utils';
+import { calcularEncargoAtraso, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, horaBrasil, diaDeColunaMista, diasCalendarioEntre, inicioHojeBrasilUTC, dataCalendarioUTC, diasAtrasoCalendario, DIA_MS, FUSO_NEGOCIO, inicioDiaUTC, somarDiasISO, situacaoFaturaRuntime } from '@azit/utils';
 import { ConfigService } from '@nestjs/config';
 import { mensagemLinkFatura, montarLinkFatura, novoTokenFatura, whatsappParaWaMe } from './fatura-link';
 import { PrismaService } from '../../database/prisma.service';
@@ -48,6 +48,34 @@ export function eventoConciliacaoDe(faturaId: string, pg: CobrancaAsaasAoVivo): 
     dueDate: pg.dueDate,
     valor: Math.round(pg.value * 100),
   };
+}
+
+// Linha de fatura como o banco entrega às listas (ficha do titular, detalhe).
+type FaturaDeLista = {
+  id: string; numero: number; periodoReferencia: Date; dataVencimento: Date; dataFechamento: Date | null;
+  dataPagamento: Date | null; status: string; valorTotal: Prisma.Decimal; valorPago: Prisma.Decimal | null;
+  asaasChargeId: string | null;
+  modeloEncargo: string;
+  tokenPublico?: string | null;
+  itensFatura: { descricao: string; tipo: string; valor: Prisma.Decimal; credor: string }[];
+};
+
+// Visões das faturas da conta na ficha do titular (doc 02 §33.2) — calculadas na leitura (Regra 7).
+export const VISOES_FATURAS_CONTA = ['agora', 'vencer', 'pagas', 'outras'] as const;
+export type VisaoFaturasConta = (typeof VISOES_FATURAS_CONTA)[number];
+
+// Um dinheiro que entrou na conta e para onde ele foi (doc 02 §33.3).
+export interface PagamentoDaConta {
+  id: string;
+  dia: string; // 'AAAA-MM-DD' no fuso do Brasil
+  hora: string | null; // 'HH:MM', quando o gateway informa o instante
+  tipo: 'pix' | 'cobranca' | 'sinistro' | 'entrada_contrato' | 'entrada_acordo';
+  valor: number; // centavos — o dinheiro inteiro, com excedente
+  excedente: number;
+  descricao: string | null;
+  contratoNumero: string | null;
+  acordoId: string | null;
+  destinos: { faturaId: string; numero: number; valor: number; encargos: number; quitou: boolean }[];
 }
 
 @Injectable()
@@ -592,14 +620,7 @@ export class FaturaService {
 
   // Mapeia uma fatura (com itensFatura) para a API; "vencida"/"vence hoje" são
   // calculados em runtime (Regra 7), o status real vai ao banco.
-  private mapearFatura(f: {
-    id: string; numero: number; periodoReferencia: Date; dataVencimento: Date; dataFechamento: Date | null;
-    dataPagamento: Date | null; status: string; valorTotal: Prisma.Decimal; valorPago: Prisma.Decimal | null;
-    asaasChargeId: string | null;
-    modeloEncargo: string;
-    tokenPublico?: string | null;
-    itensFatura: { descricao: string; tipo: string; valor: Prisma.Decimal; credor: string }[];
-  }) {
+  private mapearFatura(f: FaturaDeLista) {
     // Fuso do negócio (correção 30/08): "hoje" em America/Sao_Paulo comparado
     // com a data-calendário do vencimento — meia-noite LOCAL do servidor fazia
     // a fatura que vence HOJE aparecer como "Vencida".
@@ -636,64 +657,236 @@ export class FaturaService {
     };
   }
 
-  // Visão de faturas do cliente (por conta), paginada — cada fatura agrega itens de
-  // todos os contratos/produtos do mesmo ciclo (Doc 2 §372).
-  // Faturas NOVADAS (extintas pela novação, doc 02 §7.7b) ficam no histórico mas
-  // saem da lista por padrão (decisão Luís 13/10: a ficha ficava longa e confusa
-  // com dezenas de faturas que não existem mais); `ocultas` diz quantas são e
-  // `incluirNovadas` as traz de volta.
-  // `page = 'atual'` (16/11, Luís: "sempre abre na página 1"): a lista abre na
-  // página da fatura mais antiga ainda em aberto — onde está o trabalho; conta
-  // sem nada em aberto abre na última página.
-  // Cada linha leva `faltaHoje`: o que falta pagar HOJE. Em fatura AZIT fechada
-  // é o total do motor (saldo + multa + atualização — a mesma conta da página
-  // do cliente, Regra 16); nas demais em aberto, o valor de face menos o já pago.
-  async faturasDaConta(contaId: string, page: number | 'atual' = 1, limit = 8, incluirNovadas = false) {
-    // RESCINDIDA (doc 02 §29) segue a mesma regra da NOVADA: histórico, oculta por padrão.
-    const where: Prisma.FaturaWhereInput = incluirNovadas ? { contaId } : { contaId, status: { notIn: ['NOVADA', 'RESCINDIDA'] } };
-    const [total, ocultas] = await Promise.all([
-      this.prisma.db.fatura.count({ where }),
-      incluirNovadas ? Promise.resolve(0) : this.prisma.db.fatura.count({ where: { contaId, status: { in: ['NOVADA', 'RESCINDIDA'] } } }),
-    ]);
-    const ultimaPagina = Math.max(1, Math.ceil(total / limit));
-    let pagina = ultimaPagina;
-    if (page === 'atual') {
-      const aberta = await this.prisma.db.fatura.findFirst({
-        where: { contaId, status: { in: ['ABERTA', 'FECHADA'] } },
-        orderBy: [{ dataVencimento: 'asc' }, { numero: 'asc' }],
-        select: { dataVencimento: true },
-      });
-      if (aberta) {
-        const antes = await this.prisma.db.fatura.count({ where: { ...where, dataVencimento: { lt: aberta.dataVencimento } } });
-        pagina = Math.floor(antes / limit) + 1;
-      }
-    } else {
-      pagina = Math.min(Math.max(1, page), ultimaPagina);
+  // ── Ficha do titular (doc 02 §33) ─────────────────────────────────────────
+  // Faturas da conta em quatro VISÕES — cada fatura agrega itens de todos os
+  // contratos do mesmo ciclo (doc 02 §4-A):
+  //   agora  = o que o cliente tem para pagar: disponível (FECHADA) ou vencida;
+  //   vencer = ainda não disponível (ABERTA, vence de hoje em diante);
+  //   pagas  = PAGA / PAGA_EM_ATRASO, da mais recente para a mais antiga;
+  //   outras = saíram do cronograma (RENEGOCIADA, NOVADA, RESCINDIDA).
+  private whereVisao(contaId: string, visao: VisaoFaturasConta): { where: Prisma.FaturaWhereInput; ordem: 'asc' | 'desc' } {
+    const hoje = inicioHojeBrasilUTC();
+    switch (visao) {
+      case 'vencer':
+        return { where: { contaId, status: 'ABERTA', dataVencimento: { gte: hoje } }, ordem: 'asc' };
+      case 'pagas':
+        return { where: { contaId, status: { in: ['PAGA', 'PAGA_EM_ATRASO'] } }, ordem: 'desc' };
+      case 'outras':
+        return { where: { contaId, status: { in: ['RENEGOCIADA', 'NOVADA', 'RESCINDIDA'] } }, ordem: 'desc' };
+      default:
+        return { where: { contaId, OR: [{ status: 'FECHADA' }, { status: 'ABERTA', dataVencimento: { lt: hoje } }] }, ordem: 'asc' };
     }
-    const faturas = await this.prisma.db.fatura.findMany({
-      where,
-      orderBy: [{ dataVencimento: 'asc' }, { numero: 'asc' }],
-      skip: (pagina - 1) * limit,
-      take: limit,
-      include: { itensFatura: { orderBy: { tipo: 'asc' } } },
-    });
-    // Posição do motor só quando a página tem fatura AZIT fechada (uma leitura da conta).
-    const totalHojeAzit = new Map<string, number>();
+  }
+
+  // O que falta pagar HOJE em cada fatura em aberto. Modelo AZIT: o total do
+  // motor, com multa e atualização — a mesma conta da página do cliente (uma
+  // leitura da conta por chamada). Modelo antigo: o valor da fatura menos o
+  // que já entrou; o encargo dela é aplicado pelo Asaas e não entra aqui.
+  private async comFaltaHoje(contaId: string, faturas: FaturaDeLista[]) {
+    const motor = new Map<string, { totalHoje: number; encargo: number }>();
     if (faturas.some((f) => f.modeloEncargo === 'AZIT' && f.status === 'FECHADA')) {
       const conta = await this.contaFatura.carregar(contaId);
-      for (const x of this.contaFatura.projetar(conta).faturas) totalHojeAzit.set(x.id, x.totalHoje);
+      for (const x of this.contaFatura.projetar(conta).faturas) {
+        motor.set(x.id, { totalHoje: x.totalHoje, encargo: x.encargo.multa + x.encargo.atualizacao });
+      }
     }
-    return {
-      total,
-      ocultas,
-      page: pagina,
-      limit,
-      data: faturas.map((f) => {
-        const linha = this.mapearFatura(f);
-        const emAberto = f.status === 'ABERTA' || f.status === 'FECHADA';
-        const faltaHoje = !emAberto ? null : (totalHojeAzit.get(f.id) ?? Math.max(0, linha.valorTotal - linha.valorPago));
-        return { ...linha, faltaHoje };
+    return faturas.map((f) => {
+      const linha = this.mapearFatura(f);
+      const emAberto = f.status === 'ABERTA' || f.status === 'FECHADA';
+      const m = motor.get(f.id);
+      return {
+        ...linha,
+        faltaHoje: !emAberto ? null : (m?.totalHoje ?? Math.max(0, linha.valorTotal - linha.valorPago)),
+        encargoHoje: emAberto ? (m?.encargo ?? 0) : 0,
+      };
+    });
+  }
+
+  // "Agora" vem inteira (é o que está na mesa, e a posição do topo soma sobre
+  // ela); as demais chegam em blocos — a tela pede "carregar mais" com offset.
+  async faturasDaConta(contaId: string, visao: VisaoFaturasConta = 'agora', offset = 0, limit = 10) {
+    const { where, ordem } = this.whereVisao(contaId, visao);
+    const inicio = visao === 'agora' ? 0 : Math.max(0, offset);
+    const [total, faturas] = await Promise.all([
+      this.prisma.db.fatura.count({ where }),
+      this.prisma.db.fatura.findMany({
+        where,
+        orderBy: [{ dataVencimento: ordem }, { numero: ordem }],
+        skip: inicio,
+        take: visao === 'agora' ? 60 : Math.min(Math.max(1, limit), 50),
+        include: { itensFatura: { orderBy: { tipo: 'asc' } } },
       }),
+    ]);
+    return { visao, total, offset: inicio, data: await this.comFaltaHoje(contaId, faturas) };
+  }
+
+  // Posição de hoje (doc 02 §33.1): o que está vencido e quanto falta, a próxima
+  // fatura, o último dinheiro que entrou e o cronograma em três números. Tudo
+  // calculado na leitura — nada disso é gravado (Regra 7).
+  async posicaoDaConta(contaId: string) {
+    const hojeISO = dataHojeBrasil();
+    const [agora, contagens, aVencer, ultimos] = await Promise.all([
+      this.faturasDaConta(contaId, 'agora'),
+      Promise.all(VISOES_FATURAS_CONTA.map((v) => this.prisma.db.fatura.count({ where: this.whereVisao(contaId, v).where }))),
+      this.prisma.db.fatura.aggregate({
+        where: { contaId, status: { in: ['ABERTA', 'FECHADA'] }, dataVencimento: { gte: inicioHojeBrasilUTC() } },
+        _sum: { valorTotal: true, valorPago: true },
+        _count: { _all: true },
+      }),
+      this.pagamentosDaConta(contaId, 0, 1),
+    ]);
+    const vencidas = agora.data.filter((f) => f.situacao === 'vencida');
+    // Próxima: a primeira disponível que ainda não venceu; sem ela, a primeira ainda não emitida.
+    let proxima = agora.data.find((f) => f.situacao !== 'vencida') ?? null;
+    if (!proxima) proxima = (await this.faturasDaConta(contaId, 'vencer', 0, 1)).data[0] ?? null;
+    const valorEmAtraso = vencidas.reduce((s, f) => s + (f.faltaHoje ?? 0), 0);
+    return {
+      hoje: hojeISO,
+      atraso: {
+        faturas: vencidas.length,
+        valorHoje: valorEmAtraso,
+        encargos: vencidas.reduce((s, f) => s + f.encargoHoje, 0),
+        diasMaisAntiga: vencidas.length ? diasCalendarioEntre(dataCalendarioUTC(new Date(vencidas[0].dataVencimento)), hojeISO) : 0,
+        // Vencidas com cobrança no Asaas (modelo antigo): o encargo delas não está na soma.
+        comEncargoNoAsaas: vencidas.filter((f) => f.modeloEncargo !== 'AZIT').length,
+      },
+      proxima: proxima
+        ? {
+            id: proxima.id,
+            numero: proxima.numero,
+            dataVencimento: proxima.dataVencimento,
+            valor: proxima.faltaHoje ?? proxima.valorTotal,
+            disponivel: proxima.status === 'fechada',
+          }
+        : null,
+      ultimoPagamento: ultimos.data[0] ?? null,
+      // Fatura cujo link o operador manda ao cliente: a mais antiga em aberto que tem link.
+      faturaComLinkId: agora.data.find((f) => f.linkPublico)?.id ?? null,
+      trilho: {
+        pagas: contagens[VISOES_FATURAS_CONTA.indexOf('pagas')],
+        emAtraso: vencidas.length,
+        valorEmAtraso,
+        aVencer: aVencer._count._all,
+        valorAVencer: Math.max(0, cent(aVencer._sum.valorTotal) - cent(aVencer._sum.valorPago)),
+      },
+      contagem: Object.fromEntries(VISOES_FATURAS_CONTA.map((v, i) => [v, contagens[i]])) as Record<VisaoFaturasConta, number>,
+    };
+  }
+
+  // Pagamentos da conta (doc 02 §33.3): cada dinheiro que entrou, do mais
+  // recente para o mais antigo, com a fatura que ele quitou. Três origens:
+  //   1. PagamentoFatura (Pix sob demanda, conferência, sinistro) — um Pix que
+  //      cobre mais de uma fatura aparece UMA vez, com os destinos;
+  //   2. fatura paga pela cobrança do Asaas (modelo antigo), que não tem
+  //      registro de pagamento próprio: vale o que a fatura guarda;
+  //   3. lançamentos da conta (entrada de contrato e de acordo, doc 02 §4-A.3).
+  async pagamentosDaConta(contaId: string, offset = 0, limit = 10): Promise<{ total: number; offset: number; data: PagamentoDaConta[] }> {
+    const [registrados, semRegistro, lancamentos] = await Promise.all([
+      this.prisma.db.pagamentoFatura.findMany({
+        where: { fatura: { contaId } },
+        include: {
+          fatura: { select: { id: true, numero: true, status: true } },
+          alocacoes: { select: { tipoEncargo: true, valor: true } },
+        },
+      }),
+      this.prisma.db.fatura.findMany({
+        where: { contaId, valorPago: { gt: 0 }, dataPagamento: { not: null }, pagamentos: { none: {} } },
+        select: { id: true, numero: true, status: true, valorPago: true, dataPagamento: true, parcelas: { select: { valorEncargo: true } } },
+      }),
+      this.prisma.db.lancamentoConta.findMany({ where: { contaId }, include: { contrato: { select: { numero: true } } } }),
+    ]);
+    const quitada = (status: string) => status === 'PAGA' || status === 'PAGA_EM_ATRASO';
+    const instante = (p: { pagoEm: Date | null; createdAt: Date }) => (p.pagoEm ?? p.createdAt).getTime();
+
+    // O último pagamento de cada fatura é o que a quitou (quando ela está quitada).
+    const ultimoDaFatura = new Map<string, string>();
+    for (const p of [...registrados].sort((a, b) => a.dataPagamento.getTime() - b.dataPagamento.getTime() || instante(a) - instante(b))) {
+      ultimoDaFatura.set(p.faturaId, p.id);
+    }
+
+    const itens: (PagamentoDaConta & { ordem: number })[] = [];
+    const porPix = new Map<string, PagamentoDaConta & { ordem: number }>();
+    for (const p of registrados) {
+      const chave = p.gatewayPaymentId ?? p.id;
+      let item = porPix.get(chave);
+      if (!item) {
+        item = {
+          id: chave,
+          dia: dataCalendarioUTC(p.dataPagamento),
+          hora: p.pagoEm ? horaBrasil(p.pagoEm) : null,
+          tipo: p.origem === 'SINISTRO' ? 'sinistro' : 'pix',
+          valor: 0,
+          excedente: 0,
+          descricao: null,
+          contratoNumero: null,
+          acordoId: null,
+          destinos: [],
+          ordem: instante(p),
+        };
+        porPix.set(chave, item);
+        itens.push(item);
+      }
+      const valor = cent(p.valor);
+      const excedente = cent(p.valorExcedente);
+      item.valor += valor + excedente;
+      item.excedente += excedente;
+      if (valor > 0) {
+        item.destinos.push({
+          faturaId: p.fatura.id,
+          numero: p.fatura.numero,
+          valor,
+          encargos: p.alocacoes.filter((a) => a.tipoEncargo !== null).reduce((s, a) => s + cent(a.valor), 0),
+          quitou: quitada(p.fatura.status) && ultimoDaFatura.get(p.faturaId) === p.id,
+        });
+      }
+    }
+    for (const item of porPix.values()) item.destinos.sort((a, b) => a.numero - b.numero);
+
+    for (const f of semRegistro) {
+      const valor = cent(f.valorPago);
+      itens.push({
+        id: `fatura-${f.id}`,
+        dia: diaDeColunaMista(f.dataPagamento!),
+        hora: null,
+        tipo: 'cobranca',
+        valor,
+        excedente: 0,
+        descricao: null,
+        contratoNumero: null,
+        acordoId: null,
+        destinos: [
+          {
+            faturaId: f.id,
+            numero: f.numero,
+            valor,
+            encargos: Math.min(valor, f.parcelas.reduce((s, x) => s + cent(x.valorEncargo), 0)),
+            quitou: quitada(f.status),
+          },
+        ],
+        ordem: f.dataPagamento!.getTime(),
+      });
+    }
+    for (const l of lancamentos) {
+      itens.push({
+        id: `lancamento-${l.id}`,
+        dia: diaDeColunaMista(l.dataPagamento),
+        hora: null,
+        tipo: l.tipo === 'ENTRADA_CONTRATO' ? 'entrada_contrato' : 'entrada_acordo',
+        valor: cent(l.valor),
+        excedente: 0,
+        descricao: l.descricao,
+        contratoNumero: l.contrato?.numero ?? null,
+        acordoId: l.acordoId,
+        destinos: [],
+        ordem: l.dataPagamento.getTime(),
+      });
+    }
+    itens.sort((a, b) => (a.dia === b.dia ? b.ordem - a.ordem : a.dia < b.dia ? 1 : -1));
+    const inicio = Math.max(0, offset);
+    return {
+      total: itens.length,
+      offset: inicio,
+      data: itens.slice(inicio, inicio + Math.min(Math.max(1, limit), 50)).map(({ ordem: _ordem, ...item }) => item),
     };
   }
 

@@ -4,7 +4,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { inicioHojeBrasilUTC, limparDocumento, reaisParaCentavos } from '@azit/utils';
+import { inicioHojeBrasilUTC, limparDocumento, reaisParaCentavos, situacaoDaConta } from '@azit/utils';
 import {
   StatusContratoCredito,
   StatusContratoInvestimento,
@@ -154,7 +154,7 @@ export class TitularService {
         conta: {
           include: {
             contratosCredito: {
-              select: { id: true, numero: true, status: true, valorTotal: true, valorEntrada: true, entradaParcelada: true, entradaPagaEm: true, cronogramaGeradoEm: true, saldoDevedor: true, dataAssinatura: true },
+              select: { id: true, numero: true, status: true, veiculoBloqueadoEm: true, valorTotal: true, valorEntrada: true, entradaParcelada: true, entradaPagaEm: true, cronogramaGeradoEm: true, saldoDevedor: true, dataAssinatura: true },
               orderBy: { createdAt: 'desc' },
             },
             contratosInvestimento: {
@@ -185,7 +185,7 @@ export class TitularService {
     // Vigente = fase ATIVO (doc 02 §5.2, 07/09).
     const idsAtivos = contratos.filter((c) => c.status === 'ATIVO').map((c) => c.id);
     const hoje = inicioHojeBrasilUTC(); // fuso do negócio (A4, 04/09)
-    const [pago, lancado, saldo, saldosContrato, atrasoContrato, coberturaContrato, atraso, qAcordos, qNovacoes, encargos] = await Promise.all([
+    const [pago, lancado, saldo, saldosContrato, atrasoContrato, coberturaContrato, atraso, qAcordos, qNovacoes, encargos, acordosAtivos] = await Promise.all([
       // Total recebido do cliente = faturas pagas (principal, encargos,
       // intermediárias, serviços) + lançamentos avulsos (entradas de contrato e
       // de acordo — doc 02 §4-A.3, revisão 2026-08-30). Visão fiel ao caixa.
@@ -206,6 +206,8 @@ export class TitularService {
       conta ? this.prisma.db.novacao.count({ where: { contaId: conta.id, deletedAt: null } }) : 0,
       // Juros e multa pagos (decisão Luís 02/10): não são "valor pago".
       ids.length ? this.prisma.db.parcela.aggregate({ where: { contratoId: { in: ids } }, _sum: { valorEncargo: true } }) : null,
+      // Acordo em vigor na conta — mesmo recorte da grade "Clientes da carteira".
+      conta ? this.prisma.db.acordo.count({ where: { contaId: conta.id, status: 'ATIVO' } }) : 0,
     ]);
     const cent = (d: Prisma.Decimal | null | undefined) => (d ? reaisParaCentavos(d.toString()) : 0);
     const saldoPorContrato = new Map(saldosContrato.map((g) => [g.contratoId, g._sum.valorNominal]));
@@ -227,7 +229,19 @@ export class TitularService {
     return {
       titular: titularParaApi(titular),
       conta: conta
-        ? { id: conta.id, status: conta.status.toLowerCase(), dataAbertura: conta.dataAbertura.toISOString() }
+        ? {
+            id: conta.id,
+            status: conta.status.toLowerCase(),
+            dataAbertura: conta.dataAbertura.toISOString(),
+            // Selo da ficha: a MESMA regra da grade "Clientes da carteira" (`situacaoDaConta`, Regra 16),
+            // com as mesmas entradas — contratos ATIVOS, bloqueio do veículo, atraso e acordo em vigor.
+            situacao: situacaoDaConta({
+              contratosAtivos: idsAtivos.length,
+              bloqueada: contratos.some((c) => c.veiculoBloqueadoEm !== null),
+              valorEmAtraso: idsAtivos.some((cid) => atrasoPorContratoFicha.has(cid)) ? 1 : 0,
+              emAcordo: acordosAtivos > 0,
+            }),
+          }
         : null,
       documentos,
       resumoFinanceiro: {
