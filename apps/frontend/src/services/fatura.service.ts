@@ -23,7 +23,7 @@ export interface Fatura {
   // Só na lista da conta: o que falta pagar HOJE (fatura AZIT fechada: saldo +
   // multa + atualização do motor); null em fatura que não está em aberto.
   faltaHoje?: number | null;
-  // Só na lista da conta: multa e atualização de hoje dentro do `faltaHoje` (modelo AZIT).
+  // Só na lista da conta: multa e atualização de hoje dentro do `faltaHoje` (a mesma conta da página do cliente).
   encargoHoje?: number;
   // false em fatura FECHADA = a cobrança automática falhou (estado de exceção).
   temCobrancaAsaas: boolean;
@@ -125,7 +125,7 @@ export interface BlocoPagamentos {
 // Posição de hoje da conta (doc 02 §33.1) — tudo calculado na leitura.
 export interface PosicaoConta {
   hoje: string;
-  atraso: { faturas: number; valorHoje: number; encargos: number; diasMaisAntiga: number; comEncargoNoAsaas: number };
+  atraso: { faturas: number; valorHoje: number; encargos: number; diasMaisAntiga: number };
   proxima: { id: string; numero: number; dataVencimento: string; valor: number; disponivel: boolean } | null;
   ultimoPagamento: PagamentoDaConta | null;
   faturaComLinkId: string | null;

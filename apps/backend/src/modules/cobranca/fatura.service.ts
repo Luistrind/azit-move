@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { calcularEncargoAtraso, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, horaBrasil, diaDeColunaMista, diasCalendarioEntre, inicioHojeBrasilUTC, dataCalendarioUTC, diasAtrasoCalendario, DIA_MS, FUSO_NEGOCIO, inicioDiaUTC, somarDiasISO, situacaoFaturaRuntime } from '@azit/utils';
+import { calcularEncargoAtraso, encargoHojeDaFatura, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, horaBrasil, diaDeColunaMista, diasCalendarioEntre, inicioHojeBrasilUTC, dataCalendarioUTC, diasAtrasoCalendario, DIA_MS, FUSO_NEGOCIO, inicioDiaUTC, somarDiasISO, situacaoFaturaRuntime } from '@azit/utils';
 import { ConfigService } from '@nestjs/config';
 import { mensagemLinkFatura, montarLinkFatura, novoTokenFatura, whatsappParaWaMe } from './fatura-link';
 import { PrismaService } from '../../database/prisma.service';
@@ -58,6 +58,11 @@ type FaturaDeLista = {
   modeloEncargo: string;
   tokenPublico?: string | null;
   itensFatura: { descricao: string; tipo: string; valor: Prisma.Decimal; credor: string }[];
+};
+
+// Linha de lista com as parcelas da fatura (taxas do contrato) — para o encargo de hoje do modelo antigo.
+type FaturaComParcelas = FaturaDeLista & {
+  parcelas?: { valorNominal: Prisma.Decimal; dataVencimento: Date; contrato: { taxaMultaAtraso: Prisma.Decimal; taxaJurosAtraso: Prisma.Decimal } }[];
 };
 
 // Visões das faturas da conta na ficha do titular (doc 02 §33.2) — calculadas na leitura (Regra 7).
@@ -678,11 +683,12 @@ export class FaturaService {
     }
   }
 
-  // O que falta pagar HOJE em cada fatura em aberto. Modelo AZIT: o total do
-  // motor, com multa e atualização — a mesma conta da página do cliente (uma
-  // leitura da conta por chamada). Modelo antigo: o valor da fatura menos o
-  // que já entrou; o encargo dela é aplicado pelo Asaas e não entra aqui.
-  private async comFaltaHoje(contaId: string, faturas: FaturaDeLista[]) {
+  // O que falta pagar HOJE em cada fatura em aberto — o MESMO número da página
+  // do cliente. Modelo AZIT: o total do motor (uma leitura da conta por chamada).
+  // Modelo antigo: o valor da fatura menos o que já entrou, mais a multa e a
+  // atualização de hoje pela função única `encargoHojeDaFatura` (correção 18/11:
+  // a ficha mostrava o valor de face da vencida e a página do cliente, o atualizado).
+  private async comFaltaHoje(contaId: string, faturas: FaturaComParcelas[]) {
     const motor = new Map<string, { totalHoje: number; encargo: number }>();
     if (faturas.some((f) => f.modeloEncargo === 'AZIT' && f.status === 'FECHADA')) {
       const conta = await this.contaFatura.carregar(contaId);
@@ -694,12 +700,28 @@ export class FaturaService {
       const linha = this.mapearFatura(f);
       const emAberto = f.status === 'ABERTA' || f.status === 'FECHADA';
       const m = motor.get(f.id);
+      const saldo = Math.max(0, linha.valorTotal - linha.valorPago);
+      const antigo = emAberto && !m && f.modeloEncargo !== 'AZIT' ? this.encargoDeHojeModeloAntigo(f, saldo) : 0;
       return {
         ...linha,
-        faltaHoje: !emAberto ? null : (m?.totalHoje ?? Math.max(0, linha.valorTotal - linha.valorPago)),
-        encargoHoje: emAberto ? (m?.encargo ?? 0) : 0,
+        faltaHoje: !emAberto ? null : (m?.totalHoje ?? saldo + antigo),
+        encargoHoje: emAberto ? (m?.encargo ?? antigo) : 0,
       };
     });
+  }
+
+  private encargoDeHojeModeloAntigo(f: FaturaComParcelas, saldo: number): number {
+    const agora = new Date();
+    const e = encargoHojeDaFatura(
+      (f.parcelas ?? []).map((p) => ({
+        valor: cent(p.valorNominal),
+        diasAtraso: diasAtrasoCalendario(p.dataVencimento, agora),
+        taxaMultaPercent: Number(p.contrato.taxaMultaAtraso.toString()),
+        taxaJurosMensalPercent: Number(p.contrato.taxaJurosAtraso.toString()),
+      })),
+      { saldo, diasAtraso: diasAtrasoCalendario(f.dataVencimento, agora) },
+    );
+    return e.multa + e.atualizacao;
   }
 
   // "Agora" vem inteira (é o que está na mesa, e a posição do topo soma sobre
@@ -714,7 +736,10 @@ export class FaturaService {
         orderBy: [{ dataVencimento: ordem }, { numero: ordem }],
         skip: inicio,
         take: visao === 'agora' ? 60 : Math.min(Math.max(1, limit), 50),
-        include: { itensFatura: { orderBy: { tipo: 'asc' } } },
+        include: {
+          itensFatura: { orderBy: { tipo: 'asc' } },
+          parcelas: { select: { valorNominal: true, dataVencimento: true, contrato: { select: { taxaMultaAtraso: true, taxaJurosAtraso: true } } } },
+        },
       }),
     ]);
     return { visao, total, offset: inicio, data: await this.comFaltaHoje(contaId, faturas) };
@@ -747,8 +772,6 @@ export class FaturaService {
         valorHoje: valorEmAtraso,
         encargos: vencidas.reduce((s, f) => s + f.encargoHoje, 0),
         diasMaisAntiga: vencidas.length ? diasCalendarioEntre(dataCalendarioUTC(new Date(vencidas[0].dataVencimento)), hojeISO) : 0,
-        // Vencidas com cobrança no Asaas (modelo antigo): o encargo delas não está na soma.
-        comEncargoNoAsaas: vencidas.filter((f) => f.modeloEncargo !== 'AZIT').length,
       },
       proxima: proxima
         ? {
@@ -909,8 +932,8 @@ export class FaturaService {
     const azit = f.modeloEncargo === 'AZIT' ? await this.detalheAzit(f.contaId, f.id) : null;
     const encargoAtual = azit
       ? azit.multa + azit.atualizacao
-      : f.status === 'FECHADA' && !f.asaasChargeId
-        ? this.encargoAteHoje(f.parcelas)
+      : f.status === 'FECHADA' || f.status === 'ABERTA'
+        ? this.encargoDeHojeModeloAntigo(f, Math.max(0, cent(f.valorTotal) - cent(f.valorPago)))
         : 0;
     const base = this.mapearFatura(f);
     // Fatura Azit (doc 02 §32.7): link, WhatsApp do titular (para o wa.me) e a

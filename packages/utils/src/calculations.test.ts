@@ -16,6 +16,7 @@ import {
   taxaPeriodoEquivalente,
   valorPresenteMensal,
 } from './calculations';
+import { encargoHojeDaFatura } from './calculations';
 
 // Regra 16 (20/10/2026): estas são as ÚNICAS implementações das fórmulas.
 // Os testes abaixo fixam a convenção (taxa MENSAL → diária/periódica
@@ -119,5 +120,27 @@ describe('calcularEncargoAtraso — Doc 2 §7.2', () => {
   it('multa 2% + juros 1%/30 ao dia', () => {
     // valor 100000 centavos, 15 dias: multa 2000 + juros 100000*0.01/30*15 = 500
     expect(calcularEncargoAtraso(100000, 15)).toBeCloseTo(2500, 6);
+  });
+});
+
+describe('encargoHojeDaFatura — a mesma conta na página do cliente e na ficha', () => {
+  it('caso de produção de 18/11: R$ 989,54 vencidos há 7 dias → multa 19,79 + atualização 2,31', () => {
+    const e = encargoHojeDaFatura([{ valor: 98954, diasAtraso: 7, taxaMultaPercent: 2, taxaJurosMensalPercent: 1 }], { saldo: 98954, diasAtraso: 7 });
+    expect(e).toEqual({ multa: 1979, atualizacao: 231, diasAtraso: 7 });
+  });
+  it('soma parcela a parcela pelas taxas de cada contrato e arredonda uma vez; parcela em dia não entra', () => {
+    const e = encargoHojeDaFatura(
+      [
+        { valor: 91608, diasAtraso: 7, taxaMultaPercent: 2, taxaJurosMensalPercent: 1 },
+        { valor: 7346, diasAtraso: 7, taxaMultaPercent: 2, taxaJurosMensalPercent: 1 },
+        { valor: 50000, diasAtraso: 0, taxaMultaPercent: 2, taxaJurosMensalPercent: 1 },
+      ],
+      { saldo: 0, diasAtraso: 0 },
+    );
+    expect(e).toEqual({ multa: 1979, atualizacao: 231, diasAtraso: 7 });
+  });
+  it('fatura sem parcelas usa o saldo e as taxas padrão; em dia não tem encargo', () => {
+    expect(encargoHojeDaFatura([], { saldo: 100000, diasAtraso: 30 })).toEqual({ multa: 2000, atualizacao: 1000, diasAtraso: 30 });
+    expect(encargoHojeDaFatura([], { saldo: 100000, diasAtraso: -3 })).toEqual({ multa: 0, atualizacao: 0, diasAtraso: 0 });
   });
 });

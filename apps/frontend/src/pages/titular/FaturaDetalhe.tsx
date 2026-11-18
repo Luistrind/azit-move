@@ -65,6 +65,19 @@ export function FaturaDetalhe({ faturaId, contaId, recarregar }: { faturaId: str
           <Campo label="Pagamento" valor={fd.dataPagamento ? dataBR(fd.dataPagamento) : '—'} />
         </div>
         {/* Modelo antigo: a fatura guarda só o total que entrou; no Pix sob demanda o bloco ao lado detalha. */}
+        {/* Modelo antigo em atraso: a mesma conta da página do cliente (multa + atualização de hoje). */}
+        {!fd.azit && !paga && fd.encargoAtual > 0 && (
+          <>
+            <div className="flex items-center justify-between text-[12px]" style={{ color: 'var(--text-body)' }}>
+              <span>Multa e atualização até hoje{atraso > 0 ? ` · ${atraso} dia${atraso === 1 ? '' : 's'} de atraso` : ''}</span>
+              <span className="tabular-nums">{formatCurrency(fd.encargoAtual)}</span>
+            </div>
+            <div className="flex items-center justify-between text-[13px] font-bold" style={{ color: 'var(--danger-fg)' }}>
+              <span>Falta hoje</span>
+              <span className="tabular-nums">{formatCurrency(Math.max(0, fd.valorTotal - fd.valorPago) + fd.encargoAtual)}</span>
+            </div>
+          </>
+        )}
         {!fd.azit && fd.valorPago > 0 && (
           <div className="flex items-center justify-between text-[12px]" style={{ color: 'var(--text-body)' }}>
             <span>Já recebido{fd.dataPagamento ? ` em ${dataBR(fd.dataPagamento)}` : ''}</span>

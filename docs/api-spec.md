@@ -416,11 +416,12 @@ renegociadas, novadas e rescindidas. Resposta: `{ "visao", "total", "offset", "d
 Cada fatura leva `valorPago` (o que entrou nela), `faltaHoje` e `encargoHoje`. `faltaHoje`: em
 fatura do modelo AZIT fechada é o total do motor (saldo + multa + atualização, a mesma conta da
 página do cliente) e `encargoHoje` é a parte de multa e atualização; nas demais em aberto, valor da
-fatura menos o pago (`encargoHoje` = 0); `null` em fatura que não está em aberto.
+fatura menos o pago mais a multa e a atualização de hoje (`encargoHojeDaFatura`, a mesma função da
+página do cliente); `null` em fatura que não está em aberto.
 
 #### GET `/api/v1/contas/:contaId/posicao`
 Posição de hoje da conta (doc 02 §33.1), calculada na leitura: `{ "hoje", "atraso": { "faturas",
-"valorHoje", "encargos", "diasMaisAntiga", "comEncargoNoAsaas" }, "proxima": { "id", "numero",
+"valorHoje", "encargos", "diasMaisAntiga" }, "proxima": { "id", "numero",
 "dataVencimento", "valor", "disponivel" } | null, "ultimoPagamento": pagamento | null,
 "faturaComLinkId", "trilho": { "pagas", "emAtraso", "valorEmAtraso", "aVencer", "valorAVencer" },
 "contagem": { "agora", "vencer", "pagas", "outras" } }`. Centavos.

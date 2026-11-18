@@ -61,12 +61,6 @@ export function PosicaoHoje({
               {p.atraso.faturas > 1 ? ', a mais antiga' : ''} há {plural(p.atraso.diasMaisAntiga, 'dia', 'dias')}
               {p.atraso.encargos > 0 ? ` · inclui ${formatCurrency(p.atraso.encargos)} de multa e atualização` : ''}
             </span>
-            {p.atraso.comEncargoNoAsaas > 0 && (
-              <span className="text-[11.5px]" style={{ color: 'var(--text-secondary)' }}>
-                {p.atraso.comEncargoNoAsaas === p.atraso.faturas ? 'A multa e a atualização' : `Em ${p.atraso.comEncargoNoAsaas} dela${p.atraso.comEncargoNoAsaas === 1 ? '' : 's'}, a multa e a atualização`} são
-                somadas pelo Asaas na hora do pagamento e não estão neste valor.
-              </span>
-            )}
             {situacao !== 'bloqueada' && bloqueioDisponivel(p.atraso.diasMaisAntiga) && (
               <span className="text-[11.5px] font-semibold" style={{ color: 'var(--danger-fg)' }}>Bloqueio do veículo disponível (pela régua de cobrança).</span>
             )}
