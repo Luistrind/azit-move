@@ -435,6 +435,22 @@ Um Pix que cobre mais de uma fatura vem uma vez, com um destino por fatura.
 `GET /api/v1/titulares/:id` passa a trazer `conta.situacao` (`sem_contrato_ativo | bloqueada |
 em_atraso | em_acordo | em_dia`) — a mesma regra da grade de clientes da carteira.
 
+#### POST `/api/v1/titulares/:id/creditos` — Reembolso Parcelado pelo "de acordo" (doc 02 §18.7, 18/11/2026)
+Contratação avulsa pela ficha do titular; vai para a Central de Aprovações. Além de `descricao`,
+`valor`, `numeroParcelas` e `fornecedorId`, o corpo aceita `aceiteWhatsapp` (boolean),
+`mensagemWhatsapp`, `respostaCliente` e `observacao`. No Reembolso Parcelado `aceiteWhatsapp: true`
+é obrigatório (422 `sem_aceite_cliente`); o aceite fica em `snapshotJson.aceiteWhatsapp` do contrato.
+Aprovado na Central, o reembolso ativa na hora — não há mais termo nem assinatura.
+
+#### POST `/api/v1/creditos/:id/de-acordo`
+Reembolso Parcelado aprovado antes de 18/11 e parado em "aguardando assinatura": registra o "de
+acordo" (`{ "aceiteWhatsapp": true, "respostaCliente"?, "mensagemWhatsapp"? }`), cancela o termo em
+aberto e ativa (cronograma + título ao fornecedor). 422 `estado_invalido` fora desse caso.
+Resposta: `{ "contratoId", "numero", "status": "ativo" }`.
+
+`GET /api/v1/contratos/:id/documento`: em contrato fechado por "de acordo", o texto devolvido é o
+registro do aceite (quem registrou, mensagem enviada e resposta do cliente).
+
 #### GET `/api/v1/contratos/:id/extrato`
 Extrato completo do contrato — todos os eventos financeiros em ordem cronológica.
 
@@ -1348,6 +1364,10 @@ data-calendário no fuso do negócio.
 `GET /api/v1/contas/carteira/visao` traz também `"ativos": { "clientes": 66, "semFatura": [{ "contaId",
 "titularId", "titular", "proximaFatura": "2026-12-05" }] }` — clientes ativos (conta com contrato ATIVO) e
 quem deles não tem fatura contável no período (doc 02 §27.10).
+
+`GET /api/v1/contas/carteira/visao/limites` → `{ "primeiroMes": "2025-08", "ultimoMes": "2030-11" }` — mês da primeira
+e da última fatura que conta para o teto (doc 02 §27.11); limita o gráfico "Mês a mês" e as setas do
+período. `GET /api/v1/contas/carteira/visao/mensal` aceita qualquer intervalo entre os dois.
 
 `GET /api/v1/contas/carteira/visao/variacao?de=2026-12&para=2027-01` → por que o teto muda de um mês
 para o outro (doc 02 §27.10): `{ "de", "para", "tetoDe", "tetoPara", "diferenca", "grupos": [{ "motivo":

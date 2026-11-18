@@ -11,6 +11,13 @@ export const originarCreditoSchema = z.object({
   // Doc 02 §18.5 (13/09): o RP paga o FORNECEDOR do cliente — obrigatório
   // quando o produto é Reembolso Parcelado (o service valida).
   fornecedorId: z.string().min(1).optional(),
+  // "De acordo" do cliente pelo WhatsApp (doc 02 §18.7, 18/11): o Reembolso Parcelado
+  // vale por ele, sem contrato nem assinatura — obrigatório no RP (o service valida).
+  // Mesmos nomes do Acordo de pagamento (§7.7).
+  aceiteWhatsapp: z.boolean().optional(),
+  mensagemWhatsapp: z.string().trim().max(4000).optional(),
+  respostaCliente: z.string().trim().max(2000).optional(),
+  observacao: z.string().trim().max(2000).optional(),
 });
 export type OriginarCreditoDto = z.infer<typeof originarCreditoSchema>;
 
@@ -28,3 +35,12 @@ export const reprovarCreditoSchema = z.object({
   motivo: z.string().trim().min(1).optional(),
 });
 export type ReprovarCreditoDto = z.infer<typeof reprovarCreditoSchema>;
+
+// Reembolso Parcelado aprovado ANTES de 18/11 e parado em "aguardando assinatura":
+// registra o "de acordo" do cliente e ativa (doc 02 §18.7).
+export const registrarDeAcordoSchema = z.object({
+  aceiteWhatsapp: z.boolean(),
+  mensagemWhatsapp: z.string().trim().max(4000).optional(),
+  respostaCliente: z.string().trim().max(2000).optional(),
+});
+export type RegistrarDeAcordoDto = z.infer<typeof registrarDeAcordoSchema>;

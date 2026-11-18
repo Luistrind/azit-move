@@ -181,6 +181,18 @@ export class CarteiraVisaoService {
     return agregarVisaoMensal(faturas, hoje, recebimentos);
   }
 
+  // Limites da carteira no tempo (doc 02 §27.11): o mês da primeira e o da última
+  // fatura que conta para o teto — até onde o gráfico e as setas do período podem ir.
+  async limites(): Promise<{ primeiroMes: string | null; ultimoMes: string | null }> {
+    const r = await this.prisma.db.fatura.aggregate({
+      where: { deletedAt: null, status: { in: [...STATUS_CONTAVEIS] } },
+      _min: { dataVencimento: true },
+      _max: { dataVencimento: true },
+    });
+    const mes = (d: Date | null) => (d ? dataCalendarioUTC(d).slice(0, 7) : null);
+    return { primeiroMes: mes(r._min.dataVencimento), ultimoMes: mes(r._max.dataVencimento) };
+  }
+
   // Clientes atrás de um cartão. Vencidas/a vencer: quem tem fatura naquele estado
   // com vencimento no período. Recebidas: quem PAGOU no período (caixa), de
   // qualquer vencimento — faturas e entradas.

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
-import { formatCurrency } from '@azit/utils';
+import { formatCurrency, mensagemDeAcordoReembolso } from '@azit/utils';
 import { titularService } from '../services/titular.service';
 import { faturaService } from '../services/fatura.service';
 import { originacaoService } from '../services/originacao.service';
@@ -81,6 +81,11 @@ export function TitularDetalhePage() {
   const [fornNome, setFornNome] = useState('');
   const [fornDoc, setFornDoc] = useState('');
   const [fornSalvando, setFornSalvando] = useState(false);
+  // "De acordo" do cliente (doc 02 §18.7, 18/11): o Reembolso Parcelado vale por ele —
+  // sem contrato nem assinatura. O envio só libera com a confirmação marcada.
+  const [rpAceite, setRpAceite] = useState(false);
+  const [rpResposta, setRpResposta] = useState('');
+  const [rpObservacao, setRpObservacao] = useState('');
 
 
   // Fonte ÚNICA: produtos do CATÁLOGO com contratação avulsa (doc 02 §17,
@@ -139,6 +144,9 @@ export function TitularDetalhePage() {
     setCProdutoId('');
     setFornecedorId('');
     setFornNovoAberto(false);
+    setRpAceite(false);
+    setRpResposta('');
+    setRpObservacao('');
   }
 
   async function contratarProduto() {
@@ -152,6 +160,9 @@ export function TitularDetalhePage() {
         numeroParcelas: cNumParcelas,
         valorEntrada: 0,
         fornecedorId: ehReembolsoSel ? fornecedorId : undefined,
+        ...(ehReembolsoSel
+          ? { aceiteWhatsapp: rpAceite, mensagemWhatsapp: mensagemRp ?? undefined, respostaCliente: rpResposta.trim() || undefined, observacao: rpObservacao.trim() || undefined }
+          : {}),
       });
       fecharModalProduto();
       setCValor('');
@@ -190,6 +201,33 @@ export function TitularDetalhePage() {
     ]);
   }
   const det = useQuery({ queryKey: ['titular-detalhe', id], queryFn: () => titularService.detalhe(id), enabled: !!id });
+  // Mensagem do "de acordo": montada em @azit/utils com os números da prévia do servidor.
+  const fornecedorSel = (fornecedores.data ?? []).find((f) => f.id === fornecedorId);
+  const mensagemRp =
+    ehReembolsoSel && previa.data && fornecedorSel && det.data
+      ? mensagemDeAcordoReembolso({
+          nomeCliente: det.data.titular.nome,
+          fornecedorNome: fornecedorSel.nome,
+          finalidade: cFinalidade,
+          valorPagoAoFornecedor: previa.data.valor,
+          numeroParcelas: previa.data.numeroParcelas,
+          valorParcela: previa.data.valorParcela,
+          totalAPagar: previa.data.totalAPagar,
+          periodicidade: previa.data.periodicidade,
+        })
+      : null;
+  async function copiarMensagemRp() {
+    if (!mensagemRp) return;
+    try {
+      await navigator.clipboard.writeText(mensagemRp);
+      toast.sucesso('Mensagem copiada — cole na conversa com o cliente.');
+    } catch {
+      toast.info('Não foi possível copiar sozinho: selecione o texto e copie.');
+    }
+  }
+  // Mudou valor, parcelas ou fornecedor: o "de acordo" anterior não vale para a proposta nova.
+  useEffect(() => { setRpAceite(false); }, [mensagemRp]);
+
   // Consultas de birô da pessoa (decisão 09/08) — visíveis no cadastro.
   const consultasBiro = useQuery({ queryKey: ['titular-consultas-biro', id], queryFn: () => titularService.consultasBiro(id), enabled: !!id });
   const contaId = det.data?.conta?.id;
@@ -569,6 +607,31 @@ export function TitularDetalhePage() {
               <span className="font-bold tabular-nums">{cNumParcelas}× {formatCurrency(cParcelaPrev)}</span>
             </div>
           )}
+          {/* "De acordo" do cliente (doc 02 §18.7): substitui o contrato e a assinatura do Reembolso Parcelado. */}
+          {ehReembolsoSel && mensagemRp && !previa.data?.excedeLimite && (
+            <div className="flex flex-col gap-[8px] rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)' }}>
+              <div className="flex flex-wrap items-center justify-between gap-[8px]">
+                <span className="text-[12.5px] font-bold" style={{ color: 'var(--text-primary)' }}>De acordo do cliente (WhatsApp)</span>
+                <Botao variante="secundaria" tamanho="sm" onClick={() => void copiarMensagemRp()}>Copiar mensagem</Botao>
+              </div>
+              <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+                Este produto não tem contrato para assinar: vale a resposta do cliente. Mande a mensagem pelo WhatsApp e só envie para aprovação depois que ele responder.
+              </div>
+              <pre className="max-h-[160px] overflow-auto whitespace-pre-wrap rounded-[8px] p-[10px] font-sans text-[12px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-body)' }}>{mensagemRp}</pre>
+              <label className="flex items-start gap-[8px] text-[12.5px]" style={{ color: 'var(--text-primary)' }}>
+                <input type="checkbox" className="mt-[2px]" checked={rpAceite} onChange={(e) => setRpAceite(e.target.checked)} />
+                <span>O cliente respondeu o “de acordo” no WhatsApp com estas condições</span>
+              </label>
+              <label className="flex flex-col gap-[4px] text-[12px]">
+                <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Resposta do cliente (cole o texto)</span>
+                <textarea value={rpResposta} onChange={(e) => setRpResposta(e.target.value)} rows={2} maxLength={2000} placeholder="Ex.: De acordo" className="rounded-[10px] px-[10px] py-[8px] text-[12.5px]" style={inputStyle} />
+              </label>
+              <label className="flex flex-col gap-[4px] text-[12px]">
+                <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Observação para quem aprova (opcional)</span>
+                <textarea value={rpObservacao} onChange={(e) => setRpObservacao(e.target.value)} rows={2} maxLength={2000} className="rounded-[10px] px-[10px] py-[8px] text-[12.5px]" style={inputStyle} />
+              </label>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-[8px]">
             <Botao variante="secundaria" onClick={() => { setProdutoDefinido(false); setCProdutoId(''); }}>
               ← Trocar produto
@@ -577,11 +640,11 @@ export function TitularDetalhePage() {
               variante="primaria"
               className="flex-1"
               carregando={creditoBusy}
-              disabled={cValorCent <= 0 || cNumParcelas <= 0 || (ehReembolsoSel && !fornecedorId)}
+              disabled={cValorCent <= 0 || cNumParcelas <= 0 || (ehReembolsoSel && (!fornecedorId || !rpAceite))}
               onClick={contratarProduto}
-              title={ehReembolsoSel && !fornecedorId ? 'Selecione o fornecedor a pagar para liberar o envio' : undefined}
+              title={ehReembolsoSel && !fornecedorId ? 'Selecione o fornecedor a pagar para liberar o envio' : ehReembolsoSel && !rpAceite ? 'Marque que o cliente respondeu o “de acordo” para liberar o envio' : undefined}
             >
-              {ehReembolsoSel && !fornecedorId ? 'Selecione o fornecedor a pagar' : 'Enviar para aprovação'}
+              {ehReembolsoSel && !fornecedorId ? 'Selecione o fornecedor a pagar' : ehReembolsoSel && !rpAceite ? 'Falta o “de acordo” do cliente' : 'Enviar para aprovação'}
             </Botao>
           </div>
         </div>

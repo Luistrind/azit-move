@@ -1769,6 +1769,9 @@ A originação acontece **dentro do sistema**, operada em tela — não mais via
 >    desembolso no contas a pagar**. Nada de cronograma ou título antes da assinatura. O texto
 >    do termo é PLACEHOLDER FUNCIONAL (Regra 12) até o jurídico validar — marca as duas pontas:
 >    pagamento à vista ao fornecedor; cliente paga parcelado à Azit nas faturas.
+>
+>    **Substituída em 2026-11-18 (§18.7):** o RP não tem mais contrato nem assinatura — vale o
+>    "de acordo" do cliente, e a aprovação é o dia zero.
 > 6. Aprovações usam o MOTOR EXISTENTE (tipos novos); segregação solicitante ≠ decisor cobre o
 >    conflito de interesse do Diretor. Estados do título/lote conforme Processo §3.5. Campos
 >    críticos congelam pós-aprovação; correção só por devolução/reabertura autorizada (RCPG021-022).
@@ -1814,6 +1817,42 @@ gerencial que a operação já usa (plano do Manda Pro Financeiro: grupo → cat
    categoria, com em aberto × pago; cancelados ficam fora. É o espelho do relatório do Manda.
 
 ---
+
+### 18.7 Reembolso Parcelado vale pelo "de acordo" do cliente — sem contrato nem assinatura (decisão Luís, com o jurídico, 2026-11-18)
+
+**Decisão.** "O reembolso parcelado, não vamos continuar com a necessidade de contrato; o jurídico
+falou que só precisamos do ok, assim como o acordo de pagamento — não será necessário assinar nada,
+nem formar um contrato para o cliente assinar." Substitui o mini contrato de 13/09 (§18.5, item 5).
+
+**Como fica.**
+
+1. **Na contratação** (ficha do titular › Novo produto › Reembolso Parcelado), depois de valor,
+   parcelas e fornecedor, a tela monta a mensagem com as duas pontas — o que a Azit paga à vista ao
+   fornecedor e o que o cliente paga, em quantas parcelas e o total — e pede a resposta "DE ACORDO".
+   O operador manda pelo WhatsApp, marca **"o cliente respondeu o de acordo"** (obrigatório: o
+   servidor recusa sem isso, `sem_aceite_cliente`) e cola a resposta. Mudou valor, parcelas ou
+   fornecedor, a marca cai — o aceite vale para aquela proposta. A mensagem é montada uma vez, em
+   `mensagemDeAcordoReembolso` (`packages/utils`), sem "taxa", "juros" ou "financiar".
+2. **O aceite fica no contrato** (`snapshotJson.aceiteWhatsapp`: quando, quem registrou, mensagem
+   enviada, resposta colada) — mesmo formato do Acordo de pagamento (§7.7).
+3. **Aprovação continua** na Central, com a alçada do produto. O dossiê mostra o bloco
+   **"De acordo" do cliente** (resposta, quem registrou, mensagem) e a observação de quem pediu.
+4. **Aprovado = dia zero.** Na hora: parcelas nas faturas do cliente (no ciclo da conta) e título
+   de desembolso ao fornecedor no contas a pagar, uma vez só. O contrato vai de RASCUNHO a ATIVO;
+   **não passa por `AGUARDANDO_ASSINATURA`**, logo a expiração do §21.1 não se aplica a ele.
+5. **Onde o aceite aparece depois:** no "Documento do contrato" da página do contrato (o
+   instrumento é o registro do aceite) e no dossiê para cobrança judicial (§30), no lugar do
+   contrato assinado — com o aviso para incluir a captura da conversa nas comunicações.
+
+**Reembolsos aprovados antes desta decisão e parados em "aguardando assinatura".** Na página do
+contrato, o operador **registra o de acordo** do cliente (mesma confirmação obrigatória): o termo em
+aberto na ZapSign é cancelado e o reembolso ativa, sem nova aprovação. Se o cliente assinar o termo
+antigo antes disso, ativa do mesmo jeito. Os que a expiração do §21.1 já cancelou são refeitos
+pela contratação nova. Conferência só de leitura: `deploy/sql/reembolsos-aguardando-assinatura.sql`.
+
+**O que saiu.** O termo do Reembolso Parcelado (modelo e geração) e o envio automático para
+assinatura na aprovação. O que não muda: fornecedor obrigatório, sem entrada, limite de 30% da
+parcela principal, exigência de contrato ativo (§18.5).
 
 ## 19. Estrutura Jurídica como TAG (MVP do capital — homologação 2026-08-04)
 
@@ -2888,6 +2927,37 @@ para a soma das linhas conferir com a diferença.
 API: `GET /contas/carteira/visao/variacao?de=AAAA-MM&para=AAAA-MM`; `ativos` em
 `GET /contas/carteira/visao`. Conferência no banco: `deploy/sql/conferencia-carteira-clientes.sql`.
 
+
+### 27.11 A carteira no tempo: o gráfico "Mês a mês" até a última fatura (pedido Luís, 2026-11-18)
+
+**Origem.** O gráfico parava dois meses à frente de hoje, e a seta do período também. Pedido do
+Luís: ver a projeção do que já está contratado, uma linha passando pelo topo das barras, nada
+estático — e, depois do primeiro protótipo ("meio grotesco"), **mais limpo**. Só o gráfico muda:
+Cobranças, Por produto e O que vem aí ficam como estavam.
+
+- **Alcance.** O gráfico e as setas do período vão da **primeira à última fatura** que conta para o
+  teto (`GET /contas/carteira/visao/limites`). O limite de "hoje + 2 meses" deixa de existir.
+- **Desenho.** Barras finas: o que já aconteceu nas cores de sempre (pago, vencido, a vencer); o que
+  está contratado e ainda não venceu, em cinza-claro, sem hachura. **Uma linha** suave pelo topo
+  das barras, que se desenha quando a visão muda. Sem caixa flutuante: o número grande acima do
+  gráfico acompanha o mês sob o ponteiro (ou o dedo); sem ponteiro, mostra o mês selecionado na
+  tela, ou o de hoje.
+- **Horizonte.** 1 ano e 2 anos (seis meses de história + 12 ou 24 à frente) e Tudo; setas andam de
+  três em três meses. Acima de 32 pontos o gráfico agrupa por **trimestre** sozinho.
+- **Barras por** situação ou por produto (o mesmo recorte do bloco "Por produto").
+- **Recebido no mês** (caixa, só em mês fechado) liga e desliga na legenda — mesmo eixo em reais.
+- **Leitura.** Uma frase: pico do que está contratado, quando cai abaixo de 75% do pico se nada
+  mais for vendido e quando vence a última fatura (`escoamentoDaCarteira`).
+- **Simular vendas novas** (recolhido; **provisório**, Regra 12): contratos novos por mês,
+  recebimento esperado e meta desenham por cima do contratado e **não gravam nada**. Cada contrato
+  novo vale o que um cliente de hoje tem de fatura por mês, em média (`ticketMedioMensal`), por
+  `PRAZO_SIMULACAO_MESES` (36). Meta e recebimento esperado viram parâmetro quando o Luís definir.
+- **Contas** em `packages/utils/src/carteira-tempo.ts` (Regra 16): `pontosDaCarteira`,
+  `escoamentoDaCarteira`, `ticketMedioMensal`, `simularVendasNovas`.
+
+**Fora desta entrega (aguardam decisão):** barras por safra do contrato, visão por semana e a
+linha de **vencido acumulado** dos meses passados — o sistema sabe o que está vencido hoje, não a
+foto de cada fim de mês; reconstituir pelos pagamentos tem ressalva nos meses da migração.
 
 ---
 

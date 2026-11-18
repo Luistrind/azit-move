@@ -18,7 +18,7 @@ import { carteiraVisaoService, type ClienteSemFatura, type EstadoVisao, type Var
 import { Bloco } from '../components/Bloco';
 import { CartaoIndicador } from '../components/CartaoIndicador';
 import { SeletorPeriodo, intervaloDoPeriodo, rotuloDoPeriodo, type PeriodoSelecionado } from '../components/SeletorPeriodo';
-import { GraficoBarrasEmpilhadas, type CategoriaEmpilhada } from '../components/GraficoBarrasEmpilhadas';
+import { CarteiraNoTempo } from './carteira/CarteiraNoTempo';
 import { PRODUTO_SLOT_COLORS, VISAO_ESTADO_COLORS, VIZ_NEUTRAL } from '../config/statusColors';
 import { hojeBrasilISO } from '../lib/datas';
 import { ConferenciaAsaasModal } from './CarteiraConferenciaAsaas';
@@ -63,20 +63,17 @@ export function CarteiraPage() {
   const aberto = periodo.ate >= hoje && periodo.de <= hoje;
   const futuro = periodo.de > hoje;
 
-  // Janela do mês a mês: 15 meses para trás, 2 para a frente do mês de hoje.
-  const janela = useMemo(() => {
-    let m = mesHoje;
-    for (let i = 0; i < 15; i++) m = mesAnterior(m);
-    const out: string[] = [];
-    for (let i = 0; i < 18; i++) { out.push(m); m = mesSeguinte(m); }
-    return out;
-  }, [mesHoje]);
+  // A carteira no tempo (doc 02 §27.11): da primeira à última fatura. Alimenta o
+  // gráfico, o limite das setas do período e a comparação com o mês anterior.
+  const limites = useQuery({ queryKey: ['carteira-visao-limites'], queryFn: () => carteiraVisaoService.limites(), staleTime: 5 * 60_000 });
+  const primeiroMes = limites.data?.primeiroMes ?? mesHoje;
+  const ultimoMes = limites.data?.ultimoMes ?? mesHoje;
 
   const visao = useQuery({ queryKey: ['carteira-visao', periodo.de, periodo.ate], queryFn: () => carteiraVisaoService.periodo(periodo.de, periodo.ate) });
   const trecho = useMemo(() => periodoAnteriorMesmoTrecho(periodo, hoje, sel.modo === 'mes' ? sel.anoMes : undefined), [periodo.de, periodo.ate, hoje, sel.modo, sel.anoMes]);
   const atual = useQuery({ queryKey: ['carteira-visao', trecho?.atual.de, trecho?.atual.ate], queryFn: () => carteiraVisaoService.periodo(trecho!.atual.de, trecho!.atual.ate), enabled: !!trecho });
   const anterior = useQuery({ queryKey: ['carteira-visao', trecho?.anterior.de, trecho?.anterior.ate], queryFn: () => carteiraVisaoService.periodo(trecho!.anterior.de, trecho!.anterior.ate), enabled: !!trecho });
-  const mensal = useQuery({ queryKey: ['carteira-visao-mensal', janela[0], janela[janela.length - 1]], queryFn: () => carteiraVisaoService.mensal(janela[0], janela[janela.length - 1]) });
+  const mensal = useQuery({ queryKey: ['carteira-visao-mensal', primeiroMes, ultimoMes], queryFn: () => carteiraVisaoService.mensal(primeiroMes, ultimoMes), enabled: !!limites.data, staleTime: 60_000 });
   const sete = useQuery({ queryKey: ['carteira-visao', somarDiasISO(hoje, 1), somarDiasISO(hoje, 7)], queryFn: () => carteiraVisaoService.periodo(somarDiasISO(hoje, 1), somarDiasISO(hoje, 7)) });
   const proxMes = useMemo(() => periodoDoMes(mesSeguinte(sel.anoMes)), [sel.anoMes]);
   const seguinte = useQuery({ queryKey: ['carteira-visao', proxMes.de, proxMes.ate], queryFn: () => carteiraVisaoService.periodo(proxMes.de, proxMes.ate) });
@@ -112,7 +109,7 @@ export function CarteiraPage() {
 
   return (
     <div className="flex flex-col gap-[14px]">
-      <SeletorPeriodo valor={sel} onChange={(s) => { setSel(s); setLista(null); }} hoje={hoje} mesMin={janela[0]} mesMax={mesSeguinte(mesSeguinte(mesHoje))} />
+      <SeletorPeriodo valor={sel} onChange={(s) => { setSel(s); setLista(null); }} hoje={hoje} mesMin={limites.data?.primeiroMes ?? undefined} mesMax={limites.data?.ultimoMes ?? undefined} />
 
       <div className="grid grid-cols-12 gap-[12px]">
         {/* A — Cobranças do período */}
@@ -392,7 +389,7 @@ export function CarteiraPage() {
         <Bloco titulo="Mês a mês" className="col-span-12">
           {mensal.data ? (
             <>
-              <MesAMes janela={janela} dados={mesesAnteriores} mesHoje={mesHoje} selecionado={sel.modo === 'mes' ? sel.anoMes : null} onSelecionar={(m) => { setSel({ modo: 'mes', anoMes: m }); setLista(null); }} />
+              <CarteiraNoTempo serie={mesesAnteriores} primeiroMes={primeiroMes} ultimoMes={ultimoMes} mesHoje={mesHoje} selecionado={sel.modo === 'mes' ? sel.anoMes : null} onSelecionar={(m) => { setSel({ modo: 'mes', anoMes: m }); setLista(null); }} />
               {/* Por que o teto muda de um mês para o outro (doc 02 §27.10): os dois meses depois do selecionado. */}
               <div className="text-[10.5px] font-medium uppercase tracking-[0.08em]" style={{ color: 'var(--text-muted)' }}>Por que o teto muda de um mês para o outro</div>
               <div className="grid grid-cols-1 gap-[10px] lg:grid-cols-2">
@@ -512,98 +509,5 @@ function VariacaoEntreMeses({ de, para }: { de: string; para: string }) {
         </>
       )}
     </div>
-  );
-}
-
-// Mês a mês: o gráfico genérico com os dados da visão mensal. Meses sem fatura
-// entram zerados; futuros ficam hachurados (contratado).
-function MesAMes({ janela, dados, mesHoje, selecionado, onSelecionar }: {
-  janela: string[];
-  dados: Map<string, VisaoMensal>;
-  mesHoje: string;
-  selecionado: string | null;
-  onSelecionar: (anoMes: string) => void;
-}) {
-  const series = [
-    { chave: 'recebidas', rotulo: 'Pago do mês', cor: VISAO_ESTADO_COLORS.recebidas.fg },
-    { chave: 'vencidas', rotulo: 'Vencido', cor: VISAO_ESTADO_COLORS.vencidas.fg },
-    { chave: 'a_vencer', rotulo: 'A vencer', cor: VISAO_ESTADO_COLORS.a_vencer.fg },
-  ];
-  const categorias: CategoriaEmpilhada[] = janela.map((m, i) => {
-    const d = dados.get(m);
-    const mm = Number(m.slice(5, 7));
-    return {
-      chave: m,
-      rotulo: MESC[mm - 1],
-      rotuloLinha2: mm === 1 || i === 0 ? m.slice(0, 4) : undefined,
-      valores: { recebidas: d?.pagas.valor ?? 0, vencidas: d?.vencidas.valor ?? 0, a_vencer: d?.aVencer.valor ?? 0 },
-      tracejado: m > mesHoje,
-      destaque: m === selecionado,
-    };
-  });
-  const tabela = (
-    <table className="w-full border-collapse text-[12px]">
-      <thead>
-        <tr style={{ color: 'var(--text-muted)' }}>
-          {['Mês', 'Teto', 'Pago do mês', '%', 'Vencido', 'A vencer', 'Recebido (caixa)', 'Clientes', 'Faturas'].map((h) => (
-            <th key={h} className="whitespace-nowrap px-[6px] py-[6px] text-right text-[10.5px] font-medium uppercase tracking-[0.08em] first:text-left" style={{ borderBottom: '1px solid var(--border-light)' }}>{h}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {janela.map((m) => {
-          const d = dados.get(m);
-          if (!d) return null;
-          return (
-            <tr key={m}>
-              {[mesCurto(m), semCentavos(d.teto.valor), semCentavos(d.pagas.valor), `${pct(d.pagas.valor, d.teto.valor)}%`, semCentavos(d.vencidas.valor), semCentavos(d.aVencer.valor), semCentavos(d.recebido.valor), d.teto.clientes, d.teto.faturas].map((cel, i) => (
-                <td key={i} className="whitespace-nowrap px-[6px] py-[6px] text-right tabular-nums first:text-left" style={{ borderBottom: '1px solid var(--border-light)', color: 'var(--text-primary)' }}>{cel}</td>
-              ))}
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  );
-  return (
-    <GraficoBarrasEmpilhadas
-      categorias={categorias}
-      series={series}
-      formatarEixo={(v) => `${Math.round(v / 100000).toLocaleString('pt-BR')} mil`}
-      rotuloAcessivel="Faturamento mês a mês: teto, recebido, vencido e a vencer"
-      onSelecionar={(c) => onSelecionar(c.chave)}
-      tabela={tabela}
-      tooltip={(c) => {
-        const d = dados.get(c.chave);
-        if (!d) return <b className="font-display">{mesNome(c.chave)} {c.chave.slice(0, 4)}</b>;
-        const linha = (k: string, val: string) => (
-          <div className="flex justify-between gap-[12px]" style={{ color: 'var(--text-body)' }}><span>{k}</span><em className="font-display font-semibold not-italic" style={{ color: 'var(--text-primary)' }}>{val}</em></div>
-        );
-        return (
-          <div className="flex flex-col gap-[2px]">
-            <b className="font-display" style={{ color: 'var(--text-primary)' }}>{mesNome(c.chave)} {c.chave.slice(0, 4)}{c.tracejado ? ' · contratado' : ''}</b>
-            {linha('Teto', semCentavos(d.teto.valor))}
-            {linha('Pago do mês', `${semCentavos(d.pagas.valor)} · ${pct(d.pagas.valor, d.teto.valor)}%`)}
-            {linha('Vencido', semCentavos(d.vencidas.valor))}
-            {linha('A vencer', semCentavos(d.aVencer.valor))}
-            {linha('Recebido (caixa)', semCentavos(d.recebido.valor))}
-            {linha('Clientes · faturas', `${d.teto.clientes} · ${d.teto.faturas}`)}
-            {d.porProduto.some((p) => p.recebido > 0) ? <div className="my-[4px]" style={{ borderTop: '1px solid var(--border-light)' }} /> : null}
-            {d.porProduto.filter((p) => p.recebido > 0).map((p, i) => (
-              <div key={p.chave} className="flex items-center justify-between gap-[12px]" style={{ color: 'var(--text-body)' }}>
-                <span className="inline-flex items-center gap-[6px]"><i className="inline-block h-[8px] w-[8px] rounded-[2px]" style={{ background: PRODUTO_SLOT_COLORS[i % PRODUTO_SLOT_COLORS.length] }} />{p.rotulo}</span>
-                <em className="font-display font-semibold not-italic" style={{ color: 'var(--text-primary)' }}>{semCentavos(p.recebido)}</em>
-              </div>
-            ))}
-            {d.encargosRecebidos ? (
-              <div className="flex items-center justify-between gap-[12px]" style={{ color: 'var(--text-body)' }}>
-                <span className="inline-flex items-center gap-[6px]"><i className="inline-block h-[8px] w-[8px] rounded-[2px]" style={{ background: VIZ_NEUTRAL }} />Encargos</span>
-                <em className="font-display font-semibold not-italic" style={{ color: 'var(--text-primary)' }}>{semCentavos(d.encargosRecebidos)}</em>
-              </div>
-            ) : null}
-          </div>
-        );
-      }}
-    />
   );
 }

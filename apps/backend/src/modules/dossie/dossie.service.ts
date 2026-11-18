@@ -4,7 +4,7 @@ import { promises as fs } from 'fs';
 import { join, extname } from 'path';
 import { randomUUID } from 'crypto';
 import { StatusParcela } from '@azit/types';
-import { DIA_MS, dataCalendarioUTC, dataHojeBrasil, diaBrasil, formatCurrency, isoParaBR, nomeDiaSemanaISO, resolverStatusParcela } from '@azit/utils';
+import { DIA_MS, dataCalendarioUTC, dataHojeBrasil, diaBrasil, formatCurrency, formatarInstanteBR, isoParaBR, nomeDiaSemanaISO, resolverStatusParcela, textoDoAceiteWhatsapp, type AceiteWhatsappRegistrado } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { CabecalhoDossie, DadosHistorico, LinhaHistorico, SecaoSumario, htmlCapa, htmlCapaAnexo, htmlCapturas, htmlHistorico, htmlTextoContrato } from './dossie-html';
 import { comNavegador, contarPaginas, htmlParaPdf, juntarPdfs } from './pdf';
@@ -305,10 +305,17 @@ export class DossieService {
         partes.push({ chave: 'contrato', titulo: `Contrato ${c.numero} assinado`, pdf: contratoPdf.buffer });
       } else {
         const doc = await this.prisma.db.contratoCredito.findFirst({ where: { id: c.id }, select: { snapshotJson: true } });
-        const texto = (doc?.snapshotJson as { documento?: string } | null)?.documento;
+        const snap = doc?.snapshotJson as { documento?: string; aceiteWhatsapp?: AceiteWhatsappRegistrado } | null;
+        const texto = snap?.documento;
         if (texto) {
           avisos.push('Sem PDF assinado deste contrato: entrou o instrumento em texto gerado pelo sistema.');
           partes.push({ chave: 'contrato', titulo: `Contrato ${c.numero} (instrumento gerado pelo sistema)`, pdf: await htmlParaPdf(nav, htmlTextoContrato(cab, texto)) });
+        } else if (snap?.aceiteWhatsapp) {
+          // Reembolso Parcelado (doc 02 §18.7): não há contrato — o instrumento é o "de acordo" do cliente.
+          const ac = snap.aceiteWhatsapp;
+          const quem = ac.confirmadoPor ? ((await this.prisma.db.usuario.findFirst({ where: { id: ac.confirmadoPor }, select: { nome: true } }))?.nome ?? 'operador') : 'operador';
+          avisos.push('Este produto vale pelo "de acordo" do cliente no WhatsApp (sem contrato assinado): entrou o registro do aceite. Inclua a captura da conversa nas comunicações.');
+          partes.push({ chave: 'contrato', titulo: `Contratação ${c.numero} — "de acordo" do cliente`, pdf: await htmlParaPdf(nav, htmlTextoContrato(cab, textoDoAceiteWhatsapp(ac, quem, formatarInstanteBR(new Date(ac.confirmadoPeloOperadorEm))))) });
         } else {
           avisos.push('Sem PDF nem texto do contrato no sistema — anexe o instrumento à mão.');
         }
