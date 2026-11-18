@@ -12,7 +12,7 @@ export interface PosicaoConta {
   valorEmAtraso: number; // centavos
   faturasVencidas: number;
   bloqueada: boolean;
-  situacao: 'em_dia' | 'em_atraso' | 'em_acordo' | 'bloqueada';
+  situacao: 'em_dia' | 'em_atraso' | 'em_acordo' | 'bloqueada' | 'sem_contrato_ativo';
 }
 
 // Resumo da grade de clientes (doc 02 §27.8): valor sob gestão a VALOR PRESENTE
@@ -21,6 +21,8 @@ export interface ResumoCarteira {
   contas: number;
   contasEmAtraso: number;
   contasBloqueadas: number;
+  // Contas da grade sem contrato ATIVO (encerradas ou em formalização) — fora de `contas`.
+  contasSemContratoAtivo: number;
   contratosAtivos: number;
   valorSobGestaoPresente: number; // centavos
   valorSobGestaoNominal: number; // centavos

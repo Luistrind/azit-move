@@ -1322,6 +1322,16 @@ data-calendário no fuso do negócio.
 `GET /api/v1/contas/carteira/visao/mensal?de=2025-07&ate=2026-12` → `[{ "mes": "2026-10", …mesmo corpo… }]`
 (meses sem fatura não vêm).
 
+`GET /api/v1/contas/carteira/visao` traz também `"ativos": { "clientes": 66, "semFatura": [{ "contaId",
+"titularId", "titular", "proximaFatura": "2026-12-05" }] }` — clientes ativos (conta com contrato ATIVO) e
+quem deles não tem fatura contável no período (doc 02 §27.10).
+
+`GET /api/v1/contas/carteira/visao/variacao?de=2026-12&para=2027-01` → por que o teto muda de um mês
+para o outro (doc 02 §27.10): `{ "de", "para", "tetoDe", "tetoPara", "diferenca", "grupos": [{ "motivo":
+"calendario|entrou|saiu|faturas|valor", "sentido": "mais|menos", "valor", "faturas", "clientes", "contas":
+[{ "contaId", "titularId", "titular", "valor", "faturas" }] }] }`. Centavos com sinal; a soma de
+`grupos[].valor` é `diferenca`.
+
 `GET /api/v1/contas/carteira/visao/clientes?de&ate&estado=recebidas|vencidas|a_vencer` →
 `[{ "contaId", "titularId", "titular", "valor", "faturas", "maisAntiga": "2026-10-13", "ultimoPagamento?": "2026-10-27", "bloqueada": false }]`
 (vencidas por valor desc; demais por nome). `recebidas` lista quem PAGOU no período (caixa): `valor` =

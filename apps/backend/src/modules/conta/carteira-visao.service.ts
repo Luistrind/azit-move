@@ -5,10 +5,14 @@ import {
   dataCalendarioUTC,
   dataHojeBrasil,
   estadoFaturaVisao,
+  explicarVariacaoTeto,
   inicioDiaUTC,
+  periodoDoMes,
   somarDiasISO,
   FaturaVisao,
+  GrupoVariacaoTeto,
   RecebimentoVisao,
+  VariacaoTeto,
   VisaoCarteira,
   VisaoMensal,
   TipoContrato,
@@ -27,10 +31,30 @@ import { EstadoVisaoQuery } from './dto/visao-carteira.dto';
 // Cartões, por produto, mês a mês, comparação e lista de clientes saem daqui —
 // nenhuma tela refaz.
 
+// Cliente ATIVO (conta com contrato em status ATIVO) sem fatura contável no
+// período — a tela diz quem é e quando vem a próxima fatura, para o número de
+// "clientes" do teto nunca parecer que falta gente (doc 02 §27.10).
+export interface ClienteSemFatura {
+  contaId: string;
+  titularId: string;
+  titular: string;
+  proximaFatura: string | null; // YYYY-MM-DD — primeiro vencimento contável depois do período
+}
+
 export interface VisaoPeriodo extends VisaoCarteira {
   periodo: { de: string; ate: string };
   hoje: string;
+  ativos: { clientes: number; semFatura: ClienteSemFatura[] };
 }
+
+// Variação do teto entre dois meses, com o nome de cada cliente (doc 02 §27.10).
+export interface ContaVariacaoNomeada { contaId: string; titularId: string; titular: string; valor: number; faturas: number }
+export interface VariacaoTetoNomeada extends Omit<VariacaoTeto, 'grupos'> {
+  grupos: (Omit<GrupoVariacaoTeto, 'contas'> & { contas: ContaVariacaoNomeada[] })[];
+}
+
+// Status de fatura que contam no teto (os mesmos de `estadoFaturaVisao` ≠ 'fora').
+const STATUS_CONTAVEIS = ['ABERTA', 'FECHADA', 'PAGA', 'PAGA_EM_ATRASO'] as const;
 
 export interface ClienteVisao {
   contaId: string;
@@ -96,8 +120,55 @@ export class CarteiraVisaoService {
 
   async visao(de: string, ate: string): Promise<VisaoPeriodo> {
     const hoje = dataHojeBrasil();
-    const [faturas, recebimentos] = await Promise.all([this.carregarFaturas(de, ate), this.carregarRecebimentos(de, ate)]);
-    return { ...agregarVisaoCarteira(faturas, hoje, { recebimentos, periodo: { de, ate } }), periodo: { de, ate }, hoje };
+    const [faturas, recebimentos, ativas] = await Promise.all([this.carregarFaturas(de, ate), this.carregarRecebimentos(de, ate), this.contasAtivas()]);
+    // Ativos × clientes no teto: quem tem contrato ATIVO e nenhuma fatura contável no período.
+    const noTeto = new Set(faturas.filter((f) => estadoFaturaVisao(f.status, f.vencimento, hoje) !== 'fora').map((f) => f.contaId));
+    const sem = ativas.filter((c) => !noTeto.has(c.contaId));
+    const proximas = sem.length
+      ? await this.prisma.db.fatura.groupBy({
+          by: ['contaId'],
+          where: { deletedAt: null, contaId: { in: sem.map((c) => c.contaId) }, status: { in: [...STATUS_CONTAVEIS] }, dataVencimento: { gte: inicioDiaUTC(somarDiasISO(ate, 1)) } },
+          _min: { dataVencimento: true },
+        })
+      : [];
+    const proximaDe = new Map(proximas.map((x) => [x.contaId, x._min.dataVencimento ? dataCalendarioUTC(x._min.dataVencimento) : null]));
+    const semFatura: ClienteSemFatura[] = sem
+      .map((c) => ({ contaId: c.contaId, titularId: c.titularId, titular: c.titular, proximaFatura: proximaDe.get(c.contaId) ?? null }))
+      .sort((a, b) => a.titular.localeCompare(b.titular, 'pt-BR'));
+    return {
+      ...agregarVisaoCarteira(faturas, hoje, { recebimentos, periodo: { de, ate } }),
+      periodo: { de, ate },
+      hoje,
+      ativos: { clientes: ativas.length, semFatura },
+    };
+  }
+
+  // Por que o teto muda de um mês para o outro (YYYY-MM): a decomposição é da
+  // função única `explicarVariacaoTeto`; aqui só entram os nomes.
+  async variacao(deMes: string, paraMes: string): Promise<VariacaoTetoNomeada> {
+    const hoje = dataHojeBrasil();
+    const pa = periodoDoMes(deMes);
+    const pb = periodoDoMes(paraMes);
+    const [a, b] = await Promise.all([this.carregarFaturas(pa.de, pa.ate), this.carregarFaturas(pb.de, pb.ate)]);
+    const r = explicarVariacaoTeto(a, b, { de: deMes, para: paraMes }, hoje);
+    const quem = new Map([...a, ...b].map((f) => [f.contaId, { titularId: f.titularId, titular: f.titular }]));
+    return {
+      ...r,
+      grupos: r.grupos.map((g) => ({
+        ...g,
+        contas: g.contas.map((c) => ({ ...c, titularId: quem.get(c.contaId)?.titularId ?? '', titular: quem.get(c.contaId)?.titular ?? '—' })),
+      })),
+    };
+  }
+
+  // Contas com pelo menos um contrato em status ATIVO — o "cliente ativo" da tela.
+  private async contasAtivas(): Promise<{ contaId: string; titularId: string; titular: string }[]> {
+    const rows = await this.prisma.db.conta.findMany({
+      // Mesmo recorte da grade de clientes (ContaService.carteira): titular não apagado.
+      where: { titular: { deletedAt: null }, contratosCredito: { some: { status: 'ATIVO', deletedAt: null } } },
+      select: { id: true, titularId: true, titular: { select: { nome: true } } },
+    });
+    return rows.map((c) => ({ contaId: c.id, titularId: c.titularId, titular: c.titular.nome }));
   }
 
   // Mês a mês entre dois meses (YYYY-MM, inclusivos). Meses sem nada não vêm.

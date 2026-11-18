@@ -17,6 +17,8 @@ import {
   visaoPeriodoSchema,
   visaoMensalSchema,
   visaoClientesSchema,
+  visaoVariacaoSchema,
+  VisaoVariacaoQuery,
   VisaoPeriodoQuery,
   VisaoMensalQuery,
   VisaoClientesQuery,
@@ -67,6 +69,13 @@ export class ContaController {
   @Get('carteira/visao/mensal')
   visaoMensal(@Query(new ZodValidationPipe(visaoMensalSchema)) q: VisaoMensalQuery) {
     return this.visaoService.mensal(q.de, q.ate);
+  }
+
+  // Por que o teto muda de um mês para o outro (YYYY-MM): calendário, quem
+  // entrou, quem saiu, fatura a mais/menos e valor que mudou — com os nomes.
+  @Get('carteira/visao/variacao')
+  visaoVariacao(@Query(new ZodValidationPipe(visaoVariacaoSchema)) q: VisaoVariacaoQuery) {
+    return this.visaoService.variacao(q.de, q.para);
   }
 
   // Clientes atrás de um cartão (recebidas | vencidas | a_vencer) no período.

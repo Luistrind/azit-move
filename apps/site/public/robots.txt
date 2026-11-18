@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://azitmove.com.br/sitemap.xml

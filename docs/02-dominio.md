@@ -2841,6 +2841,53 @@ leitura", nunca como "removida".
 API: `GET /cobranca/conferencia-asaas?de&ate` e `POST /cobranca/conferencia-asaas/:faturaId/reconciliar`
 (ADMIN/OPERADOR). Detalhe em `api-spec.md` §4.2-A.
 
+### 27.10 A tela se explica: clientes ativos × clientes no teto, e por que o teto muda de mês (2026-11-16)
+
+**Origem.** Em produção a tela mostrava "65 clientes" em novembro, com mais clientes ativos que isso,
+e um teto de dezembro bem maior que o de janeiro — "são coisas que não estão me passando muita
+confiança" (Luís, 16/11). A conferência no banco mostrou que os números estavam certos: havia 66
+clientes ativos, um deles com a primeira fatura só em dezembro; e 31 clientes têm cinco vencimentos
+em dezembro e quatro em janeiro. Faltava a tela dizer isso.
+
+**Definições.**
+
+- **Cliente ativo** = conta com pelo menos um contrato em status ATIVO.
+- **Clientes do teto** = contas com pelo menos uma fatura contável (ABERTA, FECHADA, PAGA,
+  PAGA_EM_ATRASO) vencendo no período. Os dois números aparecem juntos, e a tela lista quem é ativo
+  e não tem fatura no período, com a data da próxima fatura.
+
+**Uma definição, as duas telas.** A grade "Clientes da carteira" lista toda conta que tem contrato,
+inclusive as que não têm mais nenhum contrato ATIVO (tudo encerrado, ou contrato ainda em
+formalização) — é histórico. Ela dizia "68 contratos ativos · 67 contas", e o 67 era o total da grade,
+não os clientes ativos; a visão geral dizia 66. Agora o cartão diz "68 contratos ativos em 66 clientes
+ativos · 1 conta sem contrato ativo", essas contas têm situação própria (**Sem contrato ativo**, com
+filtro) e o "em atraso" é contado sobre os clientes ativos. Contrato apagado não conta.
+
+**Por que o teto muda de um mês para o outro.** A diferença entre o teto de dois meses é decomposta
+cliente a cliente em cinco motivos, que **somam exatamente a diferença** (função única
+`explicarVariacaoTeto`, em `packages/utils`, Regra 16):
+
+| Motivo | O que é |
+|---|---|
+| Calendário | o dia de vencimento do cliente cai mais (ou menos) vezes no mês |
+| Entrou | cliente com fatura no mês de destino e nenhuma no de origem |
+| Saiu | o contrário |
+| Fatura a mais/a menos | fatura que o calendário não explica — algo com fatura própria começa ou termina |
+| Valor | mesma fatura, valor diferente — item que começa ou deixa de ser cobrado |
+
+Quem sobe e quem desce fica em linhas separadas (não se mostra saldo). Como as faturas de um cliente
+são casadas: valores iguais nos dois meses se anulam; do que sobra, casa-se do maior para o menor (a
+diferença é "valor"); o que fica sem par é fatura a mais ou a menos — "calendário" quando todas as
+faturas do cliente caem no mesmo dia da semana e o número de ocorrências desse dia nos dois meses
+explica a diferença de quantidade; senão, "fatura a mais/a menos".
+
+**Na tela.** Abaixo do gráfico mês a mês, dois quadros: mês seguinte × mês selecionado, e o
+seguinte a ele. Cada linha abre a lista dos clientes, com link para a ficha. Valores com centavos,
+para a soma das linhas conferir com a diferença.
+
+API: `GET /contas/carteira/visao/variacao?de=AAAA-MM&para=AAAA-MM`; `ativos` em
+`GET /contas/carteira/visao`. Conferência no banco: `deploy/sql/conferencia-carteira-clientes.sql`.
+
 
 ---
 
