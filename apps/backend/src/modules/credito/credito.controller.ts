@@ -9,6 +9,8 @@ import {
   OriginarCreditoDto,
   simularCreditoSchema,
   SimularCreditoDto,
+  registrarDeAcordoSchema,
+  RegistrarDeAcordoDto,
 } from './dto/credito.dto';
 import { Area } from '../../common/decorators/area.decorator';
 
@@ -36,5 +38,18 @@ export class CreditoController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.credito.originar(titularId, dto, user.id);
+  }
+
+  // Reembolso Parcelado que ficou parado em "aguardando assinatura" (aprovado antes de
+  // 18/11): registra o "de acordo" do cliente, cancela o documento em aberto e ativa.
+  @Roles(RoleUsuario.OPERADOR, RoleUsuario.APROVADOR, RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
+  @Post('creditos/:id/de-acordo')
+  @HttpCode(200)
+  registrarDeAcordo(
+    @Param('id') contratoId: string,
+    @Body(new ZodValidationPipe(registrarDeAcordoSchema)) dto: RegistrarDeAcordoDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.credito.registrarDeAcordo(contratoId, dto, user.id);
   }
 }

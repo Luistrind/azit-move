@@ -5,6 +5,7 @@ import {
   comprometimentoRenda,
   dataCalendarioUTC,
   formatarDiaBR,
+  type AceiteWhatsappRegistrado,
   formatarInstanteBR,
   formatCurrency,
   inicioHojeBrasilUTC,
@@ -292,13 +293,18 @@ export class AprovacaoDossieService {
       where: { id: contratoId },
       select: {
         numero: true, contaId: true, valorTotal: true, valorEntrada: true, numeroParcelas: true, valorParcelaInicial: true,
-        periodicidade: true, dataPrimeiraParcela: true,
+        periodicidade: true, dataPrimeiraParcela: true, snapshotJson: true,
         ativo: { select: { descricao: true, placa: true } },
         itensContratados: { where: { deletedAt: null }, select: { descricao: true, valor: true, numeroParcelas: true } },
       },
     });
     if (!c) return base;
-    const p = (payload ?? {}) as { valorPrincipal?: number; fornecedorNome?: string };
+    const p = (payload ?? {}) as { valorPrincipal?: number; fornecedorNome?: string; observacao?: string };
+    // "De acordo" do cliente (doc 02 §18.7): o instrumento do Reembolso Parcelado.
+    const aceite = (c.snapshotJson as { aceiteWhatsapp?: AceiteWhatsappRegistrado } | null)?.aceiteWhatsapp ?? null;
+    const quemRegistrou = aceite?.confirmadoPor
+      ? ((await this.prisma.db.usuario.findFirst({ where: { id: aceite.confirmadoPor }, select: { nome: true } }))?.nome ?? 'operador')
+      : 'operador';
     const blocos: BlocoDossie[] = [
       {
         titulo: 'O que está sendo contratado',
@@ -311,8 +317,21 @@ export class AprovacaoDossieService {
           ...(cent(c.valorEntrada) > 0 ? [{ rotulo: 'Entrada', valor: formatCurrency(cent(c.valorEntrada)) }] : []),
           { rotulo: 'Total a pagar pelo cliente', valor: formatCurrency(cent(c.valorTotal)) },
           { rotulo: '1ª parcela', valor: formatarDiaBR(c.dataPrimeiraParcela) },
+          ...(p.observacao ? [{ rotulo: 'Observação de quem pediu', valor: p.observacao }] : []),
         ],
       },
+      ...(aceite
+        ? [
+            {
+              titulo: '"De acordo" do cliente · WhatsApp',
+              campos: [
+                { rotulo: 'Resposta do cliente', valor: aceite.respostaCliente ? `“${aceite.respostaCliente}”` : 'Confirmada pelo operador; o texto da resposta não foi colado', tom: aceite.respostaCliente ? ('ok' as const) : ('atencao' as const) },
+                { rotulo: 'Registrado por', valor: `${quemRegistrou} em ${formatarInstanteBR(new Date(aceite.confirmadoPeloOperadorEm))}` },
+              ],
+              nota: aceite.mensagemEnviada ? `Mensagem enviada ao cliente:\n${aceite.mensagemEnviada}` : 'Este produto vale pelo "de acordo" do cliente — não há contrato nem assinatura.',
+            },
+          ]
+        : []),
     ];
     return { ...base, blocos, conta: await this.contextoConta(c.contaId) };
   }

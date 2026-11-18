@@ -12,7 +12,7 @@ import {
   StatusContratoCredito as StatusContratoCreditoPrisma,
 } from '@prisma/client';
 import { StatusContratoCredito, Credor, Periodicidade as PeriodicidadeTypes } from '@azit/types';
-import { diasAtrasoCalendario, gerarCronograma, centavosParaReaisString, inicioHojeBrasilUTC, dataCalendarioUTC, inicioDiaUTC, DIA_MS, DIAS_POR_PERIODO, fatorValorDesdeSemanal, FUSO_NEGOCIO } from '@azit/utils';
+import { diasAtrasoCalendario, gerarCronograma, centavosParaReaisString, inicioHojeBrasilUTC, dataCalendarioUTC, inicioDiaUTC, DIA_MS, DIAS_POR_PERIODO, fatorValorDesdeSemanal, FUSO_NEGOCIO, formatarInstanteBR, textoDoAceiteWhatsapp, type AceiteWhatsappRegistrado } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { parametrosFaturamentoVigentes } from '../faturamento/parametros-faturamento.service';
 import { CriarContratoDto } from './dto/criar-contrato.dto';
@@ -904,7 +904,13 @@ export class ContratoService {
       select: { numero: true, snapshotJson: true },
     });
     if (!contrato) throw this.naoEncontrado();
-    const snap = contrato.snapshotJson as { documento?: string } | null;
+    const snap = contrato.snapshotJson as { documento?: string; aceiteWhatsapp?: AceiteWhatsappRegistrado } | null;
+    // Reembolso Parcelado (doc 02 §18.7): não há contrato — o instrumento é o "de acordo" do cliente.
+    if (!snap?.documento && snap?.aceiteWhatsapp) {
+      const ac = snap.aceiteWhatsapp;
+      const quem = ac.confirmadoPor ? ((await this.prisma.db.usuario.findFirst({ where: { id: ac.confirmadoPor }, select: { nome: true } }))?.nome ?? 'operador') : 'operador';
+      return { numero: contrato.numero, texto: textoDoAceiteWhatsapp(ac, quem, formatarInstanteBR(new Date(ac.confirmadoPeloOperadorEm))), disponivel: true };
+    }
     const texto = snap?.documento
       ?? `Contrato nº ${contrato.numero}\n\nInstrumento não disponível (contrato migrado do legado, sem documento gerado).`;
     return { numero: contrato.numero, texto, disponivel: !!snap?.documento };

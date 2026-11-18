@@ -26,6 +26,12 @@ export interface OriginarCreditoBody {
   // Fornecedor a pagar (doc 02 §18.5, 13/09): o RP paga o fornecedor do cliente
   // — obrigatório quando o produto é Reembolso Parcelado.
   fornecedorId?: string;
+  // "De acordo" do cliente pelo WhatsApp (doc 02 §18.7): obrigatório no Reembolso
+  // Parcelado, que vale por ele — sem contrato nem assinatura.
+  aceiteWhatsapp?: boolean;
+  mensagemWhatsapp?: string;
+  respostaCliente?: string;
+  observacao?: string;
 }
 
 export const creditoService = {
@@ -35,6 +41,12 @@ export const creditoService = {
   },
   async originar(titularId: string, body: OriginarCreditoBody): Promise<{ contratoId: string; numero: string; status: string; valorParcela: number }> {
     const { data } = await api.post(`/api/v1/titulares/${titularId}/creditos`, body);
+    return data;
+  },
+  // Reembolso aprovado antes de 18/11 e parado em "aguardando assinatura": registra o
+  // "de acordo" do cliente, cancela o termo em aberto e ativa.
+  async registrarDeAcordo(contratoId: string, body: { aceiteWhatsapp: boolean; mensagemWhatsapp?: string; respostaCliente?: string }): Promise<{ contratoId: string; numero: string; status: string }> {
+    const { data } = await api.post(`/api/v1/creditos/${contratoId}/de-acordo`, body);
     return data;
   },
 };

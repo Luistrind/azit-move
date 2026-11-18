@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { rotuloAtivo, formatCurrency } from '@azit/utils';
 import { contratoService } from '../services/contrato.service';
+import { creditoService } from '../services/credito.service';
 import { operacoesService, SimulacaoQuitacao } from '../services/operacoes.service';
 import { StatusBadge } from '../components/StatusBadge';
 import { Modal } from '../components/Modal';
@@ -377,19 +378,22 @@ export function ContratoDetalhePage() {
         </div>
       )}
 
-      {/* Termo do Reembolso Parcelado aguardando assinatura (doc 02 §18.5, 13/09):
-          cronograma e pagamento ao fornecedor só nascem quando TODOS assinam. */}
+      {/* Aguardando assinatura. Contrato de veículo: assinatura digital. Reembolso Parcelado
+          aprovado antes de 18/11: vale o "de acordo" do cliente (doc 02 §18.7) — registrar e ativar. */}
       {c && c.status === 'Aguardando assinatura' && (
         <div className="rounded-card p-[16px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
           <Secao titulo="Assinatura pendente">
             <div className="mb-[8px] text-[12px]" style={{ color: 'var(--text-muted)' }}>
-              {c.ativo ? 'O contrato aguarda assinatura digital.' : 'O termo do Reembolso Parcelado aguarda assinatura — as parcelas só entram nas faturas e o pagamento ao fornecedor só é criado quando todos assinarem.'}
+              {c.ativo
+                ? 'O contrato aguarda assinatura digital.'
+                : 'Este reembolso foi aprovado quando ainda se exigia termo assinado. O Reembolso Parcelado agora vale pelo “de acordo” do cliente: registre a resposta dele e as parcelas entram nas faturas e o pagamento ao fornecedor é criado.'}
             </div>
+            {!c.ativo && <RegistrarDeAcordo contratoId={c.id} aoRegistrar={recarregar} />}
             <BlocoAssinaturaDigital
               contratoId={c.id}
               ocupado={assinando}
               run={runAssinatura}
-              titulo={c.ativo ? undefined : 'Termo do Reembolso Parcelado (ZapSign)'}
+              titulo={c.ativo ? undefined : 'Termo enviado antes de 18/11 (ZapSign) — cancelado ao registrar o de acordo'}
             />
           </Secao>
         </div>
@@ -607,6 +611,43 @@ export function ContratoDetalhePage() {
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+// Reembolso Parcelado aprovado antes de 18/11 e parado em "aguardando assinatura"
+// (doc 02 §18.7): o operador registra o "de acordo" do cliente; o termo em aberto
+// é cancelado e o reembolso ativa. A confirmação é obrigatória — o servidor recusa sem ela.
+function RegistrarDeAcordo({ contratoId, aoRegistrar }: { contratoId: string; aoRegistrar: () => Promise<unknown> }) {
+  const [aceite, setAceite] = useState(false);
+  const [resposta, setResposta] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  async function registrar() {
+    setEnviando(true);
+    try {
+      const r = await creditoService.registrarDeAcordo(contratoId, { aceiteWhatsapp: aceite, respostaCliente: resposta.trim() || undefined });
+      toast.sucesso(`Reembolso ${r.numero} ativado — parcelas nas faturas do cliente e pagamento ao fornecedor no contas a pagar.`);
+      await aoRegistrar();
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+    } finally {
+      setEnviando(false);
+    }
+  }
+  return (
+    <div className="mb-[12px] flex flex-col gap-[8px] rounded-[10px] p-[12px]" style={{ background: 'var(--surface-input)' }}>
+      <span className="text-[12.5px] font-bold" style={{ color: 'var(--text-primary)' }}>Registrar o “de acordo” do cliente</span>
+      <label className="flex items-start gap-[8px] text-[12.5px]" style={{ color: 'var(--text-primary)' }}>
+        <input type="checkbox" className="mt-[2px]" checked={aceite} onChange={(e) => setAceite(e.target.checked)} />
+        <span>O cliente respondeu o “de acordo” no WhatsApp com as condições deste reembolso</span>
+      </label>
+      <label className="flex flex-col gap-[4px] text-[12px]">
+        <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Resposta do cliente (cole o texto)</span>
+        <textarea value={resposta} onChange={(e) => setResposta(e.target.value)} rows={2} maxLength={2000} placeholder="Ex.: De acordo" className="rounded-[10px] px-[10px] py-[8px] text-[12.5px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
+      </label>
+      <Botao variante="primaria" className="self-start" disabled={!aceite} carregando={enviando} onClick={() => void registrar()} title={aceite ? undefined : 'Marque a confirmação para liberar'}>
+        Registrar e ativar o reembolso
+      </Botao>
     </div>
   );
 }
