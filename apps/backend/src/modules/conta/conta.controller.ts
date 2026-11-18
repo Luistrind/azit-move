@@ -71,6 +71,12 @@ export class ContaController {
     return this.visaoService.mensal(q.de, q.ate);
   }
 
+  // Primeiro e último mês com fatura — limites do gráfico e das setas do período.
+  @Get('carteira/visao/limites')
+  visaoLimites() {
+    return this.visaoService.limites();
+  }
+
   // Por que o teto muda de um mês para o outro (YYYY-MM): calendário, quem
   // entrou, quem saiu, fatura a mais/menos e valor que mudou — com os nomes.
   @Get('carteira/visao/variacao')

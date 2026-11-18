@@ -396,6 +396,8 @@ export const VISAO_ESTADO_COLORS: Record<'recebidas' | 'vencidas' | 'a_vencer', 
 };
 export const PRODUTO_SLOT_COLORS: string[] = ['var(--viz-p1)', 'var(--viz-p2)', 'var(--viz-p3)', 'var(--viz-p4)', 'var(--viz-p5)', 'var(--viz-p6)'];
 export const VIZ_NEUTRAL = 'var(--viz-neutral)';
+// Contratado que ainda não venceu (futuro do gráfico da Carteira, doc 02 §27.11): cinza calmo, sem hachura.
+export const VIZ_FUTURO = 'var(--viz-futuro)';
 
 // Registro de acessos e entrada do usuário (doc 06 v1.1 §2.5) — chaves são os
 // rótulos de @azit/types (ROTULO_RESULTADO_ACESSO / ROTULO_ENTRADA_USUARIO).

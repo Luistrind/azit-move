@@ -95,12 +95,12 @@ body {
 /* Cores de visualização (dataviz) — status e categóricas, por tema. Só são
    lidas via statusColors.ts (Regra 9). */
 :root {
-  --viz-good: #15803d; --viz-warn: #ca8a04; --viz-bad: #b91c1c; --viz-neutral: #71717a;
+  --viz-good: #15803d; --viz-warn: #ca8a04; --viz-bad: #b91c1c; --viz-neutral: #71717a; --viz-futuro: #d3dbe6;
   --viz-good-soft: rgba(21, 128, 61, 0.12); --viz-warn-soft: rgba(202, 138, 4, 0.14); --viz-bad-soft: rgba(185, 28, 28, 0.1);
   --viz-p1: #2a78d6; --viz-p2: #eb6834; --viz-p3: #1baf7a; --viz-p4: #eda100; --viz-p5: #e87ba4; --viz-p6: #6250d6;
 }
 :root[data-theme='dark'] {
-  --viz-good: #2e9e5b; --viz-warn: #c9960f; --viz-bad: #e5484d; --viz-neutral: #8b8b93;
+  --viz-good: #2e9e5b; --viz-warn: #c9960f; --viz-bad: #e5484d; --viz-neutral: #8b8b93; --viz-futuro: #34343b;
   --viz-good-soft: rgba(46, 158, 91, 0.16); --viz-warn-soft: rgba(201, 150, 15, 0.16); --viz-bad-soft: rgba(229, 72, 77, 0.16);
   --viz-p1: #3987e5; --viz-p2: #d95926; --viz-p3: #199e70; --viz-p4: #c98500; --viz-p5: #d55181; --viz-p6: #9085e9;
 }
@@ -125,4 +125,16 @@ body {
   --info-fg: #7fb0f5; --info-bg: rgba(57, 135, 229, 0.2);
   --violet-fg: #b3a7f5; --violet-bg: rgba(144, 133, 233, 0.2);
   --purple-fg: #cf9df0; --purple-bg: rgba(154, 59, 209, 0.22);
+}
+
+/* Gráfico de tempo (components/GraficoTempo.tsx): as barras sobem e a linha se
+   desenha quando a visão muda. Sem movimento para quem pediu menos movimento. */
+@keyframes gt-cresce { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes gt-desenha { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes gt-surge { from { opacity: 0; } to { opacity: 1; } }
+.grafico-tempo .gt-col { transform-box: fill-box; transform-origin: 50% 100%; animation: gt-cresce 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.grafico-tempo .gt-traco { stroke-dasharray: 1; animation: gt-desenha 1.1s cubic-bezier(0.4, 0, 0.2, 1) 0.15s both; }
+.grafico-tempo .gt-surge { animation: gt-surge 0.6s ease-out 0.5s both; }
+@media (prefers-reduced-motion: reduce) {
+  .grafico-tempo .gt-col, .grafico-tempo .gt-traco, .grafico-tempo .gt-surge { animation: none; }
 }

@@ -41,6 +41,11 @@ export const carteiraVisaoService = {
     const { data } = await api.get<VisaoMensal[]>('/api/v1/contas/carteira/visao/mensal', { params: { de, ate } });
     return data;
   },
+  // Primeiro e último mês com fatura contável (doc 02 §27.11).
+  async limites(): Promise<{ primeiroMes: string | null; ultimoMes: string | null }> {
+    const { data } = await api.get<{ primeiroMes: string | null; ultimoMes: string | null }>('/api/v1/contas/carteira/visao/limites');
+    return data;
+  },
   async variacao(de: string, para: string): Promise<VariacaoTetoNomeada> {
     const { data } = await api.get<VariacaoTetoNomeada>('/api/v1/contas/carteira/visao/variacao', { params: { de, para } });
     return data;

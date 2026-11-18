@@ -1349,6 +1349,10 @@ data-calendário no fuso do negócio.
 "titularId", "titular", "proximaFatura": "2026-12-05" }] }` — clientes ativos (conta com contrato ATIVO) e
 quem deles não tem fatura contável no período (doc 02 §27.10).
 
+`GET /api/v1/contas/carteira/visao/limites` → `{ "primeiroMes": "2025-08", "ultimoMes": "2030-11" }` — mês da primeira
+e da última fatura que conta para o teto (doc 02 §27.11); limita o gráfico "Mês a mês" e as setas do
+período. `GET /api/v1/contas/carteira/visao/mensal` aceita qualquer intervalo entre os dois.
+
 `GET /api/v1/contas/carteira/visao/variacao?de=2026-12&para=2027-01` → por que o teto muda de um mês
 para o outro (doc 02 §27.10): `{ "de", "para", "tetoDe", "tetoPara", "diferenca", "grupos": [{ "motivo":
 "calendario|entrou|saiu|faturas|valor", "sentido": "mais|menos", "valor", "faturas", "clientes", "contas":

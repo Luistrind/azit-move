@@ -2889,6 +2889,37 @@ API: `GET /contas/carteira/visao/variacao?de=AAAA-MM&para=AAAA-MM`; `ativos` em
 `GET /contas/carteira/visao`. Conferência no banco: `deploy/sql/conferencia-carteira-clientes.sql`.
 
 
+### 27.11 A carteira no tempo: o gráfico "Mês a mês" até a última fatura (pedido Luís, 2026-11-18)
+
+**Origem.** O gráfico parava dois meses à frente de hoje, e a seta do período também. Pedido do
+Luís: ver a projeção do que já está contratado, uma linha passando pelo topo das barras, nada
+estático — e, depois do primeiro protótipo ("meio grotesco"), **mais limpo**. Só o gráfico muda:
+Cobranças, Por produto e O que vem aí ficam como estavam.
+
+- **Alcance.** O gráfico e as setas do período vão da **primeira à última fatura** que conta para o
+  teto (`GET /contas/carteira/visao/limites`). O limite de "hoje + 2 meses" deixa de existir.
+- **Desenho.** Barras finas: o que já aconteceu nas cores de sempre (pago, vencido, a vencer); o que
+  está contratado e ainda não venceu, em cinza-claro, sem hachura. **Uma linha** suave pelo topo
+  das barras, que se desenha quando a visão muda. Sem caixa flutuante: o número grande acima do
+  gráfico acompanha o mês sob o ponteiro (ou o dedo); sem ponteiro, mostra o mês selecionado na
+  tela, ou o de hoje.
+- **Horizonte.** 1 ano e 2 anos (seis meses de história + 12 ou 24 à frente) e Tudo; setas andam de
+  três em três meses. Acima de 32 pontos o gráfico agrupa por **trimestre** sozinho.
+- **Barras por** situação ou por produto (o mesmo recorte do bloco "Por produto").
+- **Recebido no mês** (caixa, só em mês fechado) liga e desliga na legenda — mesmo eixo em reais.
+- **Leitura.** Uma frase: pico do que está contratado, quando cai abaixo de 75% do pico se nada
+  mais for vendido e quando vence a última fatura (`escoamentoDaCarteira`).
+- **Simular vendas novas** (recolhido; **provisório**, Regra 12): contratos novos por mês,
+  recebimento esperado e meta desenham por cima do contratado e **não gravam nada**. Cada contrato
+  novo vale o que um cliente de hoje tem de fatura por mês, em média (`ticketMedioMensal`), por
+  `PRAZO_SIMULACAO_MESES` (36). Meta e recebimento esperado viram parâmetro quando o Luís definir.
+- **Contas** em `packages/utils/src/carteira-tempo.ts` (Regra 16): `pontosDaCarteira`,
+  `escoamentoDaCarteira`, `ticketMedioMensal`, `simularVendasNovas`.
+
+**Fora desta entrega (aguardam decisão):** barras por safra do contrato, visão por semana e a
+linha de **vencido acumulado** dos meses passados — o sistema sabe o que está vencido hoje, não a
+foto de cada fim de mês; reconstituir pelos pagamentos tem ressalva nos meses da migração.
+
 ---
 
 ## 28. Lembretes de pagamento pelo WhatsApp (decisão Luís, 2026-10-30)

@@ -22,6 +22,7 @@ export * from './legado-vencimentos';
 export * from './fipe';
 export * from './tipo-contrato';
 export * from './carteira-visao';
+export * from './carteira-tempo';
 export * from './fatura-situacao';
 export * from './conta-situacao';
 export * from './fatura-motor';
