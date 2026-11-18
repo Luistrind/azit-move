@@ -20,7 +20,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, UsuarioAutenticado } from '../../common/decorators/current-user.decorator';
 import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { PrismaService } from '../../database/prisma.service';
-import { FaturaService, eventoConciliacaoDe, type CobrancaAsaasAoVivo } from './fatura.service';
+import { FaturaService, VISOES_FATURAS_CONTA, eventoConciliacaoDe, type CobrancaAsaasAoVivo } from './fatura.service';
 import { AsaasLeituraService } from '../asaas/asaas-leitura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { ConferenciaAsaasService } from './conferencia-asaas.service';
@@ -59,16 +59,31 @@ export class CobrancaController {
     return this.fatura.extrato(id);
   }
 
-  // Visão de faturas do cliente (por conta), paginada — agrega itens de vários contratos.
+  // Ficha do titular (doc 02 §33): faturas da conta por visão — agora | vencer | pagas | outras.
   @Area(AreaSistema.CARTEIRA_COBRANCA, ...AREAS_FICHA_TITULAR)
   @Get('contas/:contaId/faturas')
   faturas(
     @Param('contaId') contaId: string,
-    @Query('page') page?: string, // número ou 'atual' (página da fatura mais antiga em aberto)
+    @Query('visao') visao?: string,
+    @Query('offset') offset?: string,
     @Query('limit') limit?: string,
-    @Query('novadas') novadas?: string, // 'mostrar' traz as faturas extintas pela novação
   ) {
-    return this.fatura.faturasDaConta(contaId, page === 'atual' ? 'atual' : Number(page) || 1, Number(limit) || 8, novadas === 'mostrar');
+    const v = VISOES_FATURAS_CONTA.find((x) => x === visao) ?? 'agora';
+    return this.fatura.faturasDaConta(contaId, v, Number(offset) || 0, Number(limit) || 10);
+  }
+
+  // Posição de hoje da conta: atraso, próxima fatura, último pagamento e o cronograma em números.
+  @Area(AreaSistema.CARTEIRA_COBRANCA, ...AREAS_FICHA_TITULAR)
+  @Get('contas/:contaId/posicao')
+  posicao(@Param('contaId') contaId: string) {
+    return this.fatura.posicaoDaConta(contaId);
+  }
+
+  // Pagamentos da conta: cada dinheiro que entrou e a fatura que ele quitou.
+  @Area(AreaSistema.CARTEIRA_COBRANCA, ...AREAS_FICHA_TITULAR)
+  @Get('contas/:contaId/pagamentos')
+  pagamentos(@Param('contaId') contaId: string, @Query('offset') offset?: string, @Query('limit') limit?: string) {
+    return this.fatura.pagamentosDaConta(contaId, Number(offset) || 0, Number(limit) || 10);
   }
 
   // Lançamentos avulsos da conta (entradas de contrato/acordo — doc 02 §4-A.3, 30/08).

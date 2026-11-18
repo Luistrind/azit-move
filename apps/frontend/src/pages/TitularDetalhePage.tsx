@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
-import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
 import { titularService } from '../services/titular.service';
-import { faturaService, FaturaDetalhe } from '../services/fatura.service';
-import { diasAtrasoBrasil, hojeBrasilISO } from '../lib/datas';
+import { faturaService } from '../services/fatura.service';
 import { originacaoService } from '../services/originacao.service';
 import { creditoService } from '../services/credito.service';
 import { financeiroService } from '../services/financeiro.service';
@@ -18,30 +17,25 @@ import { BotaoVerRetorno } from '../components/RetornoBiro';
 import { RenegociacaoWizard } from '../components/RenegociacaoWizard';
 import { NovacaoDecomposicaoModal } from '../components/NovacaoDecomposicao';
 import { toast } from '../components/Toast';
-import { CONTRATO_STATUS_COLORS, SITUACAO_CONTRATO_COLORS, SITUACAO_CONTRATO_LABEL, FATURA_SITUACAO_COLORS, FATURA_SITUACAO_LABEL } from '../config/statusColors';
-import { Metrica, Campo } from '../components/Metrica';
+import { CONTRATO_STATUS_COLORS, SITUACAO_CONTRATO_COLORS, SITUACAO_CONTRATO_LABEL, CONTA_SITUACAO_COLORS, CONTA_SITUACAO_LABEL } from '../config/statusColors';
+import { Campo } from '../components/Metrica';
 import { DocumentoViewer, useDocumentoViewer } from '../components/DocumentoViewer';
-import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 import { Tabela } from '../components/Tabela';
 import { Botao } from '../components/Botao';
-import { Bloco } from '../components/Bloco';
 import { Secao } from '../components/Secao';
-import { LinkFaturaAcoes } from '../components/LinkFaturaAcoes';
-import { FaturaAzitBloco } from '../components/FaturaAzitBloco';
+import { Abas } from '../components/Abas';
+import { PosicaoHoje } from './titular/PosicaoHoje';
+import { FaturasDaConta } from './titular/FaturasDaConta';
+import { PagamentosDaConta } from './titular/PagamentosDaConta';
 
-// Layout v2 (doc 03 §11): a ficha do titular (hub da conta) em Secaos — uma
-// coluna no celular, duas no desktop —, relacionamento em Bloco com Leitura,
-// contratos/lançamentos/faturas em Tabela responsiva (no celular cada fatura
-// é um cartão: nº, vencimento, valor e situação), ações em Botao; só tokens.
+// Ficha do titular (doc 02 §33, redesenho de 18/11): a tela responde primeiro
+// "como está este cliente HOJE" — posição de hoje e cronograma no topo — e
+// guarda o resto em abas: Faturas (por visão, com a fatura aberta na linha),
+// Pagamentos (cada dinheiro que entrou), Contratos e Cadastro. As peças da
+// conta vivem em ./titular; aqui ficam o cabeçalho, as ações e as abas.
 
 const card = { background: 'var(--surface)', border: '1px solid var(--border)' };
 const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' } as const;
-
-// Situação da fatura calculada em runtime (Regra 7) — cores/rótulos canônicos
-// (padronização E1, 07/09: o mapa local divergente foi absorvido).
-const SITUACAO: Record<string, { bg: string; fg: string; label: string }> = Object.fromEntries(
-  Object.entries(FATURA_SITUACAO_COLORS).map(([k, c]) => [k, { ...c, label: FATURA_SITUACAO_LABEL[k] ?? k }]),
-);
 
 const DOC_LABEL: Record<string, string> = {
   cnh: 'CNH', comprovante_endereco: 'Comprovante de endereço',
@@ -52,25 +46,14 @@ function fmtData(iso: string | null): string {
   return iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—';
 }
 
-// A3 (04/09): parsear 'YYYY-MM-DD' com new Date caía em UTC e somava 1 dia de
-// atraso no fuso local — cálculo agora é por calendário (lib/datas).
-
-
-const PAGE = 8;
-
 export function TitularDetalhePage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const irParaArea = useIrParaArea();
   const queryClient = useQueryClient();
-  // A lista de faturas abre na página da fatura mais antiga em aberto ('atual');
-  // o servidor devolve o número, e as setas andam a partir dele.
-  const [pagina, setPagina] = useState<number | 'atual'>('atual');
-  useEffect(() => setPagina('atual'), [id]); // outro titular: volta para a fatura atual dele
-  // Faturas NOVADAS (extintas pela novação) ficam fora do histórico por padrão (13/10).
-  const [mostrarNovadas, setMostrarNovadas] = useState(false);
-  const [faturaSel, setFaturaSel] = useState<string | null>(null);
-  const [ocupado, setOcupado] = useState(false);
+  // Aba aberta; outro titular volta para Faturas (que abre sempre em "Agora").
+  const [aba, setAba] = useState('faturas');
+  useEffect(() => setAba('faturas'), [id]);
 
   // Hub de ações do titular: contratar crédito, renegociar, desbloquear.
   const pode = usePodeRole();
@@ -200,96 +183,34 @@ export function TitularDetalhePage() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['titular-detalhe', id] }),
       queryClient.invalidateQueries({ queryKey: ['titular-faturas'] }),
+      queryClient.invalidateQueries({ queryKey: ['titular-posicao'] }),
+      queryClient.invalidateQueries({ queryKey: ['titular-pagamentos'] }),
       queryClient.invalidateQueries({ queryKey: ['titular-lancamentos'] }),
       queryClient.invalidateQueries({ queryKey: ['fatura-detalhe'] }),
     ]);
   }
-  // Dev: paga a fatura (conciliação é assíncrona — aguarda o worker e recarrega).
-  async function pagarFatura(faturaId: string) {
-    setOcupado(true);
-    try { await faturaService.simularPagamento(faturaId); await new Promise((r) => setTimeout(r, 1200)); await recarregar(); }
-    finally { setOcupado(false); }
-  }
-  // Dev: +1 dia de atraso por clique.
-  async function atrasarFatura(faturaId: string) {
-    setOcupado(true);
-    try { await faturaService.envelhecer(faturaId); await recarregar(); }
-    finally { setOcupado(false); }
-  }
-  // Contingência (08/09): fatura fechada cuja cobrança automática falhou — o
-  // sistema reemite mantendo o vínculo (o webhook concilia sozinho).
-  // Cobrança existe no Asaas e a fatura segue em aberto: pergunta ao Asaas se
-  // foi paga e reprocessa a conciliação (webhook perdido ou parcial indevido).
-  async function conferirPagamento(faturaId: string) {
-    setOcupado(true);
-    try {
-      const r = await faturaService.conferirPagamento(faturaId);
-      if (r.enfileirado) { await new Promise((ok) => setTimeout(ok, 2500)); await recarregar(); }
-      else window.alert(r.motivo ?? 'Nada a conferir.');
-    } catch (e) {
-      const msg = (e as { response?: { data?: { mensagem?: string } } })?.response?.data?.mensagem;
-      window.alert(msg ?? 'Não foi possível consultar o Asaas — tente de novo.');
-    } finally {
-      setOcupado(false);
-    }
-  }
-
-  async function gerarCobrancaManual(faturaId: string, vencimento: string, incluirEncargo: boolean) {
-    setOcupado(true);
-    try {
-      await faturaService.gerarCobranca(faturaId, { vencimento, incluirEncargo });
-      await recarregar();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { mensagem?: string } } })?.response?.data?.mensagem;
-      window.alert(msg ?? 'Não foi possível gerar a cobrança — tente de novo.');
-    } finally {
-      setOcupado(false);
-    }
-  }
-
   const det = useQuery({ queryKey: ['titular-detalhe', id], queryFn: () => titularService.detalhe(id), enabled: !!id });
   // Consultas de birô da pessoa (decisão 09/08) — visíveis no cadastro.
   const consultasBiro = useQuery({ queryKey: ['titular-consultas-biro', id], queryFn: () => titularService.consultasBiro(id), enabled: !!id });
   const contaId = det.data?.conta?.id;
-  const faturas = useQuery({
-    queryKey: ['titular-faturas', contaId, pagina, mostrarNovadas],
-    queryFn: () => faturaService.daConta(contaId!, pagina, PAGE, mostrarNovadas),
-    enabled: !!contaId,
-    // Trocar de página mantém as linhas atuais até as novas chegarem (não pisca).
-    placeholderData: keepPreviousData,
-  });
+  // Posição de hoje da conta (doc 02 §33.1): atraso, próxima fatura, último pagamento, cronograma.
+  const posicao = useQuery({ queryKey: ['titular-posicao', contaId], queryFn: () => faturaService.posicao(contaId!), enabled: !!contaId });
   // Lançamentos avulsos da conta (entradas de contrato/acordo — doc 02 §4-A.3, 30/08).
   const lancamentos = useQuery({
     queryKey: ['titular-lancamentos', contaId],
     queryFn: () => faturaService.lancamentos(contaId!),
     enabled: !!contaId,
   });
-  const faturaDet = useQuery({
-    queryKey: ['fatura-detalhe', faturaSel],
-    queryFn: () => faturaService.detalhe(faturaSel!),
-    enabled: !!faturaSel,
-  });
-
   if (det.isLoading) return <div className="p-[24px] text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>;
   if (!det.data) return <div className="p-[24px] text-[13px]" style={{ color: 'var(--text-primary)' }}>Titular não encontrado.</div>;
   const { titular: t, resumoFinanceiro: rf, documentos, contratosCredito } = det.data;
-  const totalPaginas = faturas.data ? Math.max(1, Math.ceil(faturas.data.total / PAGE)) : 1;
-  const paginaServidor = faturas.data?.page ?? 1;
   const bloqueados = contratosCredito.filter((c) => c.status.toLowerCase() === 'bloqueado');
 
-  // Leitura do Hub sobre o relacionamento: uma frase, só com números reais.
-  const leituraRelacionamento =
-    rf.contratosTotal === 0 ? (
-      'Sem contratos nesta conta ainda.'
-    ) : rf.valorEmAtraso > 0 ? (
-      <>
-        <b>{formatCurrency(rf.valorEmAtraso)}</b> em atraso em <b>{rf.contratosAtivos}</b> contrato{rf.contratosAtivos === 1 ? '' : 's'} ativo{rf.contratosAtivos === 1 ? '' : 's'} · saldo devedor de <b>{formatCurrency(rf.saldoDevedor)}</b>.
-      </>
-    ) : (
-      <>
-        Em dia: <b>{rf.contratosAtivos}</b> contrato{rf.contratosAtivos === 1 ? '' : 's'} ativo{rf.contratosAtivos === 1 ? '' : 's'}, <b>{formatCurrency(rf.valorPago)}</b> já pagos e <b>{formatCurrency(rf.saldoDevedor)}</b> a receber.
-      </>
-    );
+  // Selo da conta: calculado no servidor pela mesma regra da grade "Clientes da carteira".
+  const situacao = det.data.conta?.situacao ?? 'sem_contrato_ativo';
+  const corSituacao = CONTA_SITUACAO_COLORS[situacao] ?? CONTA_SITUACAO_COLORS.em_dia;
+  // Entradas (de contrato ou de acordo) com cobrança gerada e dinheiro ainda não recebido.
+  const entradasPendentes = (lancamentos.data ?? []).filter((l) => l.situacao === 'aguardando_pagamento');
 
   return (
     <div className="flex flex-col gap-[16px]">
@@ -298,19 +219,28 @@ export function TitularDetalhePage() {
       <div className="flex flex-wrap items-center gap-[12px]">
         <Botao variante="secundaria" tamanho="sm" onClick={() => navigate('/titulares')}>← Titulares</Botao>
         <div className="min-w-0">
-          <div className="truncate font-display text-[18px] font-bold" style={{ color: 'var(--text-primary)' }}>{t.nome}</div>
-          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>{t.tipoPessoa.toUpperCase()} · {t.cpfCnpj} · conta {det.data.conta?.status ?? '—'}</div>
+          <div className="flex flex-wrap items-center gap-[8px]">
+            <span className="truncate font-display text-[18px] font-bold" style={{ color: 'var(--text-primary)' }}>{t.nome}</span>
+            {det.data.conta && (
+              <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: corSituacao.bg, color: corSituacao.fg }}>{CONTA_SITUACAO_LABEL[situacao] ?? situacao}</span>
+            )}
+          </div>
+          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+            {t.tipoPessoa.toUpperCase()} · {t.cpfCnpj}
+            {t.whatsapp ? ` · ${t.whatsapp}` : ''}
+            {det.data.conta ? ` · cliente desde ${fmtData(det.data.conta.dataAbertura)}` : ' · sem conta'}
+          </div>
         </div>
         <div className="flex-1" />
         <div className="flex flex-wrap items-center gap-[8px]">
-          <Botao variante="primaria" tamanho="sm" onClick={() => setCreditoOpen(true)}>
-            + Novo produto
-          </Botao>
           {rf.valorEmAtraso > 0 && contaId && (
-            <Botao variante="secundaria" tamanho="sm" onClick={() => setRenegOpen(true)}>
+            <Botao variante="primaria" tamanho="sm" onClick={() => setRenegOpen(true)}>
               Renegociar atraso
             </Botao>
           )}
+          <Botao variante={rf.valorEmAtraso > 0 && contaId ? 'secundaria' : 'primaria'} tamanho="sm" onClick={() => setCreditoOpen(true)}>
+            + Novo produto
+          </Botao>
           {contaId && contratosCredito.length > 0 && (
             <Botao variante="fantasma" tamanho="sm" onClick={() => setNovacaoOpen(true)}>
               Novação (prévia do saldo)
@@ -319,12 +249,12 @@ export function TitularDetalhePage() {
         </div>
       </div>
 
-      {/* Banner de bloqueio (D+3 — desbloqueio sempre manual, Doc 2 Regra 6) */}
+      {/* Banner de bloqueio (desbloqueio sempre manual, Regra 6) */}
       {bloqueados.length > 0 && (
         <div className="flex flex-wrap items-center gap-[10px] rounded-[12px] px-[16px] py-[12px]" style={{ background: 'var(--danger-bg)', border: '1px solid var(--border)' }}>
           <span className="text-[16px]">🔒</span>
           <div className="flex-1 text-[12.5px]" style={{ color: 'var(--danger-fg)' }}>
-            <b>Conta bloqueada</b> — bloqueio D+3 por inadimplência. O desbloqueio é sempre manual.
+            <b>Conta bloqueada</b> — veículo bloqueado por inadimplência. O desbloqueio é sempre manual.
           </div>
           {pode(ROLE_OPERACAO) &&
             bloqueados.map((c) => (
@@ -335,363 +265,171 @@ export function TitularDetalhePage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-[16px] lg:grid-cols-2">
-        {/* Bloco 1 — Dados pessoais + documentos + consultas */}
-        <div className="flex flex-col gap-[16px] rounded-card p-[18px]" style={card}>
-          <Secao titulo="Dados pessoais">
-            <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2">
-              <Campo label="Nome" valor={t.nome} />
-              <Campo label="CPF/CNPJ" valor={t.cpfCnpj} />
-              <Campo label="RG" valor={t.rg} />
-              <Campo label="WhatsApp" valor={t.whatsapp} />
-              <Campo label="E-mail" valor={t.email} />
-              <Campo label="Estado civil" valor={t.estadoCivil} />
-              <Campo label="Profissão" valor={t.profissao} />
-              <Campo label="Endereço" valor={t.endereco} />
-              <Campo label="Bairro" valor={t.bairro} />
-              <Campo label="Cidade/UF" valor={[t.cidade, t.estado].filter(Boolean).join(' / ') || null} />
-              <Campo label="CEP" valor={t.cep} />
-            </div>
-          </Secao>
-
-          <Secao titulo="Documentos" tag={documentos.length ? `${documentos.length}` : undefined}>
-            {documentos.length === 0 ? (
-              <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum documento anexado.</div>
-            ) : (
-              <div className="flex flex-col gap-[6px]">
-                {documentos.map((d) => (
-                  <div key={d.id} className="flex flex-wrap items-center justify-between gap-[6px] rounded-[10px] px-[10px] py-[7px] text-[12px]" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
-                    <span>{DOC_LABEL[d.tipo] ?? d.tipo} <span style={{ color: 'var(--text-muted)' }}>· {fmtData(d.dataAnexo)}</span></span>
-                    <span className="flex items-center gap-[10px]">
-                      <button type="button" onClick={() => void viewer.abrir(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--accent)' }}>Visualizar</button>
-                      <button type="button" onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--text-primary)' }}>Baixar</button>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Secao>
-
-          {/* Consultas de birô do cliente (decisão 09/08): tudo o que já foi
-              consultado sobre a pessoa fica no cadastro, com o retorno completo. */}
-          <Secao titulo="Consultas de birô" tag={(consultasBiro.data ?? []).length ? `${consultasBiro.data!.length}` : undefined}>
-            {(consultasBiro.data ?? []).length === 0 ? (
-              <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhuma consulta de birô registrada para esta pessoa.</div>
-            ) : (
-              <div className="flex flex-col gap-[6px]">
-                {(consultasBiro.data ?? []).map((c) => (
-                  <div key={c.id} className="rounded-[10px] px-[10px] py-[7px] text-[12px]" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
-                    <b>{c.tipo === 'CAMADA1' ? 'Camada 1 (dados cadastrais)' : c.tipo === 'SCORE_QUOD' ? 'Score Quod' : 'Restritivos Quod'}</b>
-                    {' · '}{c.fornecedor} · {fmtData(String(c.dataConsulta))}
-                    {c.situacao === 'FALHA'
-                      ? <span style={{ color: 'var(--danger-fg)' }}> · falhou{c.motivoFalha ? ` (${c.motivoFalha})` : ''}</span>
-                      : null}
-                    <BotaoVerRetorno
-                      titulo={`Retorno do birô — ${c.tipo === 'CAMADA1' ? 'Camada 1' : c.tipo === 'SCORE_QUOD' ? 'Score Quod' : 'Restritivos Quod'} · ${fmtData(String(c.dataConsulta))}`}
-                      resultado={c.resultado}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </Secao>
+      {/* Entrada com cobrança gerada e dinheiro ainda não recebido: fica à vista, acima de tudo. */}
+      {entradasPendentes.map((l) => (
+        <div key={l.id} className="flex flex-wrap items-center gap-[10px] rounded-[12px] px-[16px] py-[10px] text-[12.5px]" style={{ background: 'var(--warn-bg)', border: '1px solid var(--border)', color: 'var(--warn-ink)' }}>
+          <span className="flex-1">
+            <b>{l.tipo === 'entrada_contrato' ? 'Entrada de contrato' : 'Entrada de acordo'} aguardando pagamento</b> — {formatCurrency(l.valor)}
+            {l.dataLimite ? ` até ${fmtData(l.dataLimite)}` : ''} · {l.descricao}
+          </span>
+          {l.acordoId && <Botao variante="fantasma" tamanho="sm" onClick={() => navigate(`/acordos?acordo=${l.acordoId}`)}>ver o acordo →</Botao>}
         </div>
+      ))}
 
-        {/* Bloco 2 — Informações gerais com a Azit (Bloco com Leitura do Hub).
-            O detalhe de acordos e novações vive em UMA tela (Renegociações,
-            21/10) — a ficha leva até lá filtrada por este titular. */}
-        <Bloco
-          titulo="Relacionamento com a Azit"
-          leitura={leituraRelacionamento}
-          explorar={
-            rf.quantidadeAcordos > 0 || rf.quantidadeNovacoes > 0
-              ? {
-                  rotulo: `Ver ${rf.quantidadeAcordos > 0 ? `${rf.quantidadeAcordos} acordo(s)` : ''}${rf.quantidadeAcordos > 0 && rf.quantidadeNovacoes > 0 ? ' e ' : ''}${rf.quantidadeNovacoes > 0 ? `${rf.quantidadeNovacoes} novação(ões)` : ''} desta conta em Renegociações`,
-                  to: `/acordos?titular=${id}`,
-                }
-              : undefined
-          }
-        >
-          <div className="grid grid-cols-2 gap-[10px]">
-            <Metrica label="Em contrato ativo" valor={formatCurrency(rf.valorEmContratoAtivo)} />
-            <Metrica label="Pago até o momento" valor={formatCurrency(rf.valorPago)} />
-            {(rf.encargosPagos ?? 0) > 0 && <Metrica label="Juros e multa pagos" valor={formatCurrency(rf.encargosPagos ?? 0)} />}
-            <Metrica label="Saldo devedor" valor={formatCurrency(rf.saldoDevedor)} />
-            <Metrica label="Em atraso" valor={formatCurrency(rf.valorEmAtraso)} alerta={rf.valorEmAtraso > 0} />
-            <Metrica label="Acordos" valor={String(rf.quantidadeAcordos)} />
-            <Metrica label="Contratos ativos" valor={`${rf.contratosAtivos} de ${rf.contratosTotal}`} />
-          </div>
-        </Bloco>
-      </div>
-
-      {/* Bloco 3 — Contratos */}
-      <Secao titulo="Contratos" tag={`${contratosCredito.length}`}>
-        <Tabela
-          colunas={[
-            { chave: 'numero', titulo: 'Contrato', celular: 'titulo', render: (c) => c.numero },
-            { chave: 'assinado', titulo: 'Assinado', celular: 'subtitulo', classe: 'tabular-nums', render: (c) => fmtData(c.dataAssinatura) },
-            { chave: 'valor', titulo: 'Valor', alinhar: 'right', celular: 'campo', classe: 'tabular-nums', render: (c) => formatCurrency(c.valorTotal) },
-            { chave: 'saldo', titulo: 'Saldo devedor', alinhar: 'right', celular: 'destaque', classe: 'tabular-nums', render: (c) => formatCurrency(c.saldoDevedor) },
-            {
-              chave: 'status',
-              titulo: 'Status',
-              celular: 'campo',
-              render: (c) => (
-                <span className="inline-flex flex-wrap items-center gap-[5px]">
-                  <StatusBadge label={c.status} colors={CONTRATO_STATUS_COLORS} />
-                  {c.situacao && <span className="rounded-[6px] px-[7px] py-[1px] text-[10.5px] font-semibold" style={{ background: SITUACAO_CONTRATO_COLORS[c.situacao]?.bg, color: SITUACAO_CONTRATO_COLORS[c.situacao]?.fg }}>{SITUACAO_CONTRATO_LABEL[c.situacao]}</span>}
-                </span>
-              ),
-            },
-          ]}
-          linhas={contratosCredito}
-          chave={(c) => c.id}
-          onClick={(c) => irParaArea(AREAS_ROTA_CONTRATO, `/contratos/${c.id}`)}
-          vazio="Nenhum contrato vinculado."
-        />
-      </Secao>
-
-      {/* Bloco 3½ — Entradas e lançamentos avulsos (doc 02 §4-A.3, revisão 30/08):
-          dinheiro que entra fora do ciclo de fatura — entrada do contrato (dia
-          zero) e entrada do acordo. Não é fatura; é lançamento da conta. */}
-      {(lancamentos.data?.length ?? 0) > 0 && (
-        <Secao titulo="Entradas e lançamentos" tag={`${lancamentos.data!.length}`}>
-          <Tabela
-            colunas={[
-              {
-                chave: 'tipo',
-                titulo: 'Lançamento',
-                celular: 'titulo',
-                render: (l) => {
-                  const pendente = l.situacao === 'aguardando_pagamento';
-                  return (
-                    <span className="inline-flex flex-wrap items-center gap-[6px]">
-                      <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={pendente ? { background: 'var(--warn-bg)', color: 'var(--warn-fg)' } : { background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>
-                        {l.tipo === 'entrada_contrato' ? 'Entrada de contrato' : 'Entrada de acordo'}
-                      </span>
-                      {pendente && (
-                        <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
-                          Aguardando pagamento{l.dataLimite ? ` · até ${fmtData(l.dataLimite)}` : ''}
-                        </span>
-                      )}
-                    </span>
-                  );
-                },
-              },
-              { chave: 'descricao', titulo: 'Descrição', celular: 'subtitulo', render: (l) => l.descricao },
-              { chave: 'pago', titulo: 'Pago em', celular: 'campo', classe: 'tabular-nums', render: (l) => (l.situacao === 'aguardando_pagamento' ? '—' : fmtData(l.dataPagamento ?? '')) },
-              { chave: 'valor', titulo: 'Valor', alinhar: 'right', celular: 'destaque', classe: 'tabular-nums font-bold', render: (l) => formatCurrency(l.valor) },
-            ]}
-            linhas={lancamentos.data!}
-            chave={(l) => l.id}
-            acoes={(l) => (l.acordoId ? <Botao variante="fantasma" tamanho="sm" onClick={() => navigate(`/acordos?acordo=${l.acordoId}`)}>ver o acordo →</Botao> : null)}
-          />
-        </Secao>
+      {/* Posição de hoje + cronograma (doc 02 §33.1) */}
+      {!contaId ? (
+        <div className="rounded-card p-[18px] text-[12.5px]" style={{ ...card, color: 'var(--text-muted)' }}>Sem conta ainda — a conta e as faturas nascem na ativação do primeiro contrato.</div>
+      ) : posicao.data ? (
+        <PosicaoHoje posicao={posicao.data} situacao={situacao} valorPago={rf.valorPago} acordos={rf.quantidadeAcordos} novacoes={rf.quantidadeNovacoes} titularId={id} />
+      ) : (
+        <div className="rounded-card p-[18px] text-[12.5px]" style={{ ...card, color: 'var(--text-muted)' }}>{posicao.isError ? 'Não foi possível carregar a posição da conta.' : 'Carregando a posição de hoje…'}</div>
       )}
 
-      {/* Bloco 4 — Histórico de faturas (paginado) */}
-      <Secao
-        titulo="Histórico de faturas"
-        tag={
-          <>
-            {faturas.data ? `${faturas.data.total}` : ''}
-            {faturas.data && (faturas.data.ocultas > 0 || mostrarNovadas) && (
-              <button
-                type="button"
-                onClick={() => { setMostrarNovadas((v) => !v); setPagina('atual'); }}
-                className="ml-[10px] font-semibold"
-                style={{ color: 'var(--text-muted)' }}
-                title="Faturas extintas pela novação ficam no histórico, mas fora da lista"
-              >
-                {mostrarNovadas ? 'ocultar novadas' : `${faturas.data.ocultas} novada${faturas.data.ocultas === 1 ? '' : 's'} oculta${faturas.data.ocultas === 1 ? '' : 's'} · mostrar`}
-              </button>
-            )}
-          </>
-        }
-        acao={
-          faturas.data && faturas.data.total > PAGE ? (
-            <div className="flex items-center gap-[8px] text-[12px]">
-              {pagina !== 'atual' && (
-                <Botao variante="fantasma" tamanho="sm" onClick={() => setPagina('atual')}>voltar para a atual</Botao>
-              )}
-              <Botao variante="secundaria" tamanho="sm" disabled={paginaServidor <= 1} onClick={() => setPagina(paginaServidor - 1)} aria-label="Página anterior">←</Botao>
-              <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>{paginaServidor} / {totalPaginas}</span>
-              <Botao variante="secundaria" tamanho="sm" disabled={paginaServidor >= totalPaginas} onClick={() => setPagina(paginaServidor + 1)} aria-label="Próxima página">→</Botao>
-            </div>
-          ) : undefined
-        }
-      >
-        {!contaId ? (
-          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Sem conta — faturas nascem na ativação do contrato.</div>
-        ) : (
-          <Tabela
-            colunas={[
-              {
-                chave: 'numero',
-                titulo: 'Fatura',
-                celular: 'titulo',
-                render: (f) => {
-                  // Visibilidade da renegociação (30/08): a última parcela do acordo
-                  // pode cair como resíduo numa fatura menor — o selo aponta onde o
-                  // acordo está, e o detalhe discrimina cada item.
-                  const temAcordo = f.itens.some((it) => it.descricao.startsWith('Renegociação'));
-                  return (
-                    <>
-                      #{f.numero}
-                      {temAcordo && <span className="ml-[6px] rounded-[6px] px-[6px] py-[1px] text-[10.5px] font-semibold" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}>inclui acordo</span>}
-                    </>
-                  );
-                },
-              },
-              { chave: 'vencimento', titulo: 'Vencimento', celular: 'subtitulo', classe: 'tabular-nums', render: (f) => fmtData(f.dataVencimento) },
-              { chave: 'valor', titulo: 'Valor da fatura', alinhar: 'right', celular: 'campo', classe: 'tabular-nums', render: (f) => formatCurrency(f.valorTotal) },
-              {
-                // O que entrou de fato nesta fatura (com encargo, quando houve) e quando.
-                chave: 'pago',
-                titulo: 'Pago',
-                alinhar: 'right',
-                celular: 'campo',
-                classe: 'tabular-nums',
-                render: (f) =>
-                  f.valorPago > 0 ? (
-                    <>
-                      <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{formatCurrency(f.valorPago)}</span>
-                      {f.dataPagamento && <span className="ml-[6px] text-[11px]" style={{ color: 'var(--text-muted)' }}>em {fmtData(f.dataPagamento).slice(0, 5)}</span>}
-                    </>
-                  ) : (
-                    <span style={{ color: 'var(--text-muted)' }}>—</span>
-                  ),
-              },
-              {
-                // O que falta pagar HOJE: na fatura vencida já vem com multa e atualização
-                // (a mesma conta da página do cliente); na que ainda vai vencer, é o valor dela.
-                chave: 'falta',
-                titulo: 'Falta hoje',
-                alinhar: 'right',
-                celular: 'destaque',
-                classe: 'tabular-nums',
-                render: (f) =>
-                  f.faltaHoje == null ? (
-                    <span style={{ color: 'var(--text-muted)' }}>—</span>
-                  ) : (
-                    <span
-                      className={f.faltaHoje !== f.valorTotal ? 'font-bold' : undefined}
-                      style={{ color: f.situacao === 'vencida' ? 'var(--danger-fg)' : f.faltaHoje !== f.valorTotal ? 'var(--text-primary)' : 'var(--text-muted)' }}
-                      title={f.faltaHoje !== f.valorTotal ? 'Diferente do valor da fatura: já houve pagamento, ou há multa e atualização por atraso. O detalhe mostra a conta.' : undefined}
-                    >
-                      {formatCurrency(f.faltaHoje)}
-                    </span>
-                  ),
-              },
-              {
-                chave: 'situacao',
-                titulo: 'Situação',
-                celular: 'campo',
-                render: (f) => {
-                  const s = SITUACAO[f.situacao] ?? { bg: 'var(--surface-muted)', fg: 'var(--text-body)', label: f.situacao };
-                  // Em aberto com dinheiro já recebido: paga em parte (o detalhe mostra o que cada pagamento quitou).
-                  const parcial = f.faltaHoje != null && f.valorPago > 0 ? SITUACAO.paga_em_parte : null;
-                  return (
-                    <span className="inline-flex flex-wrap items-center gap-[5px]">
-                      <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: s.bg, color: s.fg }}>{s.label}</span>
-                      {parcial && <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: parcial.bg, color: parcial.fg }}>{parcial.label}</span>}
-                    </span>
-                  );
-                },
-              },
-            ]}
-            linhas={faturas.data?.data ?? []}
-            chave={(f) => f.id}
-            carregando={faturas.isLoading}
-            larguraMinima={860}
-            vazio="Nenhuma fatura."
-            acoes={(f) => (
-              <span className="inline-flex items-center gap-[6px]">
-                {/* Fatura Azit (doc 02 §32.7): link público como ação de linha — só em fatura que o cliente ainda paga. */}
-                {f.linkPublico && f.status !== 'paga' && f.status !== 'paga_em_atraso' && f.status !== 'novada' && f.status !== 'rescindida' && <LinkFaturaAcoes faturaId={f.id} compacto />}
-                <Botao variante="fantasma" tamanho="sm" onClick={() => setFaturaSel(f.id)}>Detalhe</Botao>
-              </span>
-            )}
-          />
-        )}
-      </Secao>
-
-      {/* Modal — detalhe da fatura */}
-      <Modal open={!!faturaSel} onClose={() => setFaturaSel(null)} title={faturaDet.data ? `Fatura #${faturaDet.data.numero}` : 'Fatura'}>
-        {!faturaDet.data ? (
-          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
-        ) : (
-          <div className="flex flex-col gap-[12px]">
-            <div className="grid grid-cols-2 gap-[10px]">
-              <Campo label="Vencimento" valor={fmtData(faturaDet.data.dataVencimento)} />
-              <Campo label="Fechamento" valor={fmtData(faturaDet.data.dataFechamento)} />
-              <Campo label="Pagamento" valor={fmtData(faturaDet.data.dataPagamento)} />
-              <Campo label="Situação" valor={(SITUACAO[faturaDet.data.situacao]?.label) ?? faturaDet.data.situacao} />
-            </div>
-            <Secao titulo="Composição">
-              <div className="flex flex-col gap-[4px]">
-                {faturaDet.data.itens.map((it, i) => (
-                  <div key={i} className="flex items-center justify-between gap-[8px] text-[12px]" style={{ color: 'var(--text-body)' }}>
-                    <span>{it.descricao} <span style={{ color: 'var(--text-muted)' }}>· {it.credor} · {it.tipo}</span></span>
-                    <span className="flex-none tabular-nums">{formatCurrency(it.valor)}</span>
-                  </div>
-                ))}
-              </div>
+      {/* Abas: Faturas · Pagamentos · Contratos · Cadastro (doc 02 §33) */}
+      <div className="rounded-card" style={card}>
+        <Abas
+          valor={aba}
+          onChange={setAba}
+          itens={[
+            ...(contaId ? [{ chave: 'faturas', rotulo: 'Faturas' }, { chave: 'pagamentos', rotulo: 'Pagamentos' }] : []),
+            { chave: 'contratos', rotulo: 'Contratos', contagem: contratosCredito.length },
+            { chave: 'cadastro', rotulo: 'Cadastro e documentos' },
+          ]}
+        />
+        <div className="p-[18px]">
+          {aba === 'faturas' && contaId && <FaturasDaConta contaId={contaId} contagem={posicao.data?.contagem} recarregar={recarregar} />}
+          {aba === 'pagamentos' && contaId && <PagamentosDaConta contaId={contaId} encargosPagos={rf.encargosPagos ?? 0} />}
+          {(aba === 'contratos' || (!contaId && aba !== 'cadastro')) && (
+            <div className="flex flex-col gap-[18px]">
+            <Secao titulo="Contratos" tag={`${contratosCredito.length}`}>
+              <Tabela
+                colunas={[
+                  { chave: 'numero', titulo: 'Contrato', celular: 'titulo', render: (c) => c.numero },
+                  { chave: 'assinado', titulo: 'Assinado', celular: 'subtitulo', classe: 'tabular-nums', render: (c) => fmtData(c.dataAssinatura) },
+                  { chave: 'valor', titulo: 'Valor', alinhar: 'right', celular: 'campo', classe: 'tabular-nums', render: (c) => formatCurrency(c.valorTotal) },
+                  { chave: 'saldo', titulo: 'Saldo devedor', alinhar: 'right', celular: 'destaque', classe: 'tabular-nums', render: (c) => formatCurrency(c.saldoDevedor) },
+                  {
+                    chave: 'status',
+                    titulo: 'Status',
+                    celular: 'campo',
+                    render: (c) => (
+                      <span className="inline-flex flex-wrap items-center gap-[5px]">
+                        <StatusBadge label={c.status} colors={CONTRATO_STATUS_COLORS} />
+                        {c.situacao && <span className="rounded-[6px] px-[7px] py-[1px] text-[10.5px] font-semibold" style={{ background: SITUACAO_CONTRATO_COLORS[c.situacao]?.bg, color: SITUACAO_CONTRATO_COLORS[c.situacao]?.fg }}>{SITUACAO_CONTRATO_LABEL[c.situacao]}</span>}
+                      </span>
+                    ),
+                  },
+                ]}
+                linhas={contratosCredito}
+                chave={(c) => c.id}
+                onClick={(c) => irParaArea(AREAS_ROTA_CONTRATO, `/contratos/${c.id}`)}
+                vazio="Nenhum contrato vinculado."
+              />
             </Secao>
-            <div className="flex items-center justify-between border-t pt-[10px] text-[13px] font-bold" style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}>
-              <span>Total {faturaDet.data.valorPago > 0 ? `· pago ${formatCurrency(faturaDet.data.valorPago)}` : ''}</span>
-              <span className="tabular-nums">{formatCurrency(faturaDet.data.valorTotal)}</span>
+
+            {/* Bloco 3½ — Entradas e lançamentos avulsos (doc 02 §4-A.3, revisão 30/08):
+                dinheiro que entra fora do ciclo de fatura — entrada do contrato (dia
+                zero) e entrada do acordo. Não é fatura; é lançamento da conta. */}
+            {(lancamentos.data?.length ?? 0) > 0 && (
+              <Secao titulo="Entradas e lançamentos" tag={`${lancamentos.data!.length}`}>
+                <Tabela
+                  colunas={[
+                    {
+                      chave: 'tipo',
+                      titulo: 'Lançamento',
+                      celular: 'titulo',
+                      render: (l) => {
+                        const pendente = l.situacao === 'aguardando_pagamento';
+                        return (
+                          <span className="inline-flex flex-wrap items-center gap-[6px]">
+                            <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={pendente ? { background: 'var(--warn-bg)', color: 'var(--warn-fg)' } : { background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>
+                              {l.tipo === 'entrada_contrato' ? 'Entrada de contrato' : 'Entrada de acordo'}
+                            </span>
+                            {pendente && (
+                              <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-semibold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
+                                Aguardando pagamento{l.dataLimite ? ` · até ${fmtData(l.dataLimite)}` : ''}
+                              </span>
+                            )}
+                          </span>
+                        );
+                      },
+                    },
+                    { chave: 'descricao', titulo: 'Descrição', celular: 'subtitulo', render: (l) => l.descricao },
+                    { chave: 'pago', titulo: 'Pago em', celular: 'campo', classe: 'tabular-nums', render: (l) => (l.situacao === 'aguardando_pagamento' ? '—' : fmtData(l.dataPagamento ?? '')) },
+                    { chave: 'valor', titulo: 'Valor', alinhar: 'right', celular: 'destaque', classe: 'tabular-nums font-bold', render: (l) => formatCurrency(l.valor) },
+                  ]}
+                  linhas={lancamentos.data!}
+                  chave={(l) => l.id}
+                  acoes={(l) => (l.acordoId ? <Botao variante="fantasma" tamanho="sm" onClick={() => navigate(`/acordos?acordo=${l.acordoId}`)}>ver o acordo →</Botao> : null)}
+                />
+              </Secao>
+            )}
             </div>
-
-            {/* Fatura Azit (doc 02 §32.7): lugar principal do link — copiar ou mandar pelo WhatsApp. */}
-            <LinkFaturaAcoes faturaId={faturaDet.data.id} />
-
-            {faturaDet.data.temCobrancaAsaas && faturaDet.data.status !== 'paga' && faturaDet.data.status !== 'paga_em_atraso' && (
-              <div className="flex flex-wrap items-center gap-[8px] border-t pt-[10px] text-[12px]" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
-                <span>O cliente pagou e a fatura não baixou?</span>
-                <Botao variante="secundaria" tamanho="sm" disabled={ocupado} onClick={() => conferirPagamento(faturaDet.data!.id)}>Conferir pagamento no Asaas</Botao>
-              </div>
-            )}
-
-            {/* Fatura Azit F2 (doc 02 §32.4-A): pagamentos com o que cada um quitou e o Pix ativo. */}
-            {faturaDet.data.azit && contaId && <FaturaAzitBloco fd={faturaDet.data} contaId={contaId} recarregar={recarregar} />}
-
-            {/* Reemissão só existe no modelo antigo: fatura de Pix sob demanda (doc 02
-                §32.4-A) não tem cobrança pré-criada, então a ação não aparece. */}
-            {faturaDet.data.status === 'fechada' && !faturaDet.data.temCobrancaAsaas && faturaDet.data.modeloEncargo !== 'AZIT' && (
-              <BlocoReemissao fd={faturaDet.data} ocupado={ocupado} emitir={gerarCobrancaManual} />
-            )}
-
-            {/* Ações dev — paga a FATURA; atraso aumenta dia a dia. Só fora de produção:
-                em produção o cliente paga a cobrança no Asaas e o webhook concilia. */}
-            {FERRAMENTAS_TESTE && (() => {
-              const fd = faturaDet.data;
-              const paga = fd.status === 'paga' || fd.status === 'paga_em_atraso';
-              const atraso = diasAtrasoBrasil(fd.dataVencimento);
-              return (
-                <div className="border-t pt-[12px]" style={{ borderColor: 'var(--border)' }}>
-                  <Secao titulo={`Simulação (dev)${atraso > 0 ? ` · ${atraso} dia(s) de atraso` : ''}`}>
-                    <div className="flex flex-wrap gap-[8px]">
-                      {/* Fatura de Pix sob demanda é paga pelo Pix da conta (bloco acima), não por aqui. */}
-                      {!paga && fd.modeloEncargo !== 'AZIT' && (
-                        <Botao variante="primaria" disabled={ocupado} onClick={() => pagarFatura(fd.id)}>
-                          Simular pagamento
-                        </Botao>
-                      )}
-                      {!paga && (
-                        <Botao variante="perigo" disabled={ocupado} onClick={() => atrasarFatura(fd.id)}>
-                          + 1 dia de atraso
-                        </Botao>
-                      )}
-                      {paga && <span className="text-[12px] font-semibold" style={{ color: 'var(--ok-fg)' }}>✓ Fatura paga</span>}
-                    </div>
-                  </Secao>
+          )}
+          {aba === 'cadastro' && (
+            <div className="grid grid-cols-1 gap-[22px] lg:grid-cols-[1.2fr_1fr]">
+              <Secao titulo="Dados pessoais">
+                <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2">
+                  <Campo label="Nome" valor={t.nome} />
+                  <Campo label="CPF/CNPJ" valor={t.cpfCnpj} />
+                  <Campo label="RG" valor={t.rg} />
+                  <Campo label="WhatsApp" valor={t.whatsapp} />
+                  <Campo label="E-mail" valor={t.email} />
+                  <Campo label="Estado civil" valor={t.estadoCivil} />
+                  <Campo label="Profissão" valor={t.profissao} />
+                  <Campo label="Endereço" valor={t.endereco} />
+                  <Campo label="Bairro" valor={t.bairro} />
+                  <Campo label="Cidade/UF" valor={[t.cidade, t.estado].filter(Boolean).join(' / ') || null} />
+                  <Campo label="CEP" valor={t.cep} />
                 </div>
-              );
-            })()}
-          </div>
-        )}
-      </Modal>
+              </Secao>
+              <div className="flex min-w-0 flex-col gap-[16px]">
+                <Secao titulo="Documentos" tag={documentos.length ? `${documentos.length}` : undefined}>
+                  {documentos.length === 0 ? (
+                    <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum documento anexado.</div>
+                  ) : (
+                    <div className="flex flex-col gap-[6px]">
+                      {documentos.map((d) => (
+                        <div key={d.id} className="flex flex-wrap items-center justify-between gap-[6px] rounded-[10px] px-[10px] py-[7px] text-[12px]" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
+                          <span>{DOC_LABEL[d.tipo] ?? d.tipo} <span style={{ color: 'var(--text-muted)' }}>· {fmtData(d.dataAnexo)}</span></span>
+                          <span className="flex items-center gap-[10px]">
+                            <button type="button" onClick={() => void viewer.abrir(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--accent)' }}>Visualizar</button>
+                            <button type="button" onClick={() => originacaoService.baixarDocumento(d.id, d.arquivoRef)} className="font-semibold" style={{ color: 'var(--text-primary)' }}>Baixar</button>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Secao>
+
+                {/* Consultas de birô do cliente (decisão 09/08): tudo o que já foi
+                    consultado sobre a pessoa fica no cadastro, com o retorno completo. */}
+                <Secao titulo="Consultas de birô" tag={(consultasBiro.data ?? []).length ? `${consultasBiro.data!.length}` : undefined}>
+                  {(consultasBiro.data ?? []).length === 0 ? (
+                    <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhuma consulta de birô registrada para esta pessoa.</div>
+                  ) : (
+                    <div className="flex flex-col gap-[6px]">
+                      {(consultasBiro.data ?? []).map((c) => (
+                        <div key={c.id} className="rounded-[10px] px-[10px] py-[7px] text-[12px]" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
+                          <b>{c.tipo === 'CAMADA1' ? 'Camada 1 (dados cadastrais)' : c.tipo === 'SCORE_QUOD' ? 'Score Quod' : 'Restritivos Quod'}</b>
+                          {' · '}{c.fornecedor} · {fmtData(String(c.dataConsulta))}
+                          {c.situacao === 'FALHA'
+                            ? <span style={{ color: 'var(--danger-fg)' }}> · falhou{c.motivoFalha ? ` (${c.motivoFalha})` : ''}</span>
+                            : null}
+                          <BotaoVerRetorno
+                            titulo={`Retorno do birô — ${c.tipo === 'CAMADA1' ? 'Camada 1' : c.tipo === 'SCORE_QUOD' ? 'Score Quod' : 'Restritivos Quod'} · ${fmtData(String(c.dataConsulta))}`}
+                            resultado={c.resultado}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Secao>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Novo produto (decisão 09/09): SELEÇÃO primeiro — Acordo de pagamento desvia
           para o wizard da régua; produto avulso do catálogo segue no formulário. */}
@@ -859,40 +597,6 @@ export function TitularDetalhePage() {
       {contaId && (
         <NovacaoDecomposicaoModal contaId={contaId} open={novacaoOpen} onClose={() => setNovacaoOpen(false)} />
       )}
-    </div>
-  );
-}
-
-// Contingência (08/09): fatura FECHADA sem cobrança no Asaas — a emissão sai
-// DAQUI (o vínculo externalReference faz o webhook conciliar sozinho); nunca
-// criar a cobrança pelo painel do Asaas. O Asaas rejeita vencimento no passado,
-// então a vencida sai com vencimento de hoje em diante, com ou sem o encargo
-// corrido — decisão do operador, caso a caso.
-function BlocoReemissao({ fd, ocupado, emitir }: { fd: FaturaDetalhe; ocupado: boolean; emitir: (faturaId: string, vencimento: string, incluirEncargo: boolean) => Promise<void> }) {
-  const [venc, setVenc] = useState(hojeBrasilISO());
-  const [comEncargo, setComEncargo] = useState(fd.encargoAtual > 0);
-  const total = fd.valorTotal + (comEncargo ? fd.encargoAtual : 0);
-  return (
-    <div className="flex flex-col gap-[8px] rounded-[10px] p-[12px]" style={{ background: 'var(--warn-bg)', border: '1px solid var(--warn-fg)' }}>
-      <div className="text-[12px] font-bold" style={{ color: 'var(--warn-ink)' }}>Sem cobrança no Asaas</div>
-      <div className="text-[12px]" style={{ color: 'var(--warn-ink)' }}>
-        A cobrança automática desta fatura falhou. Emita por aqui — o boleto sai vinculado à fatura e o pagamento concilia sozinho.
-      </div>
-      <div className="flex flex-wrap items-end gap-[10px]">
-        <label className="flex flex-col gap-[3px] text-[11px] font-semibold" style={{ color: 'var(--warn-ink)' }}>
-          Vencimento da cobrança
-          <input type="date" value={venc} min={hojeBrasilISO()} onChange={(e) => setVenc(e.target.value)} className="rounded-[10px] px-[8px] py-[6px] text-[12px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
-        </label>
-        {fd.encargoAtual > 0 && (
-          <label className="flex items-center gap-[6px] pb-[8px] text-[12px]" style={{ color: 'var(--warn-ink)' }}>
-            <input type="checkbox" checked={comEncargo} onChange={(e) => setComEncargo(e.target.checked)} />
-            Incluir encargo de atraso até hoje ({formatCurrency(fd.encargoAtual)})
-          </label>
-        )}
-      </div>
-      <Botao variante="primaria" className="self-start" disabled={ocupado || !venc} onClick={() => void emitir(fd.id, venc, comEncargo)}>
-        Gerar cobrança de {formatCurrency(total)} no Asaas
-      </Botao>
     </div>
   );
 }

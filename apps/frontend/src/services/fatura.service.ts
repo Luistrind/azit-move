@@ -23,6 +23,8 @@ export interface Fatura {
   // Só na lista da conta: o que falta pagar HOJE (fatura AZIT fechada: saldo +
   // multa + atualização do motor); null em fatura que não está em aberto.
   faltaHoje?: number | null;
+  // Só na lista da conta: multa e atualização de hoje dentro do `faltaHoje` (modelo AZIT).
+  encargoHoje?: number;
   // false em fatura FECHADA = a cobrança automática falhou (estado de exceção).
   temCobrancaAsaas: boolean;
   // Fatura Azit F2 (doc 02 §32.4-A): 'AZIT' = Pix sob demanda. Não ter cobrança
@@ -90,19 +92,59 @@ export interface LancamentoConta {
   acordoId: string | null;
 }
 
-export interface PaginaFaturas {
+// Ficha do titular (doc 02 §33.2): as faturas da conta em visões calculadas.
+//   agora = disponíveis e vencidas · vencer = ainda não disponíveis ·
+//   pagas = quitadas · outras = renegociadas, novadas e rescindidas.
+export type VisaoFaturasConta = 'agora' | 'vencer' | 'pagas' | 'outras';
+export interface BlocoFaturas {
+  visao: VisaoFaturasConta;
   total: number;
-  ocultas: number; // faturas NOVADAS fora da lista (0 quando mostrarNovadas)
-  page: number;
-  limit: number;
+  offset: number;
   data: Fatura[];
 }
 
+// Um dinheiro que entrou na conta e para onde ele foi (doc 02 §33.3).
+export interface PagamentoDaConta {
+  id: string;
+  dia: string; // AAAA-MM-DD
+  hora: string | null;
+  tipo: 'pix' | 'cobranca' | 'sinistro' | 'entrada_contrato' | 'entrada_acordo';
+  valor: number; // o dinheiro inteiro, com excedente
+  excedente: number;
+  descricao: string | null;
+  contratoNumero: string | null;
+  acordoId: string | null;
+  destinos: { faturaId: string; numero: number; valor: number; encargos: number; quitou: boolean }[];
+}
+export interface BlocoPagamentos {
+  total: number;
+  offset: number;
+  data: PagamentoDaConta[];
+}
+
+// Posição de hoje da conta (doc 02 §33.1) — tudo calculado na leitura.
+export interface PosicaoConta {
+  hoje: string;
+  atraso: { faturas: number; valorHoje: number; encargos: number; diasMaisAntiga: number; comEncargoNoAsaas: number };
+  proxima: { id: string; numero: number; dataVencimento: string; valor: number; disponivel: boolean } | null;
+  ultimoPagamento: PagamentoDaConta | null;
+  faturaComLinkId: string | null;
+  trilho: { pagas: number; emAtraso: number; valorEmAtraso: number; aVencer: number; valorAVencer: number };
+  contagem: Record<VisaoFaturasConta, number>;
+}
+
 export const faturaService = {
-  // Faturas NOVADAS ficam fora da lista por padrão (histórico fica, tela não).
-  // `page = 'atual'` abre na página da fatura mais antiga em aberto (a resposta diz qual é).
-  async daConta(contaId: string, page: number | 'atual' = 1, limit = 8, mostrarNovadas = false): Promise<PaginaFaturas> {
-    const { data } = await api.get(`/api/v1/contas/${contaId}/faturas`, { params: { page, limit, novadas: mostrarNovadas ? 'mostrar' : 'ocultar' } });
+  // "Agora" vem inteira; as outras visões chegam em blocos (offset = quantas já estão na tela).
+  async daConta(contaId: string, visao: VisaoFaturasConta, offset = 0, limit = 10): Promise<BlocoFaturas> {
+    const { data } = await api.get(`/api/v1/contas/${contaId}/faturas`, { params: { visao, offset, limit } });
+    return data;
+  },
+  async posicao(contaId: string): Promise<PosicaoConta> {
+    const { data } = await api.get(`/api/v1/contas/${contaId}/posicao`);
+    return data;
+  },
+  async pagamentos(contaId: string, offset = 0, limit = 10): Promise<BlocoPagamentos> {
+    const { data } = await api.get(`/api/v1/contas/${contaId}/pagamentos`, { params: { offset, limit } });
     return data;
   },
   async lancamentos(contaId: string): Promise<LancamentoConta[]> {

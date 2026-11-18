@@ -3,7 +3,7 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
-import { inicioHojeBrasilUTC } from '@azit/utils';
+import { inicioHojeBrasilUTC, situacaoDaConta } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { QuitacaoService } from '../operacoes/quitacao.service';
 import { CriarContaDto } from './dto/criar-conta.dto';
@@ -95,7 +95,8 @@ export class ContaService {
           // Conta sem contrato ATIVO (tudo encerrado, ou contrato ainda em formalização) continua
           // na grade — é histórico —, mas com situação própria: não é cliente ativo nem "em dia"
           // (doc 02 §27.10, 16/11: a grade dizia 67 contas e a visão geral, 66 clientes ativos).
-          situacao: vigentes.length === 0 ? 'sem_contrato_ativo' : bloqueada ? 'bloqueada' : valorEmAtraso > 0 ? 'em_atraso' : emAcordo ? 'em_acordo' : 'em_dia',
+          // A regra é uma só, a mesma do selo da ficha do titular (Regra 16).
+          situacao: situacaoDaConta({ contratosAtivos: vigentes.length, bloqueada, valorEmAtraso, emAcordo }),
         };
       })
       .filter((c) => c.contratosTotal > 0);

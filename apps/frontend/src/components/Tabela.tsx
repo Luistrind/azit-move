@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 
 // Tabela GENÉRICA e responsiva (layout v2, doc 03 §11 / doc 02 §27.6): no
 // desktop é a grade de sempre; no celular (< md) cada linha vira um cartão —
@@ -27,6 +27,8 @@ export function Tabela<T>({
   carregando = false,
   larguraMinima = 620,
   acoes,
+  expandida,
+  semMoldura = false,
 }: {
   colunas: Coluna<T>[];
   linhas: T[];
@@ -36,6 +38,10 @@ export function Tabela<T>({
   carregando?: boolean;
   larguraMinima?: number;
   acoes?: (linha: T) => ReactNode; // botões da linha (desktop: última coluna; celular: rodapé)
+  // Conteúdo aberto logo abaixo da linha (detalhe no lugar, sem modal); null = linha fechada.
+  expandida?: (linha: T) => ReactNode | null;
+  // Dentro de um cartão que já tem moldura (ex.: conteúdo de uma aba): sem borda nem fundo próprios.
+  semMoldura?: boolean;
 }) {
   const alinhamento = (a?: AlinharColuna) => (a === 'right' ? 'text-right' : a === 'center' ? 'text-center' : 'text-left');
   const papel = (c: Coluna<T>, i: number): PapelCelular => c.celular ?? (i === 0 ? 'titulo' : 'campo');
@@ -91,13 +97,18 @@ export function Tabela<T>({
                 </div>
               ) : null}
               {acoes ? <div className="mt-[10px] flex flex-wrap justify-end gap-[6px]" onClick={(e) => e.stopPropagation()}>{acoes(l)}</div> : null}
+              {expandida?.(l) ? (
+                <div className="mt-[12px] cursor-default border-t pt-[12px]" style={{ borderColor: 'var(--border)' }} onClick={(e) => e.stopPropagation()}>
+                  {expandida(l)}
+                </div>
+              ) : null}
             </Tag>
           );
         })}
       </div>
 
       {/* Desktop: a grade */}
-      <div className="hidden overflow-x-auto rounded-card md:block" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div className={`hidden overflow-x-auto md:block ${semMoldura ? '' : 'rounded-card'}`} style={semMoldura ? undefined : { background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <table className="w-full border-collapse text-[12.5px]" style={{ minWidth: larguraMinima }}>
           <thead>
             <tr style={{ color: 'var(--text-label)', borderBottom: '1px solid var(--border)' }}>
@@ -117,8 +128,8 @@ export function Tabela<T>({
               <tr><td colSpan={colunas.length + (acoes ? 1 : 0)}>{mensagem(vazio)}</td></tr>
             ) : null}
             {linhas.map((l) => (
+              <Fragment key={chave(l)}>
               <tr
-                key={chave(l)}
                 onClick={clicavel ? () => onClick!(l) : undefined}
                 className={`${clicavel ? 'cursor-pointer hover:bg-[var(--surface-muted)]' : ''} transition-colors`}
                 style={{ borderBottom: '1px solid var(--border-light)' }}
@@ -134,6 +145,14 @@ export function Tabela<T>({
                 ))}
                 {acoes ? <td className="px-[18px] py-[13px] text-right" onClick={(e) => e.stopPropagation()}>{acoes(l)}</td> : null}
               </tr>
+              {expandida?.(l) ? (
+                <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
+                  <td colSpan={colunas.length + (acoes ? 1 : 0)} className="px-[18px] py-[16px]" style={{ background: 'var(--surface-muted)' }}>
+                    {expandida(l)}
+                  </td>
+                </tr>
+              ) : null}
+              </Fragment>
             ))}
           </tbody>
         </table>

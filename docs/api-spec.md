@@ -406,17 +406,34 @@ Cronograma completo de parcelas.
 #### GET `/api/v1/contratos/:id/faturas`
 Histórico de faturas do contrato.
 
-#### GET `/api/v1/contas/:contaId/faturas`
-Histórico de faturas da conta (ficha do titular), paginado por `page`/`limit`. Faturas **NOVADAS**
-(extintas pela novação, doc 02 §7.7b) ficam fora da lista por padrão — `ocultas` na resposta diz
-quantas são; `novadas=mostrar` as traz de volta. (Decisão 13/10/2026: o histórico fica gravado, a
-tela não lista o que não existe mais.)
+#### GET `/api/v1/contas/:contaId/faturas?visao=agora|vencer|pagas|outras&offset&limit`
+Faturas da conta por **visão** (ficha do titular, doc 02 §33.2; substitui a paginação por `page` e
+o filtro `novadas`, 18/11/2026). `agora` (padrão) = disponíveis e vencidas, devolvida inteira;
+`vencer` = ainda não disponíveis; `pagas` = quitadas, da mais recente para a mais antiga; `outras` =
+renegociadas, novadas e rescindidas. Resposta: `{ "visao", "total", "offset", "data": [fatura] }` —
+`offset` é quantas já estão na tela ("carregar mais"); `limit` padrão 10, máximo 50.
 
-`page=atual` (16/11/2026) devolve a página da fatura mais antiga ainda em aberto (sem nada em aberto, a
-última); a resposta traz o número em `page`. Cada fatura leva `valorPago` (o que entrou nela) e
-`faltaHoje`: o que falta pagar hoje — em fatura do modelo AZIT fechada é o total do motor (saldo +
-multa + atualização, a mesma conta da página do cliente); nas demais em aberto, valor de face menos o
-pago; `null` em fatura que não está em aberto.
+Cada fatura leva `valorPago` (o que entrou nela), `faltaHoje` e `encargoHoje`. `faltaHoje`: em
+fatura do modelo AZIT fechada é o total do motor (saldo + multa + atualização, a mesma conta da
+página do cliente) e `encargoHoje` é a parte de multa e atualização; nas demais em aberto, valor da
+fatura menos o pago (`encargoHoje` = 0); `null` em fatura que não está em aberto.
+
+#### GET `/api/v1/contas/:contaId/posicao`
+Posição de hoje da conta (doc 02 §33.1), calculada na leitura: `{ "hoje", "atraso": { "faturas",
+"valorHoje", "encargos", "diasMaisAntiga", "comEncargoNoAsaas" }, "proxima": { "id", "numero",
+"dataVencimento", "valor", "disponivel" } | null, "ultimoPagamento": pagamento | null,
+"faturaComLinkId", "trilho": { "pagas", "emAtraso", "valorEmAtraso", "aVencer", "valorAVencer" },
+"contagem": { "agora", "vencer", "pagas", "outras" } }`. Centavos.
+
+#### GET `/api/v1/contas/:contaId/pagamentos?offset&limit`
+Cada dinheiro que entrou na conta, do mais recente para o mais antigo (doc 02 §33.3):
+`{ "total", "offset", "data": [{ "id", "dia": "AAAA-MM-DD", "hora": "HH:MM" | null, "tipo":
+"pix|cobranca|sinistro|entrada_contrato|entrada_acordo", "valor", "excedente", "descricao",
+"contratoNumero", "acordoId", "destinos": [{ "faturaId", "numero", "valor", "encargos", "quitou" }] }] }`.
+Um Pix que cobre mais de uma fatura vem uma vez, com um destino por fatura.
+
+`GET /api/v1/titulares/:id` passa a trazer `conta.situacao` (`sem_contrato_ativo | bloqueada |
+em_atraso | em_acordo | em_dia`) — a mesma regra da grade de clientes da carteira.
 
 #### GET `/api/v1/contratos/:id/extrato`
 Extrato completo do contrato — todos os eventos financeiros em ordem cronológica.

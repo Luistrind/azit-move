@@ -23,6 +23,7 @@ export * from './fipe';
 export * from './tipo-contrato';
 export * from './carteira-visao';
 export * from './fatura-situacao';
+export * from './conta-situacao';
 export * from './fatura-motor';
 export * from './conferencia-asaas';
 export * from './rescisao';
