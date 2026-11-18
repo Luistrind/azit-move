@@ -99,16 +99,22 @@ export class WebhookController {
         recebidoEm: agora(),
         identificadorPix: e.identificadorPix,
       });
-    if (eventoPix?.gatewayId) {
-      if (eventoPix.pago) await identificar(eventoPix);
-      return { received: true };
-    }
     // Cobrança LEGADA (doc 02 §26.5): emitida pela assinatura antiga do Asaas,
     // não tem externalReference — mas a migração amarrou o id dela à fatura
     // (asaasChargeId). Fallback payment.id → fatura, e segue o fluxo normal.
     if (pg?.id && !ref) {
       const fatura = await this.prisma.db.fatura.findFirst({ where: { asaasChargeId: pg.id, deletedAt: null }, select: { id: true } });
       if (fatura) ref = fatura.id;
+    }
+    // A REFERÊNCIA MANDA (correção 18/11, caso Leonardo fatura 191): pagamento que
+    // aponta para uma fatura, uma entrada ou um acordo segue o caminho DELE, mesmo
+    // quando o aviso traz o id de um QR (`pixQrCodeId`) — o Asaas preenche esse
+    // campo também em cobrança comum paga por Pix. A identificação pelo id do Pix
+    // é só para dinheiro que chegou SEM referência nenhuma (QR estático do Pix sob
+    // demanda). Antes, o id do QR vinha primeiro e a fatura nunca era baixada.
+    if (eventoPix?.gatewayId && !ref) {
+      if (eventoPix.pago) await identificar(eventoPix);
+      return { received: true };
     }
     if (!pg || !ref) {
       // Pix recebido SEM referência, sem id do Pix e que não é cobrança de fatura

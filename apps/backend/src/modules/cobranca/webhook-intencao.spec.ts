@@ -88,7 +88,7 @@ describe('WebhookController — pagamento de QR estático', () => {
   beforeAll(() => jest.useFakeTimers().setSystemTime(new Date('2026-11-09T21:22:00.000Z')));
   afterAll(() => jest.useRealTimers());
 
-  it('com pixQrCodeId: enfileira só a identificação — sem tocar no banco, na conciliação nem nos outros fluxos', async () => {
+  it('com pixQrCodeId: enfileira só a identificação — sem conciliação nem os outros fluxos (só confere antes se a cobrança é de alguma fatura)', async () => {
     const { controller, filas, intencao, prisma } = montar();
     const r = await controller.asaas(undefined, {
       event: 'PAYMENT_RECEIVED',
@@ -99,7 +99,8 @@ describe('WebhookController — pagamento de QR estático', () => {
     expect(intencao.enfileirarIdentificacao).toHaveBeenCalledWith({ pagamentoId: 'pay_9', gatewayId: 'qr_abc123', valor: 107243, dataPagamento: '2026-11-09', recebidoEm: '2026-11-09T21:22:00.000Z', identificadorPix: 'E182' });
     expect(intencao.enfileirarBaixa).not.toHaveBeenCalled();
     for (const f of Object.values(filas)) expect(f.add).not.toHaveBeenCalled();
-    expect(prisma.db.fatura.findFirst).not.toHaveBeenCalled(); // nem procura fatura pela cobrança
+    // 18/11: antes de tratar como Pix de QR, confere se o id do pagamento é a cobrança de alguma fatura (não é).
+    expect(prisma.db.fatura.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { asaasChargeId: 'pay_9', deletedAt: null } }));
   });
 
   it('se a referência da intenção vier copiada, a baixa é enfileirada direto (sem identificação)', async () => {
@@ -133,5 +134,42 @@ describe('WebhookController — pagamento de QR estático', () => {
     expect(await controller.asaas(undefined, { event: 'PAYMENT_CREATED', payment: { id: 'pay_7', billingType: 'PIX', value: 600 } })).toEqual({ received: true, ignored: true });
     expect(await controller.asaas(undefined, { event: 'PAYMENT_RECEIVED' })).toEqual({ received: true, ignored: true });
     expect(intencao.enfileirarIdentificacao).not.toHaveBeenCalled();
+  });
+});
+
+// Correção 18/11 (caso Leonardo, fatura 191): o Asaas também manda `pixQrCodeId` em
+// cobrança COMUM paga por Pix. A referência manda — a fatura tem de ser baixada.
+describe('WebhookController — cobrança de fatura paga por Pix (com pixQrCodeId)', () => {
+  it('com externalReference da fatura: vai para a conciliação da fatura, não para a identificação de Pix', async () => {
+    const { controller, filas, intencao } = montar();
+    const r = await controller.asaas(undefined, {
+      event: 'PAYMENT_RECEIVED',
+      payment: { id: 'pay_fat191', externalReference: 'fatura_191', pixQrCodeId: 'qr_da_cobranca', billingType: 'PIX', value: 775, paymentDate: '2026-11-18' },
+    } as never);
+    expect(r).toEqual({ received: true });
+    expect(intencao.enfileirarIdentificacao).not.toHaveBeenCalled();
+    expect(filas.recebido.add).toHaveBeenCalledTimes(1);
+    expect(filas.recebido.add.mock.calls[0][1]).toMatchObject({ faturaId: 'fatura_191', valor: 77500 });
+  });
+
+  it('cobrança do legado (sem externalReference, amarrada pelo id): também vai para a conciliação', async () => {
+    const { controller, filas, intencao, prisma } = montar();
+    prisma.db.fatura.findFirst.mockResolvedValue({ id: 'fatura_legada' });
+    await controller.asaas(undefined, {
+      event: 'PAYMENT_RECEIVED',
+      payment: { id: 'pay_legado', externalReference: null, pixQrCodeId: 'qr_da_cobranca', billingType: 'PIX', value: 997, paymentDate: '2026-11-18' },
+    } as never);
+    expect(intencao.enfileirarIdentificacao).not.toHaveBeenCalled();
+    expect(filas.recebido.add.mock.calls[0][1]).toMatchObject({ faturaId: 'fatura_legada', valor: 99700 });
+  });
+
+  it('Pix de QR estático sem referência e sem fatura com esse id: continua indo para a identificação', async () => {
+    const { controller, filas, intencao } = montar();
+    await controller.asaas(undefined, {
+      event: 'PAYMENT_RECEIVED',
+      payment: { id: 'pay_qr', externalReference: null, pixQrCodeId: 'qr_estatico', billingType: 'PIX', value: 600, paymentDate: '2026-11-18' },
+    } as never);
+    expect(intencao.enfileirarIdentificacao).toHaveBeenCalledTimes(1);
+    expect(filas.recebido.add).not.toHaveBeenCalled();
   });
 });
