@@ -969,6 +969,22 @@ A fórmula é aplicada parcela a parcela. O valor de quitação total é a soma 
 > por nome, CPF, placa ou número do contrato filtra junto. Raia "Mais de 60" e o rótulo dos
 > marcos foram escolha minha para fechar a escala — a validar.
 
+> **Correção 2026-11-18 (Luís, em produção — caso Saulo) — o cliente aparece uma vez por veículo.**
+> A régua montava um cartão por contrato: quem tinha o veículo e um Reembolso Parcelado na mesma
+> fatura aparecia duas vezes (R$ 3.420,00 e R$ 283,30 para as mesmas duas faturas), e o cartão do
+> reembolso, sem carro, oferecia "Bloquear veículo". A cobrança é a **fatura da conta**. Regra
+> (`cartoesDaRegua`, em `packages/utils`, Regra 16):
+> - cada contrato **com veículo** é um cartão — é sobre ele que se decide bloqueio e recuperação;
+> - contrato **sem veículo** (reembolso, crédito, termo de novação) não vira cartão: o atraso dele
+>   **soma** no cartão do veículo da mesma conta (o de maior atraso, se houver mais de um), e o
+>   cartão diz quais contratos inclui;
+> - conta que só tem contrato sem veículo em régua vira **um** cartão, sem ação de veículo;
+> - os dias de atraso do cartão são os da parcela mais antiga entre os contratos somados, e é esse
+>   número que libera bloqueio (Regra 6) e recuperação (§29.1). Bloquear ou iniciar recuperação em
+>   contrato sem veículo é recusado (`sem_veiculo`).
+> As raias passam a contar **casos**, não contratos. A notificação automática da régua sai uma vez
+> por caso.
+
 ### 7.7 Acordo (recuperação branda)
 
 > **Decisão 2026-07-03, Luís — o Acordo é da CONTA, não do contrato.** O pagamento acontece na fatura, e a fatura é da Conta: ela agrega parcelas de *todos* os contratos do titular. Logo a inadimplência é da conta — o titular nunca atrasa "um contrato", atrasa faturas. A renegociação, portanto, cobre **todas as parcelas em atraso da conta** (de todos os contratos) numa única negociação: uma entrada, um plano novo, uma conversa.

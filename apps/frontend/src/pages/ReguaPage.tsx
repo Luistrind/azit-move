@@ -51,7 +51,7 @@ function normalizar(t: string): string {
 }
 function casaBusca(i: ReguaItem, termo: string): boolean {
   if (!termo) return true;
-  const alvo = normalizar([i.titular.nome, i.titular.cpfCnpj, i.numero, i.ativo?.placa ?? '', i.ativo?.modelo ?? ''].join(' '));
+  const alvo = normalizar([i.titular.nome, i.titular.cpfCnpj, i.numero, i.ativo?.placa ?? '', i.ativo?.modelo ?? '', ...i.contratosJuntos.map((j) => j.numero)].join(' '));
   const digitos = termo.replace(/\D/g, '');
   return normalizar(termo).split(/\s+/).filter(Boolean).every((t) => alvo.includes(t)) || (digitos.length >= 3 && i.titular.cpfCnpj.replace(/\D/g, '').includes(digitos));
 }
@@ -151,7 +151,8 @@ function CardLargo({ item, proximaAcao, onAcao, onAbrir, ocupado, podeOperar }: 
       <div className="min-w-0">
         <div className="truncate text-[14px] font-bold" style={{ color: 'var(--text-primary)' }}>{item.titular.nome}</div>
         <div className="truncate text-[12px]" style={{ color: 'var(--text-secondary)' }}>
-          <strong style={{ color: 'var(--text-primary)' }}>{item.ativo?.placa ?? 'sem placa'}</strong> · {item.ativo?.modelo ?? 'sem ativo'} · contrato {item.numero}
+          <strong style={{ color: 'var(--text-primary)' }}>{item.ativo ? (item.ativo.placa ?? 'sem placa') : 'sem veículo'}</strong>{item.ativo?.modelo ? ` · ${item.ativo.modelo}` : ''} · contrato {item.numero}
+          {item.contratosJuntos.length > 0 ? ` · inclui ${item.contratosJuntos.map((j) => j.numero).join(', ')}` : ''}
         </div>
       </div>
       <span
@@ -216,7 +217,10 @@ function CasoModal({ item, onClose, onRenegociar }: { item: ReguaItem; onClose: 
           <span className="rounded-full px-[10px] py-[2px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
             {item.diasAtraso > 0 ? `${resolverRaiaRegua(item.diasAtraso)?.rotulo ?? 'Vencida'} · ${item.diasAtraso} dia(s) de atraso` : item.parcelasVenceHoje > 0 ? 'Vence hoje' : 'Em intervenção'}
           </span>
-          <span>{item.ativo?.modelo ?? '—'} · {item.ativo?.placa ?? 'sem placa'} · contrato {item.numero}</span>
+          <span>
+            {item.ativo ? `${item.ativo.modelo ?? '—'} · ${item.ativo.placa ?? 'sem placa'}` : 'sem veículo'} · contrato {item.numero}
+            {item.contratosJuntos.length > 0 ? ` · inclui ${item.contratosJuntos.map((j) => j.numero).join(', ')}` : ''}
+          </span>
           {item.bloqueado && <span className="rounded-full px-[10px] py-[2px] font-bold" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>Veículo bloqueado</span>}
         </div>
 
@@ -339,7 +343,7 @@ export function ReguaPage() {
           style={{ background: 'var(--surface)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
         />
         <div className="text-[12.5px]" style={{ color: 'var(--text-body)' }}>
-          {itens.length}{busca.trim() && itens.length !== todos.length ? ` de ${todos.length}` : ''} contrato(s) em régua de cobrança
+          {itens.length}{busca.trim() && itens.length !== todos.length ? ` de ${todos.length}` : ''} caso(s) em régua de cobrança
           {raia && (
             <>
               {' · '}
@@ -376,7 +380,7 @@ export function ReguaPage() {
             <div className="flex flex-wrap items-center gap-x-[12px] gap-y-[4px] px-[16px] py-[12px]" style={{ borderBottom: '1px solid var(--border)' }}>
               <div className="min-w-0 flex-1">
                 <div className="text-[14px] font-bold" style={{ color: 'var(--text-primary)' }}>
-                  {col.rotulo} · {cards.length} contrato{cards.length === 1 ? '' : 's'}
+                  {col.rotulo} · {cards.length} caso{cards.length === 1 ? '' : 's'}
                 </div>
                 <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>{col.marco}</div>
               </div>
@@ -392,7 +396,7 @@ export function ReguaPage() {
             <div className="grid grid-cols-1 gap-[12px] p-[14px] md:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
               {cards.length === 0 && (
                 <div className="py-[24px] text-center text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
-                  {busca.trim() ? 'Nada encontrado para a busca.' : 'Nenhum contrato nesta raia.'}
+                  {busca.trim() ? 'Nada encontrado para a busca.' : 'Nenhum caso nesta raia.'}
                 </div>
               )}
               {cards.map((item) => (
@@ -445,7 +449,7 @@ export function ReguaPage() {
         })}
         {!regua.isLoading && itens.length === 0 && (
           <div className="rounded-card px-[18px] py-[24px] text-center text-[12.5px] md:hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-            {busca.trim() ? 'Nada encontrado para a busca.' : 'Nenhum contrato em régua de cobrança.'}
+            {busca.trim() ? 'Nada encontrado para a busca.' : 'Nenhum caso em régua de cobrança.'}
           </div>
         )}
       </div>
