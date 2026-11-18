@@ -161,7 +161,7 @@ export function FaturamentoConfigPage() {
             {viraChave && form.pixSobDemanda ? (
               <span className="rounded-[8px] px-[10px] py-[6px]" style={{ background: 'var(--warn-bg)', color: 'var(--warn-ink)' }}>
                 Atenção: sem cobrança pré-criada o Asaas deixa de avisar o cliente da fatura. Antes de ligar em produção,
-                os lembretes de pagamento precisam estar no ar ou o operador manda o link pela ficha.
+                o aviso ao cliente precisa estar definido — sem ele, o operador manda o link da fatura pela ficha.
               </span>
             ) : null}
           </div>

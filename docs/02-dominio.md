@@ -2893,6 +2893,22 @@ API: `GET /contas/carteira/visao/variacao?de=AAAA-MM&para=AAAA-MM`; `ativos` em
 
 ## 28. Lembretes de pagamento pelo WhatsApp (decisão Luís, 2026-10-30)
 
+> **Decisão 2026-11-17 (Luís) — o WhatsApp sai do sistema.** A Azit fechou um pacote com a V4 e o
+> WhatsApp passa a viver no **CRM da V4**, onde as conversas ficam unificadas (lead e pós-venda).
+> O sistema **não** fala mais com a Meta: o canal (Meta Cloud API), os lembretes D-2/D0 e a tela
+> Conversas, construídos e testados em homologação em 15–16/11, ficam **estacionados** nas branches
+> `claude/whatsapp-lembretes-ace870` e `integracao/f2-whatsapp` e **não vão para a main**. O que
+> vai para produção sai de `integracao/fatura-ficha-carteira`, sem esse módulo. Esta seção e a POP
+> por WhatsApp (§23) ficam como registro do que foi desenhado.
+>
+> **O que continua valendo:** o link da Fatura Azit como destino de qualquer aviso (§32.7) e o
+> envio manual pelo operador na ficha (`wa.me`, sai do aparelho dele, não depende da Meta).
+>
+> **Em aberto (decisão do Luís, na integração com o CRM da V4):** quem dispara o aviso de fatura
+> disponível e de vencimento — o CRM, a partir de uma lista que o sistema entrega (cliente,
+> telefone, valor, vencimento, link), ou outro canal; e por onde sai a notificação formal de
+> cobrança da POP. Enquanto isso não existir, vale a pendência 8 do §32.10.
+
 Contexto: o aviso por SMS do Asaas vem falhando e custa à parte. Decisão: o próprio sistema
 avisa o cliente pelo **mesmo número de WhatsApp dedicado da POP** (§23, branch
 `feat/notificacoes-cobranca`), com o link de pagamento da cobrança. Lembrete é coisa distinta da
@@ -3411,6 +3427,8 @@ avulsa PIX com vencimento no dia, **sem multa nem juros nativos**; trocar por um
 do Banco Central (Itaú foi avaliado em 15/11) ou acrescentar split (§32.8) é trocar a
 implementação, não a regra. Nada fora do adaptador conhece o Asaas.
 
+> **Decisão 2026-11-17 (Luís):** não seguimos com o Itaú; o desenho continua com o Asaas.
+
 **O que NÃO muda:** entrada de contrato (`ativacao:`), entrada de acordo (`acordo:`), recebimento
 de novação (`novacao:`) e crédito avulso continuam com cobrança própria e fluxo próprio. Faturas
 já emitidas no modelo antigo (`ASAAS_NATIVO`) seguem com a cobrança que têm até liquidar (§32.4 e
@@ -3567,6 +3585,11 @@ gatewayId — identificador do QR estático ou da cobrança, conforme o modo —
    **Atualização 15/11 (QR estático, §32.4-A):** no modo ESTATICO o Asaas não tem cobrança em
    nome do cliente e portanto não o avisa de nada — some o risco de aviso em dobro, e o aviso da
    fatura passa a ser **só** dos lembretes do §28 (que continuam pré-requisito).
+   **Atualização 17/11 (WhatsApp sai do sistema, §28):** os lembretes automáticos pelo sistema
+   não vão existir. Quem avisa o cliente passa a ser decidido na integração com o CRM da V4; até
+   lá o único aviso é o **operador mandar o link pela ficha**. Continua sendo pré-requisito para
+   ligar a chave em produção: sem aviso automático, ligar a chave significa mandar o link à mão a
+   cada fatura — decisão do Luís.
 9. **Transição das faturas já emitidas** (§32.4-A): ficam no modelo antigo até liquidar (padrão
    provisório) ou o operador converte a conta, apagando as cobranças antigas? Contas em atraso
    ficam mistas por mais tempo.
