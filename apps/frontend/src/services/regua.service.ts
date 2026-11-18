@@ -18,7 +18,9 @@ export interface ReguaItem {
   bloqueioDisponivel: boolean; // a partir da raia "até 14 dias" (DIAS_BLOQUEIO_DISPONIVEL, @azit/utils)
   recuperacaoDisponivel: boolean; // "Iniciar recuperação" a partir da raia "até 30 dias" (DIAS_RECUPERACAO_DISPONIVEL, doc 02 §29.1)
   titular: { nome: string; cpfCnpj: string };
-  ativo: { placa: string | null; modelo: string | null } | null; // null = sem ativo (RP)
+  ativo: { placa: string | null; modelo: string | null } | null; // null = sem veículo (só quando a conta não tem contrato de veículo em régua)
+  // Contratos sem veículo da mesma conta somados neste cartão (doc 02 §7.6, 18/11): o cliente aparece uma vez.
+  contratosJuntos: { id: string; numero: string }[];
 }
 
 export const reguaService = {

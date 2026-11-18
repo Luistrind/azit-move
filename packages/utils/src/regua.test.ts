@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolverEstagioRegua } from './regua';
+import { resolverEstagioRegua, cartoesDaRegua } from './regua';
 
 describe('resolverEstagioRegua', () => {
   it('retorna null quando ainda em dia (< 1 dia de atraso)', () => {
@@ -52,5 +52,35 @@ describe('raias do kanban (decisão 31/10)', () => {
     expect(bloqueioDisponivel(7)).toBe(false);
     expect(bloqueioDisponivel(8)).toBe(true);
     expect(bloqueioDisponivel(45)).toBe(true);
+  });
+});
+
+describe('cartoesDaRegua — o cliente aparece uma vez por veículo', () => {
+  const c = (id: string, contaId: string, temVeiculo: boolean, dias: number, valor: number, faturas: string[], hoje: Partial<{ valor: number; faturas: string[] }> = {}) => ({
+    id, contaId, temVeiculo, diasAtraso: dias, valorVencido: valor, parcelasVencidas: faturas.length, faturasVencidas: faturas,
+    valorVenceHoje: hoje.valor ?? 0, parcelasVenceHoje: hoje.faturas?.length ?? 0, faturasVenceHoje: hoje.faturas ?? [],
+  });
+
+  it('caso Saulo: veículo + Reembolso Parcelado na mesma fatura viram UM cartão, do veículo', () => {
+    const r = cartoesDaRegua([c('veic', 'saulo', true, 24, 342000, ['f18', 'f19']), c('rp', 'saulo', false, 24, 28330, ['f18'])]);
+    expect(r).toHaveLength(1);
+    expect(r[0].principal.id).toBe('veic');
+    expect(r[0].juntos.map((j) => j.id)).toEqual(['rp']);
+    expect(r[0]).toMatchObject({ diasAtraso: 24, valorVencido: 370330, parcelasVencidas: 3, faturasVencidas: 2 });
+  });
+
+  it('o atraso do cartão é o mais antigo da conta, mesmo quando vem do contrato sem veículo', () => {
+    const r = cartoesDaRegua([c('veic', 'x', true, 3, 100, ['f2']), c('rp', 'x', false, 12, 50, ['f1'], { valor: 10, faturas: ['f3'] })]);
+    expect(r[0]).toMatchObject({ diasAtraso: 12, valorVencido: 150, faturasVencidas: 2, valorVenceHoje: 10, faturasVenceHoje: 1 });
+  });
+
+  it('dois veículos na conta: um cartão para cada; o contrato sem veículo soma só no mais atrasado', () => {
+    const r = cartoesDaRegua([c('carro1', 'y', true, 5, 100, ['a']), c('carro2', 'y', true, 20, 200, ['b']), c('rp', 'y', false, 5, 30, ['a'])]);
+    expect(r.map((k) => [k.principal.id, k.valorVencido, k.juntos.length])).toEqual([['carro1', 100, 0], ['carro2', 230, 1]]);
+  });
+
+  it('conta só com contrato sem veículo: um cartão, do mais atrasado; contas diferentes não se misturam', () => {
+    const r = cartoesDaRegua([c('rp1', 'z', false, 2, 10, ['a']), c('rp2', 'z', false, 9, 20, ['b']), c('outro', 'w', true, 1, 5, ['c'])]);
+    expect(r.map((k) => [k.principal.id, k.valorVencido])).toEqual([['rp2', 30], ['outro', 5]]);
   });
 });

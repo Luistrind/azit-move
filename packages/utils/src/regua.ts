@@ -90,3 +90,68 @@ export function bloqueioDisponivel(diasAtraso: number): boolean {
 export function recuperacaoDisponivel(diasAtraso: number): boolean {
   return diasAtraso >= DIAS_RECUPERACAO_DISPONIVEL;
 }
+
+// ------------------------------------------------------------
+// CARTÕES da régua (doc 02 §7.6, correção de 18/11/2026). A cobrança é a
+// FATURA da conta: o mesmo cliente não pode aparecer duas vezes só porque a
+// fatura dele junta dois contratos (caso Saulo: veículo + Reembolso Parcelado).
+// Regra: cada contrato COM veículo é um cartão (é sobre ele que se decide
+// bloqueio e recuperação); contrato SEM veículo (reembolso, crédito, termo) não
+// vira cartão próprio — o atraso dele soma no cartão do veículo da mesma conta
+// (o de maior atraso, se houver mais de um). Conta sem nenhum veículo em régua
+// vira UM cartão só, sem ação de veículo.
+// ------------------------------------------------------------
+export interface ContratoNaRegua {
+  id: string;
+  contaId: string;
+  temVeiculo: boolean;
+  diasAtraso: number;
+  valorVencido: number; // centavos
+  parcelasVencidas: number;
+  faturasVencidas: string[]; // ids (uma fatura pode juntar parcelas de dois contratos)
+  valorVenceHoje: number;
+  parcelasVenceHoje: number;
+  faturasVenceHoje: string[];
+}
+export interface CartaoRegua<T extends ContratoNaRegua> {
+  principal: T; // contrato do cartão (ações e identificação)
+  juntos: T[]; // contratos sem veículo somados neste cartão
+  diasAtraso: number;
+  valorVencido: number;
+  parcelasVencidas: number;
+  faturasVencidas: number;
+  valorVenceHoje: number;
+  parcelasVenceHoje: number;
+  faturasVenceHoje: number;
+}
+
+export function cartoesDaRegua<T extends ContratoNaRegua>(contratos: T[]): CartaoRegua<T>[] {
+  const porConta = new Map<string, T[]>();
+  for (const c of contratos) porConta.set(c.contaId, [...(porConta.get(c.contaId) ?? []), c]);
+  const cartoes: CartaoRegua<T>[] = [];
+  const maisAtrasado = (lista: T[]) => lista.reduce((a, b) => (b.diasAtraso > a.diasAtraso ? b : a));
+  for (const lista of porConta.values()) {
+    const comVeiculo = lista.filter((c) => c.temVeiculo);
+    const semVeiculo = lista.filter((c) => !c.temVeiculo);
+    // Sem veículo na conta: um cartão só, do contrato mais atrasado, com os demais somados.
+    const principais = comVeiculo.length > 0 ? comVeiculo : [maisAtrasado(semVeiculo)];
+    const anfitriao = maisAtrasado(principais);
+    for (const principal of principais) {
+      const juntos = principal === anfitriao ? semVeiculo.filter((c) => c !== principal) : [];
+      const todos = [principal, ...juntos];
+      const soma = (f: (c: T) => number) => todos.reduce((s, c) => s + f(c), 0);
+      cartoes.push({
+        principal,
+        juntos,
+        diasAtraso: Math.max(...todos.map((c) => c.diasAtraso)),
+        valorVencido: soma((c) => c.valorVencido),
+        parcelasVencidas: soma((c) => c.parcelasVencidas),
+        faturasVencidas: new Set(todos.flatMap((c) => c.faturasVencidas)).size,
+        valorVenceHoje: soma((c) => c.valorVenceHoje),
+        parcelasVenceHoje: soma((c) => c.parcelasVenceHoje),
+        faturasVenceHoje: new Set(todos.flatMap((c) => c.faturasVenceHoje)).size,
+      });
+    }
+  }
+  return cartoes;
+}

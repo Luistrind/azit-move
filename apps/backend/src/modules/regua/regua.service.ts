@@ -8,7 +8,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { bloqueioDisponivel, dataHojeBrasil, diasAtrasoCalendario, DIA_MS, DIAS_BLOQUEIO_DISPONIVEL, DIAS_RECUPERACAO_DISPONIVEL, FUSO_NEGOCIO, inicioHojeBrasilUTC, recuperacaoDisponivel, resolverEstagioRegua } from '@azit/utils';
+import { bloqueioDisponivel, dataHojeBrasil, diasAtrasoCalendario, DIA_MS, DIAS_BLOQUEIO_DISPONIVEL, DIAS_RECUPERACAO_DISPONIVEL, FUSO_NEGOCIO, inicioHojeBrasilUTC, recuperacaoDisponivel, resolverEstagioRegua, cartoesDaRegua } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { FaturaService } from '../cobranca/fatura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
@@ -84,43 +84,61 @@ export class ReguaService {
     });
     const hojePorId = new Map(vencendoHoje.map((v) => [v.contratoId, v]));
 
-    return contratos
-      .map((c) => {
-        const v = porId.get(c.id);
-        const maisAntiga = v?._min.dataVencimento;
+    // Um cartão por VEÍCULO do cliente (doc 02 §7.6, 18/11): contrato sem veículo
+    // (reembolso, crédito, termo) não vira cartão próprio — soma no do carro da
+    // mesma conta. A regra é `cartoesDaRegua`, em @azit/utils.
+    const brutos = contratos.map((c) => {
+      const v = porId.get(c.id);
+      const maisAntiga = v?._min.dataVencimento;
+      const h = hojePorId.get(c.id);
+      return {
+        id: c.id,
+        contaId: c.contaId,
+        temVeiculo: c.ativo !== null,
         // Dias de CALENDÁRIO (correção 31/08): venceu ontem = 1 dia, sempre.
-        const diasAtraso = maisAntiga ? diasAtrasoCalendario(maisAntiga) : 0;
-        const h = hojePorId.get(c.id);
-        return {
-          id: c.id,
-          numero: c.numero,
-          // Fluxo do operador de cobrança (18/08): o card da régua abre o caso e
-          // renegocia dali — a renegociação é da CONTA (doc 02 §7.7).
-          contaId: c.contaId,
-          bloqueado: c.veiculoBloqueadoEm !== null,
-          emRecuperacao: c.recuperacaoIniciadaEm !== null,
-          diasAtraso,
-          estagio: resolverEstagioRegua(diasAtraso),
-          valorVencido: cent(v?._sum.valorNominal ?? null),
-          parcelasVencidas: v?._count._all ?? 0,
-          faturasVencidas: faturasVencidas.get(c.id)?.size ?? 0,
-          // Raia "Vence hoje": o que vence no dia (sem atraso ainda).
-          valorVenceHoje: cent(h?._sum.valorNominal ?? null),
-          parcelasVenceHoje: h?._count._all ?? 0,
-          faturasVenceHoje: faturasHoje.get(c.id)?.size ?? 0,
-          // Bloqueio disponível a partir da raia "até 14 dias" (DIAS_BLOQUEIO_DISPONIVEL, 31/10).
-          bloqueioDisponivel: bloqueioDisponivel(diasAtraso),
-          // "Iniciar recuperação" a partir da raia "até 30 dias" (DIAS_RECUPERACAO_DISPONIVEL, doc 02 §29.1).
-          recuperacaoDisponivel: recuperacaoDisponivel(diasAtraso),
-          titular: c.conta.titular,
-          ativo: c.ativo,
-        };
-      })
-      // Kanban por DIAS de atraso (decisão 31/08, raias 31/10): entra na régua a
-      // partir de 1 dia de calendário OU com parcela vencendo hoje — e permanece
-      // enquanto houver intervenção ativa (bloqueio/recuperação), mesmo sem
-      // atraso, até o desbloqueio manual.
-      .filter((c) => c.diasAtraso >= 1 || c.parcelasVenceHoje > 0 || c.bloqueado || c.emRecuperacao);
+        diasAtraso: maisAntiga ? diasAtrasoCalendario(maisAntiga) : 0,
+        valorVencido: cent(v?._sum.valorNominal ?? null),
+        parcelasVencidas: v?._count._all ?? 0,
+        faturasVencidas: [...(faturasVencidas.get(c.id) ?? [])],
+        // Raia "Vence hoje": o que vence no dia (sem atraso ainda).
+        valorVenceHoje: cent(h?._sum.valorNominal ?? null),
+        parcelasVenceHoje: h?._count._all ?? 0,
+        faturasVenceHoje: [...(faturasHoje.get(c.id) ?? [])],
+        contrato: c,
+      };
+    });
+    // Só entra na conta quem tem o que mostrar: atraso, vencimento hoje ou intervenção ativa.
+    const relevantes = brutos.filter((x) => x.diasAtraso >= 1 || x.parcelasVenceHoje > 0 || x.contrato.veiculoBloqueadoEm !== null || x.contrato.recuperacaoIniciadaEm !== null);
+
+    return cartoesDaRegua(relevantes).map((k) => {
+      const c = k.principal.contrato;
+      const temVeiculo = k.principal.temVeiculo;
+      return {
+        id: c.id,
+        numero: c.numero,
+        // Fluxo do operador de cobrança (18/08): o card da régua abre o caso e
+        // renegocia dali — a renegociação é da CONTA (doc 02 §7.7).
+        contaId: c.contaId,
+        bloqueado: c.veiculoBloqueadoEm !== null,
+        emRecuperacao: c.recuperacaoIniciadaEm !== null,
+        diasAtraso: k.diasAtraso,
+        estagio: resolverEstagioRegua(k.diasAtraso),
+        valorVencido: k.valorVencido,
+        parcelasVencidas: k.parcelasVencidas,
+        faturasVencidas: k.faturasVencidas,
+        valorVenceHoje: k.valorVenceHoje,
+        parcelasVenceHoje: k.parcelasVenceHoje,
+        faturasVenceHoje: k.faturasVenceHoje,
+        // Bloqueio a partir da raia "até 14 dias" e recuperação a partir da "até 30 dias"
+        // (constantes em @azit/utils) — e só onde há veículo para bloquear ou recuperar.
+        bloqueioDisponivel: temVeiculo && bloqueioDisponivel(k.diasAtraso),
+        recuperacaoDisponivel: temVeiculo && recuperacaoDisponivel(k.diasAtraso),
+        titular: c.conta.titular,
+        ativo: c.ativo,
+        // Contratos sem veículo da mesma conta cujo atraso está somado neste cartão.
+        contratosJuntos: k.juntos.map((j) => ({ id: j.contrato.id, numero: j.contrato.numero })),
+      };
+    });
   }
 
   // Job agendado: varre a régua diariamente (madrugada). Em dev o operador também
@@ -178,6 +196,10 @@ export class ReguaService {
         erro: 'estado_invalido',
         mensagem: `Só é possível bloquear contrato em vida (fase atual: ${contrato.status})`,
       });
+    }
+    // Sem veículo não há o que bloquear nem recuperar (reembolso, crédito, termo) — 18/11.
+    if (!contrato.ativoId) {
+      throw new UnprocessableEntityException({ erro: 'sem_veiculo', mensagem: `O contrato ${contrato.numero} não tem veículo` });
     }
     if (contrato.veiculoBloqueadoEm) {
       throw new UnprocessableEntityException({ erro: 'ja_bloqueado', mensagem: 'O veículo já está bloqueado' });
@@ -243,6 +265,10 @@ export class ReguaService {
     if (contrato.status !== 'ATIVO') {
       throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: `Só contrato em vida entra em recuperação (fase atual: ${contrato.status})` });
     }
+    // Sem veículo não há o que bloquear nem recuperar (reembolso, crédito, termo) — 18/11.
+    if (!contrato.ativoId) {
+      throw new UnprocessableEntityException({ erro: 'sem_veiculo', mensagem: `O contrato ${contrato.numero} não tem veículo` });
+    }
     if (contrato.recuperacaoIniciadaEm) {
       throw new UnprocessableEntityException({ erro: 'ja_em_recuperacao', mensagem: 'A recuperação do veículo já foi iniciada' });
     }
@@ -278,14 +304,21 @@ export class ReguaService {
   private async contratoComAtraso(contratoId: string) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id: contratoId },
-      select: { id: true, numero: true, status: true, veiculoBloqueadoEm: true, recuperacaoIniciadaEm: true },
+      select: { id: true, numero: true, status: true, contaId: true, ativoId: true, veiculoBloqueadoEm: true, recuperacaoIniciadaEm: true },
     });
     if (!contrato) {
       throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Contrato não encontrado' });
     }
     const hoje = this.hojeUTC();
+    // O atraso que vale é o do CARTÃO (doc 02 §7.6, 18/11): o deste contrato e o dos
+    // contratos sem veículo da mesma conta, que são cobrados na mesma fatura.
     const maisAntiga = await this.prisma.db.parcela.aggregate({
-      where: { contratoId, status: null, dataVencimento: { lt: hoje }, acordoId: null },
+      where: {
+        status: null,
+        dataVencimento: { lt: hoje },
+        acordoId: null,
+        OR: [{ contratoId }, { contrato: { contaId: contrato.contaId, status: 'ATIVO', ativoId: null, deletedAt: null } }],
+      },
       _min: { dataVencimento: true },
     });
     const dv = maisAntiga._min.dataVencimento;
