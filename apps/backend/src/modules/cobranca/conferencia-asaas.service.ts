@@ -44,13 +44,14 @@ export interface LinhaConferenciaAsaas {
   situacaoAqui: 'vencida' | 'a_vencer'; // runtime (Regra 7), pelo vencimento × hoje
   vencimentoAqui: string;
   valorAqui: number; // centavos
+  valorPagoAqui: number | null; // centavos — valorPago gravado (só existe depois de pagamento parcial, §7.3)
   asaasChargeId: string;
   asaas: CobrancaAsaasConferida | null; // null = 404 no Asaas
   classificacao: ClassificacaoConferenciaAsaas;
 }
 
 export interface ConferenciaAsaas {
-  periodo: { de: string | null; ate: string };
+  periodo: { de: string | null; ate: string | null }; // ate null = sem limite (rodada automática)
   hoje: string;
   consultadoEm: string; // ISO — instante da leitura (as linhas podem vir do cache curto)
   ambiente: 'simulado' | 'sandbox' | 'producao';
@@ -82,16 +83,25 @@ export class ConferenciaAsaasService {
   ) {}
 
   // Faturas em aberto com cobrança, vencimento em [de, ate]. Sem `de`: desde o
-  // início; sem `ate`: até ontem (tudo que está VENCIDO hoje, fuso Brasil).
-  async conferir(de?: string, ate?: string): Promise<ConferenciaAsaas> {
+  // início; sem `ate` (undefined): até ontem (tudo que está VENCIDO hoje, fuso
+  // Brasil); `ate = null`: SEM limite — vencidas, que vencem hoje e a vencer
+  // (conferência automática diária, doc 02 §27.9.1: o Pedro Jose pagou a fatura
+  // que vencia no dia). Fatura do Pix sob demanda (modelo AZIT) não tem cobrança
+  // pré-criada e a baixa dela é pela conta (§32.4-A): fica de fora.
+  async conferir(de?: string, ate?: string | null, opcoes: { semCache?: boolean } = {}): Promise<ConferenciaAsaas> {
     const hoje = dataHojeBrasil();
-    const fim = ate ?? somarDiasISO(hoje, -1);
+    const fim = ate === undefined ? somarDiasISO(hoje, -1) : ate;
+    const limiteVencimento = {
+      ...(de ? { gte: inicioDiaUTC(de) } : {}),
+      ...(fim !== null ? { lt: inicioDiaUTC(somarDiasISO(fim, 1)) } : {}),
+    };
     const faturas = await this.prisma.db.fatura.findMany({
       where: {
         deletedAt: null,
         status: { in: [...STATUS_EM_ABERTO_AQUI] },
         asaasChargeId: { not: null },
-        dataVencimento: { ...(de ? { gte: inicioDiaUTC(de) } : {}), lt: inicioDiaUTC(somarDiasISO(fim, 1)) },
+        modeloEncargo: 'ASAAS_NATIVO',
+        ...(Object.keys(limiteVencimento).length ? { dataVencimento: limiteVencimento } : {}),
       },
       orderBy: [{ dataVencimento: 'asc' }, { numero: 'asc' }],
       select: {
@@ -101,6 +111,7 @@ export class ConferenciaAsaasService {
         status: true,
         dataVencimento: true,
         valorTotal: true,
+        valorPago: true,
         asaasChargeId: true,
         conta: { select: { titularId: true, titular: { select: { nome: true } } } },
       },
@@ -114,7 +125,7 @@ export class ConferenciaAsaasService {
         const chargeId = f.asaasChargeId as string;
         let lida: CobrancaAsaasLida | null;
         try {
-          lida = await this.lerComCache(chargeId);
+          lida = opcoes.semCache ? await this.lerSemCache(chargeId) : await this.lerComCache(chargeId);
         } catch (e) {
           const erro = e instanceof Error ? e.message : String(e);
           this.logger.warn(`Conferência Asaas: não li a cobrança ${chargeId} da fatura ${f.id}: ${erro}`);
@@ -134,6 +145,7 @@ export class ConferenciaAsaasService {
           situacaoAqui: estado === 'vencida' ? 'vencida' : 'a_vencer',
           vencimentoAqui,
           valorAqui,
+          valorPagoAqui: f.valorPago == null ? null : Math.round(Number(f.valorPago.toString()) * 100),
           asaasChargeId: chargeId,
           asaas: lida ? resumirCobranca(lida) : null,
           classificacao: classificarConferenciaAsaas({ vencimento: vencimentoAqui, valor: valorAqui }, lida),
@@ -157,7 +169,9 @@ export class ConferenciaAsaasService {
   // Reconciliar UMA fatura: lê a cobrança AO VIVO (sem cache — é ação), exige
   // `paga_no_asaas` e enfileira o job do webhook. Devolve o payload enfileirado
   // para o operador (e o teste) verem exatamente o que vai conciliar.
-  async reconciliar(faturaId: string): Promise<{ enfileirado: true; statusAsaas: string; job: WebhookPagamento }> {
+  // `jobId` (rodada automática, §27.9.1): chave por dia e fatura — a fila recusa a
+  // repetida, então rodar duas vezes no dia não enfileira duas conciliações.
+  async reconciliar(faturaId: string, opcoes: { jobId?: string } = {}): Promise<{ enfileirado: true; statusAsaas: string; job: WebhookPagamento }> {
     const fatura = await this.prisma.db.fatura.findFirst({
       where: { id: faturaId, deletedAt: null },
       select: { id: true, status: true, asaasChargeId: true, dataVencimento: true, valorTotal: true },
@@ -186,9 +200,17 @@ export class ConferenciaAsaasService {
       });
     }
     const job = eventoConciliacaoDe(fatura.id, lida);
-    await this.filaRecebido.add('conciliar', job);
+    await this.filaRecebido.add('conciliar', job, ...(opcoes.jobId ? [{ jobId: opcoes.jobId }] : []));
     this.logger.log(`Conferência Asaas: fatura ${fatura.id} enfileirada para conciliar (Asaas ${lida.status}, pago em ${job.paymentDate})`);
     return { enfileirado: true, statusAsaas: lida.status, job };
+  }
+
+  // Leitura fresca (rodada automática): não usa o que estava no cache, mas o
+  // atualiza — quem abrir a tela logo depois não lê de novo.
+  private async lerSemCache(chargeId: string): Promise<CobrancaAsaasLida | null> {
+    const lida = await this.asaasLeitura.lerCobranca(chargeId);
+    this.cache.set(chargeId, { lida, em: Date.now() });
+    return lida;
   }
 
   private async lerComCache(chargeId: string): Promise<CobrancaAsaasLida | null> {

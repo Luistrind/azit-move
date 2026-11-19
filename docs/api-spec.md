@@ -1426,6 +1426,49 @@ Só para `paga_no_asaas` (relê a cobrança ao vivo). Enfileira o MESMO job `con
 Erros 422: `fatura_nao_aberta`, `sem_cobranca`, `asaas_simulado`, `nao_paga_no_asaas`
 (com `classificacao` e `statusAsaas`). 404: `nao_encontrado`.
 
+### 4.2-B Conferência automática diária (doc 02 §27.9.1, 18/11/2026)
+
+Todo dia às 3h30 (fuso Brasil, **provisório**) o agendamento só enfileira a rodada na fila
+`conferencia-asaas` (jobId `conferencia-asaas-AAAA-MM-DD`). O worker lê no Asaas toda fatura
+ABERTA/FECHADA com `asaasChargeId` e `modeloEncargo = ASAAS_NATIVO`, **sem limite de vencimento**
+(vencidas, que vencem hoje e a vencer), e para cada `paga_no_asaas` chama o Reconciliar do §4.2-A
+(jobId do `conciliar`: `conferencia-auto-AAAA-MM-DD-<faturaId>`). Exceção: paga no Asaas com o
+mesmo valor já imputado aqui como parcial → `pago_a_menor_ja_registrado`, fica para o operador.
+Cada rodada é gravada em `logs_auditoria` (`acao = conferencia_asaas_automatica`,
+`entidade = conferencia_asaas`, `entidadeId` = dia). ADMIN/OPERADOR nas duas rotas.
+
+`GET /api/v1/cobranca/conferencia-asaas/automatica`
+
+```json
+{
+  "horario": "3h30",
+  "ultima": {
+    "dia": "2026-11-19", "origem": "agendada", "disparadaPor": null,
+    "iniciadaEm": "2026-11-19T06:30:00.412Z", "concluidaEm": "2026-11-19T06:30:41.090Z", "ambiente": "producao",
+    "lidas": { "total": 58, "vencidas": 31, "venceHoje": 0, "aVencer": 27 },
+    "baixadas": [
+      { "faturaId": "fat_…", "numero": 49, "titularId": "tit_…", "titular": "…", "vencimento": "2026-11-18", "situacao": "vencida",
+        "valorAqui": 74900, "asaasChargeId": "pay_…", "statusAsaas": "RECEIVED", "valorAsaas": 74900, "dataPagamentoAsaas": "2026-11-18",
+        "classificacao": "paga_no_asaas", "pagoEm": "2026-11-18", "valorPago": 74900, "situacaoAgora": "baixada" }
+    ],
+    "naoBaixadas": [],
+    "divergencias": [ { "faturaId": "fat_…", "numero": 12, "classificacao": "removida_no_asaas", "statusAsaas": null, "…": "…" } ],
+    "divergenciasNovas": 1,
+    "semLeitura": []
+  },
+  "anteriores": [ { "dia": "2026-11-18", "origem": "manual", "concluidaEm": "…", "lidas": 60, "baixadas": 2, "divergencias": 1, "semLeitura": 0 } ]
+}
+```
+
+`situacaoAgora` (só na última rodada) é lida na hora: `baixada` (fatura PAGA/PAGA_EM_ATRASO) ou
+`aguardando_conciliacao`. `naoBaixadas[]` = pagas no Asaas cuja baixa não foi enfileirada, com
+`motivo` (Asaas simulado, ou mudou entre a leitura e a releitura ao vivo). `ultima: null` = ainda
+não rodou. Valores em centavos; datas calendário.
+
+`POST /api/v1/cobranca/conferencia-asaas/automatica/rodar` → **202**
+`{ "enfileirado": true, "jobId": "conferencia-asaas-2026-11-19-manual-1763…" }` — a MESMA rodada,
+fora do horário ("Rodar agora" na tela). Rodar duas vezes no dia não baixa nada em dobro.
+
 Valores em centavos. 400 `validacao` para datas fora de `YYYY-MM-DD`/`YYYY-MM` ou `de > ate`.
 
 `GET /api/v1/contas/carteira/resumo` (doc 02 §27.8) →

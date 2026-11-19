@@ -4,6 +4,7 @@ import { Job } from 'bullmq';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { NotificacaoService } from '../notificacao/notificacao.service';
 import { FaturaService, WebhookPagamento } from './fatura.service';
+import { ConferenciaAsaasAutomaticaService, type JobRodadaConferencia } from './conferencia-asaas-automatica.service';
 
 // Processadores BullMQ (Regra nº 4: webhook enfileira, worker processa).
 
@@ -17,6 +18,19 @@ export class PagamentoRecebidoProcessor extends WorkerHost {
     const r = await this.fatura.conciliarPagamento(job.data);
     this.logger.log(`conciliar ${job.data.faturaId}: ${r.resultado}`);
     return r;
+  }
+}
+
+// Conferência automática diária Asaas × sistema (doc 02 §27.9.1): o cron só
+// enfileira; aqui o Asaas é lido e o que está pago lá vai ao MESMO `conciliar`.
+@Processor(QUEUE_NAMES.CONFERENCIA_ASAAS)
+export class ConferenciaAsaasProcessor extends WorkerHost {
+  constructor(private readonly automatica: ConferenciaAsaasAutomaticaService) {
+    super();
+  }
+  async process(job: Job<JobRodadaConferencia>) {
+    const r = await this.automatica.rodar(job.data ?? { origem: 'agendada' });
+    return { lidas: r.lidas.total, baixadas: r.baixadas.length, divergencias: r.divergencias.length, semLeitura: r.semLeitura.length };
   }
 }
 
