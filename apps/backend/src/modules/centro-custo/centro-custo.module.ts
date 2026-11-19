@@ -6,5 +6,6 @@ import { CentroCustoController } from './centro-custo.controller';
 @Module({
   controllers: [CentroCustoController],
   providers: [CentroCustoService],
+  exports: [CentroCustoService],
 })
 export class CentroCustoModule {}

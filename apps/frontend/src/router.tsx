@@ -21,6 +21,7 @@ import { ListaEsperaPage } from './pages/ListaEsperaPage';
 import { PropostaDetalhePage } from './pages/PropostaDetalhePage';
 import { AnalisePage } from './pages/AnalisePage';
 import { AtivoPage } from './pages/AtivoPage';
+import { FichaVeiculoPage } from './pages/ativo/FichaVeiculoPage';
 import { ProdutosPage } from './pages/ProdutosPage';
 import { CatalogoPage } from './pages/CatalogoPage';
 import { ProtecaoPage } from './pages/ProtecaoPage';
@@ -111,6 +112,7 @@ export const router = createBrowserRouter([
 
           // Ativos e frota (custo por ativo também é lido pelo financeiro — mesma API)
           rota('ativos', <AtivoPage />, ATIVOS_FROTA),
+          rota('ativos/:id', <FichaVeiculoPage />, ATIVOS_FROTA),
           rota('frota/ocorrencias', <OcorrenciasPage />, ATIVOS_FROTA),
           rota('centros-custo', <CentroCustoPage />, [ATIVOS_FROTA, FINANCEIRO_ADMINISTRATIVO]),
 

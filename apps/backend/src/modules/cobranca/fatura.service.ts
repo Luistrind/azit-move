@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { calcularEncargoAtraso, encargoHojeDaFatura, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, horaBrasil, diaDeColunaMista, diasCalendarioEntre, inicioHojeBrasilUTC, dataCalendarioUTC, diasAtrasoCalendario, DIA_MS, FUSO_NEGOCIO, inicioDiaUTC, somarDiasISO, situacaoFaturaRuntime } from '@azit/utils';
+import { calcularEncargoAtraso, encargoHojeDaFatura, centavosParaReaisString, imputarPagamento, ItemImputacao, dataHojeBrasil, horaBrasil, diaDeColunaMista, diasCalendarioEntre, inicioHojeBrasilUTC, dataCalendarioUTC, diasAtrasoCalendario, DIA_MS, FUSO_NEGOCIO, inicioDiaUTC, somarDiasISO, situacaoFaturaRuntime, entradaAVista } from '@azit/utils';
 import { ConfigService } from '@nestjs/config';
 import { mensagemLinkFatura, montarLinkFatura, novoTokenFatura, whatsappParaWaMe } from './fatura-link';
 import { PrismaService } from '../../database/prisma.service';
@@ -542,7 +542,7 @@ export class FaturaService {
           tipo: 'entrada_contrato' as const,
           situacao: 'aguardando_pagamento' as const,
           descricao: `Entrada do contrato ${c.numero}${c.entradaParcelada ? ' (à vista 60%)' : ''}`,
-          valor: c.entradaParcelada ? Math.round(valor * 0.6) : valor,
+          valor: entradaAVista(valor, c.entradaParcelada),
           dataPagamento: null as string | null,
           dataLimite: null as string | null,
           contratoId: c.id as string | null,

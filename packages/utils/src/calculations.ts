@@ -77,6 +77,29 @@ export function fatorValorDesdeSemanal(f: FrequenciaPeriodo | string): number {
 }
 
 // ------------------------------------------------------------
+// Entrada parcelada (doc 02 §4-A.3): 60% à vista — o que a cobrança da entrada
+// pede —, e os 40% restantes diluídos nas faturas seguintes como intermediárias.
+// Consolidado em 19/11/2026: a conta estava repetida em cinco serviços.
+// ------------------------------------------------------------
+export const FRACAO_ENTRADA_A_VISTA = 0.6;
+
+/** Parte da entrada paga à vista (centavos): tudo, ou 60% quando a entrada é parcelada. */
+export function entradaAVista(valorEntrada: number, parcelada: boolean): number {
+  return parcelada ? Math.round(valorEntrada * FRACAO_ENTRADA_A_VISTA) : valorEntrada;
+}
+
+// ------------------------------------------------------------
+// Retornos gerados pelo veículo (doc 02 §25.7, 19/11/2026): quanto do que foi
+// investido nele (aquisição + custos lançados) já voltou em recebimentos.
+// ------------------------------------------------------------
+
+/** Percentual inteiro do investido que já voltou; null sem investimento registrado. */
+export function percentualRetornado(recebido: number, investido: number): number | null {
+  if (investido <= 0) return null;
+  return Math.round((recebido * 100) / investido);
+}
+
+// ------------------------------------------------------------
 // Equivalência de taxas (base mensal 30 dias)
 // ------------------------------------------------------------
 /** Taxa DIÁRIA equivalente à mensal: d = (1 + tm)^(1/30) − 1. */

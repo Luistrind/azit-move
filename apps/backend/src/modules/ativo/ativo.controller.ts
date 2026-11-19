@@ -21,6 +21,15 @@ import { criarAtivoSchema, CriarAtivoDto } from './dto/criar-ativo.dto';
 import { atualizarAtivoSchema, AtualizarAtivoDto } from './dto/atualizar-ativo.dto';
 import { listarAtivosSchema, ListarAtivosDto } from './dto/listar-ativos.dto';
 import { Area } from '../../common/decorators/area.decorator';
+import { FILTROS_FROTA, FrotaVisaoService } from './frota-visao.service';
+
+const listarFrotaSchema = z.object({
+  filtro: z.enum(FILTROS_FROTA).optional(),
+  busca: z.string().trim().min(1).optional(),
+  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+type ListarFrotaDto = z.infer<typeof listarFrotaSchema>;
 
 const anexarDocSchema = z.object({
   tipo: z.enum(['crlv', 'nota_fiscal', 'laudo', 'outro']).default('outro'),
@@ -35,6 +44,7 @@ export class AtivoController {
   constructor(
     private readonly ativoService: AtivoService,
     private readonly documentos: AtivoDocumentoService,
+    private readonly frotaVisao: FrotaVisaoService,
   ) {}
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
@@ -57,6 +67,22 @@ export class AtivoController {
   @Get('buscar')
   buscar(@Query('chassi') chassi?: string, @Query('placa') placa?: string) {
     return this.ativoService.buscarPorIdentificador({ chassi, placa });
+  }
+
+  // --- Frota e ficha do veículo (doc 02 §25.7) ---
+  @Get('frota')
+  frota(@Query(new ZodValidationPipe(listarFrotaSchema)) q: ListarFrotaDto) {
+    return this.frotaVisao.lista(q);
+  }
+
+  @Get('frota/resumo')
+  frotaResumo() {
+    return this.frotaVisao.resumo();
+  }
+
+  @Get(':id/ficha')
+  ficha(@Param('id') id: string) {
+    return this.frotaVisao.ficha(id);
   }
 
   // --- Central de documentos do veículo (Doc 2 §4.4-A) ---
@@ -101,8 +127,9 @@ export class AtivoController {
   atualizar(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(atualizarAtivoSchema)) dto: AtualizarAtivoDto,
+    @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.ativoService.atualizar(id, dto);
+    return this.ativoService.atualizar(id, dto, user.id);
   }
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)

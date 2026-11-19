@@ -12,7 +12,7 @@ import {
   StatusContratoCredito as StatusContratoCreditoPrisma,
 } from '@prisma/client';
 import { StatusContratoCredito, Credor, Periodicidade as PeriodicidadeTypes } from '@azit/types';
-import { diasAtrasoCalendario, gerarCronograma, centavosParaReaisString, inicioHojeBrasilUTC, dataCalendarioUTC, inicioDiaUTC, DIA_MS, DIAS_POR_PERIODO, fatorValorDesdeSemanal, FUSO_NEGOCIO, formatarInstanteBR, textoDoAceiteWhatsapp, type AceiteWhatsappRegistrado } from '@azit/utils';
+import { diasAtrasoCalendario, gerarCronograma, centavosParaReaisString, inicioHojeBrasilUTC, dataCalendarioUTC, inicioDiaUTC, DIA_MS, DIAS_POR_PERIODO, fatorValorDesdeSemanal, FUSO_NEGOCIO, formatarInstanteBR, textoDoAceiteWhatsapp, type AceiteWhatsappRegistrado, entradaAVista } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { parametrosFaturamentoVigentes } from '../faturamento/parametros-faturamento.service';
 import { CriarContratoDto } from './dto/criar-contrato.dto';
@@ -524,7 +524,7 @@ export class ContratoService {
 
     // Intermediárias (Doc 2 §4-A.3): 40% da entrada diluído em parcelas-balão.
     if (p.entradaParcelada && p.valorEntrada > 0 && faturasDoContrato.length) {
-      const aVista = Math.round(p.valorEntrada * 0.6);
+      const aVista = entradaAVista(p.valorEntrada, true);
       const diluido = p.valorEntrada - aVista;
       if (diluido > 0) {
         const n = Math.min(3, faturasDoContrato.length);

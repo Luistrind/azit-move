@@ -32,7 +32,7 @@ const TITULOS: Record<string, { title: string; subtitle: string }> = {
   '/propostas': { title: 'Propostas', subtitle: 'Funil comercial — da proposta à formalização' },
   '/lista-espera': { title: 'Lista de espera', subtitle: 'Aprovados por modelo de referência, aguardando veículo no estoque' },
   '/titulares': { title: 'Titulares', subtitle: 'Cadastro único de clientes' },
-  '/ativos': { title: 'Frota e estoque', subtitle: 'Veículos, cliente e observações da operação' },
+  '/ativos': { title: 'Frota e estoque', subtitle: 'Com quem está cada veículo, pendências e retornos gerados' },
   '/frota/ocorrencias': { title: 'Multas e pendências', subtitle: 'Ocorrências da placa e repasse ao cliente' },
   '/migracao-legado': { title: 'Migração do legado', subtitle: 'Clientes que já existem no Asaas — conciliação caso a caso' },
   '/produtos': { title: 'Itens avulsos de contrato', subtitle: 'Itens contratáveis avulsos (legado §9)' },
@@ -46,6 +46,8 @@ export function Shell() {
   const [menuAberto, setMenuAberto] = useState(false);
   const meta = pathname.startsWith('/contratos/')
     ? { title: 'Detalhe do contrato', subtitle: 'Cronograma e posição' }
+    : pathname.startsWith('/ativos/')
+      ? { title: 'Ficha do veículo', subtitle: 'Com quem está, pendências, custos e retornos gerados' }
     : pathname.startsWith('/titulares/')
       ? { title: 'Ficha do titular', subtitle: 'Hub de operações da conta' }
       : pathname.startsWith('/propostas/')

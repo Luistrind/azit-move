@@ -2222,6 +2222,58 @@ resolvidas), onde o operador vê o que está parado esperando decisão.
 - **Fase 2**: vencimentos recorrentes (IPVA/licenciamento) gerados por calendário, controle de
   indicação de condutor e cobrança automática do comprovante prometido.
 
+### 25.7 Frota e ficha do veículo (decisão Luís, 2026-11-19)
+
+Protótipo de 18/11 aprovado em 19/11. O Luís deu o nome **"Retornos gerados"** ao bloco que no
+protótipo se chamava "Quanto já voltou"; o **crédito avulso fica para depois** (será desenhado com
+ele e por enquanto continua onde está, na tela de custo por ativo). Só a frota muda agora.
+
+**Lista da frota** (tela Frota e estoque):
+- **Indicadores que filtram** no topo, no lugar dos botões de status: Todos, Em contrato,
+  Disponível, Com pendência e, só quando houver veículo nele, Reservado, Sinistrado, Transferido e
+  Recuperado (status sem nenhum veículo não vira cartão).
+- Cabeçalho com os totais da frota: quantos veículos, quanto foi investido e quanto já voltou em
+  **retornos gerados** (com o percentual do investido).
+- Por veículo: **com quem está** (cliente com link para a ficha do titular, contrato e a situação
+  do contrato), **pendências abertas** (quantidade, valor e o prazo mais próximo), **retornos
+  gerados** (valor e percentual) e a **observação**, que continua editável na própria linha.
+- Clicar na linha abre a ficha do veículo. "Carregar mais", sem o corte silencioso em 100 veículos.
+- A busca também acha pelo nome do cliente e pelo número do contrato.
+
+**Ficha do veículo** (tela nova, `/ativos/:id`):
+- Topo em três colunas: **com quem está** (cliente, contrato, desde quando, situação e o aviso de
+  bloqueio disponível pela régua), **pendências abertas** e **retornos gerados** (valor recebido,
+  percentual do investido, investido e o que falta receber nos contratos). Logo abaixo, a
+  observação, com quem alterou por último e quando.
+- Abas: **Multas e pendências** (a decisão da multa abre na própria linha, com os mesmos desfechos
+  do quadro), **Custos** (aquisição, lançamentos e de onde veio cada um), **Contratos** (todos os
+  que o veículo já teve) e **Cadastro e documentos** (dados, edição e anexos).
+- Ações: nova ocorrência (já com a placa) e lançar custo.
+
+**Regras de cálculo** (calculadas, nunca gravadas — Regra 7):
+- **Retornos gerados** = entrada paga + parcelas pagas dos contratos do veículo (a mesma conta do
+  custo por ativo, §4.4-A). **Investido** = valor de aquisição + custos lançados. O percentual é
+  inteiro e pode passar de 100% quando o carro já se pagou; sem valor de aquisição não há
+  percentual. Uma função só em `packages/utils` (`percentualRetornado`, Regra 16).
+- **Situação do contrato** = a mesma regra da carteira (`situacaoDaConta`): bloqueado, em atraso,
+  em acordo ou em dia. O atraso segue a régua (§7.6, correção de 18/11): conta a parcela vencida
+  mais antiga do contrato do carro **e** dos contratos sem veículo da mesma conta. "Bloqueio
+  disponível" usa o mesmo limiar da régua (`DIAS_BLOQUEIO_DISPONIVEL`, Regra 6).
+- **Prazo da pendência** = o mais próximo entre vencimento, prazo de indicação de condutor (só
+  enquanto a ocorrência está nova) e prazo do comprovante (só enquanto se espera o comprovante).
+
+**Correções que entram junto** (defeitos da tela antiga):
+1. O status do veículo **saiu do formulário** e da API de edição: era possível trocá-lo à mão, e a
+   regra (§25.1) diz que é automático.
+2. A observação passou a ser **auditada** (`ativo_observacao_alterada`, com antes e depois).
+3. O alerta de prazo da multa abre **a própria multa**, não o quadro inteiro.
+4. Valor digitado como "1.234,56" na multa era lido errado; agora segue o formato brasileiro.
+5. Multa encerrada ganhou **Reabrir** (menos a que já virou item de fatura, que se trata pela
+   fatura). Reabrir uma multa que a Azit tinha assumido **desfaz o custo** lançado no veículo, para
+   ela não contar duas vezes se depois for cobrada do cliente.
+6. A entrada parcelada (60% à vista) estava escrita em cinco serviços; virou uma função só
+   (`entradaAVista`, Regra 16), sem mudança de resultado.
+
 ## 26. Migração do legado — contratos ativos no Asaas antes do sistema (decisão Luís, 2026-09-21)
 
 **Contexto.** A conta real do Asaas (ligada em 19/09) tem cerca de **107 clientes** com contrato

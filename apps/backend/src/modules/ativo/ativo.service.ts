@@ -149,8 +149,9 @@ export class AtivoService {
     return ativoParaApi(ativo);
   }
 
-  async atualizar(id: string, dto: AtualizarAtivoDto): Promise<AtivoApi> {
-    await this.garantirExiste(id);
+  async atualizar(id: string, dto: AtualizarAtivoDto, usuarioId?: string): Promise<AtivoApi> {
+    const anterior = await this.prisma.db.ativo.findFirst({ where: { id }, select: { observacao: true } });
+    if (!anterior) throw this.naoEncontrado();
 
     if (dto.estruturaJuridicaId) await this.garantirEstrutura(dto.estruturaJuridicaId);
     const data: Prisma.AtivoUpdateInput = {
@@ -169,7 +170,6 @@ export class AtivoService {
     };
     if (dto.observacao !== undefined) data.observacao = dto.observacao?.trim() || null;
     if (dto.tipo) data.tipo = mapearAtivoEnums.tipoParaPrisma(dto.tipo);
-    if (dto.status) data.status = mapearAtivoEnums.statusParaPrisma(dto.status);
     if (dto.origem !== undefined) {
       data.origem = dto.origem ? mapearAtivoEnums.origemParaPrisma(dto.origem) : null;
     }
@@ -205,6 +205,20 @@ export class AtivoService {
     }
 
     const ativo = await this.prisma.db.ativo.update({ where: { id }, data });
+    // Observação auditada (doc 02 §25.1): quem mudou, quando, de quê para quê —
+    // a ficha do veículo mostra a última alteração.
+    if (dto.observacao !== undefined && (anterior.observacao ?? null) !== (ativo.observacao ?? null)) {
+      await this.prisma.db.logAuditoria.create({
+        data: {
+          usuarioId,
+          acao: 'ativo_observacao_alterada',
+          entidade: 'ativo',
+          entidadeId: id,
+          antes: { observacao: anterior.observacao },
+          depois: { observacao: ativo.observacao },
+        },
+      });
+    }
     return ativoParaApi(ativo);
   }
 

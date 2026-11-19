@@ -4,7 +4,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { inicioHojeBrasilUTC, limparDocumento, reaisParaCentavos, situacaoDaConta } from '@azit/utils';
+import { inicioHojeBrasilUTC, limparDocumento, reaisParaCentavos, situacaoDaConta, entradaAVista } from '@azit/utils';
 import {
   StatusContratoCredito,
   StatusContratoInvestimento,
@@ -223,7 +223,7 @@ export class TitularService {
       .filter((c) => c.cronogramaGeradoEm && !c.entradaPagaEm)
       .reduce((s, c) => {
         const ent = cent(c.valorEntrada);
-        return s + (c.entradaParcelada ? Math.round(ent * 0.6) : ent);
+        return s + entradaAVista(ent, c.entradaParcelada);
       }, 0);
 
     return {

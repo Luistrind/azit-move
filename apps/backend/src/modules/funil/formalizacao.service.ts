@@ -16,6 +16,7 @@ import {
   formatarDiaBR,
   DIA_MS,
   DIAS_POR_PERIODO,
+  entradaAVista,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { ContratoService } from '../contrato/contrato.service';
@@ -28,7 +29,7 @@ import { entradaPagaAMenor, registrarEntradaAMenor, type RecebidoNoGateway } fro
 const cent = (d: Prisma.Decimal): number => reaisParaCentavos(d.toString());
 // Entrada parcelada: 60% à vista (o que a cobrança da entrada pede); os 40%
 // restantes entram nas faturas seguintes como intermediárias (doc 02 §4-A.3).
-const entradaAVistaDe = (valorEntrada: number, parcelada: boolean): number => (parcelada ? Math.round(valorEntrada * 0.6) : valorEntrada);
+const entradaAVistaDe = entradaAVista;
 
 // Contrato PADRÃO de compra e venda de veículo (modelo oficial — layout fixo,
 // dados por placeholder). Ver templates/contrato-veiculo.template.ts.

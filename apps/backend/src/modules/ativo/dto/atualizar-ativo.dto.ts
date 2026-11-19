@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-// Atualização parcial do ativo (item 2.3 / api-spec §4.9: ex. quilometragem, status).
+// Atualização parcial do ativo (item 2.3 / api-spec §4.9: ex. quilometragem).
 export const atualizarAtivoSchema = z.object({
   // Vincular/corrigir a estrutura jurídica dona (legados anteriores a 04/08).
   estruturaJuridicaId: z.string().trim().min(1).optional(),
@@ -24,9 +24,8 @@ export const atualizarAtivoSchema = z.object({
   valorVenda: z.coerce.number().int().min(0).nullish(),
   pacoteOfertaId: z.string().trim().min(1).nullish(),
   ofertaFixaId: z.string().trim().min(1).nullish(),
-  status: z
-    .enum(['disponivel', 'reservado', 'em_contrato', 'transferido', 'recuperado', 'sinistrado'])
-    .optional(),
+  // Status NÃO entra aqui (doc 02 §25.1 e §25.7): muda sozinho com o contrato,
+  // a reserva e o sinistro — ninguém altera à mão.
   // Controle de frota (doc 02 §25.1): anotação livre da operação — "na
   // oficina", "aguardando documento". Editada na própria lista.
   observacao: z.string().trim().max(500).nullish(),

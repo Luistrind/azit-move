@@ -167,7 +167,7 @@ export class OcorrenciaService {
       await this.alertas.emitir({
         titulo: `${ROTULO_TIPO[d.tipo]} — ${contrato.conta.titular.nome}`,
         corpo: `${ativo.placa ?? ''} · ${formatCurrency(d.valor ?? 0)} · fato em ${dataFato.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}. Defina o desfecho (cobrar, cliente paga direto ou assumir).`,
-        rota: `/frota/ocorrencias?ativo=${ativo.id}`,
+        rota: `/ativos/${ativo.id}`, // ficha do veículo, já na aba de multas (doc 02 §25.7)
         tipo: 'COBRANCA',
         area: 'ATIVOS_FROTA',
       });
@@ -439,7 +439,20 @@ export class OcorrenciaService {
     if (o.status === 'REPASSADA') {
       throw new UnprocessableEntityException({ erro: 'ja_repassada', mensagem: 'A ocorrência já virou item de fatura — trate pela fatura (o valor está cobrado)' });
     }
-    await this.registrarDesfecho(id, { status: 'REGISTRADA', desfechoObs: motivo?.trim() || null, prazoComprovante: null }, 'ocorrencia_reaberta', usuarioId);
+    // Reabrir o que a Azit assumiu desfaz o custo lançado no veículo (doc 02
+    // §25.7): sem isso, cobrar a mesma multa depois a contaria duas vezes — como
+    // custo da Azit e como item da fatura do cliente.
+    const custoDesfeito = o.status === 'ASSUMIDA_AZIT' && o.lancamentoCustoId ? o.lancamentoCustoId : null;
+    if (custoDesfeito) {
+      await this.prisma.db.lancamentoCustoAtivo.update({ where: { id: custoDesfeito }, data: { deletedAt: new Date() } });
+    }
+    await this.registrarDesfecho(
+      id,
+      { status: 'REGISTRADA', desfechoObs: motivo?.trim() || null, prazoComprovante: null, ...(custoDesfeito ? { lancamentoCusto: { disconnect: true } } : {}) },
+      'ocorrencia_reaberta',
+      usuarioId,
+      { status: 'REGISTRADA', custoDesfeito } as Prisma.InputJsonValue,
+    );
     return { resultado: 'reaberta' };
   }
 

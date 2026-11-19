@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { entradaAVista } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 
 const cent = (d: unknown): number => Math.round(Number(d?.toString() ?? '0') * 100);
@@ -22,7 +23,7 @@ export class CentroCustoService {
   }): number {
     if (!c.cronogramaGeradoEm) return 0;
     const entrada = cent(c.valorEntrada);
-    return c.entradaParcelada ? Math.round(entrada * 0.6) : entrada;
+    return entradaAVista(entrada, c.entradaParcelada);
   }
 
   // Agregados financeiros por lista de contratos (parcelas pagas × em aberto).
@@ -48,17 +49,22 @@ export class CentroCustoService {
     };
   }
 
-  // Visão por VEÍCULO: gasto (aquisição + lançamentos) × recebido × a receber.
-  async ativos() {
+  // Posição financeira de cada veículo (doc 02 §4.4-A e §25.7): investido
+  // (aquisição + lançamentos) × recebido (entrada paga + parcelas pagas dos
+  // contratos do veículo) × a receber. UMA conta para a tela de custos, a lista
+  // da frota e a ficha do veículo (Regra 16).
+  async posicaoDosAtivos(ativoIds?: string[]) {
     const ativos = await this.prisma.db.ativo.findMany({
-      where: { tipo: 'VEICULO' },
+      where: ativoIds ? { id: { in: ativoIds } } : { tipo: 'VEICULO' },
       select: {
         id: true,
         descricao: true,
         placa: true,
         status: true,
         valorAquisicao: true,
+        createdAt: true,
         contratosCredito: {
+          where: { deletedAt: null },
           select: {
             id: true,
             cronogramaGeradoEm: true,
@@ -97,6 +103,11 @@ export class CentroCustoService {
     });
   }
 
+  // Visão por VEÍCULO: gasto (aquisição + lançamentos) × recebido × a receber.
+  async ativos() {
+    return this.posicaoDosAtivos();
+  }
+
   // Detalhe de um veículo: lançamentos + contratos com posição.
   async detalheAtivo(ativoId: string) {
     const a = await this.prisma.db.ativo.findFirst({
@@ -108,14 +119,19 @@ export class CentroCustoService {
         status: true,
         valorAquisicao: true,
         contratosCredito: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
           select: {
             id: true,
             numero: true,
             status: true,
             cronogramaGeradoEm: true,
+            entradaPagaEm: true,
+            dataAssinatura: true,
+            dataEncerramento: true,
             entradaParcelada: true,
             valorEntrada: true,
-            conta: { select: { titular: { select: { nome: true } } } },
+            conta: { select: { id: true, titular: { select: { id: true, nome: true } } } },
           },
         },
         lancamentosCusto: {
@@ -134,6 +150,11 @@ export class CentroCustoService {
       numero: c.numero,
       status: c.status.toLowerCase(),
       titular: c.conta.titular.nome,
+      titularId: c.conta.titular.id,
+      contaId: c.conta.id,
+      // Posse do cliente (doc 02 §25.2): da entrada paga ao encerramento.
+      inicio: (c.entradaPagaEm ?? c.cronogramaGeradoEm ?? c.dataAssinatura)?.toISOString() ?? null,
+      fim: c.dataEncerramento?.toISOString() ?? null,
       entradaPaga: this.entradaPaga(c),
       parcelasPagas: pagasPorContrato.get(c.id) ?? 0,
       emAberto: abertasPorContrato.get(c.id) ?? 0,

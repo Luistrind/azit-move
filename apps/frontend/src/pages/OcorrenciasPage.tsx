@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { rotuloAtivo, formatCurrency } from '@azit/utils';
 import { frotaService as svc, type Ocorrencia, type ResumoImportacao } from '../services/frota.service';
 import { Modal } from '../components/Modal';
+import { acoesDaOcorrencia, ModalAcaoOcorrencia, ModalNovaOcorrencia, type AcaoOcorrencia } from '../components/ocorrencia/AcoesOcorrencia';
 import { toast } from '../components/Toast';
 import { mensagemErro, usePodeRole, ROLE_OPERACAO, AREAS_ROTA_CONTRATO } from '../lib/permissoes';
 import { OCORRENCIA_STATUS_COLORS, RESPONSAVEL_OCORRENCIA_COLORS } from '../config/statusColors';
@@ -33,8 +34,6 @@ const COLUNAS: { chave: string; titulo: string; ajuda: string; status: string[] 
   { chave: 'comprovante', titulo: 'Aguardando comprovante', ajuda: 'Cliente ficou de pagar direto', status: ['AGUARDANDO_COMPROVANTE'] },
   { chave: 'encerradas', titulo: 'Encerradas', ajuda: 'Cobradas, quitadas, assumidas ou canceladas', status: ['REPASSADA', 'QUITADA', 'ASSUMIDA_AZIT', 'CANCELADA'] },
 ];
-
-type Acao = 'repassar' | 'cliente-paga' | 'assumir' | 'recurso' | 'cancelar' | 'responsavel' | 'comprovante';
 
 function Card({ o, onAbrir }: { o: Ocorrencia; onAbrir: () => void }) {
   const cor = OCORRENCIA_STATUS_COLORS[o.status];
@@ -79,7 +78,7 @@ export function OcorrenciasPage() {
   const qc = useQueryClient();
   const pode = usePodeRole();
   const podeOperar = pode(ROLE_OPERACAO);
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const ativoId = params.get('ativo') ?? undefined;
   const [filtros, setFiltros] = useState({ tipo: '', responsavel: '', busca: '' });
   const lista = useQuery({
@@ -89,42 +88,28 @@ export function OcorrenciasPage() {
   const opcoes = useQuery({ queryKey: ['frota-opcoes'], queryFn: () => svc.opcoes() });
 
   const [detalhe, setDetalhe] = useState<Ocorrencia | null>(null);
-  const [acao, setAcao] = useState<{ tipo: Acao; o: Ocorrencia } | null>(null);
+  const [acao, setAcao] = useState<{ tipo: AcaoOcorrencia; o: Ocorrencia } | null>(null);
   const [nova, setNova] = useState(false);
   const [importar, setImportar] = useState(false);
   const [ocupado, setOcupado] = useState(false);
-  const [campo, setCampo] = useState({ valor: '', prazo: '', obs: '', motivo: '', justificativa: '', responsavel: 'CLIENTE' as 'CLIENTE' | 'AZIT', arquivoNome: '', arquivoConteudo: '' });
-  const [formNova, setFormNova] = useState({ placa: '', tipo: 'MULTA', orgao: '', numeroAuto: '', descricao: '', dataFato: '', dataVencimento: '', prazoIndicacao: '', valor: '' });
   const [credencial, setCredencial] = useState({ usuario: '', senha: '' });
   const [resumo, setResumo] = useState<ResumoImportacao | null>(null);
 
   const itens = lista.data ?? [];
 
-  function abrirAcao(tipo: Acao, o: Ocorrencia) {
-    setCampo({
-      valor: String(((o.valorComDesconto ?? o.valor) / 100).toFixed(2)),
-      prazo: '', obs: '', motivo: '', justificativa: '',
-      responsavel: o.responsavel === 'CLIENTE' ? 'AZIT' : 'CLIENTE',
-      arquivoNome: '', arquivoConteudo: '',
-    });
-    setDetalhe(null);
-    setAcao({ tipo, o });
-  }
+  // O alerta de prazo (sino) abre a OCORRÊNCIA, não o quadro inteiro (?id=…).
+  const idAberto = params.get('id');
+  useEffect(() => {
+    if (!idAberto || !lista.data) return;
+    const alvo = lista.data.find((o) => o.id === idAberto);
+    if (alvo) setDetalhe(alvo);
+    // Abre uma vez: tira o id do endereço para a lista recarregada não reabrir o detalhe.
+    const resto = new URLSearchParams(params);
+    resto.delete('id');
+    setParams(resto, { replace: true });
+  }, [idAberto, lista.data, params, setParams]);
 
-  async function rodar(fn: () => Promise<unknown>, ok: string) {
-    setOcupado(true);
-    try {
-      await fn();
-      toast.sucesso(ok);
-      setAcao(null);
-      setNova(false);
-      await qc.invalidateQueries({ queryKey: ['ocorrencias'] });
-    } catch (e) {
-      toast.erro(mensagemErro(e));
-    } finally {
-      setOcupado(false);
-    }
-  }
+  const recarregar = () => qc.invalidateQueries({ queryKey: ['ocorrencias'] });
 
   async function executarImportacao() {
     setOcupado(true);
@@ -141,14 +126,6 @@ export function OcorrenciasPage() {
       setOcupado(false);
     }
   }
-
-  function lerArquivo(file: File) {
-    const leitor = new FileReader();
-    leitor.onload = () => setCampo((c) => ({ ...c, arquivoNome: file.name, arquivoConteudo: String(leitor.result ?? '') }));
-    leitor.readAsDataURL(file);
-  }
-
-  const aberta = (o: Ocorrencia) => ['REGISTRADA', 'EM_RECURSO', 'AGUARDANDO_COMPROVANTE'].includes(o.status);
 
   return (
     <div className="flex h-full min-w-0 flex-col gap-[12px]">
@@ -240,188 +217,19 @@ export function OcorrenciasPage() {
             {detalhe.repasse && <div style={{ color: 'var(--text-muted)' }}>Cobrado na fatura {detalhe.repasse.faturaNumero}, com vencimento em {dataBR(detalhe.repasse.vencimento)}.</div>}
 
             <div className="flex flex-wrap justify-end gap-[8px] pt-[4px]">
+              <Link to={`/ativos/${detalhe.ativo.id}`} className={linkSecundario} style={linkSecundarioStyle}>Ficha do veículo</Link>
               {detalhe.temComprovante && <Botao variante="secundaria" tamanho="sm" onClick={() => svc.abrirComprovante(detalhe.id)}>Ver comprovante</Botao>}
-              {podeOperar && aberta(detalhe) && (
-                <>
-                  {detalhe.responsavel === 'CLIENTE' && <Botao variante="primaria" tamanho="sm" onClick={() => abrirAcao('repassar', detalhe)}>Cobrar na fatura</Botao>}
-                  {detalhe.responsavel === 'CLIENTE' && detalhe.status !== 'AGUARDANDO_COMPROVANTE' && <Botao variante="secundaria" tamanho="sm" onClick={() => abrirAcao('cliente-paga', detalhe)}>Cliente paga direto</Botao>}
-                  {detalhe.status === 'AGUARDANDO_COMPROVANTE' && <Botao variante="secundaria" tamanho="sm" onClick={() => abrirAcao('comprovante', detalhe)}>Registrar comprovante</Botao>}
-                  <Botao variante="secundaria" tamanho="sm" onClick={() => abrirAcao('assumir', detalhe)}>Azit assume</Botao>
-                  <Botao variante="secundaria" tamanho="sm" onClick={() => abrirAcao('recurso', detalhe)}>Recurso</Botao>
-                  <Botao variante="secundaria" tamanho="sm" onClick={() => abrirAcao('responsavel', detalhe)}>Trocar responsável</Botao>
-                  <Botao variante="perigo" tamanho="sm" onClick={() => abrirAcao('cancelar', detalhe)}>Cancelar</Botao>
-                </>
-              )}
+              {acoesDaOcorrencia(detalhe, podeOperar).map((b) => (
+                <Botao key={b.acao} variante={b.variante} tamanho="sm" onClick={() => { setDetalhe(null); setAcao({ tipo: b.acao, o: detalhe }); }}>{b.rotulo}</Botao>
+              ))}
             </div>
           </div>
         </Modal>
       )}
 
-      {acao?.tipo === 'repassar' && (
-        <Modal open onClose={() => setAcao(null)} title="Cobrar na fatura do cliente">
-          <div className="flex flex-col gap-[10px] text-[12.5px]">
-            <p style={{ color: 'var(--text-muted)' }}>
-              O valor entra como item na <b>próxima fatura aberta</b> da conta, junto com as parcelas (cláusula 3.5).
-              Se não for paga, segue para a régua de cobrança como qualquer fatura.
-            </p>
-            <label className="flex flex-col gap-[4px]">Valor a cobrar (R$)
-              <input className={inputCls} style={inputStyle} value={campo.valor} onChange={(e) => setCampo({ ...campo, valor: e.target.value })} />
-            </label>
-            <div className="flex flex-wrap justify-end gap-[8px]">
-              <Botao variante="secundaria" tamanho="sm" onClick={() => setAcao(null)}>Cancelar</Botao>
-              <Botao variante="primaria" tamanho="sm" disabled={ocupado}
-                onClick={() => void rodar(async () => {
-                  const r = await svc.repassar(acao.o.id, Math.round(Number(campo.valor.replace(',', '.')) * 100));
-                  toast.sucesso(`Cobrado na fatura ${r.faturaNumero}.`);
-                }, 'Repasse registrado.')}>
-                Cobrar
-              </Botao>
-            </div>
-          </div>
-        </Modal>
-      )}
+      {acao && <ModalAcaoOcorrencia acao={acao.tipo} o={acao.o} onFechar={() => setAcao(null)} onFeito={recarregar} />}
 
-      {acao?.tipo === 'cliente-paga' && (
-        <Modal open onClose={() => setAcao(null)} title="Cliente paga direto ao órgão">
-          <div className="flex flex-col gap-[10px] text-[12.5px]">
-            <p style={{ color: 'var(--text-muted)' }}>Nada vai para a fatura. Fica pendente até o comprovante chegar.</p>
-            <label className="flex flex-col gap-[4px]">Prazo para o comprovante
-              <input type="date" className={inputCls} style={inputStyle} value={campo.prazo} onChange={(e) => setCampo({ ...campo, prazo: e.target.value })} />
-              <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Em branco = 7 dias.</span>
-            </label>
-            <label className="flex flex-col gap-[4px]">Observação
-              <input className={inputCls} style={inputStyle} value={campo.obs} onChange={(e) => setCampo({ ...campo, obs: e.target.value })} placeholder="Ex.: combinado por telefone" />
-            </label>
-            <div className="flex flex-wrap justify-end gap-[8px]">
-              <Botao variante="secundaria" tamanho="sm" onClick={() => setAcao(null)}>Cancelar</Botao>
-              <Botao variante="primaria" tamanho="sm" disabled={ocupado}
-                onClick={() => void rodar(() => svc.clientePaga(acao.o.id, { prazoComprovante: campo.prazo ? new Date(campo.prazo).toISOString() : undefined, observacao: campo.obs || undefined }), 'Registrado.')}>
-                Confirmar
-              </Botao>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {acao?.tipo === 'comprovante' && (
-        <Modal open onClose={() => setAcao(null)} title="Registrar comprovante do cliente">
-          <div className="flex flex-col gap-[10px] text-[12.5px]">
-            <input type="file" accept="image/*,application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) lerArquivo(f); }} />
-            {campo.arquivoNome && <span className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>{campo.arquivoNome}</span>}
-            <label className="flex flex-col gap-[4px]">Observação
-              <input className={inputCls} style={inputStyle} value={campo.obs} onChange={(e) => setCampo({ ...campo, obs: e.target.value })} />
-            </label>
-            <div className="flex flex-wrap justify-end gap-[8px]">
-              <Botao variante="secundaria" tamanho="sm" onClick={() => setAcao(null)}>Cancelar</Botao>
-              <Botao variante="primaria" tamanho="sm" disabled={ocupado}
-                onClick={() => void rodar(() => svc.comprovante(acao.o.id, {
-                  arquivo: campo.arquivoConteudo ? { nome: campo.arquivoNome, conteudo: campo.arquivoConteudo } : undefined,
-                  observacao: campo.obs || undefined,
-                }), 'Ocorrência quitada.')}>
-                Registrar
-              </Botao>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {acao && ['assumir', 'recurso', 'cancelar', 'responsavel'].includes(acao.tipo) && (
-        <Modal open onClose={() => setAcao(null)} title={{
-          assumir: 'Azit assume a ocorrência', recurso: 'Marcar em recurso', cancelar: 'Cancelar ocorrência', responsavel: 'Trocar o responsável',
-        }[acao.tipo as 'assumir']}>
-          <div className="flex flex-col gap-[10px] text-[12.5px]">
-            {acao.tipo === 'assumir' && <p style={{ color: 'var(--text-muted)' }}>O valor vira <b>custo do veículo</b> no centro de custo e não é cobrado do cliente.</p>}
-            {acao.tipo === 'responsavel' && (
-              <>
-                <p style={{ color: 'var(--text-muted)' }}>
-                  O sistema definiu <b>{acao.o.responsavel === 'CLIENTE' ? 'Cliente' : 'Azit'}</b> pela data do fato ({dataBR(acao.o.dataFato)}). Para mudar, explique o motivo.
-                </p>
-                <select className={inputCls} style={inputStyle} value={campo.responsavel} onChange={(e) => setCampo({ ...campo, responsavel: e.target.value as 'CLIENTE' | 'AZIT' })}>
-                  <option value="CLIENTE">Cliente</option>
-                  <option value="AZIT">Azit</option>
-                </select>
-                <textarea rows={2} className={inputCls} style={inputStyle} value={campo.justificativa} onChange={(e) => setCampo({ ...campo, justificativa: e.target.value })} placeholder="Justificativa (mínimo 10 caracteres)" />
-              </>
-            )}
-            {acao.tipo === 'recurso' && (
-              <label className="flex flex-col gap-[4px]">Prazo do recurso
-                <input type="date" className={inputCls} style={inputStyle} value={campo.prazo} onChange={(e) => setCampo({ ...campo, prazo: e.target.value })} />
-              </label>
-            )}
-            {acao.tipo !== 'responsavel' && (
-              <label className="flex flex-col gap-[4px]">{acao.tipo === 'cancelar' ? 'Motivo' : 'Observação'}
-                <input className={inputCls} style={inputStyle} value={acao.tipo === 'cancelar' ? campo.motivo : campo.obs}
-                  onChange={(e) => setCampo(acao.tipo === 'cancelar' ? { ...campo, motivo: e.target.value } : { ...campo, obs: e.target.value })} />
-              </label>
-            )}
-            <div className="flex flex-wrap justify-end gap-[8px]">
-              <Botao variante="secundaria" tamanho="sm" onClick={() => setAcao(null)}>Fechar</Botao>
-              <Botao variante={acao.tipo === 'cancelar' ? 'perigo' : 'primaria'} tamanho="sm" disabled={ocupado}
-                onClick={() => void rodar(() => {
-                  if (acao.tipo === 'assumir') return svc.assumir(acao.o.id, campo.obs || undefined);
-                  if (acao.tipo === 'recurso') return svc.recurso(acao.o.id, { prazo: campo.prazo ? new Date(campo.prazo).toISOString() : undefined, observacao: campo.obs || undefined });
-                  if (acao.tipo === 'cancelar') return svc.cancelar(acao.o.id, campo.motivo);
-                  return svc.definirResponsavel(acao.o.id, campo.responsavel, campo.justificativa);
-                }, 'Feito.')}>
-                Confirmar
-              </Botao>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {nova && (
-        <Modal open onClose={() => setNova(false)} title="Nova ocorrência" largura={560}>
-          <div className="grid grid-cols-1 gap-[10px] text-[12.5px] sm:grid-cols-2">
-            <label className="flex flex-col gap-[4px]">Placa *
-              <input className={inputCls} style={inputStyle} value={formNova.placa} onChange={(e) => setFormNova({ ...formNova, placa: e.target.value.toUpperCase() })} />
-            </label>
-            <label className="flex flex-col gap-[4px]">Tipo *
-              <select className={inputCls} style={inputStyle} value={formNova.tipo} onChange={(e) => setFormNova({ ...formNova, tipo: e.target.value })}>
-                {(opcoes.data?.tipos ?? []).map((t) => <option key={t.valor} value={t.valor}>{t.rotulo}</option>)}
-              </select>
-            </label>
-            <label className="flex flex-col gap-[4px]">Data do fato *
-              <input type="date" className={inputCls} style={inputStyle} value={formNova.dataFato} onChange={(e) => setFormNova({ ...formNova, dataFato: e.target.value })} />
-            </label>
-            <label className="flex flex-col gap-[4px]">Valor (R$)
-              <input className={inputCls} style={inputStyle} value={formNova.valor} onChange={(e) => setFormNova({ ...formNova, valor: e.target.value })} />
-            </label>
-            <label className="flex flex-col gap-[4px]">Número do auto
-              <input className={inputCls} style={inputStyle} value={formNova.numeroAuto} onChange={(e) => setFormNova({ ...formNova, numeroAuto: e.target.value })} />
-            </label>
-            <label className="flex flex-col gap-[4px]">Órgão
-              <input className={inputCls} style={inputStyle} value={formNova.orgao} onChange={(e) => setFormNova({ ...formNova, orgao: e.target.value })} placeholder="Detran-ES, PRF…" />
-            </label>
-            <label className="flex flex-col gap-[4px]">Vencimento
-              <input type="date" className={inputCls} style={inputStyle} value={formNova.dataVencimento} onChange={(e) => setFormNova({ ...formNova, dataVencimento: e.target.value })} />
-            </label>
-            <label className="flex flex-col gap-[4px]">Prazo de indicação
-              <input type="date" className={inputCls} style={inputStyle} value={formNova.prazoIndicacao} onChange={(e) => setFormNova({ ...formNova, prazoIndicacao: e.target.value })} />
-            </label>
-            <label className="flex flex-col gap-[4px] sm:col-span-2">Descrição
-              <input className={inputCls} style={inputStyle} value={formNova.descricao} onChange={(e) => setFormNova({ ...formNova, descricao: e.target.value })} placeholder="Ex.: excesso de velocidade até 20%" />
-            </label>
-            <div className="flex flex-wrap justify-end gap-[8px] sm:col-span-2">
-              <Botao variante="secundaria" tamanho="sm" onClick={() => setNova(false)}>Cancelar</Botao>
-              <Botao variante="primaria" tamanho="sm" disabled={ocupado || !formNova.placa || !formNova.dataFato}
-                onClick={() => void rodar(() => svc.registrar({
-                  placa: formNova.placa,
-                  tipo: formNova.tipo,
-                  orgao: formNova.orgao || undefined,
-                  numeroAuto: formNova.numeroAuto || undefined,
-                  descricao: formNova.descricao || undefined,
-                  dataFato: new Date(formNova.dataFato).toISOString(),
-                  dataVencimento: formNova.dataVencimento ? new Date(formNova.dataVencimento).toISOString() : undefined,
-                  prazoIndicacao: formNova.prazoIndicacao ? new Date(formNova.prazoIndicacao).toISOString() : undefined,
-                  valor: formNova.valor ? Math.round(Number(formNova.valor.replace(',', '.')) * 100) : 0,
-                }), 'Ocorrência registrada.')}>
-                Registrar
-              </Botao>
-            </div>
-          </div>
-        </Modal>
-      )}
+      {nova && <ModalNovaOcorrencia onFechar={() => setNova(false)} onFeito={recarregar} />}
 
       {importar && (
         <Modal open onClose={() => { setImportar(false); setCredencial({ usuario: '', senha: '' }); }} title="Importar multas do Infleet" largura={560}>

@@ -854,7 +854,30 @@ Cadastra um novo ativo no sistema.
 Detalhes do ativo.
 
 #### PATCH `/api/v1/ativos/:id`
-Atualiza dados do ativo (ex: quilometragem, status).
+Atualiza dados do ativo (ex: quilometragem, observação). **O status não é aceito** (doc 02 §25.7):
+muda sozinho com o contrato, a reserva e o sinistro. Mudança de `observacao` grava
+`logs_auditoria` (`ativo_observacao_alterada`).
+
+#### GET `/api/v1/ativos/frota` *(doc 02 §25.7)*
+Lista da frota (só veículos), paginada. **Query:** `filtro` (`disponivel` | `reservado` |
+`em_contrato` | `transferido` | `recuperado` | `sinistrado` | `com_pendencia`), `busca` (placa,
+chassi, modelo, cliente ou número do contrato), `offset` (padrão 0), `limit` (padrão 20, máx. 100).
+Cada linha é o ativo de `GET /ativos` mais:
+```json
+{ "contrato": { "id": "…", "numero": "2026030014", "contaId": "…", "situacao": "em_atraso", "diasAtraso": 9, "bloqueioDisponivel": true, "bloqueadoEm": null },
+  "pendencias": { "quantidade": 2, "valor": 32546, "proximoPrazo": { "tipo": "vencimento", "data": "2026-11-22" } },
+  "retorno": { "investido": 5385000, "recebido": 3630710, "aReceber": 10222463, "percentual": 67 } }
+```
+Resposta: `{ total, offset, limit, data: [...] }`. Valores em centavos.
+
+#### GET `/api/v1/ativos/frota/resumo`
+Indicadores do topo: `{ total, porStatus: { em_contrato: 66, … }, comPendencia: { veiculos, ocorrencias, valor }, investido, recebido, percentual }`.
+
+#### GET `/api/v1/ativos/:id/ficha`
+Ficha do veículo: `ativo` (com `ofertaFixa` e `fipe`), `comQuemEsta` (titular, contrato e desde
+quando, mais a situação acima; `null` sem contrato ativo), `pendencias`, `retorno`, `observacao`
+(`texto`, `alteradaEm`, `alteradaPor`), `custos` (aquisição, lançamentos com `origem`: manual ou
+ocorrência assumida) e `contratos` (todos os do veículo, com recebido e em aberto).
 
 ---
 
@@ -1217,13 +1240,14 @@ Ocorrências (multa, IPVA, licenciamento…) — papéis ADMIN, DIRETOR e OPERAD
 | `GET /frota/opcoes` | Rótulos de tipo e de situação, para filtros e colunas |
 | `GET /frota/ocorrencias` | Filtros: `status` (ou `abertas`), `tipo`, `responsavel`, `ativoId`, `busca` (placa ou número do auto) |
 | `POST /frota/ocorrencias` | Registro manual; identifica o veículo por `ativoId` ou `placa`. O responsável sai da **data do fato** contra a posse do cliente |
+| `POST /frota/ocorrencias/:id/reabrir` | `{ motivo? }` — volta para REGISTRADA. Recusa a REPASSADA (já é item de fatura). Se a Azit tinha assumido, **desfaz o custo** lançado no veículo (doc 02 §25.7) |
 | `POST /frota/ocorrencias/:id/responsavel` | `{ responsavel, justificativa }` — sobrepõe o cálculo (mínimo 10 caracteres, auditado) |
 | `POST /frota/ocorrencias/:id/repassar` | `{ valor? }` — item SERVICO na próxima fatura ABERTA da conta, somando no total (422 `sem_fatura_aberta` quando não há ciclo à frente) |
 | `POST /frota/ocorrencias/:id/cliente-paga` | `{ prazoComprovante?, observacao? }` — pendência de comprovante (padrão 7 dias) |
 | `POST /frota/ocorrencias/:id/comprovante` | `{ arquivo?: { nome, conteudo base64 }, observacao? }` → quitada |
 | `GET /frota/ocorrencias/:id/comprovante` | Baixa o comprovante |
 | `POST /frota/ocorrencias/:id/assumir` | Vira `LancamentoCustoAtivo` (centro de custo do veículo) |
-| `POST /frota/ocorrencias/:id/recurso` · `/cancelar` · `/reabrir` | Demais desfechos |
+| `POST /frota/ocorrencias/:id/recurso` · `/cancelar` | Demais desfechos |
 | `POST /frota/ocorrencias/importar-infleet` | `{ usuario, senha }` — robô com navegador no servidor. A credencial **não** é gravada nem enfileirada; roda na própria requisição. Devolve `criadas`, `atualizadas`, `ignoradas`, `naoMapeadas` e `amostraBruta` |
 
 Idempotência: a chave é o **número do auto**. Reimportar atualiza os dados da fonte e nunca
