@@ -2963,8 +2963,8 @@ alcance e uma ação automática:
 1. **Quando.** Todo dia às **3h30, fuso do Brasil** (Regra 15) — antes da régua das 4h, para quem
    já pagou não entrar em ação de cobrança. O agendamento só **enfileira** a rodada (fila
    `conferencia-asaas`, chave do job pelo dia: `conferencia-asaas-AAAA-MM-DD`); quem lê o Asaas é
-   o worker (Regra 4). *Horário provisório — escolha da implementação, a confirmar pelo Luís; fica
-   numa constante só (`HORARIO_CONFERENCIA_ASAAS_AUTOMATICA`).*
+   o worker (Regra 4). *Horário confirmado pelo Luís em 20/11/2026 (v1.10.0); fica numa constante
+   só (`HORARIO_CONFERENCIA_ASAAS_AUTOMATICA`).*
 2. **Alcance.** **Toda** fatura em aberto aqui (ABERTA/FECHADA) com cobrança emitida
    (`asaasChargeId`), **sem limite de vencimento**: vencida, que vence hoje e a vencer — a do Pedro
    Jose vencia no dia e foi paga antes. Fatura do Pix sob demanda (`modeloEncargo = AZIT`) fica de
@@ -2997,8 +2997,8 @@ que ficaram para olhar e as cobranças sem leitura. Sem tabela nova.
 alguma fatura, quando aparecer divergência que não estava na rodada anterior, ou quando alguma
 cobrança não puder ser lida. Divergência que já estava na rodada anterior não gera aviso de novo
 (senão o mesmo aviso tocaria todo dia). O aviso abre a Carteira com a conferência aberta.
-*Por onde avisa e o critério de "divergência nova" são provisórios — escolha da implementação, a
-confirmar pelo Luís.*
+*Por onde avisa (sino da Carteira) e o critério de "divergência nova" confirmados pelo Luís em
+20/11/2026 (v1.10.0).*
 
 **Tela.** No modal "Conferir com o Asaas" (§27.9), um bloco **Conferência automática** acima da
 lista: quando rodou, quantas faturas leu, quais baixou e quais divergências ficaram para olhar, com
