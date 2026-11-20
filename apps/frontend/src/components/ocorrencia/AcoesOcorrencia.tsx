@@ -18,6 +18,13 @@ export type AcaoOcorrencia = 'repassar' | 'cliente-paga' | 'comprovante' | 'assu
 const ABERTAS = ['REGISTRADA', 'EM_RECURSO', 'AGUARDANDO_COMPROVANTE'];
 export const ocorrenciaAberta = (o: Ocorrencia) => ABERTAS.includes(o.status);
 
+/** Nome da observação guardada no último passo: em "Novas" ela só pode ter vindo
+ *  da reabertura; aberta em outra etapa é anotação do passo; fechada é o desfecho. */
+export function rotuloDaObservacao(o: Ocorrencia): string {
+  if (o.status === 'REGISTRADA') return 'Motivo da reabertura';
+  return ocorrenciaAberta(o) ? 'Observação' : 'Desfecho';
+}
+
 const inputCls = 'w-full rounded-[10px] px-[10px] py-[7px] text-[13px]';
 const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' } as const;
 const centavosParaCampo = (c: number) => (c / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -170,7 +177,12 @@ export function ModalAcaoOcorrencia({ acao, o, onFechar, onFeito }: { acao: Acao
             <textarea rows={2} className={inputCls} style={inputStyle} value={campo.justificativa} onChange={(e) => setCampo({ ...campo, justificativa: e.target.value })} placeholder="Justificativa (mínimo 10 caracteres)" />
           </>
         )}
-        {acao === 'reabrir' && <p style={{ color: 'var(--text-muted)' }}>A ocorrência volta para <b>Novas</b>, à espera de um desfecho.</p>}
+        {acao === 'reabrir' && (
+          <p style={{ color: 'var(--text-muted)' }}>
+            A ocorrência volta para <b>Novas</b>, à espera de um desfecho.
+            {o.status === 'ASSUMIDA_AZIT' && <> O custo de <b>{formatCurrency(o.valorComDesconto ?? o.valor)}</b> lançado no veículo quando a Azit assumiu <b>é desfeito</b>.</>}
+          </p>
+        )}
         {acao === 'cancelar' || acao === 'reabrir' ? (
           <label className="flex flex-col gap-[4px]">{acao === 'cancelar' ? 'Motivo' : 'Motivo (opcional)'}
             <input className={inputCls} style={inputStyle} value={campo.motivo} onChange={(e) => setCampo({ ...campo, motivo: e.target.value })} />

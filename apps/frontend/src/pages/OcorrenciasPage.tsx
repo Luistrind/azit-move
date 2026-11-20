@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { rotuloAtivo, formatCurrency } from '@azit/utils';
 import { frotaService as svc, type Ocorrencia, type ResumoImportacao } from '../services/frota.service';
 import { Modal } from '../components/Modal';
-import { acoesDaOcorrencia, ModalAcaoOcorrencia, ModalNovaOcorrencia, type AcaoOcorrencia } from '../components/ocorrencia/AcoesOcorrencia';
+import { acoesDaOcorrencia, ModalAcaoOcorrencia, ModalNovaOcorrencia, rotuloDaObservacao, type AcaoOcorrencia } from '../components/ocorrencia/AcoesOcorrencia';
 import { toast } from '../components/Toast';
 import { mensagemErro, usePodeRole, ROLE_OPERACAO, AREAS_ROTA_CONTRATO } from '../lib/permissoes';
 import { OCORRENCIA_STATUS_COLORS, RESPONSAVEL_OCORRENCIA_COLORS } from '../config/statusColors';
@@ -213,7 +213,7 @@ export function OcorrenciasPage() {
             </div>
             {detalhe.descricao && <div style={{ color: 'var(--text-muted)' }}>{detalhe.descricao}</div>}
             {detalhe.responsavelJustificativa && <div style={{ color: 'var(--text-muted)' }}>Responsável alterado: {detalhe.responsavelJustificativa}</div>}
-            {detalhe.desfechoObs && <div style={{ color: 'var(--text-muted)' }}>Desfecho: {detalhe.desfechoObs}</div>}
+            {detalhe.desfechoObs && <div style={{ color: 'var(--text-muted)' }}>{rotuloDaObservacao(detalhe)}: {detalhe.desfechoObs}</div>}
             {detalhe.repasse && <div style={{ color: 'var(--text-muted)' }}>Cobrado na fatura {detalhe.repasse.faturaNumero}, com vencimento em {dataBR(detalhe.repasse.vencimento)}.</div>}
 
             <div className="flex flex-wrap justify-end gap-[8px] pt-[4px]">

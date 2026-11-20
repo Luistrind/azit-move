@@ -13,7 +13,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { Tabela } from '../../components/Tabela';
 import { LinkArea } from '../../components/LinkArea';
 import { toast } from '../../components/Toast';
-import { acoesDaOcorrencia, ModalAcaoOcorrencia, ModalNovaOcorrencia, ocorrenciaAberta, type AcaoOcorrencia } from '../../components/ocorrencia/AcoesOcorrencia';
+import { acoesDaOcorrencia, ModalAcaoOcorrencia, ModalNovaOcorrencia, ocorrenciaAberta, rotuloDaObservacao, type AcaoOcorrencia } from '../../components/ocorrencia/AcoesOcorrencia';
 import { ATIVO_STATUS_COLORS, CONTRATO_STATUS_COLORS, OCORRENCIA_STATUS_COLORS, RESPONSAVEL_OCORRENCIA_COLORS } from '../../config/statusColors';
 import { AREAS_ROTA_CONTRATO, AREAS_ROTA_FICHA_TITULAR, mensagemErro, ROLE_OPERACAO, usePodeRole } from '../../lib/permissoes';
 import { dataBR, dataMistaBR, instanteBR } from '../../lib/datas';
@@ -238,7 +238,10 @@ function AbaPendencias({ ativoId, podeOperar, onMudou }: { ativoId: string; pode
           return (
             <div className="flex flex-col gap-[8px] text-[12.5px]" style={{ color: 'var(--text-body)' }}>
               {ocorrenciaAberta(o) ? (
-                <span className={rotulo} style={{ color: 'var(--text-label)' }}>O que fazer com esta ocorrência</span>
+                <>
+                  <span className={rotulo} style={{ color: 'var(--text-label)' }}>O que fazer com esta ocorrência</span>
+                  {o.desfechoObs && <span style={{ color: 'var(--text-muted)' }}>{rotuloDaObservacao(o)}: {o.desfechoObs}</span>}
+                </>
               ) : (
                 <span>{o.desfechoEm ? `Encerrada em ${dataMistaBR(o.desfechoEm)}` : 'Encerrada'}{o.desfechoObs ? ` · ${o.desfechoObs}` : ''}</span>
               )}
