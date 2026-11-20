@@ -1452,7 +1452,7 @@ Erros 422: `fatura_nao_aberta`, `sem_cobranca`, `asaas_simulado`, `nao_paga_no_a
 
 ### 4.2-B Conferência automática diária (doc 02 §27.9.1, 18/11/2026)
 
-Todo dia às 3h30 (fuso Brasil, **provisório**) o agendamento só enfileira a rodada na fila
+Todo dia às 3h30 (fuso Brasil, confirmado em 20/11/2026) o agendamento só enfileira a rodada na fila
 `conferencia-asaas` (jobId `conferencia-asaas-AAAA-MM-DD`). O worker lê no Asaas toda fatura
 ABERTA/FECHADA com `asaasChargeId` e `modeloEncargo = ASAAS_NATIVO`, **sem limite de vencimento**
 (vencidas, que vencem hoje e a vencer), e para cada `paga_no_asaas` chama o Reconciliar do §4.2-A
