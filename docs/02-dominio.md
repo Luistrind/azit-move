@@ -2948,6 +2948,67 @@ leitura", nunca como "removida".
 API: `GET /cobranca/conferencia-asaas?de&ate` e `POST /cobranca/conferencia-asaas/:faturaId/reconciliar`
 (ADMIN/OPERADOR). Detalhe em `api-spec.md` §4.2-A.
 
+#### 27.9.1 Conferência automática diária (2026-11-18)
+
+**Origem.** Em 18/11 a v1.9.0 entrou em produção com um defeito no webhook do Asaas: o aviso de
+pagamento por Pix de cobrança comum trazia `pixQrCodeId`, era desviado para o fluxo do Pix sob
+demanda (§32.4-A) e a fatura não era baixada — casos Leonardo (fatura 191) e Pedro Jose (fatura 49,
+que vencia no próprio dia). O defeito foi corrigido na v1.9.1; os dois casos foram baixados à mão,
+pelo "Conferir pagamento no Asaas" da fatura. Pedido do Luís: o sistema passa a fazer essa
+conferência sozinho, uma vez por dia, para não depender só do webhook nem do botão.
+
+**O que é.** A mesma conferência do §27.9, rodada sem ninguém abrir a tela, com uma diferença de
+alcance e uma ação automática:
+
+1. **Quando.** Todo dia às **3h30, fuso do Brasil** (Regra 15) — antes da régua das 4h, para quem
+   já pagou não entrar em ação de cobrança. O agendamento só **enfileira** a rodada (fila
+   `conferencia-asaas`, chave do job pelo dia: `conferencia-asaas-AAAA-MM-DD`); quem lê o Asaas é
+   o worker (Regra 4). *Horário provisório — escolha da implementação, a confirmar pelo Luís; fica
+   numa constante só (`HORARIO_CONFERENCIA_ASAAS_AUTOMATICA`).*
+2. **Alcance.** **Toda** fatura em aberto aqui (ABERTA/FECHADA) com cobrança emitida
+   (`asaasChargeId`), **sem limite de vencimento**: vencida, que vence hoje e a vencer — a do Pedro
+   Jose vencia no dia e foi paga antes. Fatura do Pix sob demanda (`modeloEncargo = AZIT`) fica de
+   fora: não tem cobrança pré-criada e a baixa dela é pela conta (§32.4-A). A leitura segue o ritmo
+   do §27.9 (uma a uma, em lotes pequenos, com o compasso e a espera no limite do `AsaasLeituraService`).
+3. **O que baixa sozinho.** Só a linha `paga_no_asaas`: o Asaas registra o recebimento e aqui a
+   fatura segue em aberto. A baixa é o **Reconciliar** do §27.9 — relê a cobrança ao vivo, confirma
+   que está paga e enfileira o **mesmo** job `conciliar` do webhook. Nada é baixado sem o Asaas
+   confirmar o recebimento e **nada é alterado no Asaas** (Regra 1).
+4. **O que NÃO baixa sozinho.** Todas as outras divergências (`removida_no_asaas`,
+   `estornada_no_asaas`, `vencimento_diferente`, `valor_diferente`) e as cobranças que não deu para
+   ler ficam **listadas para o operador**, sem correção automática. Também fica para o operador a
+   fatura paga no Asaas cujo pagamento **já foi imputado aqui como parcial** (o valor pago gravado na
+   fatura é igual ao valor recebido no Asaas, e a fatura segue em aberto porque o pagamento não
+   cobriu o devido, §7.3): reconciliar de novo não muda nada e a rodada diria todo dia que "baixou".
+   Classificação própria da rodada: **pago a menor, já registrado**.
+5. **Idempotente.** Rodar duas vezes no mesmo dia não baixa nada em dobro: a fatura já baixada sai
+   do alcance (não está mais em aberto); a que ainda está na fila tem chave por dia e por fatura no
+   job `conciliar` (`conferencia-auto-AAAA-MM-DD-<faturaId>`), e a fila recusa a repetida; e a
+   conciliação em si não baixa fatura já paga (`ja_conciliada`).
+6. **Asaas simulado.** Em ambiente sem chave do Asaas a rodada é registrada, mas não baixa nada.
+
+**Registro.** Cada rodada vira uma linha em `logs_auditoria` (`acao = conferencia_asaas_automatica`,
+`entidade = conferencia_asaas`, `entidadeId` = o dia), com: quando começou e terminou, como foi
+disparada (agendada ou "rodar agora"), o ambiente do Asaas, quantas faturas leu (vencidas, que
+vencem hoje, a vencer), as que baixou (cliente, fatura, data e valor pagos no Asaas), as divergências
+que ficaram para olhar e as cobranças sem leitura. Sem tabela nova.
+
+**Aviso.** Pelo sino (`NotificacaoService`), área **Carteira e cobrança**, quando a rodada baixar
+alguma fatura, quando aparecer divergência que não estava na rodada anterior, ou quando alguma
+cobrança não puder ser lida. Divergência que já estava na rodada anterior não gera aviso de novo
+(senão o mesmo aviso tocaria todo dia). O aviso abre a Carteira com a conferência aberta.
+*Por onde avisa e o critério de "divergência nova" são provisórios — escolha da implementação, a
+confirmar pelo Luís.*
+
+**Tela.** No modal "Conferir com o Asaas" (§27.9), um bloco **Conferência automática** acima da
+lista: quando rodou, quantas faturas leu, quais baixou e quais divergências ficaram para olhar, com
+link para a ficha do cliente. Botão **Rodar agora** (ADMIN/OPERADOR, os mesmos que reconciliam
+uma a uma) enfileira a mesma rodada fora do horário — serve ao homolog e ao dia em que o operador
+quer conferir na hora.
+
+API: `GET /cobranca/conferencia-asaas/automatica` (última rodada + as anteriores) e
+`POST /cobranca/conferencia-asaas/automatica/rodar` (202). Detalhe em `api-spec.md` §4.2-B.
+
 ### 27.10 A tela se explica: clientes ativos × clientes no teto, e por que o teto muda de mês (2026-11-16)
 
 **Origem.** Em produção a tela mostrava "65 clientes" em novembro, com mais clientes ativos que isso,

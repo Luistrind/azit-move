@@ -279,6 +279,9 @@ export const CONFERENCIA_ASAAS_COLORS: Record<string, StatusColor> = {
   estornada_no_asaas: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
   vencimento_diferente: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
   valor_diferente: { bg: 'var(--purple-bg)', fg: 'var(--purple-fg)' },
+  // Só na rodada automática (doc 02 §27.9.1): paga no Asaas, mas esse valor já
+  // foi imputado aqui como pagamento parcial — fica para o operador.
+  pago_a_menor_ja_registrado: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
 };
 export const CONFERENCIA_ASAAS_LABEL: Record<string, string> = {
   ok: 'Conferida',
@@ -287,6 +290,17 @@ export const CONFERENCIA_ASAAS_LABEL: Record<string, string> = {
   estornada_no_asaas: 'Estornada no Asaas',
   vencimento_diferente: 'Vencimento diferente',
   valor_diferente: 'Valor diferente',
+  pago_a_menor_ja_registrado: 'Pago a menor, já registrado',
+};
+// Baixa mandada pela conferência automática (doc 02 §27.9.1): a rodada enfileira
+// a conciliação do webhook; a tela mostra se o worker já baixou a fatura.
+export const CONFERENCIA_BAIXA_COLORS: Record<string, StatusColor> = {
+  baixada: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  aguardando_conciliacao: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+};
+export const CONFERENCIA_BAIXA_LABEL: Record<string, string> = {
+  baixada: 'Baixada',
+  aguardando_conciliacao: 'Na fila da conciliação',
 };
 // Status da COBRANÇA como o Asaas devolve (rótulo em português; a chave crua
 // aparece ao lado para quem for conferir no painel).

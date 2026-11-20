@@ -40,6 +40,7 @@ const faturaBase = {
   status: 'FECHADA',
   dataVencimento: dia('2026-11-05'),
   valorTotal: decimal('997.00'),
+  valorPago: null,
   asaasChargeId: 'pay_1',
   conta: { titularId: 'tit_1', titular: { nome: 'Antônio Silva' } },
 };
@@ -130,7 +131,7 @@ describe('ConferenciaAsaasService.conferir', () => {
 
     expect(r.linhas[0]).toEqual({
       faturaId: 'fat_1', numero: 7, contaId: 'conta_1', titularId: 'tit_1', titular: 'Antônio Silva',
-      statusAqui: 'FECHADA', situacaoAqui: expect.stringMatching(/^(vencida|a_vencer)$/), vencimentoAqui: '2026-11-05', valorAqui: 99700, asaasChargeId: 'pay_1',
+      statusAqui: 'FECHADA', situacaoAqui: expect.stringMatching(/^(vencida|a_vencer)$/), vencimentoAqui: '2026-11-05', valorAqui: 99700, valorPagoAqui: null, asaasChargeId: 'pay_1',
       asaas: { id: 'pay_1', status: 'RECEIVED', vencimento: '2026-11-05', valor: 99700, valorOriginal: null, dataPagamento: '2026-11-06', deleted: false, invoiceUrl: 'https://asaas/i/1' },
       classificacao: 'paga_no_asaas',
     });
@@ -146,7 +147,7 @@ describe('ConferenciaAsaasService.conferir', () => {
     expect(where.dataVencimento.gte).toBeUndefined();
     expect(where.dataVencimento.lt).toEqual(dia(r.hoje)); // < hoje ⇔ ≤ ontem
     expect(r.periodo.de).toBeNull();
-    expect(r.periodo.ate < r.hoje).toBe(true);
+    expect(r.periodo.ate! < r.hoje).toBe(true);
     expect(r.total).toBe(0);
   });
 

@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   diasCalendarioEntre,
   formatCurrency,
@@ -57,6 +57,23 @@ export function CarteiraPage() {
   // Conferência Asaas × sistema (doc 02 §27.9): aberta pela lista de vencidas,
   // sobre o mesmo recorte dela — vencimento no período e já vencido (até ontem).
   const [conferindo, setConferindo] = useState(false);
+  // O aviso da conferência automática (doc 02 §27.9.1) abre a Carteira com a
+  // conferência aberta: /carteira?conferencia=asaas. O parâmetro sai ao fechar.
+  const [params, setParams] = useSearchParams();
+  const pediuConferencia = params.get('conferencia') === 'asaas';
+  useEffect(() => {
+    if (!pediuConferencia) return;
+    setLista('vencidas');
+    setConferindo(true);
+  }, [pediuConferencia]);
+  const fecharConferencia = () => {
+    setConferindo(false);
+    if (pediuConferencia) {
+      const p = new URLSearchParams(params);
+      p.delete('conferencia');
+      setParams(p, { replace: true });
+    }
+  };
 
   const periodo = intervaloDoPeriodo(sel, hoje);
   const rotulo = rotuloDoPeriodo(sel, hoje);
@@ -176,7 +193,7 @@ export function CarteiraPage() {
                   {lista === 'vencidas' ? (
                     <ConferenciaAsaasModal
                       open={conferindo}
-                      onClose={() => setConferindo(false)}
+                      onClose={fecharConferencia}
                       de={periodo.de}
                       ate={periodo.ate < hoje ? periodo.ate : somarDiasISO(hoje, -1)}
                       rotulo={rotulo}

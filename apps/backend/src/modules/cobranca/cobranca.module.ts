@@ -5,6 +5,7 @@ import { FaturaService } from './fatura.service';
 import { WebhookController } from './webhook.controller';
 import { CobrancaController } from './cobranca.controller';
 import { ConferenciaAsaasService } from './conferencia-asaas.service';
+import { ConferenciaAsaasAutomaticaService } from './conferencia-asaas-automatica.service';
 import { FaturamentoModule } from '../faturamento/faturamento.module';
 import {
   PagamentoRecebidoProcessor,
@@ -12,6 +13,7 @@ import {
   FecharFaturaProcessor,
   GerarCobrancaProcessor,
   NotificarClienteProcessor,
+  ConferenciaAsaasProcessor,
 } from './cobranca.processors';
 
 // Bloco 4 — ciclo de cobrança: faturas, Asaas (simulado), webhook, conciliação.
@@ -28,12 +30,15 @@ import {
       { name: QUEUE_NAMES.NOTIFICAR_CLIENTE },
       { name: QUEUE_NAMES.EFETIVAR_ACORDO },
       { name: QUEUE_NAMES.ATIVAR_CONTRATO },
+      { name: QUEUE_NAMES.CONFERENCIA_ASAAS },
     ),
   ],
   controllers: [WebhookController, CobrancaController],
   providers: [
     FaturaService,
     ConferenciaAsaasService,
+    ConferenciaAsaasAutomaticaService,
+    ConferenciaAsaasProcessor,
     PagamentoRecebidoProcessor,
     PagamentoVencidoProcessor,
     FecharFaturaProcessor,

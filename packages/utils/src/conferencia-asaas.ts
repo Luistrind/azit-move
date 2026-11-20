@@ -80,3 +80,40 @@ export function contarClassificacoes(
   for (const l of linhas) base[l.classificacao] += 1;
   return base;
 }
+
+// ---------------------------------------------------------------------------
+// Conferência AUTOMÁTICA diária (doc 02 §27.9.1, 18/11/2026 — incidente da
+// v1.9.0: Pix de cobrança comum não baixava; casos Leonardo, fatura 191, e
+// Pedro Jose, fatura 49). O que a rodada faz com cada linha já classificada:
+//   · baixar — paga no Asaas e aberta aqui: enfileira o MESMO `conciliar` do webhook;
+//   · pago_a_menor_ja_registrado — paga no Asaas, mas esse mesmo valor já foi
+//     imputado aqui como pagamento parcial (§7.3): reconciliar de novo não muda
+//     nada, então fica para o operador em vez de "baixar" todo dia;
+//   · divergencia — qualquer outra diferença: só lista, nunca corrige sozinha;
+//   · ok — bate.
+export type DecisaoConferenciaAutomatica = 'baixar' | 'pago_a_menor_ja_registrado' | 'divergencia' | 'ok';
+
+export interface LinhaParaDecidir {
+  classificacao: ClassificacaoConferenciaAsaas;
+  valorPagoAqui: number | null; // centavos — valorPago gravado na fatura (só existe depois de parcial)
+  valorPagoAsaas: number | null; // centavos — value da cobrança lida no Asaas
+}
+
+export function decidirConferenciaAutomatica(l: LinhaParaDecidir): DecisaoConferenciaAutomatica {
+  if (l.classificacao === 'ok') return 'ok';
+  if (l.classificacao !== 'paga_no_asaas') return 'divergencia';
+  const jaImputado = l.valorPagoAqui !== null && l.valorPagoAqui > 0 && l.valorPagoAqui === l.valorPagoAsaas;
+  return jaImputado ? 'pago_a_menor_ja_registrado' : 'baixar';
+}
+
+// Divergência que NÃO estava na rodada anterior (mesma fatura, mesma
+// classificação) — só ela gera aviso no sino; a repetida segue listada na tela,
+// sem tocar o sino todo dia. Sem rodada anterior, todas são novas.
+export function divergenciasNovas<T extends { faturaId: string; classificacao: string }>(
+  atuais: readonly T[],
+  anteriores: readonly { faturaId: string; classificacao: string }[] | null,
+): T[] {
+  if (!anteriores) return [...atuais];
+  const vistas = new Set(anteriores.map((a) => `${a.faturaId}|${a.classificacao}`));
+  return atuais.filter((a) => !vistas.has(`${a.faturaId}|${a.classificacao}`));
+}

@@ -24,6 +24,7 @@ import { FaturaService, VISOES_FATURAS_CONTA, eventoConciliacaoDe, type Cobranca
 import { AsaasLeituraService } from '../asaas/asaas-leitura.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { ConferenciaAsaasService } from './conferencia-asaas.service';
+import { ConferenciaAsaasAutomaticaService } from './conferencia-asaas-automatica.service';
 import { Area, AREAS_CONTRATO, AREAS_FICHA_TITULAR } from '../../common/decorators/area.decorator';
 
 const DATA_ISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -36,6 +37,7 @@ export class CobrancaController {
     private readonly prisma: PrismaService,
     private readonly asaasLeitura: AsaasLeituraService,
     private readonly conferencia: ConferenciaAsaasService,
+    private readonly conferenciaAutomatica: ConferenciaAsaasAutomaticaService,
     @InjectQueue(QUEUE_NAMES.PAGAMENTO_RECEBIDO)
     private readonly filaRecebido: Queue,
   ) {}
@@ -170,6 +172,23 @@ export class CobrancaController {
     q: { de?: string; ate?: string },
   ) {
     return this.conferencia.conferir(q.de, q.ate);
+  }
+
+  // Conferência AUTOMÁTICA diária (doc 02 §27.9.1, 18/11): a última rodada (o que
+  // leu, o que baixou, o que ficou para olhar) e um resumo das anteriores.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Get('cobranca/conferencia-asaas/automatica')
+  painelConferenciaAutomatica() {
+    return this.conferenciaAutomatica.painel();
+  }
+
+  // "Rodar agora": enfileira a MESMA rodada fora do horário (202 — o worker lê o
+  // Asaas; nada síncrono). Mesmos papéis que reconciliam uma a uma.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post('cobranca/conferencia-asaas/automatica/rodar')
+  @HttpCode(202)
+  rodarConferenciaAutomatica(@CurrentUser() user: UsuarioAutenticado) {
+    return this.conferenciaAutomatica.rodarAgora(user.id);
   }
 
   // Reconciliar UMA linha `paga_no_asaas`: enfileira o MESMO job `conciliar` do
