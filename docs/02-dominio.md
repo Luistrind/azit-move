@@ -3217,6 +3217,8 @@ reprovada ou cancelada, pode-se pedir outra.
    do contrato em aberto (fora de acordo) com vencimento ≤ data-base, pelo valor nominal **mais o
    encargo de atraso** calculado na data-base pela fórmula única (`calcularEncargoAtraso`, taxas do
    contrato). Compensação = mín(crédito, dívida).
+   **Ampliado em 20/11 (§29.3):** a dívida passa a somar também os custos da recuperação e as
+   multas do veículo que são do cliente, e os 20% abatem a dívida toda.
 4. **Resultado:** crédito > dívida → **valor a devolver ao cliente**; dívida > crédito → **saldo
    remanescente devido pelo cliente** ("ele ainda fica com o restante do débito").
 5. **Parcelas futuras** (vencimento > data-base) não são cobradas: o contrato se resolve com a
@@ -3249,7 +3251,8 @@ reprovada ou cancelada, pode-se pedir outra.
 - **Saldo remanescente** (quando a dívida supera o crédito): fica registrado na rescisão e visível na
   ficha do contrato; **não gera cobrança no Asaas** nem entra na régua — a cobrança desse resto é
   fora do cronograma (acordo avulso ou judicial; o dossiê para judicialização é o próximo bloco).
-  Emitir cobrança automática desse saldo é decisão futura.
+  Emitir cobrança automática desse saldo é decisão futura. **Substituído em 20/11 (§29.3):** o saldo
+  vira uma cobrança única no Asaas, com 15 dias úteis para pagar, que serve para negativar.
 - Acordo ativo da conta cujo plano pertence só a este contrato → `CANCELADO` (as cotas viram
   `RESCINDIDA` junto com as demais parcelas). Acordo que mistura contratos não é tocado — o acerto
   avisa.
@@ -3259,6 +3262,53 @@ acerto com memória antes de pedir aprovação); a Central de Aprovações mostr
 (acerto, parcelas vencidas, veículo, atraso, histórico de recuperação da conta); contrato encerrado
 por rescisão mostra o acerto, a devolução pendente/feita e o saldo remanescente. A régua ganha o
 botão "Iniciar recuperação" a partir da raia "Vencida até 30 dias".
+
+### 29.3 Custos da recuperação e cobrança do saldo (decisões Luís, 2026-11-20)
+
+> **Contexto.** Quando o carro é retomado, a Azit gasta com a própria retomada e com o carro de
+> volta (guincho, pátio, chave, avarias, pneu, rastreador). O contrato põe esses custos na conta do
+> cliente (cláusula 8.6, despesas de retomada; cláusula 12.2, danos ao veículo). Até aqui o acerto
+> da rescisão só via parcelas e encargo. Protótipo aprovado com as respostas abaixo:
+> https://claude.ai/artifact/9UuXr5c9zvbaaNmVX1KuWK
+
+**O custo.** Cada custo é um **lançamento de custo do veículo** (`LancamentoCustoAtivo`, o mesmo da
+aba Custos da ficha do veículo, §25.7), ligado ao contrato, com: tipo (retomada, guincho/transporte,
+pátio/diárias, chave/chaveiro, avaria/reparo, pneu/roda, rastreador, limpeza, documento/despachante,
+custas e honorários, outro), descrição, valor, data, fornecedor (texto, opcional), comprovante
+(foto, orçamento ou nota), **situação** `ORCADO` ou `PAGO` e **quem paga** `CLIENTE` ou `AZIT`. Não
+existe cadastro paralelo: custo que a Azit assume continua sendo só custo do veículo.
+
+- Lança-se a partir de **"Iniciar recuperação"** e também **depois da rescisão efetivada** (orçamento
+  que virou nota, avaria achada na oficina). Trocar o valor, a situação ou retirar um custo é
+  permitido, auditado, com histórico.
+- **Custo orçado entra no acerto** pelo valor orçado, marcado como estimativa (decisão Luís: o dossiê
+  judicial precisa deles mesmo só orçados). Quando a nota chega, o valor é trocado e o saldo se ajusta.
+- **Multas do veículo** (ocorrências do §25 com o cliente como responsável, data do fato até a
+  data-base, ainda sem desfecho) entram sozinhas na dívida. Ao efetivar, a ocorrência fica marcada
+  como incluída no acerto da rescisão e não pode mais ir para fatura.
+
+**No acerto (altera o item 3 do §29.2):** dívida = parcelas vencidas até a data-base + encargo na
+data-base + custos do cliente (orçados e pagos) + multas do veículo. **Os 20% abatem a dívida toda**
+(decisão Luís), na mesma função única `calcularAcertoRescisao`.
+
+**Depois da efetivação:** lançar, alterar ou retirar custo recalcula o resultado (saldo remanescente
+ou valor a devolver) com o mesmo crédito. **Não pede nova aprovação** (decisão Luís), só auditoria e
+histórico do saldo na ficha do contrato.
+
+**Cobrança do saldo remanescente (substitui o placeholder do §29.2):** depois de rescindido, o saldo
+vira **uma cobrança única** (boleto no Asaas) com **15 dias úteis** para pagar (`adicionarDiasUteis`
+de `@azit/utils`, sem feriados — placeholder do calendário). Fica fora da régua e do cronograma. Não
+paga, é essa cobrança que se usa no Asaas para **negativar** o cliente. *(Em aberto: se a cobrança
+nasce sozinha na efetivação ou por botão; o que acontece com ela se o saldo mudar depois de emitida;
+se a negativação é feita à mão no Asaas ou pelo sistema.)*
+
+**Fica para depois:**
+
+- **Multas contratuais** da cláusula 12.2 (5% da FIPE quando há dano) e da 12.3 (1% da FIPE por dia
+  de atraso na devolução): **não entram agora**; o Luís vai validar (20/11).
+- **Cliente que regulariza** e recebe o carro de volta: como ele paga os custos da recuperação ainda
+  não foi decidido.
+- Pagar guincho e oficina por Contas a Pagar: depende do papel gestor (§18).
 
 ---
 
