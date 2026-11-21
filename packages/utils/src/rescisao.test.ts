@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calcularAcertoRescisao, PERCENTUAL_CREDITO_RESCISAO } from './rescisao';
+import { calcularAcertoRescisao, PERCENTUAL_CREDITO_RESCISAO, reaplicarCustosNoAcerto } from './rescisao';
 
 // Doc 02 §29 (decisões Luís 04/11): base = principal (entrada + parcelas), os
 // 20% quitam só as vencidas até a data-base, resto a devolver ou remanescente.
@@ -105,5 +105,106 @@ describe('rescisão com fatura AZIT paga em parte (doc 02 §32.4-A)', () => {
     const a = calcularAcertoRescisao({ ...base, parcelasAbertas: [{ id: 'p', display: '23/104', valorNominal: 74_900, dataVencimento: '2026-11-16', saldoNominal: 34_900 }] });
     expect(a.futuras).toEqual({ quantidade: 1, valorNominal: 34_900 });
     expect(a.dividaTotal).toBe(0);
+  });
+});
+
+describe('custos da recuperação e multas no acerto (doc 02 §29.3, 20/11)', () => {
+  // Protótipo: entrada 1.990 + 26 parcelas de principal 942 → base 26.482 → crédito 5.296,40.
+  const pagas = Array.from({ length: 26 }, (_, i) => ({ display: `${i + 1}/156`, valorNominal: 99_200, valorPago: 99_200, valorEncargo: 0, protecao: 5_000 }));
+  const base = { dataBase: '2026-11-16', entradaPaga: 199_000, parcelasPagas: pagas, ...taxas };
+  const custos = [
+    { id: 'c1', tipo: 'retomada', descricao: 'Retirada', valor: 80_000, orcado: false },
+    { id: 'c2', tipo: 'avaria', descricao: 'Para-choque', valor: 165_000, orcado: true },
+  ];
+  const multas = [{ id: 'm1', descricao: 'Multa AB123', valor: 29_347 }];
+
+  it('os 20% abatem a dívida TODA: parcelas + encargo + custos (orçados e pagos) + multas', () => {
+    const a = calcularAcertoRescisao({
+      ...base,
+      parcelasAbertas: [{ id: 'p', display: '27/156', valorNominal: 99_200, dataVencimento: '2026-11-16' }],
+      custos,
+      multas,
+    });
+    expect(a.valorCredito).toBe(529_640);
+    expect(a.custosCliente).toBe(245_000);
+    expect(a.custosOrcados).toBe(165_000);
+    expect(a.multasVeiculo).toBe(29_347);
+    expect(a.dividaTotal).toBe(a.dividaVencida + a.encargosVencidos + 245_000 + 29_347);
+    expect(a.valorCompensado).toBe(a.dividaTotal); // crédito cobre tudo
+    expect(a.valorADevolver).toBe(529_640 - a.dividaTotal);
+    expect(a.saldoRemanescente).toBe(0);
+  });
+
+  it('nunca "a devolver" e "saldo" ao mesmo tempo: custos acima do crédito viram saldo remanescente', () => {
+    const a = calcularAcertoRescisao({ ...base, parcelasAbertas: [], custos: [...custos, { id: 'c3', tipo: 'outro', descricao: 'Motor', valor: 400_000, orcado: true }], multas });
+    expect(a.dividaTotal).toBe(674_347);
+    expect(a.valorADevolver).toBe(0);
+    expect(a.saldoRemanescente).toBe(674_347 - 529_640);
+  });
+
+  it('devolução de boa-fé sem parcela vencida: a dívida é só o custo do reparo', () => {
+    const a = calcularAcertoRescisao({ ...base, parcelasAbertas: [{ id: 'f', display: '27/156', valorNominal: 99_200, dataVencimento: '2026-11-23' }], custos: [custos[1]] });
+    expect(a.vencidas).toEqual([]);
+    expect(a.futuras.quantidade).toBe(1);
+    expect(a.dividaTotal).toBe(165_000);
+    expect(a.valorADevolver).toBe(529_640 - 165_000);
+  });
+
+  it('corte na data-base: parcela que venceu DEPOIS da retomada não entra, mesmo se a rescisão for lançada dias depois', () => {
+    const a = calcularAcertoRescisao({
+      ...base,
+      parcelasAbertas: [
+        { id: 'v', display: '27/156', valorNominal: 99_200, dataVencimento: '2026-11-16' },
+        { id: 'd', display: '28/156', valorNominal: 99_200, dataVencimento: '2026-11-23' }, // já vencida "hoje", mas depois da retomada
+      ],
+    });
+    expect(a.vencidas.map((v) => v.id)).toEqual(['v']);
+    expect(a.futuras).toEqual({ quantidade: 1, valorNominal: 99_200 });
+  });
+
+  it('sem custos nem multas o resultado é o de antes (campos novos zerados)', () => {
+    const a = calcularAcertoRescisao({ ...base, parcelasAbertas: [{ id: 'p', display: '27/156', valorNominal: 99_200, dataVencimento: '2026-11-09' }] });
+    expect(a.custos).toEqual([]);
+    expect(a.custosCliente).toBe(0);
+    expect(a.multasVeiculo).toBe(0);
+    expect(a.dividaTotal).toBe(a.dividaVencida + a.encargosVencidos);
+  });
+});
+
+describe('reaplicarCustosNoAcerto — ajuste depois da rescisão (doc 02 §29.3)', () => {
+  const pagas = Array.from({ length: 10 }, (_, i) => ({ display: `${i + 1}/100`, valorNominal: 99_200, valorPago: 99_200, valorEncargo: 0, protecao: 5_000 }));
+  const original = calcularAcertoRescisao({
+    dataBase: '2026-11-16', entradaPaga: 199_000, parcelasPagas: pagas, ...taxas,
+    parcelasAbertas: [{ id: 'p', display: '11/100', valorNominal: 99_200, dataVencimento: '2026-11-09' }],
+    custos: [{ id: 'c1', tipo: 'avaria', descricao: 'Funilaria', valor: 165_000, orcado: true }],
+    multas: [{ id: 'm1', descricao: 'Multa', valor: 29_347 }],
+  });
+
+  it('mesma lista de custos → mesmo acerto', () => {
+    expect(reaplicarCustosNoAcerto(original, original.custos ?? [])).toEqual(original);
+  });
+
+  it('orçamento virou nota menor e apareceu custo novo: só a parte dos custos muda', () => {
+    const novo = reaplicarCustosNoAcerto(original, [
+      { id: 'c1', tipo: 'avaria', descricao: 'Funilaria', valor: 158_000, orcado: false },
+      { id: 'c2', tipo: 'outro', descricao: 'Banco rasgado', valor: 62_000, orcado: true },
+    ]);
+    expect(novo.valorCredito).toBe(original.valorCredito);
+    expect(novo.vencidas).toEqual(original.vencidas);
+    expect(novo.multasVeiculo).toBe(29_347);
+    expect(novo.custosCliente).toBe(220_000);
+    expect(novo.custosOrcados).toBe(62_000);
+    expect(novo.dividaTotal).toBe(original.dividaTotal - 165_000 + 220_000);
+    expect(novo.saldoRemanescente - novo.valorADevolver).toBe(novo.dividaTotal - novo.valorCredito);
+  });
+
+  it('acerto antigo (gravado antes de 20/11, sem custos nem multas) aceita o primeiro custo', () => {
+    const { custos: _c, custosCliente: _cc, custosOrcados: _co, multas: _m, multasVeiculo: _mv, ...antigo } = calcularAcertoRescisao({
+      dataBase: '2026-11-04', entradaPaga: 100_000, parcelasPagas: [], ...taxas,
+      parcelasAbertas: [{ id: 'p', display: '1/10', valorNominal: 50_000, dataVencimento: '2026-11-04' }],
+    });
+    const novo = reaplicarCustosNoAcerto(antigo, [{ id: 'c', tipo: 'guincho', descricao: 'Guincho', valor: 35_000, orcado: false }]);
+    expect(novo.dividaTotal).toBe(antigo.dividaTotal + 35_000);
+    expect(novo.saldoRemanescente).toBe(antigo.dividaTotal + 35_000 - 20_000);
   });
 });

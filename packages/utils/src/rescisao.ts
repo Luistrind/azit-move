@@ -8,7 +8,8 @@ import { diasCalendarioEntre } from './datas';
 //   crédito        = 20% da base (PERCENTUAL_CREDITO_RESCISAO)
 //   dívida vencida = parcelas em aberto com vencimento ≤ data-base, nominal + encargo na data-base
 //                    (parcela de fatura AZIT paga em parte: o SALDO e o encargo do motor, §32.4-A)
-//   compensado     = mín(crédito, dívida)
+//   + custos da recuperação que são do cliente (orçados e pagos) e multas do veículo (§29.3, 20/11)
+//   compensado     = mín(crédito, dívida) — os 20% abatem a dívida TODA (parcelas, encargo, custos, multas)
 //   crédito > dívida → a devolver ao cliente; dívida > crédito → saldo remanescente do cliente
 //   parcelas futuras (> data-base) não são cobradas (o contrato se resolve com a retomada)
 
@@ -45,6 +46,23 @@ export interface ParcelaVencidaAcerto {
   total: number;
 }
 
+// Custo da recuperação repassado ao cliente (doc 02 §29.3): lançamento de custo
+// do veículo ligado ao contrato. Orçado entra pelo valor orçado, como estimativa.
+export interface CustoAcerto {
+  id: string;
+  tipo: string;
+  descricao: string;
+  valor: number; // centavos
+  orcado: boolean;
+}
+
+// Multa/ocorrência do veículo de responsabilidade do cliente, sem desfecho (§25).
+export interface MultaAcerto {
+  id: string;
+  descricao: string;
+  valor: number; // centavos
+}
+
 export interface AcertoRescisao {
   dataBase: string;
   percentualCredito: number;
@@ -57,7 +75,13 @@ export interface AcertoRescisao {
   vencidas: ParcelaVencidaAcerto[];
   dividaVencida: number; // nominal
   encargosVencidos: number;
-  dividaTotal: number;
+  // §29.3 (20/11). Opcionais só porque acertos gravados antes não os têm.
+  custos?: CustoAcerto[];
+  custosCliente?: number; // soma dos custos (orçados + pagos)
+  custosOrcados?: number; // parte da soma que ainda é estimativa
+  multas?: MultaAcerto[];
+  multasVeiculo?: number;
+  dividaTotal: number; // parcelas + encargo + custos + multas
   valorCompensado: number;
   valorADevolver: number;
   saldoRemanescente: number;
@@ -75,6 +99,8 @@ export function calcularAcertoRescisao(entrada: {
   // Principal (sem proteção nem encargo) que pagamentos em parte já quitaram em
   // parcelas ainda em aberto — também é "principal pago" e entra na base dos 20%.
   principalParcial?: number; // centavos
+  custos?: CustoAcerto[]; // só os que o cliente paga
+  multas?: MultaAcerto[];
 }): AcertoRescisao {
   const percentual = entrada.percentualCredito ?? PERCENTUAL_CREDITO_RESCISAO;
   const entradaPaga = Math.max(0, Math.round(entrada.entradaPaga));
@@ -108,7 +134,12 @@ export function calcularAcertoRescisao(entrada: {
   }
   const dividaVencida = vencidas.reduce((s, v) => s + v.valorNominal, 0);
   const encargosVencidos = vencidas.reduce((s, v) => s + v.encargo, 0);
-  const dividaTotal = dividaVencida + encargosVencidos;
+  const custos = (entrada.custos ?? []).map((c) => ({ ...c, valor: Math.max(0, Math.round(c.valor)) }));
+  const multas = (entrada.multas ?? []).map((m) => ({ ...m, valor: Math.max(0, Math.round(m.valor)) }));
+  const custosCliente = custos.reduce((s, c) => s + c.valor, 0);
+  const custosOrcados = custos.filter((c) => c.orcado).reduce((s, c) => s + c.valor, 0);
+  const multasVeiculo = multas.reduce((s, m) => s + m.valor, 0);
+  const dividaTotal = dividaVencida + encargosVencidos + custosCliente + multasVeiculo;
   const valorCompensado = Math.min(valorCredito, dividaTotal);
 
   return {
@@ -123,10 +154,40 @@ export function calcularAcertoRescisao(entrada: {
     vencidas,
     dividaVencida,
     encargosVencidos,
+    custos,
+    custosCliente,
+    custosOrcados,
+    multas,
+    multasVeiculo,
     dividaTotal,
     valorCompensado,
     valorADevolver: Math.max(0, valorCredito - dividaTotal),
     saldoRemanescente: Math.max(0, dividaTotal - valorCredito),
     futuras: { quantidade: futurasQtd, valorNominal: futurasValor },
+  };
+}
+
+// Depois da rescisão efetivada (doc 02 §29.3): custo lançado, alterado ou
+// retirado recalcula o resultado com o MESMO crédito, as MESMAS parcelas
+// vencidas e as MESMAS multas — só a lista de custos muda. As parcelas já estão
+// RESCINDIDA no banco, então a conta parte do acerto gravado, não dos fatos.
+export function reaplicarCustosNoAcerto(acerto: AcertoRescisao, custosAtuais: CustoAcerto[]): AcertoRescisao {
+  const custos = custosAtuais.map((c) => ({ ...c, valor: Math.max(0, Math.round(c.valor)) }));
+  const multas = acerto.multas ?? [];
+  const custosCliente = custos.reduce((s, c) => s + c.valor, 0);
+  const custosOrcados = custos.filter((c) => c.orcado).reduce((s, c) => s + c.valor, 0);
+  const multasVeiculo = multas.reduce((s, m) => s + m.valor, 0);
+  const dividaTotal = acerto.dividaVencida + acerto.encargosVencidos + custosCliente + multasVeiculo;
+  return {
+    ...acerto,
+    custos,
+    custosCliente,
+    custosOrcados,
+    multas,
+    multasVeiculo,
+    dividaTotal,
+    valorCompensado: Math.min(acerto.valorCredito, dividaTotal),
+    valorADevolver: Math.max(0, acerto.valorCredito - dividaTotal),
+    saldoRemanescente: Math.max(0, dividaTotal - acerto.valorCredito),
   };
 }

@@ -1,12 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
   Patch,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -25,6 +27,7 @@ import { QuitacaoService } from './quitacao.service';
 import { SinistroService } from './sinistro.service';
 import { ReajusteService } from './reajuste.service';
 import { RescisaoService } from './rescisao.service';
+import { CustoRecuperacaoService } from './custo-recuperacao.service';
 import { simularNovacaoSchema, SimularNovacaoBody, solicitarNovacaoSchema, SolicitarNovacaoBody, primeiraParcelaNovacaoSchema, PrimeiraParcelaNovacaoBody } from './dto/novacao.dto';
 import {
   criarRenegociacaoSchema,
@@ -39,7 +42,13 @@ import {
   RescisaoBody,
   devolucaoRescisaoSchema,
   DevolucaoRescisaoBody,
+  custoRecuperacaoSchema,
+  CustoRecuperacaoBody,
+  alterarCustoRecuperacaoSchema,
+  AlterarCustoRecuperacaoBody,
 } from './dto/operacoes.dto';
+
+type Resposta = { header: (k: string, v: string) => Resposta; send: (b: Buffer) => void };
 import { Area, AREAS_CONTRATO, AREAS_FICHA_TITULAR } from '../../common/decorators/area.decorator';
 
 @Area(AreaSistema.CARTEIRA_COBRANCA)
@@ -53,6 +62,7 @@ export class OperacoesController {
     private readonly sinistro: SinistroService,
     private readonly reajuste: ReajusteService,
     private readonly rescisao: RescisaoService,
+    private readonly custosRecuperacao: CustoRecuperacaoService,
     @InjectQueue(QUEUE_NAMES.EFETIVAR_ACORDO) private readonly filaAcordo: Queue,
   ) {}
 
@@ -257,25 +267,81 @@ export class OperacoesController {
     return this.reajuste.gerar(id, dto.indicePercentual, user.id);
   }
 
-  // --- Rescisão por inadimplência (doc 02 §29, 04/11) ---
-  // Prévia do acerto (20% do principal pago × parcelas vencidas até a data-base).
+  // --- Custos da recuperação (doc 02 §29.3, 20–21/11) ---
+  // Lançamentos de custo do veículo ligados ao contrato: o que o cliente paga
+  // entra na dívida do acerto; o que a Azit assume fica só como custo do veículo.
+  @Area(...AREAS_CONTRATO)
+  @Get('contratos/:id/custos-recuperacao')
+  listarCustosRecuperacao(@Param('id') id: string) {
+    return this.custosRecuperacao.listar(id);
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR, RoleUsuario.OPERADOR)
+  @Area(AreaSistema.CARTEIRA_COBRANCA, AreaSistema.CONTRATOS)
+  @Post('contratos/:id/custos-recuperacao')
+  @HttpCode(201)
+  lancarCustoRecuperacao(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(custoRecuperacaoSchema)) dto: CustoRecuperacaoBody,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.custosRecuperacao.lancar(id, dto, user.id);
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR, RoleUsuario.OPERADOR)
+  @Area(AreaSistema.CARTEIRA_COBRANCA, AreaSistema.CONTRATOS)
+  @Patch('custos-recuperacao/:id')
+  alterarCustoRecuperacao(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(alterarCustoRecuperacaoSchema)) dto: AlterarCustoRecuperacaoBody,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.custosRecuperacao.alterar(id, dto, user.id);
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR, RoleUsuario.OPERADOR)
+  @Area(AreaSistema.CARTEIRA_COBRANCA, AreaSistema.CONTRATOS)
+  @Delete('custos-recuperacao/:id')
+  removerCustoRecuperacao(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.custosRecuperacao.remover(id, user.id);
+  }
+
+  @Area(...AREAS_CONTRATO)
+  @Get('custos-recuperacao/:id/comprovante')
+  async comprovanteCustoRecuperacao(@Param('id') id: string, @Res() res: Resposta) {
+    const { nome, buffer } = await this.custosRecuperacao.comprovante(id);
+    res.header('Content-Disposition', `inline; filename="${encodeURIComponent(nome)}"`).send(buffer);
+  }
+
+  // --- Rescisão (doc 02 §29; fluxo direto §29.3) ---
+  // Prévia do acerto: 20% do principal pago × (vencidas até a data-base + custos + multas).
   @Area(...AREAS_CONTRATO)
   @Get('contratos/:id/rescisao/previa')
   previaRescisao(@Param('id') id: string, @Query('dataBase') dataBase?: string) {
     return this.rescisao.previa(id, dataBase || undefined);
   }
 
-  // Pede a rescisão — aprovação (1 aprovador) e efetivação via motor (§7.9-A).
-  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  // Rescinde NA HORA, sem aprovação (decisão Luís 20–21/11) — por isso só ADMIN e
+  // DIRETOR; a tela pede confirmação dizendo o que vai acontecer.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR)
   @Area(AreaSistema.CARTEIRA_COBRANCA, AreaSistema.CONTRATOS)
   @Post('contratos/:id/rescisao')
   @HttpCode(201)
-  solicitarRescisao(
+  rescindir(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(rescisaoSchema)) dto: RescisaoBody,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.rescisao.solicitar(id, dto, user.id);
+    return this.rescisao.rescindir(id, dto, user.id);
+  }
+
+  // Boleto único do saldo remanescente: 15 dias úteis; não pago, é o que se negativa.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.DIRETOR, RoleUsuario.OPERADOR, RoleUsuario.FINANCEIRO)
+  @Area(AreaSistema.CARTEIRA_COBRANCA, AreaSistema.CONTRATOS)
+  @Post('rescisoes/:id/boleto-saldo')
+  @HttpCode(200)
+  gerarBoletoSaldo(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.rescisao.gerarBoletoSaldo(id, user.id);
   }
 
   @Area(...AREAS_CONTRATO)

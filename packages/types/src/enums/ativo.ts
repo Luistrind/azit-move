@@ -25,3 +25,51 @@ export enum OrigemAtivo {
   PARTICULAR     = 'particular',
   CONCESSIONARIA = 'concessionaria',
 }
+
+// Custos da recuperação do veículo (doc 02 §29.3, decisão Luís 20/11/2026). Lista
+// única dos tipos — backend valida, tela e dossiê exibem daqui. O custo é um
+// lançamento de custo do veículo ligado ao contrato.
+export const TIPOS_CUSTO_RECUPERACAO = [
+  'retomada',
+  'guincho',
+  'patio',
+  'chave',
+  'avaria',
+  'pneu',
+  'rastreador',
+  'limpeza',
+  'documento',
+  'juridico',
+  'outro',
+] as const;
+export type TipoCustoRecuperacao = (typeof TIPOS_CUSTO_RECUPERACAO)[number];
+
+export const TIPO_CUSTO_RECUPERACAO_LABEL: Record<TipoCustoRecuperacao, string> = {
+  retomada: 'Retomada (equipe)',
+  guincho: 'Guincho / transporte',
+  patio: 'Pátio / diárias',
+  chave: 'Chave / chaveiro',
+  avaria: 'Avaria / reparo',
+  pneu: 'Pneu / roda',
+  rastreador: 'Rastreador',
+  limpeza: 'Limpeza / higienização',
+  documento: 'Documento / despachante',
+  juridico: 'Custas e honorários',
+  outro: 'Outro',
+};
+
+export enum SituacaoCusto {
+  ORCADO = 'orcado',
+  PAGO   = 'pago',
+}
+
+export enum QuemPagaCusto {
+  CLIENTE = 'cliente',
+  AZIT    = 'azit',
+}
+
+// Como o carro voltou na rescisão (doc 02 §29.3).
+export enum OrigemRescisao {
+  RETOMADA  = 'retomada',
+  DEVOLUCAO = 'devolucao',
+}

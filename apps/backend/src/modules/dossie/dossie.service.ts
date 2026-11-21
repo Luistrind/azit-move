@@ -3,10 +3,10 @@ import { Prisma } from '@prisma/client';
 import { promises as fs } from 'fs';
 import { join, extname } from 'path';
 import { randomUUID } from 'crypto';
-import { StatusParcela } from '@azit/types';
-import { DIA_MS, dataCalendarioUTC, dataHojeBrasil, diaBrasil, formatCurrency, formatarInstanteBR, isoParaBR, nomeDiaSemanaISO, resolverStatusParcela, textoDoAceiteWhatsapp, type AceiteWhatsappRegistrado } from '@azit/utils';
+import { StatusParcela, TIPO_CUSTO_RECUPERACAO_LABEL, type TipoCustoRecuperacao } from '@azit/types';
+import { DIA_MS, dataCalendarioUTC, dataHojeBrasil, diaBrasil, diaDeColunaMista, formatCurrency, formatarInstanteBR, isoParaBR, nomeDiaSemanaISO, resolverStatusParcela, textoDoAceiteWhatsapp, type AceiteWhatsappRegistrado, type AcertoRescisao } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
-import { CabecalhoDossie, DadosHistorico, LinhaHistorico, SecaoSumario, htmlCapa, htmlCapaAnexo, htmlCapturas, htmlHistorico, htmlTextoContrato } from './dossie-html';
+import { CabecalhoDossie, DadosCustosAcerto, DadosHistorico, LinhaHistorico, SecaoSumario, htmlCapa, htmlCapaAnexo, htmlCapturas, htmlComprovantes, htmlCustosAcerto, htmlHistorico, htmlTextoContrato } from './dossie-html';
 import { comNavegador, contarPaginas, htmlParaPdf, juntarPdfs } from './pdf';
 
 // Dossiê para cobrança judicial (doc 02 §30, pedido Luís 04/11/2026). O
@@ -20,6 +20,7 @@ const DIR_ENTRADA = join(DIR_DOSSIES, 'entrada');
 const DIR_EMPRESA = join(UPLOADS, 'empresa');
 const DIR_ASSINATURAS = join(UPLOADS, 'assinaturas');
 const DIR_LEGADO = join(UPLOADS, 'legado');
+const DIR_CUSTOS = join(UPLOADS, 'custos'); // comprovantes dos custos da recuperação (doc 02 §29.3)
 
 const cent = (d: Prisma.Decimal | null | undefined): number => (d ? Math.round(Number(d.toString()) * 100) : 0);
 const PARCELA_PAGA = ['PAGA', 'PAGA_EM_ATRASO', 'PAGA_ANTECIPADA'];
@@ -232,7 +233,7 @@ export class DossieService {
     if (entradaPaga > 0) pills.push({ texto: `Entrada ${formatCurrency(entradaPaga)} paga` });
     pills.push({ texto: `Total pago ${formatCurrency(pago)}`, tom: 'ok' });
     if (atrasadas > 0) pills.push({ texto: `Em atraso ${formatCurrency(emAtraso)} · ${atrasadas} parcela(s) desde ${primeiraAtrasada?.venc}`, tom: 'bad' });
-    if (c.status === 'ENCERRADO' && c.motivoEncerramento === 'RESCISAO') pills.push({ texto: 'Contrato rescindido por inadimplência' });
+    if (c.status === 'ENCERRADO' && c.motivoEncerramento === 'RESCISAO') pills.push({ texto: 'Contrato rescindido — o acerto está na seção seguinte' });
 
     const notas = [
       `Valores em atraso em valor de face, sem a multa de ${Number(c.taxaMultaAtraso.toString()).toLocaleString('pt-BR')}% e os juros de ${Number(c.taxaJurosAtraso.toString()).toLocaleString('pt-BR')}% ao mês previstos no contrato (cláusula 8.2).`,
@@ -251,6 +252,84 @@ export class DossieService {
       totais: { pago, emAtraso },
       nota: notas.join(' '),
     };
+  }
+
+  // --- Custos da recuperação e acerto da rescisão (doc 02 §29.3) ---
+  // Custos que o cliente paga (com os comprovantes) e, se o contrato já foi
+  // rescindido, o acerto completo. null = nada disso existe neste contrato.
+  private async dadosCustosAcerto(contratoId: string, cab: CabecalhoDossie) {
+    const [linhas, rescisao] = await Promise.all([
+      this.prisma.db.lancamentoCustoAtivo.findMany({
+        where: { contratoId, deletedAt: null, quemPaga: 'CLIENTE' },
+        orderBy: [{ data: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, tipo: true, descricao: true, fornecedor: true, data: true, valor: true, situacao: true, comprovanteRef: true, comprovanteNome: true },
+      }),
+      this.prisma.db.rescisaoContrato.findFirst({ where: { contratoId, status: 'EFETIVADA' }, orderBy: { createdAt: 'desc' } }),
+    ]);
+    if (!linhas.length && !rescisao) return null;
+
+    const imagens: { dataUrl: string; legenda: string }[] = [];
+    const pdfs: Buffer[] = [];
+    const faltando: string[] = [];
+    let n = 0;
+    const custos: DadosCustosAcerto['custos'] = [];
+    for (const l of linhas) {
+      const rotulo = TIPO_CUSTO_RECUPERACAO_LABEL[l.tipo as TipoCustoRecuperacao] ?? l.tipo;
+      let anexo: number | null = null;
+      if (l.comprovanteRef) {
+        try {
+          const buffer = await fs.readFile(join(DIR_CUSTOS, l.comprovanteRef));
+          const ext = extname(l.comprovanteRef).toLowerCase();
+          if (ext === '.pdf') {
+            anexo = ++n;
+            pdfs.push(buffer);
+          } else if (IMAGENS.includes(ext)) {
+            anexo = ++n;
+            const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+            imagens.push({ dataUrl: `data:${mime};base64,${buffer.toString('base64')}`, legenda: `Comprovante ${anexo} — ${rotulo}: ${l.descricao} (${formatCurrency(cent(l.valor))})` });
+          } else {
+            faltando.push(`${rotulo} (${l.comprovanteNome ?? l.comprovanteRef}: formato não incluído no PDF)`);
+          }
+        } catch {
+          faltando.push(`${rotulo} (arquivo do comprovante não encontrado)`);
+        }
+      }
+      custos.push({ tipo: rotulo, descricao: l.descricao, fornecedor: l.fornecedor, data: isoParaBR(diaDeColunaMista(l.data)), valor: cent(l.valor), orcado: l.situacao === 'ORCADO', anexo });
+    }
+
+    let acerto: DadosCustosAcerto['acerto'] = null;
+    if (rescisao) {
+      const a = (rescisao.memoriaJson as unknown as { acerto: AcertoRescisao }).acerto;
+      const boleto = rescisao.saldoPagoEm
+        ? `Saldo pago em ${isoParaBR(dataCalendarioUTC(rescisao.saldoPagoEm))}.`
+        : rescisao.cobrancaChargeId && rescisao.cobrancaVencimento
+          ? `Boleto único do saldo emitido, no valor de ${formatCurrency(cent(rescisao.cobrancaValor))}, com vencimento em ${isoParaBR(dataCalendarioUTC(rescisao.cobrancaVencimento))}${rescisao.cobrancaVencidaEm ? ' — vencido sem pagamento' : ''}.`
+          : null;
+      acerto = {
+        dataBase: isoParaBR(a.dataBase),
+        comoVoltou: rescisao.origem === 'DEVOLUCAO' ? 'devolvido pelo cliente' : 'retomado pela Azit',
+        principalPago: a.principalPago,
+        percentual: a.percentualCredito,
+        credito: a.valorCredito,
+        vencidas: a.vencidas.map((v) => ({ item: `Parcela ${v.display}`, vencimento: isoParaBR(v.dataVencimento), dias: v.diasAtraso, valor: v.valorNominal, encargo: v.encargo, total: v.total })),
+        dividaVencida: a.dividaVencida,
+        encargos: a.encargosVencidos,
+        multas: (a.multas ?? []).map((m) => ({ descricao: m.descricao, valor: m.valor })),
+        multasVeiculo: a.multasVeiculo ?? 0,
+        dividaTotal: a.dividaTotal,
+        aDevolver: a.valorADevolver,
+        saldo: a.saldoRemanescente,
+        boleto,
+      };
+    }
+    const dados: DadosCustosAcerto = {
+      cab,
+      custos,
+      totalCustos: custos.reduce((s, c) => s + c.valor, 0),
+      totalOrcado: custos.filter((c) => c.orcado).reduce((s, c) => s + c.valor, 0),
+      acerto,
+    };
+    return { dados, imagens, pdfs, faltando, semComprovante: custos.filter((c) => c.anexo === null).length };
   }
 
   // --- Geração ---
@@ -292,6 +371,9 @@ export class DossieService {
 
     const contratoPdf = await this.pdfDoContrato(c.id, c.propostaPacoteId, c.legadoCasoId);
     const historico = await this.dadosHistorico(c.id, cab);
+    const custosAcerto = await this.dadosCustosAcerto(c.id, cab);
+    if (custosAcerto?.semComprovante) avisos.push(`${custosAcerto.semComprovante} custo(s) da recuperação sem comprovante anexado.`);
+    for (const f of custosAcerto?.faltando ?? []) avisos.push(`Comprovante fora do dossiê — ${f}.`);
     const social = await this.prisma.db.parametroEmpresa.findFirst();
     let socialPdf: Buffer | null = null;
     if (social?.contratoSocialRef) {
@@ -322,6 +404,19 @@ export class DossieService {
       }
       // 2. Histórico
       partes.push({ chave: 'historico', titulo: 'Histórico do contrato', pdf: await htmlParaPdf(nav, htmlHistorico(historico)) });
+      // 2-A. Custos da recuperação e acerto da rescisão (doc 02 §29.3) + comprovantes
+      if (custosAcerto) {
+        const rescindido = !!custosAcerto.dados.acerto;
+        partes.push({ chave: 'custos_acerto', titulo: rescindido ? 'Acerto da rescisão e custos da recuperação' : 'Custos da recuperação', pdf: await htmlParaPdf(nav, htmlCustosAcerto(custosAcerto.dados)) });
+        const total = custosAcerto.imagens.length + custosAcerto.pdfs.length;
+        if (total > 0) {
+          const capa = await htmlParaPdf(nav, htmlCapaAnexo(cab, 'Comprovantes dos custos da recuperação', [
+            `${total} comprovante(s) — fotos, orçamentos e notas — numerados como na tabela de custos.`,
+          ]));
+          const paginasImg = custosAcerto.imagens.length ? [await htmlParaPdf(nav, htmlComprovantes(cab, custosAcerto.imagens))] : [];
+          partes.push({ chave: 'comprovantes_custos', titulo: `Anexo — Comprovantes dos custos (${total})`, pdf: await juntarSemRodape([capa, ...paginasImg, ...custosAcerto.pdfs]) });
+        }
+      }
       // 3. Comunicações (capa + capturas)
       const capaCom = await htmlParaPdf(nav, htmlCapaAnexo(cab, 'Comunicações com o cliente', [
         'Capturas de tela da conversa de WhatsApp entre a Azit Move e o cliente.',

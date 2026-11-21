@@ -15,6 +15,7 @@ export interface CobrancaAsaas {
   status: string;
   value: number; // centavos
   simulada: boolean;
+  invoiceUrl?: string | null; // página da cobrança no Asaas (boleto + Pix)
 }
 
 @Injectable()
@@ -125,6 +126,9 @@ export class AsaasService {
     // Data-limite DURA (doc 02 §7.7, 2026-08-18 — entrada do acordo): o Asaas
     // cancela o registro no dia seguinte ao vencimento; pagamento tardio não entra.
     cancelarRegistroAposVencimento?: boolean;
+    // Padrão PIX (decisão 23/09). BOLETO só onde o boleto é a regra: o boleto
+    // único do saldo da rescisão, que é o que se negativa (doc 02 §29.3).
+    formaPagamento?: 'PIX' | 'BOLETO';
   }): Promise<CobrancaAsaas> {
     if (this.simulado) {
       const id = `pay_sim_${params.externalReference}`;
@@ -137,17 +141,18 @@ export class AsaasService {
         status: 'PENDING',
         value: params.valor,
         simulada: true,
+        invoiceUrl: `https://sandbox.asaas.com/i/sim_${encodeURIComponent(params.externalReference)}`,
       };
     }
 
     // Modo real (sandbox/prod) — exercido quando ASAAS_API_KEY existir. O Asaas
     // calcula multa+juros sobre o atraso (opção 2): o valor pago no webhook já vem
     // com o encargo embutido.
-    const data = await this.call<{ id: string; status: string }>('/payments', {
+    const data = await this.call<{ id: string; status: string; invoiceUrl?: string | null }>('/payments', {
       customer: params.customerId,
       // PIX (decisão Luís 23/09, doc 02 §11.2): toda cobrança do sistema nasce
       // PIX. Antes era UNDEFINED — o cliente escolhia boleto/PIX/cartão na fatura.
-      billingType: 'PIX',
+      billingType: params.formaPagamento ?? 'PIX',
       value: Number(centavosParaReaisString(params.valor)),
       dueDate: dataCalendarioUTC(params.vencimento), // coluna de data (dia-calendário gravado em UTC)
       externalReference: params.externalReference,
@@ -162,6 +167,7 @@ export class AsaasService {
       status: data.status,
       value: params.valor,
       simulada: false,
+      invoiceUrl: data.invoiceUrl ?? null,
     };
   }
 }

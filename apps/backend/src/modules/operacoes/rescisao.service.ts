@@ -2,25 +2,46 @@ import { Injectable, Logger, NotFoundException, OnModuleInit, UnprocessableEntit
 import { Prisma, StatusParcela as StatusParcelaPrisma } from '@prisma/client';
 import {
   AcertoRescisao,
+  adicionarDiasUteis,
   calcularAcertoRescisao,
   centavosParaReaisString,
+  CustoAcerto,
   dataCalendarioUTC,
   dataHojeBrasil,
   diasCalendarioEntre,
+  fimDoDiaBrasil,
   formatCurrency,
+  formatarDiaBR,
   inicioDiaUTC,
-  PERCENTUAL_CREDITO_RESCISAO,
+  inicioHojeBrasilUTC,
+  reaplicarCustosNoAcerto,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { ContaFaturaService } from '../faturamento/conta-fatura.service';
 import { IntencaoPagamentoService } from '../faturamento/intencao-pagamento.service';
+import { ROTULO_TIPO } from '../frota/ocorrencia.service';
+import { NotificacaoService } from '../notificacao/notificacao.service';
 
 const reais = (c: number) => centavosParaReaisString(c);
 const cent = (d: Prisma.Decimal | null | undefined): number => (d ? Math.round(Number(d.toString()) * 100) : 0);
 const PARCELA_PAGA: StatusParcelaPrisma[] = ['PAGA', 'PAGA_EM_ATRASO', 'PAGA_ANTECIPADA'];
 const FATURA_VIVA = ['ABERTA', 'FECHADA', 'RENEGOCIADA'] as const;
+// Boleto único do saldo remanescente: prazo em dias ÚTEIS (decisão Luís 20/11, doc 02 §29.3).
+export const DIAS_UTEIS_BOLETO_SALDO_RESCISAO = 15;
+const PEDIDO_ANTIGO_PENDENTE = 'Há um pedido de rescisão antigo aguardando na Central de Aprovações — decida ou cancele lá antes de rescindir por aqui';
+
+// Uma linha do histórico do saldo depois da rescisão (ajustesJson).
+export interface AjusteRescisao {
+  em: string; // ISO
+  por: string | null; // nome de quem ajustou
+  motivo: string;
+  saldoAntes: number; // centavos
+  saldoDepois: number;
+  devolverAntes: number;
+  devolverDepois: number;
+}
 
 export interface RescisaoApi {
   id: string;
@@ -36,13 +57,30 @@ export interface RescisaoApi {
   acerto: AcertoRescisao;
   avisos: string[];
   aprovacaoId: string | null; // solicitação pendente na Central (link do dossiê)
+  // §29.3 (20–21/11)
+  origem: string; // retomada | devolucao
+  efetivadaPorNome: string | null;
+  ajustes: AjusteRescisao[];
+  cobrancaSaldo: {
+    valor: number; // centavos
+    vencimento: string; // 'YYYY-MM-DD'
+    emitidaEm: string;
+    link: string | null;
+    vencida: boolean; // o Asaas avisou que venceu sem pagamento
+    desatualizada: boolean; // o saldo mudou e a troca do boleto falhou
+  } | null;
+  saldoPagoEm: string | null;
+  saldoValorPago: number | null;
 }
 
-// Rescisão por inadimplência (doc 02 §29, decisão Luís 04/11/2026). A CONTA do
-// acerto é calcularAcertoRescisao em @azit/utils (Regra 16); aqui só carregamos
-// os fatos, validamos, pedimos aprovação (1 aprovador, tipo 'rescisao') e
-// efetivamos quando o motor aprova — referenciaId da solicitação é o CONTRATO
-// (uma rescisão pendente por contrato; a rota do ocorrido é a ficha dele).
+// Rescisão do contrato (doc 02 §29; fluxo revisto pelo Luís em 20–21/11/2026,
+// §29.3). A CONTA do acerto é calcularAcertoRescisao em @azit/utils (Regra 16);
+// aqui carregamos os fatos (parcelas, custos da recuperação, multas do veículo),
+// validamos e EFETIVAMOS NA HORA — sem aprovação, só ADMIN/DIRETOR (a rota
+// garante). Depois da rescisão: ajuste de custos recalcula o saldo, e o saldo
+// remanescente vira um boleto único (15 dias úteis) que serve para negativar.
+// O efetivador do motor de aprovação continua registrado só para concluir
+// pedido antigo que ainda estivesse pendente na Central.
 @Injectable()
 export class RescisaoService implements OnModuleInit {
   private readonly logger = new Logger(RescisaoService.name);
@@ -55,6 +93,7 @@ export class RescisaoService implements OnModuleInit {
     // cancelamento dos Pix ativos ao efetivar.
     private readonly contaFatura: ContaFaturaService,
     private readonly intencoes: IntencaoPagamentoService,
+    private readonly alertas: NotificacaoService,
   ) {}
 
   onModuleInit() {
@@ -111,6 +150,27 @@ export class RescisaoService implements OnModuleInit {
     const saldoMotor = (parcelaId: string) => azit.porParcela.get(parcelaId);
     const principalParcial = abertas.reduce((s, p) => s + (saldoMotor(p.id)?.principalPago ?? 0), 0);
 
+    // §29.3: custos da recuperação que o cliente paga (orçados e pagos) e multas
+    // do veículo deste contrato, do cliente, ainda sem desfecho, com fato até a
+    // data-base. Em recurso / aguardando comprovante ficam de fora (o acerto avisa).
+    const filtroMulta = { contratoId, deletedAt: null, responsavel: 'CLIENTE' as const, dataFato: { lte: fimDoDiaBrasil(dataBase) } };
+    const [custos, ocorrencias, multasFora] = await Promise.all([
+      this.custosDoCliente(contratoId),
+      this.prisma.db.ocorrenciaVeiculo.findMany({
+        where: { ...filtroMulta, status: 'REGISTRADA' },
+        orderBy: { dataFato: 'asc' },
+        select: { id: true, tipo: true, numeroAuto: true, dataFato: true, valor: true, valorComDesconto: true },
+      }),
+      this.prisma.db.ocorrenciaVeiculo.count({ where: { ...filtroMulta, status: { in: ['EM_RECURSO', 'AGUARDANDO_COMPROVANTE'] } } }),
+    ]);
+    const multas = ocorrencias
+      .map((o) => ({
+        id: o.id,
+        descricao: `${ROTULO_TIPO[o.tipo]}${o.numeroAuto ? ` ${o.numeroAuto}` : ''} · fato em ${formatarDiaBR(o.dataFato)}`,
+        valor: cent(o.valorComDesconto ?? o.valor),
+      }))
+      .filter((m) => m.valor > 0);
+
     const acerto = calcularAcertoRescisao({
       dataBase,
       principalParcial,
@@ -135,77 +195,97 @@ export class RescisaoService implements OnModuleInit {
       }),
       taxaMultaPercent: Number(contrato.taxaMultaAtraso.toString()),
       taxaJurosMensalPercent: Number(contrato.taxaJurosAtraso.toString()),
+      custos,
+      multas,
     });
     const maisAntiga = abertas[0]?.dataVencimento;
     const diasAtraso = maisAntiga ? Math.max(0, diasCalendarioEntre(dataCalendarioUTC(maisAntiga), dataHojeBrasil())) : 0;
     const saldoEmAberto = abertas.reduce((s, p) => s + (saldoMotor(p.id)?.saldoNominal ?? cent(p.valorNominal)), 0);
-    return { contrato, acerto, diasAtraso, saldoEmAberto };
+    return { contrato, acerto, diasAtraso, saldoEmAberto, multasFora };
+  }
+
+  // Custos da recuperação repassados ao cliente (lançamentos de custo do veículo
+  // ligados ao contrato) — o que entra na dívida do acerto.
+  private async custosDoCliente(contratoId: string): Promise<CustoAcerto[]> {
+    const linhas = await this.prisma.db.lancamentoCustoAtivo.findMany({
+      where: { contratoId, deletedAt: null, quemPaga: 'CLIENTE' },
+      orderBy: [{ data: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true, tipo: true, descricao: true, valor: true, situacao: true },
+    });
+    return linhas.map((l) => ({ id: l.id, tipo: l.tipo, descricao: l.descricao, valor: cent(l.valor), orcado: l.situacao === 'ORCADO' }));
   }
 
   private validarDataBase(dataBase?: string): string {
     const hoje = dataHojeBrasil();
     const d = dataBase ?? hoje;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(inicioDiaUTC(d).getTime())) {
-      throw new UnprocessableEntityException({ erro: 'data_invalida', mensagem: 'Data-base inválida (use AAAA-MM-DD)' });
+      throw new UnprocessableEntityException({ erro: 'data_invalida', mensagem: 'Data inválida (use AAAA-MM-DD)' });
     }
-    if (d > hoje) throw new UnprocessableEntityException({ erro: 'data_futura', mensagem: 'A data da retomada não pode ser futura' });
+    if (d > hoje) throw new UnprocessableEntityException({ erro: 'data_futura', mensagem: 'A data em que o carro voltou não pode ser futura' });
     return d;
   }
 
-  private motivoInelegivel(c: { status: string; ativoId: string | null }, acerto: AcertoRescisao): string | null {
+  // §29.3: não exige mais parcela vencida — o carro devolvido de boa-fé também
+  // é rescindido aqui, e a conta dos 20% considera o custo de reparo.
+  private motivoInelegivel(c: { status: string; ativoId: string | null }): string | null {
     if (c.status !== 'ATIVO') return `Só contrato em vida pode ser rescindido (fase atual: ${c.status})`;
-    if (!c.ativoId) return 'Rescisão por inadimplência é do contrato do veículo (este contrato não tem ativo)';
-    if (acerto.vencidas.length === 0) return 'Não há parcela vencida até a data-base';
+    if (!c.ativoId) return 'A rescisão é do contrato do veículo (este contrato não tem veículo)';
     return null;
   }
 
   // Prévia do acerto para a tela (sem gravar nada).
   async previa(contratoId: string, dataBase?: string) {
     const d = this.validarDataBase(dataBase);
-    const { contrato, acerto, diasAtraso, saldoEmAberto } = await this.carregar(contratoId, d);
+    const { contrato, acerto, diasAtraso, saldoEmAberto, multasFora } = await this.carregar(contratoId, d);
     const pendente = await this.prisma.db.rescisaoContrato.findFirst({ where: { contratoId, status: 'PENDENTE' }, select: { id: true } });
-    const motivo = pendente ? 'Já existe uma rescisão aguardando aprovação na Central' : this.motivoInelegivel(contrato, acerto);
+    const motivo = pendente ? PEDIDO_ANTIGO_PENDENTE : this.motivoInelegivel(contrato);
+    // O que a confirmação precisa dizer antes de efetivar (decisão Luís 21/11).
+    const [cobrancasNoAr, outrosContratosAtivos] = await Promise.all([
+      this.prisma.db.fatura.count({
+        where: { contaId: contrato.contaId, deletedAt: null, status: { in: [...FATURA_VIVA] }, asaasChargeId: { not: null }, itensFatura: { some: { parcela: { contratoId } } } },
+      }),
+      this.prisma.db.contratoCredito.count({ where: { contaId: contrato.contaId, id: { not: contratoId }, status: 'ATIVO' } }),
+    ]);
     return {
       contrato: {
         id: contrato.id, numero: contrato.numero, status: contrato.status, titular: contrato.conta.titular.nome,
         ativo: contrato.ativo, diasAtraso, saldoEmAberto, recuperacaoIniciadaEm: contrato.recuperacaoIniciadaEm?.toISOString() ?? null,
       },
       acerto,
+      consequencias: { cobrancasNoAr, outrosContratosAtivos, multasFora },
       elegivel: !motivo,
       motivoInelegivel: motivo,
     };
   }
 
-  // --- Solicitação -------------------------------------------------------------------
+  // --- Rescindir (efetiva na hora, sem aprovação — §29.3) --------------------------------
 
-  async solicitar(contratoId: string, dto: { dataBase?: string; observacao?: string }, solicitanteId: string) {
+  async rescindir(
+    contratoId: string,
+    dto: { dataBase?: string; origem?: 'RETOMADA' | 'DEVOLUCAO'; observacao?: string },
+    usuarioId: string,
+  ) {
     const d = this.validarDataBase(dto.dataBase);
-    const { contrato, acerto, saldoEmAberto } = await this.carregar(contratoId, d);
-    const motivo = this.motivoInelegivel(contrato, acerto);
+    const { contrato, acerto } = await this.carregar(contratoId, d);
+    const motivo = this.motivoInelegivel(contrato);
     if (motivo) throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: motivo });
     const pendente = await this.prisma.db.rescisaoContrato.findFirst({ where: { contratoId, status: 'PENDENTE' }, select: { id: true } });
-    if (pendente) throw new UnprocessableEntityException({ erro: 'ja_pendente', mensagem: 'Já existe uma rescisão aguardando aprovação na Central' });
+    if (pendente) throw new UnprocessableEntityException({ erro: 'ja_pendente', mensagem: PEDIDO_ANTIGO_PENDENTE });
 
+    const origem = dto.origem ?? 'RETOMADA';
     const rescisao = await this.prisma.db.rescisaoContrato.create({
-      data: { ...this.snapshot(acerto, []), contratoId, dataBase: inicioDiaUTC(d), observacao: dto.observacao?.trim() || null, solicitanteId },
+      data: { ...this.snapshot(acerto, []), contratoId, dataBase: inicioDiaUTC(d), origem, observacao: dto.observacao?.trim() || null, solicitanteId: usuarioId },
     });
-    const resultado = acerto.valorADevolver > 0
-      ? `a devolver ${formatCurrency(acerto.valorADevolver)}`
-      : `saldo remanescente ${formatCurrency(acerto.saldoRemanescente)}`;
-    await this.aprovacao.criar({
-      tipoOperacao: 'rescisao',
-      referenciaTipo: 'rescisao',
-      referenciaId: contratoId,
-      titularId: contrato.conta.titularId,
-      valorCentavos: saldoEmAberto,
-      resumo: `Rescisão por inadimplência — contrato ${contrato.numero} (${contrato.conta.titular.nome}): ${acerto.vencidas.length} parcela(s) vencida(s), crédito de ${PERCENTUAL_CREDITO_RESCISAO}% ${formatCurrency(acerto.valorCredito)}, ${resultado}`,
-      payload: { rescisaoId: rescisao.id, dataBase: d },
-      solicitanteId,
-    });
-    await this.prisma.db.logAuditoria.create({
-      data: { usuarioId: solicitanteId, acao: 'rescisao_solicitada', entidade: 'contrato', entidadeId: contratoId, depois: { rescisaoId: rescisao.id, dataBase: d, acerto: acerto as unknown as Prisma.InputJsonValue } },
-    });
-    return { id: rescisao.id, status: 'pendente', acerto };
+    try {
+      const r = await this.efetivar(contratoId, usuarioId);
+      if (!r) throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: 'A rescisão não pôde ser efetivada' });
+      return { id: rescisao.id, status: 'efetivada', numero: r.numero, acerto: r.acerto, avisos: r.avisos };
+    } catch (e) {
+      // Nada foi efetivado (a transação é única): o registro não pode ficar
+      // pendente travando a próxima tentativa.
+      await this.prisma.db.rescisaoContrato.updateMany({ where: { id: rescisao.id, status: 'PENDENTE' }, data: { status: 'CANCELADA' } });
+      throw e;
+    }
   }
 
   private snapshot(acerto: AcertoRescisao, avisos: string[]) {
@@ -216,6 +296,8 @@ export class RescisaoService implements OnModuleInit {
       valorCredito: reais(acerto.valorCredito),
       dividaVencida: reais(acerto.dividaVencida),
       encargosVencidos: reais(acerto.encargosVencidos),
+      custosCliente: reais(acerto.custosCliente ?? 0),
+      multasVeiculo: reais(acerto.multasVeiculo ?? 0),
       valorCompensado: reais(acerto.valorCompensado),
       valorADevolver: reais(acerto.valorADevolver),
       saldoRemanescente: reais(acerto.saldoRemanescente),
@@ -223,18 +305,21 @@ export class RescisaoService implements OnModuleInit {
     };
   }
 
-  // --- Efetivação (ao aprovar) --------------------------------------------------------
+  // --- Efetivação ------------------------------------------------------------------------
 
   async efetivar(contratoId: string, decisorId: string) {
     const r = await this.prisma.db.rescisaoContrato.findFirst({ where: { contratoId, status: 'PENDENTE' }, orderBy: { createdAt: 'desc' } });
     if (!r) return null;
     const dataBase = dataCalendarioUTC(r.dataBase);
     // Recalcula na MESMA data-base: pagamento entre o pedido e a aprovação muda o acerto.
-    const { contrato, acerto } = await this.carregar(contratoId, dataBase);
+    const { contrato, acerto, multasFora } = await this.carregar(contratoId, dataBase);
     if (contrato.status !== 'ATIVO') {
       throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: `Contrato já não está em vida (fase ${contrato.status})` });
     }
     const avisos: string[] = [];
+    if (multasFora > 0) {
+      avisos.push(`${multasFora} ocorrência(s) do veículo em recurso ou aguardando comprovante não entraram no acerto — se virarem dívida do cliente, lance como custo.`);
+    }
     const cobrancasParaRemover: string[] = [];
     const instanteBase = inicioDiaUTC(dataBase);
 
@@ -321,6 +406,16 @@ export class RescisaoService implements OnModuleInit {
       });
       if (contrato.ativoId) await tx.ativo.update({ where: { id: contrato.ativoId }, data: { status: 'RECUPERADO' } });
 
+      // 4-A. Multas do veículo que entraram na dívida (§29.3): repassadas ao cliente
+      //      pelo acerto — não podem mais ir para fatura.
+      const idsMultas = (acerto.multas ?? []).map((m) => m.id);
+      if (idsMultas.length) {
+        await tx.ocorrenciaVeiculo.updateMany({
+          where: { id: { in: idsMultas }, status: 'REGISTRADA' },
+          data: { status: 'REPASSADA', rescisaoId: r.id, desfechoEm: new Date(), desfechoPor: decisorId, desfechoObs: `Incluída no acerto da rescisão do contrato ${contrato.numero}` },
+        });
+      }
+
       // 5. Snapshot final do acerto.
       await tx.rescisaoContrato.update({
         where: { id: r.id },
@@ -346,6 +441,186 @@ export class RescisaoService implements OnModuleInit {
     return { numero: contrato.numero, acerto, avisos };
   }
 
+  // --- Ajuste de custos depois da rescisão (§29.3) ----------------------------------------
+
+  private async rescisaoEfetivada(contratoId: string) {
+    return this.prisma.db.rescisaoContrato.findFirst({ where: { contratoId, status: 'EFETIVADA' }, orderBy: { createdAt: 'desc' } });
+  }
+
+  // Custo do cliente só muda enquanto o dinheiro do acerto não andou: depois que
+  // a devolução foi feita ou o saldo foi pago, o resultado está liquidado.
+  // Devolve o motivo do bloqueio (null = pode) — a tela usa para não mostrar a ação.
+  async motivoCustosTravados(contratoId: string): Promise<string | null> {
+    const r = await this.rescisaoEfetivada(contratoId);
+    if (!r) return null;
+    if (r.devolvidoEm) return 'A devolução ao cliente já foi registrada como feita — o acerto está liquidado e os custos do cliente não mudam mais';
+    if (r.saldoPagoEm) return 'O saldo da rescisão já foi pago — o acerto está liquidado e os custos do cliente não mudam mais';
+    return null;
+  }
+
+  // Chamado pelo serviço de custos depois de lançar/alterar/retirar um custo de
+  // contrato JÁ rescindido: mesmo crédito, mesmas parcelas, só os custos mudam.
+  // Sem aprovação (decisão Luís 20/11) — histórico em ajustesJson + auditoria.
+  async recalcularAposCusto(contratoId: string, usuarioId: string, motivo: string) {
+    const r = await this.rescisaoEfetivada(contratoId);
+    if (!r) return null;
+    const mem = r.memoriaJson as unknown as { acerto: AcertoRescisao; avisos?: string[] };
+    const antes = mem.acerto;
+    const depois = reaplicarCustosNoAcerto(antes, await this.custosDoCliente(contratoId));
+    const mudou = antes.saldoRemanescente !== depois.saldoRemanescente || antes.valorADevolver !== depois.valorADevolver;
+    const ajustes = [...((r.ajustesJson as unknown as AjusteRescisao[] | null) ?? [])];
+    if (mudou) {
+      const autor = await this.prisma.db.usuario.findFirst({ where: { id: usuarioId }, select: { nome: true } });
+      ajustes.push({
+        em: new Date().toISOString(),
+        por: autor?.nome ?? null,
+        motivo,
+        saldoAntes: antes.saldoRemanescente,
+        saldoDepois: depois.saldoRemanescente,
+        devolverAntes: antes.valorADevolver,
+        devolverDepois: depois.valorADevolver,
+      });
+    }
+    await this.prisma.db.rescisaoContrato.update({
+      where: { id: r.id },
+      data: { ...this.snapshot(depois, mem.avisos ?? []), ajustesJson: ajustes as unknown as Prisma.InputJsonValue },
+    });
+    if (mudou) {
+      await this.prisma.db.logAuditoria.create({
+        data: {
+          usuarioId, acao: 'rescisao_acerto_ajustado', entidade: 'contrato', entidadeId: contratoId,
+          antes: { saldoRemanescente: antes.saldoRemanescente, valorADevolver: antes.valorADevolver, custosCliente: antes.custosCliente ?? 0 },
+          depois: { rescisaoId: r.id, motivo, saldoRemanescente: depois.saldoRemanescente, valorADevolver: depois.valorADevolver, custosCliente: depois.custosCliente ?? 0 },
+        },
+      });
+    }
+    // Boleto do saldo no ar com valor antigo: troca pelo valor novo (ou só retira,
+    // se não sobrou saldo). Falha na troca não desfaz o ajuste — a ficha avisa.
+    if (r.cobrancaChargeId && !r.saldoPagoEm && cent(r.cobrancaValor) !== depois.saldoRemanescente) {
+      try {
+        await this.asaas.removerCobranca(r.cobrancaChargeId);
+        if (depois.saldoRemanescente > 0) {
+          await this.emitirBoletoSaldo(r.id, depois.saldoRemanescente, usuarioId, 'substituído porque o saldo mudou');
+        } else {
+          await this.prisma.db.rescisaoContrato.update({
+            where: { id: r.id },
+            data: { cobrancaChargeId: null, cobrancaValor: null, cobrancaVencimento: null, cobrancaEmitidaEm: null, cobrancaLink: null, cobrancaVencidaEm: null },
+          });
+        }
+      } catch (e) {
+        this.logger.error(`Rescisão ${r.id}: saldo mudou mas a troca do boleto falhou — ${(e as Error).message}`);
+      }
+    }
+    return { acerto: depois, mudou };
+  }
+
+  // --- Boleto único do saldo remanescente (§29.3) -----------------------------------------
+
+  // Botão "Gerar boleto do saldo": só com rescisão efetivada, saldo > 0 e não pago.
+  async gerarBoletoSaldo(rescisaoId: string, usuarioId: string) {
+    const r = await this.prisma.db.rescisaoContrato.findFirst({ where: { id: rescisaoId } });
+    if (!r) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Rescisão não encontrada' });
+    if (r.status !== 'EFETIVADA') throw new UnprocessableEntityException({ erro: 'estado_invalido', mensagem: 'A rescisão ainda não foi efetivada' });
+    if (r.saldoPagoEm) throw new UnprocessableEntityException({ erro: 'ja_pago', mensagem: 'O saldo desta rescisão já foi pago' });
+    const saldo = cent(r.saldoRemanescente);
+    if (saldo <= 0) throw new UnprocessableEntityException({ erro: 'sem_saldo', mensagem: 'Esta rescisão não tem saldo remanescente a cobrar' });
+    if (r.cobrancaChargeId && cent(r.cobrancaValor) === saldo) {
+      throw new UnprocessableEntityException({ erro: 'ja_emitido', mensagem: 'O boleto do saldo já está no ar com este valor' });
+    }
+    if (r.cobrancaChargeId) await this.asaas.removerCobranca(r.cobrancaChargeId);
+    return this.emitirBoletoSaldo(r.id, saldo, usuarioId, r.cobrancaChargeId ? 'substituído' : 'emitido');
+  }
+
+  private async emitirBoletoSaldo(rescisaoId: string, saldo: number, usuarioId: string, como: string) {
+    const r = await this.prisma.db.rescisaoContrato.findFirst({
+      where: { id: rescisaoId },
+      select: {
+        id: true, contratoId: true,
+        contrato: { select: { numero: true, conta: { select: { titular: { select: { id: true, nome: true, cpfCnpj: true, email: true, whatsapp: true, asaasCustomerId: true } } } } } },
+      },
+    });
+    if (!r) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Rescisão não encontrada' });
+    const titular = r.contrato.conta.titular;
+    let customerId = this.asaas.clienteReutilizavel(titular.asaasCustomerId);
+    if (!customerId) {
+      customerId = await this.asaas.criarCliente({ titularId: titular.id, nome: titular.nome, cpfCnpj: titular.cpfCnpj, email: titular.email, telefone: titular.whatsapp });
+      await this.prisma.db.titular.update({ where: { id: titular.id }, data: { asaasCustomerId: customerId } });
+    }
+    const vencimento = adicionarDiasUteis(inicioHojeBrasilUTC(), DIAS_UTEIS_BOLETO_SALDO_RESCISAO);
+    const cobranca = await this.asaas.criarCobranca({
+      externalReference: `rescisao:${r.id}`,
+      valor: saldo,
+      vencimento,
+      descricao: `Saldo da rescisão do contrato ${r.contrato.numero} — ${titular.nome}`,
+      customerId,
+      formaPagamento: 'BOLETO', // é o boleto que se negativa no Asaas
+    });
+    await this.prisma.db.rescisaoContrato.update({
+      where: { id: r.id },
+      data: { cobrancaChargeId: cobranca.id, cobrancaValor: reais(saldo), cobrancaVencimento: vencimento, cobrancaEmitidaEm: new Date(), cobrancaLink: cobranca.invoiceUrl ?? null, cobrancaVencidaEm: null },
+    });
+    await this.prisma.db.logAuditoria.create({
+      data: { usuarioId, acao: 'rescisao_boleto_saldo_emitido', entidade: 'contrato', entidadeId: r.contratoId, depois: { rescisaoId: r.id, como, valor: saldo, vencimento: dataCalendarioUTC(vencimento), cobrancaId: cobranca.id } },
+    });
+    this.logger.log(`Rescisão ${r.id}: boleto do saldo ${como} (${cobranca.id}, ${formatCurrency(saldo)}, vence ${dataCalendarioUTC(vencimento)})`);
+    return { resultado: 'boleto_emitido', valor: saldo, vencimento: dataCalendarioUTC(vencimento), link: cobranca.invoiceUrl ?? null };
+  }
+
+  // Webhook (fila): o boleto do saldo foi pago. Idempotente.
+  async saldoRecebido(rescisaoId: string, paymentDate: string, recebido: { valorRecebido?: number; pagamentoId?: string }) {
+    const r = await this.prisma.db.rescisaoContrato.findFirst({
+      where: { id: rescisaoId },
+      include: { contrato: { select: { numero: true, contaId: true, conta: { select: { titular: { select: { nome: true } } } } } } },
+    });
+    if (!r) return { resultado: 'rescisao_nao_encontrada' };
+    if (r.saldoPagoEm) return { resultado: 'ja_registrado' };
+    const dia = /^\d{4}-\d{2}-\d{2}/.test(paymentDate) ? paymentDate.slice(0, 10) : dataHojeBrasil();
+    const valor = recebido.valorRecebido ?? cent(r.cobrancaValor ?? r.saldoRemanescente);
+    await this.prisma.db.$transaction(async (tx) => {
+      await tx.rescisaoContrato.update({ where: { id: r.id }, data: { saldoPagoEm: inicioDiaUTC(dia), saldoValorPago: reais(valor), cobrancaVencidaEm: null } });
+      // Entra no caixa da Carteira como lançamento da conta (como as entradas).
+      await tx.lancamentoConta.create({
+        data: {
+          contaId: r.contrato.contaId, contratoId: r.contratoId, tipo: 'SALDO_RESCISAO',
+          descricao: `Saldo da rescisão do contrato ${r.contrato.numero}`,
+          valor: reais(valor), dataPagamento: inicioDiaUTC(dia), asaasChargeId: recebido.pagamentoId ?? r.cobrancaChargeId,
+        },
+      });
+      await tx.logAuditoria.create({
+        data: { acao: 'rescisao_saldo_pago', entidade: 'contrato', entidadeId: r.contratoId, depois: { rescisaoId: r.id, valor, em: dia, pagamentoId: recebido.pagamentoId ?? null } },
+      });
+    });
+    await this.alertas.emitir({
+      titulo: `Saldo da rescisão pago — ${r.contrato.conta.titular.nome}`,
+      corpo: `Contrato ${r.contrato.numero}: ${formatCurrency(valor)} recebidos em ${dia.split('-').reverse().join('/')}.`,
+      rota: `/contratos/${r.contratoId}`,
+      tipo: 'COBRANCA',
+      area: 'CARTEIRA_COBRANCA',
+    });
+    return { resultado: 'saldo_pago', valor };
+  }
+
+  // Webhook (fila): o boleto do saldo venceu sem pagamento → a carteira é avisada;
+  // a negativação é feita à mão no painel do Asaas, sobre este boleto.
+  async saldoVencido(rescisaoId: string, pagamentoId?: string) {
+    const r = await this.prisma.db.rescisaoContrato.findFirst({
+      where: { id: rescisaoId },
+      include: { contrato: { select: { numero: true, conta: { select: { titular: { select: { nome: true } } } } } } },
+    });
+    if (!r || r.saldoPagoEm || !r.cobrancaChargeId) return { resultado: 'ignorado' };
+    if (pagamentoId && pagamentoId !== r.cobrancaChargeId) return { resultado: 'boleto_antigo' }; // já substituído
+    if (r.cobrancaVencidaEm) return { resultado: 'ja_avisado' };
+    await this.prisma.db.rescisaoContrato.update({ where: { id: r.id }, data: { cobrancaVencidaEm: new Date() } });
+    await this.alertas.emitir({
+      titulo: `Boleto do saldo da rescisão venceu — ${r.contrato.conta.titular.nome}`,
+      corpo: `Contrato ${r.contrato.numero}: ${formatCurrency(cent(r.cobrancaValor))} sem pagamento. Se for o caso, negative este boleto no painel do Asaas.`,
+      rota: `/contratos/${r.contratoId}`,
+      tipo: 'COBRANCA',
+      area: 'CARTEIRA_COBRANCA',
+    });
+    return { resultado: 'vencido_avisado' };
+  }
+
   // --- Depois da efetivação --------------------------------------------------------------
 
   // Devolução ao cliente registrada (placeholder: o pagamento acontece fora do sistema).
@@ -368,6 +643,9 @@ export class RescisaoService implements OnModuleInit {
       this.prisma.db.rescisaoContrato.findMany({ where: { contratoId }, orderBy: { createdAt: 'desc' } }),
       this.prisma.db.aprovacao.findFirst({ where: { referenciaTipo: 'rescisao', referenciaId: contratoId, status: 'PENDENTE' }, select: { id: true } }),
     ]);
+    const idsUsuarios = [...new Set(rescisoes.map((r) => r.aprovadaPor).filter((u): u is string => !!u))];
+    const usuarios = idsUsuarios.length ? await this.prisma.db.usuario.findMany({ where: { id: { in: idsUsuarios } }, select: { id: true, nome: true } }) : [];
+    const nomeUsuario = new Map(usuarios.map((u) => [u.id, u.nome]));
     return rescisoes.map((r) => {
       const mem = (r.memoriaJson as unknown as { acerto: AcertoRescisao; avisos?: string[] }) ?? { acerto: null, avisos: [] };
       return {
@@ -384,6 +662,21 @@ export class RescisaoService implements OnModuleInit {
         acerto: mem.acerto,
         avisos: mem.avisos ?? [],
         aprovacaoId: r.status === 'PENDENTE' ? pendente?.id ?? null : null,
+        origem: r.origem.toLowerCase(),
+        efetivadaPorNome: r.aprovadaPor ? nomeUsuario.get(r.aprovadaPor) ?? null : null,
+        ajustes: (r.ajustesJson as unknown as AjusteRescisao[] | null) ?? [],
+        cobrancaSaldo: r.cobrancaChargeId && r.cobrancaVencimento && r.cobrancaEmitidaEm
+          ? {
+              valor: cent(r.cobrancaValor),
+              vencimento: dataCalendarioUTC(r.cobrancaVencimento),
+              emitidaEm: r.cobrancaEmitidaEm.toISOString(),
+              link: r.cobrancaLink,
+              vencida: !!r.cobrancaVencidaEm,
+              desatualizada: !r.saldoPagoEm && cent(r.cobrancaValor) !== cent(r.saldoRemanescente),
+            }
+          : null,
+        saldoPagoEm: r.saldoPagoEm ? dataCalendarioUTC(r.saldoPagoEm) : null,
+        saldoValorPago: r.saldoValorPago ? cent(r.saldoValorPago) : null,
       };
     });
   }

@@ -79,7 +79,7 @@ describe('Processadores — repassam o que foi recebido a quem efetiva', () => {
   it('efetivar (acordo) e novacao-recebida', async () => {
     const renegociacao = { efetivar: jest.fn().mockResolvedValue({ resultado: 'entrada_a_menor' }) };
     const novacao = { ativar: jest.fn().mockResolvedValue({ resultado: 'entrada_a_menor' }) };
-    const p = new EfetivarAcordoProcessor(renegociacao as never, novacao as never);
+    const p = new EfetivarAcordoProcessor(renegociacao as never, novacao as never, {} as never);
     await p.process({ name: 'efetivar', data: { acordoId: 'ac-1', ...dados } } as never);
     await p.process({ name: 'novacao-recebida', data: { novacaoId: 'nv-1', ...dados } } as never);
     expect(renegociacao.efetivar).toHaveBeenCalledWith('ac-1', '2026-11-15', { valorRecebido: 30000, pagamentoId: 'pay_1' });

@@ -39,12 +39,30 @@ export const sinistroSchema = z.object({
 });
 export type SinistroBody = z.infer<typeof sinistroSchema>;
 
-// Rescisão por inadimplência (doc 02 §29, 04/11): data-base = data da retomada do veículo.
+// Rescisão (doc 02 §29; fluxo direto §29.3, 20–21/11): data-base = dia em que o
+// carro voltou; origem = retomado pela Azit ou devolvido pelo cliente.
 export const rescisaoSchema = z.object({
   dataBase: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  origem: z.enum(['RETOMADA', 'DEVOLUCAO']).optional(),
   observacao: z.string().trim().max(2000).optional(),
 });
 export type RescisaoBody = z.infer<typeof rescisaoSchema>;
+
+// Custo da recuperação (doc 02 §29.3): lançamento de custo do veículo ligado ao contrato.
+const arquivoSchema = z.object({ nome: z.string().min(1).max(200), conteudo: z.string().min(1) });
+export const custoRecuperacaoSchema = z.object({
+  tipo: z.string().min(1).max(40),
+  descricao: z.string().trim().min(1).max(300),
+  valor: z.coerce.number().int().positive(), // centavos
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  fornecedor: z.string().trim().max(120).optional(),
+  situacao: z.enum(['ORCADO', 'PAGO']),
+  quemPaga: z.enum(['CLIENTE', 'AZIT']),
+  comprovante: arquivoSchema.optional(),
+});
+export type CustoRecuperacaoBody = z.infer<typeof custoRecuperacaoSchema>;
+export const alterarCustoRecuperacaoSchema = custoRecuperacaoSchema.partial();
+export type AlterarCustoRecuperacaoBody = z.infer<typeof alterarCustoRecuperacaoSchema>;
 
 export const devolucaoRescisaoSchema = z.object({
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),

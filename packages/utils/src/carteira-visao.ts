@@ -55,7 +55,8 @@ export interface FaturaVisao {
 
 // Um recebimento do caixa: fatura paga (de qualquer vencimento) ou entrada
 // avulsa (lançamento da conta — contrato ou acordo).
-export type OrigemRecebimento = 'fatura' | 'entrada_contrato' | 'entrada_acordo';
+// 'saldo_rescisao' = boleto único do saldo remanescente da rescisão, pago (doc 02 §29.3).
+export type OrigemRecebimento = 'fatura' | 'entrada_contrato' | 'entrada_acordo' | 'saldo_rescisao';
 
 export interface RecebimentoVisao {
   contaId: string;
@@ -69,7 +70,7 @@ export interface RecebimentoVisao {
 
 // Parte de um produto: como o dinheiro daquele produto se apresenta. NÃO é
 // produto (decisão 31/10) — só composição da linha, para leitura.
-export type ParteProduto = 'parcela' | 'acordo' | 'intermediaria' | 'entrada_contrato' | 'entrada_acordo' | 'avulso';
+export type ParteProduto = 'parcela' | 'acordo' | 'intermediaria' | 'entrada_contrato' | 'entrada_acordo' | 'saldo_rescisao' | 'avulso';
 
 export const ROTULO_PARTE: Record<ParteProduto, string> = {
   parcela: 'Parcelas',
@@ -77,6 +78,7 @@ export const ROTULO_PARTE: Record<ParteProduto, string> = {
   intermediaria: 'Intermediárias (entrada diluída)',
   entrada_contrato: 'Entradas de contrato',
   entrada_acordo: 'Entradas de acordo',
+  saldo_rescisao: 'Saldos de rescisão',
   avulso: 'Pagamentos parciais e avulsos',
 };
 
@@ -110,6 +112,7 @@ export interface ResumoRecebido {
   faturasDoPeriodo: number; // centavos pagos de faturas com vencimento dentro do período
   faturasDeOutrosPeriodos: number; // centavos pagos de faturas de outros vencimentos (atrasadas de antes, antecipadas)
   entradas: number; // centavos de entradas de contrato e de acordo
+  saldosRescisao: number; // centavos de saldos de rescisão pagos (doc 02 §29.3)
   encargos: number; // centavos — excedente pago sobre o valorTotal das faturas
 }
 
@@ -215,6 +218,7 @@ export function chaveProdutoItemFatura(item: ItemFaturaVisao): ChaveProduto {
 const PRODUTO_ENTRADA: Record<Exclude<OrigemRecebimento, 'fatura'>, ChaveProduto> = {
   entrada_contrato: produtoDoContrato('veiculo', 'entrada_contrato'),
   entrada_acordo: produtoDoContrato('veiculo', 'entrada_acordo'),
+  saldo_rescisao: produtoDoContrato('veiculo', 'saldo_rescisao'),
 };
 
 function resumo(): ResumoEstado & { contas: Set<string> } {
@@ -268,7 +272,7 @@ export function agregarVisaoCarteira(faturas: FaturaVisao[], hoje: string, caixa
   // que `valorTotal`; o item ENCARGO do legado é o mesmo excedente escrito como
   // linha — informativo, fora do teto, não somado.
   const rec: ResumoRecebido & { contas: Set<string> } = {
-    valor: 0, recebimentos: 0, clientes: 0, faturasDoPeriodo: 0, faturasDeOutrosPeriodos: 0, entradas: 0, encargos: 0, contas: new Set<string>(),
+    valor: 0, recebimentos: 0, clientes: 0, faturasDoPeriodo: 0, faturasDeOutrosPeriodos: 0, entradas: 0, saldosRescisao: 0, encargos: 0, contas: new Set<string>(),
   };
   for (const r of caixa.recebimentos) {
     rec.valor += r.valor;
@@ -284,7 +288,7 @@ export function agregarVisaoCarteira(faturas: FaturaVisao[], hoje: string, caixa
         somar(p, 'recebido', it.valor);
       }
     } else {
-      rec.entradas += r.valor;
+      if (r.origem === 'saldo_rescisao') rec.saldosRescisao += r.valor; else rec.entradas += r.valor;
       somar(PRODUTO_ENTRADA[r.origem], 'recebido', r.valor);
     }
   }

@@ -13,6 +13,7 @@ import { QuitacaoService } from './quitacao.service';
 import { SinistroService } from './sinistro.service';
 import { ReajusteService } from './reajuste.service';
 import { RescisaoService } from './rescisao.service';
+import { CustoRecuperacaoService } from './custo-recuperacao.service';
 import { EfetivarAcordoProcessor } from './efetivar-acordo.processor';
 
 // Bloco 6 — operações sobre contratos: renegociação (novação), quitação
@@ -37,6 +38,7 @@ import { EfetivarAcordoProcessor } from './efetivar-acordo.processor';
     SinistroService,
     ReajusteService,
     RescisaoService,
+    CustoRecuperacaoService,
     EfetivarAcordoProcessor,
   ],
   exports: [RenegociacaoService, QuitacaoService],

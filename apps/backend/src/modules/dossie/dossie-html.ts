@@ -126,6 +126,77 @@ export function htmlHistorico(d: DadosHistorico): string {
 <p class="foot">${esc(d.nota)}</p></div>`, `Histórico ${d.cab.numero}`);
 }
 
+// Custos da recuperação e acerto da rescisão (doc 02 §29.3, 20–21/11/2026). Entra
+// quando o contrato tem custo de recuperação do cliente ou já foi rescindido.
+export interface DadosCustosAcerto {
+  cab: CabecalhoDossie;
+  custos: { tipo: string; descricao: string; fornecedor: string | null; data: string; valor: number; orcado: boolean; anexo: number | null }[];
+  totalCustos: number; // centavos
+  totalOrcado: number;
+  // null = contrato ainda não rescindido (os custos são a dívida em formação)
+  acerto: null | {
+    dataBase: string; // 'DD/MM/AAAA'
+    comoVoltou: string; // "retomado pela Azit" | "devolvido pelo cliente"
+    principalPago: number;
+    percentual: number;
+    credito: number;
+    vencidas: { item: string; vencimento: string; dias: number; valor: number; encargo: number; total: number }[];
+    dividaVencida: number;
+    encargos: number;
+    multas: { descricao: string; valor: number }[];
+    multasVeiculo: number;
+    dividaTotal: number;
+    aDevolver: number;
+    saldo: number;
+    boleto: string | null; // frase pronta sobre o boleto do saldo
+  };
+}
+
+export function htmlCustosAcerto(d: DadosCustosAcerto): string {
+  const a = d.acerto;
+  const custos = d.custos.length
+    ? `<div class="card"><p class="tit">Custos da recuperação cobrados do cliente (cláusulas 8.6 e 12.2)</p>
+<table><thead><tr><th>Tipo</th><th>Descrição</th><th>Data</th><th>Situação</th><th>Comprovante</th><th class="r">Valor</th></tr></thead><tbody>${d.custos.map((c) => `<tr>
+<td class="item">${esc(c.tipo)}</td><td>${esc(c.descricao)}${c.fornecedor ? ` · ${esc(c.fornecedor)}` : ''}</td><td class="num">${esc(c.data)}</td>
+<td><span class="chip ${c.orcado ? 'warn' : 'ok'}">${c.orcado ? 'Orçado' : 'Pago'}</span></td><td>${c.anexo ? `Comprovante ${c.anexo}` : '—'}</td><td class="num r">${formatCurrency(c.valor)}</td></tr>`).join('')}</tbody></table>
+<div class="tot"><span>Total <b>${formatCurrency(d.totalCustos)}</b></span>${d.totalOrcado > 0 ? `<span>dos quais orçados <b>${formatCurrency(d.totalOrcado)}</b></span>` : ''}</div>
+${d.totalOrcado > 0 ? '<p class="foot">Custo orçado é estimativa: entra pelo valor do orçamento e é ajustado quando o serviço é pago.</p>' : ''}</div>`
+    : '';
+  const acerto = a
+    ? `<div class="card"><div class="head">
+<div><small>Carro de volta em</small><span>${esc(a.dataBase)}</span><em>${esc(a.comoVoltou)}</em></div>
+<div><small>Principal pago</small><span>${formatCurrency(a.principalPago)}</span><em>entrada + parcelas, sem proteção, tarifas e encargos</em></div>
+<div><small>Crédito do cliente (${a.percentual}%)</small><span>${formatCurrency(a.credito)}</span><em>cláusula 8.4.2</em></div>
+<div><small>${a.saldo > 0 ? 'Saldo devido pelo cliente' : a.aDevolver > 0 ? 'A devolver ao cliente' : 'Resultado'}</small><span>${a.saldo > 0 ? formatCurrency(a.saldo) : a.aDevolver > 0 ? formatCurrency(a.aDevolver) : 'Crédito e dívida se anulam'}</span><em>dívida ${formatCurrency(a.dividaTotal)} − crédito</em></div>
+</div></div>
+<div class="card"><p class="tit">Dívida na data em que o carro voltou</p>
+<table><thead><tr><th>Item</th><th>Vencimento</th><th class="r">Dias</th><th class="r">Valor</th><th class="r">Encargo</th><th class="r">Total</th></tr></thead><tbody>
+${a.vencidas.map((v) => `<tr><td class="item">${esc(v.item)}</td><td class="num">${esc(v.vencimento)}</td><td class="num r">${v.dias}</td><td class="num r">${formatCurrency(v.valor)}</td><td class="num r">${formatCurrency(v.encargo)}</td><td class="num r">${formatCurrency(v.total)}</td></tr>`).join('')}
+${d.totalCustos > 0 ? `<tr><td class="item" colspan="5">Custos da recuperação (${d.custos.length} — tabela abaixo)</td><td class="num r">${formatCurrency(d.totalCustos)}</td></tr>` : ''}
+${a.multas.map((m) => `<tr><td class="item" colspan="5">${esc(m.descricao)}</td><td class="num r">${formatCurrency(m.valor)}</td></tr>`).join('')}
+</tbody></table>
+<div class="tot"><span>Dívida <b>${formatCurrency(a.dividaTotal)}</b></span><span>Crédito <b>− ${formatCurrency(a.credito)}</b></span><span>${a.saldo > 0 ? `Saldo devido <b style="color:var(--bad-fg)">${formatCurrency(a.saldo)}</b>` : `A devolver <b>${formatCurrency(a.aDevolver)}</b>`}</span></div>
+<p class="foot">Parcelas com vencimento depois de ${esc(a.dataBase)} não são cobradas: o contrato se resolve com a volta do veículo. Encargo de atraso calculado até essa data.${a.boleto ? ` ${esc(a.boleto)}` : ''}</p></div>`
+    : '';
+  return pagina(`${marca(`Carteira › Contratos › ${d.cab.numero} › ${a ? 'Acerto da rescisão' : 'Custos da recuperação'}`)}
+<h1>${a ? 'Acerto da rescisão' : 'Custos da recuperação'} · contrato ${esc(d.cab.numero)}</h1>
+<p class="sub">${esc(d.cab.titular)} · ${esc(d.cab.veiculo)} · emitido em ${esc(d.cab.emitidoEm)}</p>
+${acerto}${custos}`, `Custos ${d.cab.numero}`);
+}
+
+// Comprovantes dos custos em imagem: dois por página, com a legenda de cada um.
+export function htmlComprovantes(cab: CabecalhoDossie, imagens: { dataUrl: string; legenda: string }[]): string {
+  const paginas: string[] = [];
+  for (let i = 0; i < imagens.length; i += 2) {
+    const par = imagens.slice(i, i + 2);
+    paginas.push(`<section class="pag-capturas">
+<div class="cab"><span>Comprovantes dos custos da recuperação (contrato ${esc(cab.numero)})</span><span>${i / 2 + 1} de ${Math.ceil(imagens.length / 2)}</span></div>
+<div class="duas">${par.map((img) => `<figure><figcaption>${esc(img.legenda)}</figcaption><img src="${img.dataUrl}" alt="${esc(img.legenda)}"></figure>`).join('')}</div>
+</section>`);
+  }
+  return pagina(paginas.join(''), `Comprovantes ${cab.numero}`);
+}
+
 // Capa de anexo (comunicações, notificação, Infleet, contrato social).
 export function htmlCapaAnexo(cab: CabecalhoDossie, titulo: string, paragrafos: string[]): string {
   return pagina(`${marca(`Dossiê · contrato ${cab.numero}`)}

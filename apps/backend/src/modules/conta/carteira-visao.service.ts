@@ -275,7 +275,7 @@ export class CarteiraVisaoService {
         titularId: l.conta.titularId,
         titular: l.conta.titular.nome,
         bloqueada: l.conta.contratosCredito.some((c) => c.veiculoBloqueadoEm !== null),
-        origem: l.tipo === 'ENTRADA_ACORDO' ? 'entrada_acordo' : 'entrada_contrato',
+        origem: l.tipo === 'ENTRADA_ACORDO' ? 'entrada_acordo' : l.tipo === 'SALDO_RESCISAO' ? 'saldo_rescisao' : 'entrada_contrato',
         dataPagamento: dataCalendarioUTC(l.dataPagamento),
         valor: this.cent(l.valor),
       });

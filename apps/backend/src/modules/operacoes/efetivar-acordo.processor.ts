@@ -4,6 +4,7 @@ import { Job } from 'bullmq';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { RenegociacaoService } from './renegociacao.service';
 import { NovacaoService } from './novacao.service';
+import { RescisaoService } from './rescisao.service';
 
 // 6.4 — Efetivação da renegociação ao receber a entrada (Gatilho 6). Webhook
 // nunca síncrono: roda no worker. Job 'entrada-vencida' expira a proposta cuja
@@ -15,10 +16,11 @@ export class EfetivarAcordoProcessor extends WorkerHost {
   constructor(
     private readonly renegociacao: RenegociacaoService,
     private readonly novacao: NovacaoService,
+    private readonly rescisao: RescisaoService,
   ) {
     super();
   }
-  async process(job: Job<{ acordoId?: string; novacaoId?: string; paymentDate?: string; valorRecebido?: number; pagamentoId?: string }>) {
+  async process(job: Job<{ acordoId?: string; novacaoId?: string; rescisaoId?: string; paymentDate?: string; valorRecebido?: number; pagamentoId?: string }>) {
     // Entrada só vale inteira (doc 02 §32.6): o valor recebido vai junto e o
     // serviço NÃO efetiva se vier abaixo da entrada (registra e avisa a carteira).
     const recebido = { valorRecebido: job.data.valorRecebido, pagamentoId: job.data.pagamentoId };
@@ -29,6 +31,15 @@ export class EfetivarAcordoProcessor extends WorkerHost {
     }
     if (job.name === 'novacao-recebimento-vencido') {
       return this.novacao.expirarPorRecebimentoVencido(job.data.novacaoId!);
+    }
+    // Boleto único do saldo da rescisão (doc 02 §29.3, 20/11): pago ou vencido.
+    if (job.name === 'rescisao-saldo-recebido') {
+      const r = await this.rescisao.saldoRecebido(job.data.rescisaoId!, job.data.paymentDate ?? '', recebido);
+      this.logger.log(`saldo da rescisão ${job.data.rescisaoId}: ${r.resultado}`);
+      return r;
+    }
+    if (job.name === 'rescisao-saldo-vencido') {
+      return this.rescisao.saldoVencido(job.data.rescisaoId!, job.data.pagamentoId);
     }
     if (job.name === 'entrada-vencida') {
       return this.renegociacao.expirarPorEntradaVencida(job.data.acordoId!);

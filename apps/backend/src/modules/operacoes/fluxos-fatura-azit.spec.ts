@@ -109,7 +109,7 @@ describe('RESCISÃO — acerto e efetivação', () => {
       ...definidos,
     });
     const intencoes = intencoesStub();
-    const service = new RescisaoService({ db: banco.db } as never, { registrarEfetivador: jest.fn() } as never, { removerCobranca: jest.fn() } as never, contaFatura as never, intencoes as never);
+    const service = new RescisaoService({ db: banco.db } as never, { registrarEfetivador: jest.fn() } as never, { removerCobranca: jest.fn() } as never, contaFatura as never, intencoes as never, { emitir: jest.fn() } as never);
     const carregar = (dataBase: string) => (service as unknown as { carregar(c: string, d: string): Promise<{ acerto: { dividaTotal: number; principalParcial: number; principalPago: number; vencidas: unknown[] }; saldoEmAberto: number }> }).carregar('c-veiculo', dataBase);
     return { service, carregar, intencoes, ...banco };
   };

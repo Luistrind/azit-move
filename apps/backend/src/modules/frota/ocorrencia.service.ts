@@ -437,7 +437,12 @@ export class OcorrenciaService {
   async reabrir(id: string, motivo: string, usuarioId?: string) {
     const o = await this.carregar(id);
     if (o.status === 'REPASSADA') {
-      throw new UnprocessableEntityException({ erro: 'ja_repassada', mensagem: 'A ocorrência já virou item de fatura — trate pela fatura (o valor está cobrado)' });
+      throw new UnprocessableEntityException({
+        erro: 'ja_repassada',
+        mensagem: o.rescisaoId
+          ? 'A ocorrência entrou no acerto da rescisão do contrato — o valor já está na dívida do cliente'
+          : 'A ocorrência já virou item de fatura — trate pela fatura (o valor está cobrado)',
+      });
     }
     // Reabrir o que a Azit assumiu desfaz o custo lançado no veículo (doc 02
     // §25.7): sem isso, cobrar a mesma multa depois a contaria duas vezes — como

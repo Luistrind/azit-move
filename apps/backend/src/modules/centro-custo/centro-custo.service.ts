@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { entradaAVista } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
@@ -72,7 +72,8 @@ export class CentroCustoService {
             valorEntrada: true,
           },
         },
-        lancamentosCusto: { where: { deletedAt: null }, select: { valor: true } },
+        // Custo só ORÇADO (recuperação, doc 02 §29.3) ainda não saiu do caixa: não soma no gasto.
+        lancamentosCusto: { where: { deletedAt: null, NOT: { situacao: 'ORCADO' } }, select: { valor: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -137,7 +138,7 @@ export class CentroCustoService {
         lancamentosCusto: {
           where: { deletedAt: null },
           orderBy: { data: 'desc' },
-          select: { id: true, tipo: true, descricao: true, valor: true, data: true },
+          select: { id: true, tipo: true, descricao: true, valor: true, data: true, situacao: true, quemPaga: true, contratoId: true, contrato: { select: { numero: true } } },
         },
       },
     });
@@ -160,7 +161,8 @@ export class CentroCustoService {
       emAberto: abertasPorContrato.get(c.id) ?? 0,
     }));
     const aquisicao = cent(a.valorAquisicao);
-    const custosExtras = a.lancamentosCusto.reduce((s, l) => s + cent(l.valor), 0);
+    // Orçado aparece na lista, mas não soma (ainda não saiu dinheiro) — doc 02 §29.3.
+    const custosExtras = a.lancamentosCusto.filter((l) => l.situacao !== 'ORCADO').reduce((s, l) => s + cent(l.valor), 0);
     const recebido = contratos.reduce((s, c) => s + c.entradaPaga + c.parcelasPagas, 0);
     return {
       ativoId: a.id,
@@ -179,6 +181,10 @@ export class CentroCustoService {
         descricao: l.descricao,
         valor: cent(l.valor),
         data: l.data.toISOString(),
+        // Custo da recuperação (doc 02 §29.3): ligado ao contrato, orçado ou pago, do cliente ou da Azit.
+        orcado: l.situacao === 'ORCADO',
+        repassadoAoCliente: l.quemPaga === 'CLIENTE',
+        contrato: l.contratoId ? { id: l.contratoId, numero: l.contrato?.numero ?? '' } : null,
       })),
       contratos,
     };
@@ -207,6 +213,10 @@ export class CentroCustoService {
   async removerLancamento(lancamentoId: string) {
     const l = await this.prisma.db.lancamentoCustoAtivo.findFirst({ where: { id: lancamentoId, deletedAt: null } });
     if (!l) throw new NotFoundException({ erro: 'nao_encontrado' });
+    // Custo da recuperação mexe no acerto da rescisão: só sai pela ficha do contrato.
+    if (l.contratoId) {
+      throw new UnprocessableEntityException({ erro: 'custo_do_contrato', mensagem: 'Este é um custo da recuperação — retire pela ficha do contrato, em "Custos da recuperação"' });
+    }
     await this.prisma.db.lancamentoCustoAtivo.update({
       where: { id: lancamentoId },
       data: { deletedAt: new Date() },

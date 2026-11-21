@@ -168,6 +168,23 @@ export class WebhookController {
       await this.filaAcordo.add('novacao-recebimento-vencido', { novacaoId: ref.slice('novacao:'.length) });
       return { received: true };
     }
+    // "rescisao:" = boleto único do saldo remanescente da rescisão (doc 02 §29.3,
+    // 20/11): pago quita o saldo; vencido avisa a carteira (negativação é manual).
+    if (recebido && ref.startsWith('rescisao:')) {
+      await this.filaAcordo.add('rescisao-saldo-recebido', {
+        rescisaoId: ref.slice('rescisao:'.length),
+        paymentDate: pg.paymentDate ?? pg.dueDate ?? '',
+        ...recebidoNoGateway,
+      });
+      return { received: true };
+    }
+    if (ref.startsWith('rescisao:')) {
+      // Qualquer outro evento deste boleto NUNCA cai na fila de fatura (o id não é de fatura).
+      if (dto.event === 'PAYMENT_OVERDUE') {
+        await this.filaAcordo.add('rescisao-saldo-vencido', { rescisaoId: ref.slice('rescisao:'.length), pagamentoId: pg.id });
+      }
+      return { received: true };
+    }
     if (recebido && ref.startsWith('ativacao:')) {
       await this.filaAtivacao.add('ativar', {
         contratoId: ref.slice('ativacao:'.length),
