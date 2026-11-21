@@ -3206,6 +3206,13 @@ ADMIN sem limite; editável na tela de Alçadas). Valor da solicitação = saldo
 na data-base (o que deixa de ser cobrado pelo cronograma). Uma rescisão pendente por contrato;
 reprovada ou cancelada, pode-se pedir outra.
 
+> **Revisto em 20–21/11/2026 (decisões Luís, §29.3): a rescisão deixa de passar por aprovação.**
+> "Rescindir contrato" efetiva **na hora**, só para **ADMIN e DIRETOR**, com uma tela de confirmação
+> que diz o que vai acontecer. Vale para o carro **retomado** e para o carro **devolvido pelo
+> cliente** (de boa-fé), então **não exige mais parcela vencida** nem recuperação iniciada. O texto
+> acima sobre o motor de aprovação fica como histórico; o efetivador do tipo `rescisao` continua
+> registrado só para concluir pedido que já estivesse pendente na Central.
+
 **O acerto (decisões Luís 04/11, uma função única `calcularAcertoRescisao` em `@azit/utils`):**
 
 1. **Base dos 20% = só o principal pago: entrada + parcelas.** Principal pago da parcela =
@@ -3263,52 +3270,89 @@ acerto com memória antes de pedir aprovação); a Central de Aprovações mostr
 por rescisão mostra o acerto, a devolução pendente/feita e o saldo remanescente. A régua ganha o
 botão "Iniciar recuperação" a partir da raia "Vencida até 30 dias".
 
-### 29.3 Custos da recuperação e cobrança do saldo (decisões Luís, 2026-11-20)
+### 29.3 Custos da recuperação, rescisão direta e cobrança do saldo (decisões Luís, 20–21/11/2026)
 
-> **Contexto.** Quando o carro é retomado, a Azit gasta com a própria retomada e com o carro de
-> volta (guincho, pátio, chave, avarias, pneu, rastreador). O contrato põe esses custos na conta do
-> cliente (cláusula 8.6, despesas de retomada; cláusula 12.2, danos ao veículo). Até aqui o acerto
-> da rescisão só via parcelas e encargo. Protótipo aprovado com as respostas abaixo:
-> https://claude.ai/artifact/9UuXr5c9zvbaaNmVX1KuWK
+> **Contexto.** Quando o carro volta, a Azit gasta com a retomada e com o próprio carro (guincho,
+> pátio, chave, avarias, pneu, rastreador). O contrato põe esses custos na conta do cliente
+> (cláusula 8.6, despesas de retomada; cláusula 12.2, danos ao veículo). Até aqui o acerto só via
+> parcelas e encargo, e a rescisão pedia aprovação. Protótipo da conversa:
+> https://claude.ai/artifact/9UuXr5c9zvbaaNmVX1KuWK (o fluxo final é o descrito abaixo).
+
+**O fluxo, de ponta a ponta (palavras do Luís):**
+
+1. **Cliente inadimplente → "Iniciar recuperação"** (§29.1). Serve para saber que o carro está sendo
+   buscado e para gerar o dossiê judicial (§30). **As parcelas continuam vencendo normalmente.**
+2. **O carro volta → "Rescindir contrato"** na ficha do contrato: informa-se a **data em que o carro
+   voltou** (data-base), **como voltou** (`RETOMADA` pela Azit ou `DEVOLUCAO` pelo cliente) e os
+   **custos**. Efetiva na hora, **sem aprovação**, só ADMIN e DIRETOR, depois de uma confirmação que
+   lista as consequências. O botão existe em todo contrato Ativo com veículo, com ou sem recuperação
+   iniciada e com ou sem parcela vencida (devolução de boa-fé também entra na conta dos 20%).
+3. **Corte na data-base.** Parcela com vencimento depois da data em que o carro voltou **não é
+   cobrada**, mesmo que a rescisão seja lançada no sistema dias depois e a parcela já apareça como
+   vencida. O encargo de atraso também para na data-base.
+4. **Todas as cobranças do contrato saem do ar** (as futuras e as vencidas): o que o cliente deve
+   passa a ser um número só, o **saldo do acerto**.
 
 **O custo.** Cada custo é um **lançamento de custo do veículo** (`LancamentoCustoAtivo`, o mesmo da
-aba Custos da ficha do veículo, §25.7), ligado ao contrato, com: tipo (retomada, guincho/transporte,
-pátio/diárias, chave/chaveiro, avaria/reparo, pneu/roda, rastreador, limpeza, documento/despachante,
-custas e honorários, outro), descrição, valor, data, fornecedor (texto, opcional), comprovante
-(foto, orçamento ou nota), **situação** `ORCADO` ou `PAGO` e **quem paga** `CLIENTE` ou `AZIT`. Não
-existe cadastro paralelo: custo que a Azit assume continua sendo só custo do veículo.
+aba Custos da ficha do veículo, §25.7), agora ligado ao contrato, com: tipo (retomada,
+guincho/transporte, pátio/diárias, chave/chaveiro, avaria/reparo, pneu/roda, rastreador, limpeza,
+documento/despachante, custas e honorários, outro — lista única em `@azit/types`), descrição,
+valor, data, fornecedor (texto, opcional), comprovante (foto, orçamento ou nota), **situação**
+`ORCADO` ou `PAGO` e **quem paga** `CLIENTE` ou `AZIT`. Não existe cadastro paralelo.
 
-- Lança-se a partir de **"Iniciar recuperação"** e também **depois da rescisão efetivada** (orçamento
-  que virou nota, avaria achada na oficina). Trocar o valor, a situação ou retirar um custo é
-  permitido, auditado, com histórico.
-- **Custo orçado entra no acerto** pelo valor orçado, marcado como estimativa (decisão Luís: o dossiê
-  judicial precisa deles mesmo só orçados). Quando a nota chega, o valor é trocado e o saldo se ajusta.
-- **Multas do veículo** (ocorrências do §25 com o cliente como responsável, data do fato até a
-  data-base, ainda sem desfecho) entram sozinhas na dívida. Ao efetivar, a ocorrência fica marcada
-  como incluída no acerto da rescisão e não pode mais ir para fatura.
+- Lança-se **antes, durante e depois** da rescisão: na ficha do contrato Ativo com veículo, dentro
+  da própria janela de rescindir, e na ficha do contrato já rescindido (orçamento que virou nota,
+  avaria achada na oficina). Alterar valor/situação/quem paga ou retirar um custo é permitido,
+  auditado.
+- **Custo orçado entra no acerto** pelo valor orçado, marcado como estimativa (o dossiê judicial
+  precisa dele mesmo só orçado). Quando a nota chega, troca-se o valor e o saldo se ajusta.
+- **No resultado do veículo** (centro de custo, §4.4-A) custo `ORCADO` aparece na lista mas **não
+  soma** no gasto até virar `PAGO` — ainda não saiu dinheiro.
+- **Multas do veículo** (ocorrências do §25 deste contrato, responsável = cliente, data do fato até
+  a data-base, status *Registrada*) entram sozinhas na dívida. Ao efetivar, a ocorrência vira
+  **Repassada** com vínculo à rescisão (`rescisaoId`) e não pode mais ir para fatura. Ocorrência em
+  recurso ou aguardando comprovante **não entra** (o acerto avisa quantas ficaram de fora).
 
-**No acerto (altera o item 3 do §29.2):** dívida = parcelas vencidas até a data-base + encargo na
-data-base + custos do cliente (orçados e pagos) + multas do veículo. **Os 20% abatem a dívida toda**
-(decisão Luís), na mesma função única `calcularAcertoRescisao`.
+**O acerto (altera o item 3 do §29.2; mesma função única `calcularAcertoRescisao`):**
 
-**Depois da efetivação:** lançar, alterar ou retirar custo recalcula o resultado (saldo remanescente
-ou valor a devolver) com o mesmo crédito. **Não pede nova aprovação** (decisão Luís), só auditoria e
-histórico do saldo na ficha do contrato.
+- dívida = parcelas vencidas até a data-base + encargo na data-base + custos do cliente (orçados e
+  pagos) + multas do veículo;
+- **os 20% abatem a dívida toda** (parcelas, encargo, custos e multas);
+- crédito > dívida → **a devolver ao cliente**; dívida > crédito → **saldo remanescente**.
 
-**Cobrança do saldo remanescente (substitui o placeholder do §29.2):** depois de rescindido, o saldo
-vira **uma cobrança única** (boleto no Asaas) com **15 dias úteis** para pagar (`adicionarDiasUteis`
-de `@azit/utils`, sem feriados — placeholder do calendário). Fica fora da régua e do cronograma. Não
-paga, é essa cobrança que se usa no Asaas para **negativar** o cliente. *(Em aberto: se a cobrança
-nasce sozinha na efetivação ou por botão; o que acontece com ela se o saldo mudar depois de emitida;
-se a negativação é feita à mão no Asaas ou pelo sistema.)*
+**Depois da rescisão:** lançar, alterar ou retirar custo **recalcula o resultado** com o mesmo
+crédito e a mesma data-base. **Não pede aprovação** (decisão Luís); cada ajuste fica na auditoria e
+no histórico do saldo, visível na ficha do contrato. Se a devolução ao cliente já foi registrada
+como feita, o ajuste é recusado (o dinheiro já saiu) — trata-se à parte.
+
+**Cobrança do saldo remanescente (substitui o placeholder do §29.2):**
+
+- O saldo vira **um boleto único** no Asaas (boleto, não só Pix — é o que se negativa), com
+  vencimento em **15 dias úteis** (`adicionarDiasUteis` de `@azit/utils`; feriados ainda não contam —
+  placeholder do calendário). Referência `rescisao:<id>`.
+- Nasce por **botão** ("Gerar boleto do saldo"), quando os custos estiverem fechados — não sozinho
+  na rescisão. Se o saldo mudar antes do pagamento, o boleto é **substituído** pelo valor novo (o
+  antigo sai do ar), com novo prazo de 15 dias úteis.
+- **Pago** (webhook, Regra 4: fila): o saldo fica quitado, entra no caixa da Carteira como
+  lançamento da conta (`SALDO_RESCISAO`) e os custos não podem mais ser alterados.
+- **Venceu sem pagamento:** a carteira é avisada e a ficha mostra que o boleto está vencido. A
+  **negativação é feita à mão no painel do Asaas**, sobre esse boleto (o Asaas exige CPF, telefone e
+  endereço completo do cliente). Negativar pelo sistema é decisão futura.
+- Fica fora da régua e do cronograma (o contrato está encerrado).
+
+**Dossiê judicial (§30):** contrato rescindido passa a trazer o acerto completo — parcelas
+vencidas, custos um a um (com a marca de orçado) e multas — e os **comprovantes dos custos** como
+anexos.
 
 **Fica para depois:**
 
 - **Multas contratuais** da cláusula 12.2 (5% da FIPE quando há dano) e da 12.3 (1% da FIPE por dia
   de atraso na devolução): **não entram agora**; o Luís vai validar (20/11).
-- **Cliente que regulariza** e recebe o carro de volta: como ele paga os custos da recuperação ainda
-  não foi decidido.
+- **Cliente que regulariza** e recebe o carro de volta com custos já lançados: como ele paga esses
+  custos não foi decidido (hoje ficam só como custo do veículo).
 - Pagar guincho e oficina por Contas a Pagar: depende do papel gestor (§18).
+- Multa que chega depois da rescisão (fato anterior à data-base): por ora lança-se como custo do
+  tipo *outro*; incluir a ocorrência no acerto com um clique é evolução.
 
 ---
 
