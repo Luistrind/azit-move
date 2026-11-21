@@ -733,7 +733,9 @@ export class ContratoService {
       // Com cronograma: soma das parcelas em aberto fora de acordo (0 se quitado).
       // Sem cronograma (pré-dia zero): o previsto de origem (correção 03/09 — o
       // fallback antigo ressuscitava o saldo de origem em contrato quitado).
-      saldoDevedorAtual: c.cronogramaGeradoEm
+      // Encerrado (quitado, novado, rescindido, cancelado) nunca "ressuscita" o saldo
+      // de origem — mesmo sem cronograma (contratos antigos/seed): só o que ficou aberto.
+      saldoDevedorAtual: c.cronogramaGeradoEm || c.status === 'ENCERRADO'
         ? this.cent(saldoPorId.get(c.id) ?? null)
         : this.cent(c.saldoDevedor),
       numeroParcelas: c.numeroParcelas,
@@ -871,7 +873,7 @@ export class ContratoService {
         encargosPagos: this.cent(pagoAgg._sum.valorEncargo),
         // Mesmo fallback da listagem (correção 03/09): pré-dia zero (sem
         // cronograma) mostra o previsto de origem, não R$ 0,00.
-        saldoDevedorAtual: contrato.cronogramaGeradoEm
+        saldoDevedorAtual: contrato.cronogramaGeradoEm || contrato.status === 'ENCERRADO'
           ? this.cent(saldoAtual._sum.valorNominal)
           : this.cent(contrato.saldoDevedor),
         proximaParcela: proxima

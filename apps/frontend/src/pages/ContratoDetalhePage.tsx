@@ -313,7 +313,7 @@ export function ContratoDetalhePage() {
                     Veículo bloqueado
                   </span>
                 )}
-                {c.recuperacaoIniciadaEm && (
+                {c.recuperacaoIniciadaEm && c.status === 'Ativo' && (
                   <span className="rounded-full px-[9px] py-[3px] text-[10.5px] font-bold" style={{ background: 'var(--purple-bg)', color: 'var(--purple-fg)' }}>
                     Em recuperação
                   </span>
@@ -465,17 +465,17 @@ export function ContratoDetalhePage() {
           todos={null}
         />
         <div className="flex flex-wrap gap-[8px]">
-          {podeOperar && (
+          {podeOperar && c?.status === 'Ativo' && (
             <Botao variante="secundaria" tamanho="sm" onClick={quitar} disabled={simulando}>
               Quitação antecipada
             </Botao>
           )}
-          {podeOperar && (
+          {podeOperar && c?.status === 'Ativo' && (
             <Botao variante="secundaria" tamanho="sm" onClick={() => setSinistroAberto(true)} disabled={simulando}>
               Sinistro
             </Botao>
           )}
-          {podeReajustar && (
+          {podeReajustar && c?.status === 'Ativo' && (
             <Botao variante="secundaria" tamanho="sm" onClick={() => setReajusteAberto(true)} disabled={simulando}>
               Reajuste IPCA
             </Botao>
