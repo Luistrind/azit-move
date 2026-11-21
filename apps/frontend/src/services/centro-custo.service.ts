@@ -20,6 +20,10 @@ export interface LancamentoCusto {
   descricao: string;
   valor: number;
   data: string;
+  // Custo da recuperação (doc 02 §29.3) — lançado na ficha do contrato.
+  orcado?: boolean;
+  repassadoAoCliente?: boolean;
+  contrato?: { id: string; numero: string } | null;
 }
 
 export interface CentroCustoDetalhe extends CentroCustoAtivo {

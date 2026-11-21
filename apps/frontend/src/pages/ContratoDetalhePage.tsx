@@ -18,8 +18,9 @@ import {
 } from '../config/statusColors';
 import { reguaService } from '../services/regua.service';
 import { BlocoRescisao, ModalRescisao } from '../components/RescisaoContrato';
+import { CustosRecuperacao } from '../components/CustosRecuperacao';
 import { BlocoDossies, ModalDossie } from '../components/DossieContrato';
-import { usePodeRole, ROLE_OPERACAO, ROLE_REAJUSTE, mensagemErro, useIrParaArea } from '../lib/permissoes';
+import { usePodeRole, ROLE_OPERACAO, ROLE_REAJUSTE, ROLE_RESCISAO, mensagemErro, useIrParaArea } from '../lib/permissoes';
 import { reaisParaCentavos, numeroBR } from '../lib/valor';
 import { Metrica } from '../components/Metrica';
 import { BlocoAssinaturaDigital } from '../components/BlocoAssinaturaDigital';
@@ -201,8 +202,8 @@ export function ContratoDetalhePage() {
     }
   }
 
-  // Doc 02 §29 (04/11): recuperação do veículo (intervenção manual) e rescisão
-  // por inadimplência (prévia do acerto → 1 aprovação na Central).
+  // Doc 02 §29 (04/11) e §29.3 (20–21/11): recuperação do veículo (intervenção
+  // manual), custos da recuperação e rescisão direta (confirmação, sem aprovação).
   const [rescisaoAberta, setRescisaoAberta] = useState(false);
   // Dossiê para cobrança judicial (doc 02 §30): só pede as capturas do WhatsApp.
   const [dossieAberto, setDossieAberto] = useState(false);
@@ -230,7 +231,18 @@ export function ContratoDetalhePage() {
   const rescisaoPendente = (rescisoes.data ?? []).some((r) => r.status === 'pendente');
 
   const c = detalhe.data;
-  const podeRescindir = !!c && c.status === 'Ativo' && !!c.ativo && c.situacaoFinanceira === 'em_atraso' && !rescisaoPendente;
+  // Rescindir efetiva na hora: só ADMIN/DIRETOR veem o botão. Não exige atraso
+  // (carro devolvido de boa-fé também é rescindido aqui).
+  const podeRescindir = !!c && c.status === 'Ativo' && !!c.ativo && !rescisaoPendente && pode(ROLE_RESCISAO);
+  const rescindido = !!c && c.status === 'Encerrado' && c.motivoEncerramento === 'rescisao';
+  // Custos da recuperação: aparecem na ficha quando o carro está sendo buscado,
+  // quando já há custo lançado, ou depois da rescisão.
+  const custos = useQuery({
+    queryKey: ['contrato', id, 'custos-recuperacao'],
+    queryFn: () => operacoesService.custosRecuperacao(id),
+    enabled: !!c && !!c.ativo && (c.status === 'Ativo' || rescindido),
+  });
+  const mostrarCustos = !!c && !!c.ativo && (rescindido || (c.status === 'Ativo' && (!!c.recuperacaoIniciadaEm || (custos.data?.custos.length ?? 0) > 0)));
 
   return (
     <div className="flex flex-col gap-[16px]">
@@ -399,9 +411,20 @@ export function ContratoDetalhePage() {
         </div>
       )}
 
-      {/* Rescisão por inadimplência (doc 02 §29): pendente na Central ou acerto efetivado. */}
-      {c && (c.status === 'Ativo' || (c.status === 'Encerrado' && c.motivoEncerramento === 'rescisao')) && (
-        <BlocoRescisao contratoId={c.id} encerradoPorRescisao={c.status === 'Encerrado' && c.motivoEncerramento === 'rescisao'} podeOperar={podeOperar} />
+      {/* Rescisão (doc 02 §29 / §29.3): acerto efetivado, boleto do saldo e histórico. */}
+      {c && (c.status === 'Ativo' || rescindido) && (
+        <BlocoRescisao contratoId={c.id} encerradoPorRescisao={rescindido} podeOperar={podeOperar} />
+      )}
+
+      {/* Custos da recuperação (doc 02 §29.3): o que for do cliente entra na dívida do acerto. */}
+      {c && mostrarCustos && (
+        <Bloco
+          titulo="Custos da recuperação"
+          tag={rescindido ? 'mudança aqui recalcula o saldo do acerto' : 'entram na dívida quando o contrato for rescindido'}
+          leitura={<>Retomada, guincho, pátio, chave, avarias. O que o <b>cliente</b> paga soma na dívida do acerto, mesmo só orçado; o que a <b>Azit assume</b> fica como custo do veículo. Todos aparecem também na ficha do veículo.</>}
+        >
+          <CustosRecuperacao contratoId={c.id} />
+        </Bloco>
       )}
 
       {/* Dossiês gerados para cobrança judicial (doc 02 §30). */}
@@ -478,8 +501,8 @@ export function ContratoDetalhePage() {
               Dossiê judicial
             </Botao>
           )}
-          {podeOperar && podeRescindir && (
-            <Botao variante="perigo" tamanho="sm" onClick={() => setRescisaoAberta(true)} disabled={simulando} title="20% do principal pago quita as parcelas vencidas; 1 aprovação na Central">
+          {podeRescindir && (
+            <Botao variante="perigo" tamanho="sm" onClick={() => setRescisaoAberta(true)} disabled={simulando} title="Para quando o carro voltou (retomado ou devolvido): encerra o contrato, tira as cobranças do ar e faz o acerto dos 20%">
               Rescindir contrato
             </Botao>
           )}
@@ -502,7 +525,7 @@ export function ContratoDetalhePage() {
       )}
 
       {rescisaoAberta && c && (
-        <ModalRescisao contratoId={c.id} onClose={() => setRescisaoAberta(false)} onSolicitado={async () => { await queryClient.invalidateQueries({ queryKey: ['contrato', id] }); }} />
+        <ModalRescisao contratoId={c.id} onClose={() => setRescisaoAberta(false)} onRescindido={async () => { await queryClient.invalidateQueries({ queryKey: ['contrato', id] }); }} />
       )}
 
       {sinistroAberto && (

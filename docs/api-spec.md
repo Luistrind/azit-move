@@ -1667,3 +1667,50 @@ Migração `20261115200000_fatura_azit_origem_sinistro`: `ALTER TYPE "OrigemPaga
 | `FATURA_RECEBEDOR_NOME` | `Azit Comércio de Veículos Ltda` | Recebedor mostrado ao lado do Pix e no PDF |
 | `FATURA_RECEBEDOR_CNPJ` | `57.265.780/0001-19` | idem |
 | `ASAAS_PIX_QR_TIMEOUT_MS` | `8000` (1000–60000) | Limite de tempo da geração do código Pix: a criação do QR estático e, no modo COBRANCA, a consulta do código da cobrança. O homolog usa 30000 para medir |
+
+---
+
+## 6-G. Rescisão direta, custos da recuperação e boleto do saldo — doc 02 §29 / §29.3 (20–21/11/2026)
+
+Valores em **centavos**. A conta do acerto é `calcularAcertoRescisao` / `reaplicarCustosNoAcerto`
+(`@azit/utils`); a API só transporta.
+
+### Custos da recuperação (lançamento de custo do veículo ligado ao contrato)
+
+| Rota | Papéis | O que faz |
+|---|---|---|
+| `GET /api/v1/contratos/:id/custos-recuperacao` | área do contrato | Lista `{ motivoSemLancamento, motivoClienteTravado, custos[], totais{cliente, clienteOrcado, azit} }`. Os dois motivos dizem à tela o que NÃO mostrar. |
+| `POST /api/v1/contratos/:id/custos-recuperacao` | ADMIN, DIRETOR, OPERADOR | Lança. Corpo: `tipo` (lista `TIPOS_CUSTO_RECUPERACAO` de `@azit/types`), `descricao`, `valor`, `data?` (`YYYY-MM-DD`, não futura), `fornecedor?`, `situacao` (`ORCADO`\|`PAGO`), `quemPaga` (`CLIENTE`\|`AZIT`), `comprovante?` `{ nome, conteudo }` (base64). Cabe em contrato com veículo, **Ativo** ou **encerrado por rescisão**. |
+| `PATCH /api/v1/custos-recuperacao/:id` | idem | Altera qualquer campo (parcial); novo `comprovante` substitui o anterior. |
+| `DELETE /api/v1/custos-recuperacao/:id` | idem | Retira (soft delete). |
+| `GET /api/v1/custos-recuperacao/:id/comprovante` | área do contrato | Devolve o arquivo. |
+
+- Custo do **cliente** em contrato já rescindido: cada mudança recalcula o acerto (mesmo crédito,
+  mesmas parcelas e multas) e grava uma linha em `ajustes` — **sem aprovação**.
+- `422 acerto_liquidado`: a devolução ao cliente já foi registrada ou o saldo já foi pago — custo do
+  cliente não entra, não muda e não sai. Custo que a Azit assume continua livre.
+- `DELETE /api/v1/centros-custo/lancamentos/:id` (ficha do veículo) recusa custo da recuperação com
+  `422 custo_do_contrato`: ele só sai pela ficha do contrato.
+
+### Rescisão
+
+| Rota | Papéis | O que faz |
+|---|---|---|
+| `GET /api/v1/contratos/:id/rescisao/previa?dataBase=` | área do contrato | Acerto na data + `consequencias { cobrancasNoAr, outrosContratosAtivos, multasFora }` para a confirmação. Não exige parcela vencida. |
+| `POST /api/v1/contratos/:id/rescisao` | **ADMIN, DIRETOR** | **Efetiva na hora, sem aprovação.** Corpo: `dataBase?` (dia em que o carro voltou), `origem?` (`RETOMADA`\|`DEVOLUCAO`), `observacao?`. Resposta `201 { id, status: 'efetivada', numero, acerto, avisos }`. `422 ja_pendente` se houver pedido antigo aguardando na Central. |
+| `GET /api/v1/contratos/:id/rescisoes` | área do contrato | Além do que já vinha: `origem`, `efetivadaPorNome`, `ajustes[]`, `cobrancaSaldo { valor, vencimento, emitidaEm, link, vencida, desatualizada } \| null`, `saldoPagoEm`, `saldoValorPago`. |
+| `POST /api/v1/rescisoes/:id/boleto-saldo` | ADMIN, DIRETOR, OPERADOR, FINANCEIRO | Emite o **boleto único** do saldo remanescente (`billingType: BOLETO`, vencimento em 15 dias úteis, `externalReference: rescisao:<id>`). `422 sem_saldo` / `ja_pago` / `ja_emitido`; `502 asaas_recusou` quando o Asaas não aceita. |
+| `POST /api/v1/rescisoes/:id/devolucao` | ADMIN, OPERADOR, FINANCEIRO | Inalterado (registra a devolução feita). |
+
+No acerto (`AcertoRescisao`) entram os campos `custos[]`, `custosCliente`, `custosOrcados`,
+`multas[]`, `multasVeiculo`; `dividaTotal` passa a somar tudo. Acertos gravados antes de 20/11 não
+têm esses campos (a tela trata como zero).
+
+### Webhook do gateway — referência `rescisao:<id>`
+
+- `PAYMENT_RECEIVED` / `PAYMENT_CONFIRMED` → fila `efetivar-acordo`, job `rescisao-saldo-recebido`:
+  marca o saldo como pago, cria `LancamentoConta` do tipo `SALDO_RESCISAO` (entra no caixa da
+  Carteira como `saldosRescisao`) e avisa a carteira. Idempotente.
+- `PAYMENT_OVERDUE` → job `rescisao-saldo-vencido`: marca o boleto como vencido e avisa a carteira
+  (a negativação é feita à mão no painel do Asaas). Aviso de boleto já substituído é ignorado.
+- Qualquer outro evento dessa referência é só recebido — nunca vai para a fila de fatura.

@@ -10,6 +10,10 @@ import { toast } from '../components/Toast';
 export const ROLE_OPERACAO = ['ADMIN', 'OPERADOR']; // cobrança, bloqueio, quitação, sinistro
 export const ROLE_RENEGOCIACAO = ['ADMIN', 'OPERADOR', 'APROVADOR', 'DIRETOR'];
 export const ROLE_NOVACAO = ['ADMIN', 'APROVADOR', 'DIRETOR']; // recuperação radical (mais sensível)
+// Rescindir efetiva na hora, sem aprovação (doc 02 §29.3, 21/11) — só estes dois.
+export const ROLE_RESCISAO = ['ADMIN', 'DIRETOR'];
+export const ROLE_CUSTO_RECUPERACAO = ['ADMIN', 'DIRETOR', 'OPERADOR'];
+export const ROLE_BOLETO_SALDO_RESCISAO = ['ADMIN', 'DIRETOR', 'OPERADOR', 'FINANCEIRO'];
 export const ROLE_REAJUSTE = ['ADMIN']; // ciclo gerar->aprovar->aplicar só fecha solo no ADMIN
 export const ROLE_PARECER = ['ADMIN', 'APROVADOR', 'DIRETOR']; // análise de crédito (Bloco 7)
 

@@ -117,6 +117,7 @@ export function CarteiraPage() {
       r.faturasDoPeriodo ? `${compacto(r.faturasDoPeriodo)} das faturas do período (${pct(x.pagas.valor, t)}% do teto)` : null,
       r.faturasDeOutrosPeriodos ? `${compacto(r.faturasDeOutrosPeriodos)} de outros vencimentos` : null,
       r.entradas ? `${compacto(r.entradas)} de entradas` : null,
+      r.saldosRescisao ? `${compacto(r.saldosRescisao)} de saldos de rescisão` : null,
     ].filter(Boolean).join(', ');
     if (!aberto) return <><b>{compacto(r.valor)} entraram</b>{origem ? `: ${origem}` : ''}. {compacto(x.vencidas.valor)} ficaram vencidos com {plural(x.vencidas.clientes, 'cliente', 'clientes')}.</>;
     const proj = x.pagas.valor + x.aVencer.valor;

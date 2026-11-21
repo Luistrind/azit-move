@@ -1,8 +1,8 @@
 import { api } from '../lib/api';
 import type { AcertoRescisao } from '@azit/utils';
 
-// Rescisão por inadimplência (doc 02 §29, 04/11). Valores em centavos; a conta
-// é do backend (@azit/utils) — a tela só exibe.
+// Rescisão (doc 02 §29; fluxo direto, custos e boleto do saldo §29.3, 20–21/11).
+// Valores em centavos; a conta é do backend (@azit/utils) — a tela só exibe.
 export interface PreviaRescisao {
   contrato: {
     id: string; numero: string; status: string; titular: string; diasAtraso: number; saldoEmAberto: number;
@@ -10,8 +10,49 @@ export interface PreviaRescisao {
     recuperacaoIniciadaEm: string | null;
   };
   acerto: AcertoRescisao;
+  // O que a confirmação precisa dizer antes de rescindir.
+  consequencias: { cobrancasNoAr: number; outrosContratosAtivos: number; multasFora: number };
   elegivel: boolean;
   motivoInelegivel: string | null;
+}
+export interface AjusteRescisao {
+  em: string;
+  por: string | null;
+  motivo: string;
+  saldoAntes: number;
+  saldoDepois: number;
+  devolverAntes: number;
+  devolverDepois: number;
+}
+// Custo da recuperação (doc 02 §29.3): lançamento de custo do veículo ligado ao contrato.
+export interface CustoRecuperacao {
+  id: string;
+  tipo: string;
+  descricao: string;
+  fornecedor: string | null;
+  data: string; // 'YYYY-MM-DD'
+  valor: number; // centavos
+  situacao: 'orcado' | 'pago';
+  quemPaga: 'cliente' | 'azit';
+  comprovante: string | null; // nome do arquivo
+  lancadoPor: string | null;
+}
+export interface CustosRecuperacao {
+  contratoId: string;
+  motivoSemLancamento: string | null; // contrato onde não cabe custo de recuperação
+  motivoClienteTravado: string | null; // acerto liquidado: custos do cliente não mudam mais
+  custos: CustoRecuperacao[];
+  totais: { cliente: number; clienteOrcado: number; azit: number };
+}
+export interface DadosCustoRecuperacao {
+  tipo: string;
+  descricao: string;
+  valor: number; // centavos
+  data?: string;
+  fornecedor?: string;
+  situacao: 'ORCADO' | 'PAGO';
+  quemPaga: 'CLIENTE' | 'AZIT';
+  comprovante?: { nome: string; conteudo: string };
 }
 export interface Rescisao {
   id: string;
@@ -25,6 +66,12 @@ export interface Rescisao {
   acerto: AcertoRescisao;
   avisos: string[];
   aprovacaoId: string | null; // dossiê na Central enquanto pendente
+  origem: 'retomada' | 'devolucao';
+  efetivadaPorNome: string | null;
+  ajustes: AjusteRescisao[];
+  cobrancaSaldo: { valor: number; vencimento: string; emitidaEm: string; link: string | null; vencida: boolean; desatualizada: boolean } | null;
+  saldoPagoEm: string | null; // 'YYYY-MM-DD'
+  saldoValorPago: number | null;
 }
 
 // Operações sobre contratos (Bloco 6). Valores em centavos.
@@ -511,9 +558,38 @@ export const operacoesService = {
     const { data } = await api.get<PreviaRescisao>(`/api/v1/contratos/${contratoId}/rescisao/previa`, { params: dataBase ? { dataBase } : {} });
     return data;
   },
-  async solicitarRescisao(contratoId: string, body: { dataBase: string; observacao?: string }): Promise<{ id: string; status: string }> {
+  // Rescinde NA HORA (sem aprovação) — só ADMIN/DIRETOR.
+  async rescindir(contratoId: string, body: { dataBase: string; origem: 'RETOMADA' | 'DEVOLUCAO'; observacao?: string }): Promise<{ id: string; status: string; avisos: string[] }> {
     const { data } = await api.post(`/api/v1/contratos/${contratoId}/rescisao`, body);
     return data;
+  },
+  async gerarBoletoSaldoRescisao(rescisaoId: string): Promise<{ valor: number; vencimento: string; link: string | null }> {
+    const { data } = await api.post(`/api/v1/rescisoes/${rescisaoId}/boleto-saldo`);
+    return data;
+  },
+  // --- Custos da recuperação (doc 02 §29.3) ---
+  async custosRecuperacao(contratoId: string): Promise<CustosRecuperacao> {
+    const { data } = await api.get<CustosRecuperacao>(`/api/v1/contratos/${contratoId}/custos-recuperacao`);
+    return data;
+  },
+  async lancarCustoRecuperacao(contratoId: string, body: DadosCustoRecuperacao): Promise<CustosRecuperacao> {
+    const { data } = await api.post<CustosRecuperacao>(`/api/v1/contratos/${contratoId}/custos-recuperacao`, body);
+    return data;
+  },
+  async alterarCustoRecuperacao(custoId: string, body: Partial<DadosCustoRecuperacao>): Promise<CustosRecuperacao> {
+    const { data } = await api.patch<CustosRecuperacao>(`/api/v1/custos-recuperacao/${custoId}`, body);
+    return data;
+  },
+  async removerCustoRecuperacao(custoId: string): Promise<CustosRecuperacao> {
+    const { data } = await api.delete<CustosRecuperacao>(`/api/v1/custos-recuperacao/${custoId}`);
+    return data;
+  },
+  abrirComprovanteCusto(custoId: string) {
+    void api.get(`/api/v1/custos-recuperacao/${custoId}/comprovante`, { responseType: 'blob' }).then((r) => {
+      const url = URL.createObjectURL(r.data as Blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    });
   },
   async rescisoes(contratoId: string): Promise<Rescisao[]> {
     const { data } = await api.get<Rescisao[]>(`/api/v1/contratos/${contratoId}/rescisoes`);

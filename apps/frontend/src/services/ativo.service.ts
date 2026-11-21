@@ -175,7 +175,8 @@ export interface FichaVeiculo {
     cadastradoEm: string;
     custosExtras: number;
     totalInvestido: number;
-    lancamentos: { id: string; tipo: string; descricao: string; valor: number; data: string; origem: { tipo: 'manual' | 'ocorrencia'; ocorrenciaId: string | null; rotulo: string } | null }[];
+    // orcado / repassadoAoCliente / contrato: custo da recuperação (doc 02 §29.3) — lançado na ficha do contrato.
+    lancamentos: { id: string; tipo: string; descricao: string; valor: number; data: string; origem: { tipo: 'manual' | 'ocorrencia'; ocorrenciaId: string | null; rotulo: string } | null; orcado?: boolean; repassadoAoCliente?: boolean; contrato?: { id: string; numero: string } | null }[];
   };
   contratos: ContratoDoVeiculo[];
 }

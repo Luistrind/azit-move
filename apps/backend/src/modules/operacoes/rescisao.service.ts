@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, OnModuleInit, UnprocessableEntityException } from '@nestjs/common';
+import { BadGatewayException, Injectable, Logger, NotFoundException, OnModuleInit, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma, StatusParcela as StatusParcelaPrisma } from '@prisma/client';
 import {
   AcertoRescisao,
@@ -543,18 +543,29 @@ export class RescisaoService implements OnModuleInit {
     const titular = r.contrato.conta.titular;
     let customerId = this.asaas.clienteReutilizavel(titular.asaasCustomerId);
     if (!customerId) {
-      customerId = await this.asaas.criarCliente({ titularId: titular.id, nome: titular.nome, cpfCnpj: titular.cpfCnpj, email: titular.email, telefone: titular.whatsapp });
+      customerId = await this.asaas
+        .criarCliente({ titularId: titular.id, nome: titular.nome, cpfCnpj: titular.cpfCnpj, email: titular.email, telefone: titular.whatsapp })
+        .catch((e: Error) => {
+          this.logger.error(`Rescisão ${r.id}: Asaas recusou o cadastro do cliente — ${e.message}`);
+          throw new BadGatewayException({ erro: 'asaas_recusou', mensagem: 'O Asaas não aceitou cadastrar o cliente para emitir o boleto. Confira a integração do Asaas em Configuração e os dados do titular (CPF).' });
+        });
       await this.prisma.db.titular.update({ where: { id: titular.id }, data: { asaasCustomerId: customerId } });
     }
     const vencimento = adicionarDiasUteis(inicioHojeBrasilUTC(), DIAS_UTEIS_BOLETO_SALDO_RESCISAO);
-    const cobranca = await this.asaas.criarCobranca({
-      externalReference: `rescisao:${r.id}`,
-      valor: saldo,
-      vencimento,
-      descricao: `Saldo da rescisão do contrato ${r.contrato.numero} — ${titular.nome}`,
-      customerId,
-      formaPagamento: 'BOLETO', // é o boleto que se negativa no Asaas
-    });
+    const cobranca = await this.asaas
+      .criarCobranca({
+        externalReference: `rescisao:${r.id}`,
+        valor: saldo,
+        vencimento,
+        descricao: `Saldo da rescisão do contrato ${r.contrato.numero} — ${titular.nome}`,
+        customerId,
+        formaPagamento: 'BOLETO', // é o boleto que se negativa no Asaas
+      })
+      .catch((e: Error) => {
+        // O operador precisa saber que foi o Asaas (e não um "não permitido" genérico).
+        this.logger.error(`Rescisão ${r.id}: Asaas recusou o boleto do saldo — ${e.message}`);
+        throw new BadGatewayException({ erro: 'asaas_recusou', mensagem: 'O Asaas não aceitou emitir o boleto agora. Confira a integração do Asaas em Configuração e tente de novo — o saldo continua registrado.' });
+      });
     await this.prisma.db.rescisaoContrato.update({
       where: { id: r.id },
       data: { cobrancaChargeId: cobranca.id, cobrancaValor: reais(saldo), cobrancaVencimento: vencimento, cobrancaEmitidaEm: new Date(), cobrancaLink: cobranca.invoiceUrl ?? null, cobrancaVencidaEm: null },

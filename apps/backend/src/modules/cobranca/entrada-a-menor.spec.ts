@@ -64,6 +64,20 @@ describe('Webhook — o valor recebido e o id do pagamento vão no job das três
     await controller.asaas(undefined, recebido('acordo:ac-1'));
     expect(filas.acordo.add).toHaveBeenCalledWith('efetivar', expect.objectContaining({ acordoId: 'ac-1', valorRecebido: undefined }));
   });
+
+  // Boleto único do saldo da rescisão (doc 02 §29.3, 20/11): a referência
+  // `rescisao:<id>` NUNCA pode cair na fila de fatura (o id não é de fatura).
+  it('rescisao: — pago vai para a fila do acordo; vencido avisa; qualquer outro evento é só recebido', async () => {
+    const { controller, filas } = montar();
+    await controller.asaas(undefined, recebido('rescisao:r-1', 2816.74));
+    expect(filas.acordo.add).toHaveBeenCalledWith('rescisao-saldo-recebido', { rescisaoId: 'r-1', paymentDate: '2026-11-15', valorRecebido: 281674, pagamentoId: 'pay_1' });
+    await controller.asaas(undefined, { event: 'PAYMENT_OVERDUE', payment: { id: 'pay_1', externalReference: 'rescisao:r-1', value: 2816.74, dueDate: '2026-12-11' } });
+    expect(filas.acordo.add).toHaveBeenCalledWith('rescisao-saldo-vencido', { rescisaoId: 'r-1', pagamentoId: 'pay_1' });
+    await controller.asaas(undefined, { event: 'PAYMENT_DELETED', payment: { id: 'pay_1', externalReference: 'rescisao:r-1', value: 2816.74 } });
+    expect(filas.acordo.add).toHaveBeenCalledTimes(2);
+    expect(filas.recebido.add).not.toHaveBeenCalled();
+    expect(filas.vencido.add).not.toHaveBeenCalled();
+  });
 });
 
 describe('Processadores — repassam o que foi recebido a quem efetiva', () => {
@@ -84,6 +98,15 @@ describe('Processadores — repassam o que foi recebido a quem efetiva', () => {
     await p.process({ name: 'novacao-recebida', data: { novacaoId: 'nv-1', ...dados } } as never);
     expect(renegociacao.efetivar).toHaveBeenCalledWith('ac-1', '2026-11-15', { valorRecebido: 30000, pagamentoId: 'pay_1' });
     expect(novacao.ativar).toHaveBeenCalledWith('nv-1', '2026-11-15', { valorRecebido: 30000, pagamentoId: 'pay_1' });
+  });
+
+  it('saldo da rescisão: pago e vencido chegam ao RescisaoService', async () => {
+    const rescisao = { saldoRecebido: jest.fn().mockResolvedValue({ resultado: 'saldo_pago' }), saldoVencido: jest.fn().mockResolvedValue({ resultado: 'vencido_avisado' }) };
+    const p = new EfetivarAcordoProcessor({} as never, {} as never, rescisao as never);
+    await p.process({ name: 'rescisao-saldo-recebido', data: { rescisaoId: 'r-1', ...dados } } as never);
+    await p.process({ name: 'rescisao-saldo-vencido', data: { rescisaoId: 'r-1', pagamentoId: 'pay_1' } } as never);
+    expect(rescisao.saldoRecebido).toHaveBeenCalledWith('r-1', '2026-11-15', { valorRecebido: 30000, pagamentoId: 'pay_1' });
+    expect(rescisao.saldoVencido).toHaveBeenCalledWith('r-1', 'pay_1');
   });
 });
 

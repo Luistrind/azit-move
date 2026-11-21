@@ -126,8 +126,14 @@ describe('agregarVisaoCarteira — teto = pagas + vencidas + a vencer (por venci
       faturasDoPeriodo: 99700,
       faturasDeOutrosPeriodos: 101727,
       entradas: 399000 + 86108,
+      saldosRescisao: 0,
       encargos: 2027,
     });
+    // Saldo de rescisão pago (doc 02 §29.3) é caixa, separado das entradas.
+    const comSaldo = agregarVisaoCarteira(faturas, HOJE, { recebimentos: [...recebimentos, { contaId: 'E', origem: 'saldo_rescisao', dataPagamento: '2026-10-20', valor: 54000 }], periodo });
+    expect(comSaldo.recebido.valor).toBe(c.recebido.valor + 54000);
+    expect(comSaldo.recebido.saldosRescisao).toBe(54000);
+    expect(comSaldo.recebido.entradas).toBe(399000 + 86108);
     expect(c.encargosRecebidos).toBe(2027);
     // por vencimento não muda com o caixa
     expect(c.pagas.valor + c.vencidas.valor + c.aVencer.valor).toBe(c.teto.valor);

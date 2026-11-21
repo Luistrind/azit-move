@@ -43,7 +43,7 @@ export const CONTRATO_STATUS_COLORS: Record<string, StatusColor> = {
 export const MOTIVO_ENCERRAMENTO_LABEL: Record<string, string> = {
   quitacao: 'Quitação',
   novacao: 'Novação',
-  rescisao: 'Rescisão por inadimplência',
+  rescisao: 'Rescisão', // carro retomado ou devolvido pelo cliente (doc 02 §29.3)
   cancelamento: 'Cancelamento',
 };
 export const MOTIVO_ENCERRAMENTO_COLORS: Record<string, StatusColor> = {
@@ -424,4 +424,21 @@ export const ENTRADA_USUARIO_COLORS: Record<string, StatusColor> = {
   'Google pendente': { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
   'Senha ligada': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
   'Senha desligada': { bg: 'var(--surface-input)', fg: 'var(--text-muted)' },
+};
+
+// Custos da recuperação (doc 02 §29.3) — chaves são os rótulos exibidos.
+export const CUSTO_SITUACAO_COLORS: Record<string, StatusColor> = {
+  Orçado: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+  Pago: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+};
+export const CUSTO_QUEM_PAGA_COLORS: Record<string, StatusColor> = {
+  Cliente: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  'Azit assume': { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
+};
+// Boleto único do saldo da rescisão (doc 02 §29.3).
+export const BOLETO_SALDO_COLORS: Record<string, StatusColor> = {
+  'No ar': { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+  Vencido: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+  Pago: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  'Valor desatualizado': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
 };

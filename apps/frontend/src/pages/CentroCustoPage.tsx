@@ -13,6 +13,7 @@ import { Tabela, type Coluna } from '../components/Tabela';
 import { Secao } from '../components/Secao';
 import { Botao } from '../components/Botao';
 import { dataMistaBR } from '../lib/datas';
+import { rotuloTipoCusto } from '../components/CustosRecuperacao';
 
 const TIPOS_CUSTO = ['manutencao', 'documentacao', 'seguro', 'franquia', 'preparacao', 'outro'];
 const TIPO_LABEL: Record<string, string> = {
@@ -214,10 +215,14 @@ export function CentroCustoPage() {
                 {detalhe.data.lancamentos.length === 0 && <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nenhum custo lançado além da aquisição.</div>}
                 {detalhe.data.lancamentos.map((l) => (
                   <div key={l.id} className="flex items-center justify-between gap-[8px] rounded-[10px] px-[10px] py-[6px] text-[12px]" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
-                    <span><b>{TIPO_LABEL[l.tipo] ?? l.tipo}</b> · {l.descricao} <span style={{ color: 'var(--text-muted)' }}>· {dataMistaBR(l.data)}</span></span>
+                    <span>
+                      <b>{TIPO_LABEL[l.tipo] ?? rotuloTipoCusto(l.tipo)}</b> · {l.descricao} <span style={{ color: 'var(--text-muted)' }}>· {dataMistaBR(l.data)}</span>
+                      {/* Custo da recuperação (doc 02 §29.3): vive na ficha do contrato. */}
+                      {l.contrato ? <span style={{ color: 'var(--text-muted)' }}> · recuperação, contrato {l.contrato.numero}{l.repassadoAoCliente ? ', repassado ao cliente' : ''}{l.orcado ? ' · orçado, não soma' : ''}</span> : null}
+                    </span>
                     <span className="flex flex-none items-center gap-[8px]">
                       <span className="tabular-nums font-semibold">{formatCurrency(l.valor)}</span>
-                      <button type="button" onClick={() => remover(l.id)} className="flex h-[30px] w-[30px] items-center justify-center text-[15px]" style={{ color: 'var(--danger-fg)' }} title="Remover" aria-label="Remover">×</button>
+                      {!l.contrato && <button type="button" onClick={() => remover(l.id)} className="flex h-[30px] w-[30px] items-center justify-center text-[15px]" style={{ color: 'var(--danger-fg)' }} title="Remover" aria-label="Remover">×</button>}
                     </span>
                   </div>
                 ))}

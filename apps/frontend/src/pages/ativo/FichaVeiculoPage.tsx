@@ -7,6 +7,7 @@ import { ativoService, type FichaVeiculo } from '../../services/ativo.service';
 import { centroCustoService } from '../../services/centro-custo.service';
 import { frotaService, type Ocorrencia } from '../../services/frota.service';
 import { Abas } from '../../components/Abas';
+import { rotuloTipoCusto } from '../../components/CustosRecuperacao';
 import { Botao } from '../../components/Botao';
 import { Modal } from '../../components/Modal';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -284,12 +285,16 @@ function AbaCustos({ f, podeOperar, onMudou }: { f: FichaVeiculo; podeOperar: bo
     { id: 'aquisicao', titulo: 'Aquisição', detalhe: f.ativo.origem ? `compra do veículo · ${f.ativo.origem}` : 'compra do veículo', data: null, origem: 'cadastro do veículo', valor: c.aquisicao, removivel: false },
     ...c.lancamentos.map((l) => ({
       id: l.id,
-      titulo: TIPO_CUSTO[l.tipo] ?? l.tipo,
-      detalhe: l.descricao,
+      titulo: TIPO_CUSTO[l.tipo] ?? rotuloTipoCusto(l.tipo),
+      // Custo da recuperação (doc 02 §29.3): orçado ainda não soma no total investido.
+      detalhe: `${l.descricao}${l.orcado ? ' · orçado, ainda não soma no total' : ''}`,
       data: l.data,
-      origem: l.origem?.rotulo ?? '—',
+      origem: l.contrato
+        ? `custo da recuperação · contrato ${l.contrato.numero} · ${l.repassadoAoCliente ? 'repassado ao cliente' : 'Azit assume'}`
+        : l.origem?.rotulo ?? '—',
       valor: l.valor,
-      removivel: l.origem?.tipo !== 'ocorrencia',
+      // Custo de multa assumida desfaz-se na ocorrência; custo da recuperação, na ficha do contrato.
+      removivel: l.origem?.tipo !== 'ocorrencia' && !l.contrato,
     })),
   ];
 
@@ -329,7 +334,7 @@ function AbaCustos({ f, podeOperar, onMudou }: { f: FichaVeiculo; podeOperar: bo
         acoes={podeOperar ? (l) => (l.removivel ? <Botao variante="fantasma" tamanho="sm" onClick={() => void remover(l.id)} title="Remover lançamento">Remover</Botao> : null) : undefined}
       />
       <div className="flex flex-wrap items-center justify-between gap-[8px] px-[18px] py-[12px] text-[12.5px]" style={{ borderTop: '1px solid var(--border-light)' }}>
-        <span style={{ color: 'var(--text-muted)' }}>Multa que a Azit assume entra aqui sozinha, como custo do veículo.</span>
+        <span style={{ color: 'var(--text-muted)' }}>Multa que a Azit assume e custos da recuperação entram aqui sozinhos. Custo da recuperação se altera na ficha do contrato.</span>
         <b className="tabular-nums" style={{ color: 'var(--text-primary)' }}>Total investido: {formatCurrency(c.totalInvestido)}</b>
       </div>
     </>

@@ -490,7 +490,7 @@ export function ReguaPage() {
         {recuperando && (
           <>
             Marca o início da retomada do <strong style={{ color: 'var(--text-primary)' }}>{recuperando.ativo?.modelo ?? '—'} · {recuperando.ativo?.placa ?? 'sem placa'}</strong> de{' '}
-            <strong style={{ color: 'var(--text-primary)' }}>{recuperando.titular.nome}</strong> ({recuperando.diasAtraso} dias de atraso). O contrato segue ativo; a rescisão, com o acerto dos 20%, é pedida na ficha do contrato depois da retomada.
+            <strong style={{ color: 'var(--text-primary)' }}>{recuperando.titular.nome}</strong> ({recuperando.diasAtraso} dias de atraso). O contrato segue ativo e as parcelas continuam vencendo. Quando o carro voltar, a rescisão — com os custos da recuperação e o acerto dos 20% — é feita na ficha do contrato.
           </>
         )}
       </ModalConfirmacao>
