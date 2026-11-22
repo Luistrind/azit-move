@@ -3376,8 +3376,10 @@ sistema; a divisão com o CRM da V4 é decidida depois. No mesmo dia o Luís ped
   Pix não puder ser gerado (gateway fora, sem chave Pix ativa) ou se a fatura for do modelo
   antigo (cobrança no Asaas), o lembrete sai no formato de hoje, só com o link — o aviso nunca
   deixa de sair por causa do Pix.
-- Fica a confirmar com o Luís: o **nome do recebedor** que o cartão mostra (campo do envio; o
-  app do banco mostra, de qualquer forma, o titular da conta do Asaas que recebe a chave Pix).
+- **Nome do recebedor no cartão** (decisão Luís, 22/11): a **razão social do cartão CNPJ**,
+  "AZIT COMERCIO DE VEICULOS LTDA" — o mesmo nome que o código Pix do Asaas já leva (conferido no
+  copia-e-cola de uma fatura de produção em 22/11: recebedor "AZIT COMERCIO DE VEICULOS", cidade
+  Vitória). Parâmetro em Configuração › WhatsApp, não chumbado.
 
 **(b) Aviso de atraso no D+2 — uma vez só.**
 
