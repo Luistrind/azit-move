@@ -3376,9 +3376,8 @@ sistema; a divisão com o CRM da V4 é decidida depois. No mesmo dia o Luís ped
   Pix não puder ser gerado (gateway fora, sem chave Pix ativa) ou se a fatura for do modelo
   antigo (cobrança no Asaas), o lembrete sai no formato de hoje, só com o link — o aviso nunca
   deixa de sair por causa do Pix.
-- Fica a confirmar na criação do modelo: se a Meta aceita o botão do link junto do botão do
-  Pix (a documentação só mostra o botão do Pix) e o **nome do recebedor** que o cartão mostra
-  (titular da conta do Asaas que recebe a chave Pix).
+- Fica a confirmar com o Luís: o **nome do recebedor** que o cartão mostra (campo do envio; o
+  app do banco mostra, de qualquer forma, o titular da conta do Asaas que recebe a chave Pix).
 
 **(b) Aviso de atraso no D+2 — uma vez só.**
 
@@ -3396,9 +3395,15 @@ sistema; a divisão com o CRM da V4 é decidida depois. No mesmo dia o Luís ped
   "Vencida até 14 dias" (Regra 6, `DIAS_BLOQUEIO_DISPONIVEL`); a mensagem não muda a regra.
 - O "D+1 em diante: sem mensagem automática" do §28.1 passa a ser "D+1 sem mensagem; **D+2 um
   aviso**; depois, só a cobrança humana".
-- Modelos novos na Meta (Utilidade, pt_BR): o de atraso (produção e homolog) e o de pedido com
-  Pix para o D-2 e o D0 (produção e homolog). Os nomes ficam em Configuração › WhatsApp de cada
-  ambiente, como os atuais.
+- Modelos novos na Meta (Utilidade, pt_BR), **enviados para análise em 22/11**; os nomes ficam
+  em Configuração › WhatsApp de cada ambiente, como os atuais:
+  - atraso: `azit_fatura_atraso` (produção) e `azit_fatura_atraso_hml` (homolog) — botão "Ver
+    fatura" com o endereço fixo do ambiente e o token como variável, igual aos de hoje;
+  - pedido com Pix: `azit_fatura_pix_disponivel` (D-2) e `azit_fatura_pix_vence_hoje` (D0),
+    **os mesmos nos dois ambientes**, porque o link vai inteiro no texto (variável 5). Corpo:
+    nome, nº da fatura, valor, vencimento, link. Botão único fixo da Meta ("Copiar código Pix");
+    a Meta **não aceita** botão de link junto — confirmado na criação. O cartão do pedido (nº,
+    item, total) e o código Pix são preenchidos no envio.
 
 ---
 
