@@ -208,7 +208,7 @@ export function LembretesPagamento({ titularId }: { titularId: string }) {
           colunas={[
             { chave: 'fatura', titulo: 'Fatura', celular: 'titulo', render: (l) => `#${l.faturaNumero}` },
             { chave: 'vencimento', titulo: 'Vencimento', celular: 'subtitulo', classe: 'tabular-nums', render: (l) => dataBR(l.vencimento) },
-            { chave: 'momento', titulo: 'Lembrete', celular: 'campo', render: (l) => nomeMomentoLembrete(l.momento) },
+            { chave: 'momento', titulo: 'Lembrete', celular: 'campo', render: (l) => `${nomeMomentoLembrete(l.momento)}${l.comPix ? ' · com Pix' : ''}` },
             { chave: 'situacao', titulo: 'Situação', celular: 'destaque', render: (l) => <StatusBadge label={nomeSituacaoLembrete(l.situacao)} colors={LEMBRETE_SITUACAO_COLORS} /> },
             {
               chave: 'quando',
@@ -221,7 +221,10 @@ export function LembretesPagamento({ titularId }: { titularId: string }) {
                   {aberto === l.id && (
                     <span className="mt-[4px] whitespace-pre-wrap rounded-[8px] px-[10px] py-[6px]" style={{ background: 'var(--surface-input)', color: 'var(--text-primary)' }}>
                       {l.texto}
-                      <span className="mt-[4px] block text-[11px]" style={muted}>Para {l.destino ?? 'número inválido'} · modelo {l.modelo} · botão “Ver fatura” com o link da Fatura Azit</span>
+                      <span className="mt-[4px] block text-[11px]" style={muted}>
+                        Para {l.destino ?? 'número inválido'} · modelo {l.modelo} ·{' '}
+                        {l.comPix ? 'cartão com o valor e o botão “Copiar código Pix”' : 'botão “Ver fatura” com o link da Fatura Azit'}
+                      </span>
                     </span>
                   )}
                 </div>

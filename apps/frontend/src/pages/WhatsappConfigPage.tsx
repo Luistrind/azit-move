@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AreaSistema, nomeMomentoLembrete } from '@azit/types';
 import { formatarWhatsapp, normalizarWhatsapp } from '@azit/utils';
 import { nomeSituacaoLembrete } from '@azit/types';
-import { whatsappService, ParametrosWhatsapp, ModeloWhatsapp } from '../services/whatsapp.service';
+import { whatsappService, ParametrosWhatsapp, ModeloWhatsapp, ModeloPixWhatsapp } from '../services/whatsapp.service';
 import { lembretesService, ResumoVarredura } from '../services/lembretes.service';
 import { LEMBRETE_SITUACAO_COLORS } from '../config/statusColors';
 import { FERRAMENTAS_TESTE } from '../lib/ambiente';
@@ -30,14 +30,50 @@ const inputStyle = { background: 'var(--surface-input)', border: '1px solid var(
 const pilula = 'inline-flex items-center rounded-full px-[10px] py-[2px] text-[11px] font-bold';
 const muted = { color: 'var(--text-muted)' } as const;
 
-type Form = { ativo: boolean; numeros: string[]; modelos: Record<string, { nome: string; idioma: string }> };
+type ModeloForm = { nome: string; idioma: string };
+type Form = {
+  ativo: boolean;
+  numeros: string[];
+  modelos: Record<string, ModeloForm>;
+  // Pix copia e cola na mensagem (doc 02 §28.6).
+  pixAtivo: boolean;
+  recebedor: string;
+  modelosPix: Record<string, ModeloForm>;
+};
 
 function formDe(p: ParametrosWhatsapp): Form {
   return {
     ativo: p.ativo,
     numeros: p.numerosAutorizados,
     modelos: Object.fromEntries(p.modelos.map((m) => [m.momento, { nome: m.nome, idioma: m.idioma }])),
+    pixAtivo: p.pix.ativo,
+    recebedor: p.pix.recebedor,
+    modelosPix: Object.fromEntries(p.pix.modelos.map((m) => [m.momento, { nome: m.nome, idioma: m.idioma }])),
   };
+}
+
+// Modelo de pedido com Pix: só o nome muda por modelo (o idioma é um só para os dois).
+function CartaoModeloPix({ modelo, valor, onChange }: { modelo: ModeloPixWhatsapp; valor: ModeloForm; onChange: (v: ModeloForm) => void }) {
+  return (
+    <div className="flex flex-col gap-[10px] rounded-[12px] p-[14px]" style={{ border: '1px solid var(--border)' }}>
+      <div className="text-[13px] font-bold">{nomeMomentoLembrete(modelo.momento)} — com Pix</div>
+      <label className="flex min-w-0 flex-col gap-[4px] text-[12px]">
+        <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Nome do modelo na Meta</span>
+        <input className={`${inputCls} w-full`} style={inputStyle} value={valor.nome} onChange={(e) => onChange({ ...valor, nome: e.target.value.trim() })} />
+      </label>
+      <details>
+        <summary className="cursor-pointer text-[12px] font-semibold" style={{ color: 'var(--accent)' }}>O que cadastrar na Meta</summary>
+        <div className="mt-[10px] flex flex-col gap-[10px]">
+          <div className="text-[12px]" style={muted}>
+            Categoria <b>{modelo.cadastro.categoria}</b>, idioma <b>{valor.idioma}</b>, sem cabeçalho. Variáveis do corpo, nesta ordem:{' '}
+            {modelo.cadastro.variaveis.map((v, i) => `{{${i + 1}}} ${v}`).join('; ')}. Botão: {modelo.cadastro.botaoTexto}. O link vai
+            inteiro no texto, então o mesmo modelo serve para homologação e produção.
+          </div>
+          <Copiavel rotulo="Corpo da mensagem" texto={modelo.cadastro.corpo} />
+        </div>
+      </details>
+    </div>
+  );
 }
 
 function Copiavel({ rotulo, texto }: { rotulo: string; texto: string }) {
@@ -193,6 +229,9 @@ export function WhatsappConfigPage() {
     try {
       const d2 = form.modelos.D_MENOS_2;
       const d0 = form.modelos.D_ZERO;
+      const atraso = form.modelos.D_MAIS_2;
+      const pixD2 = form.modelosPix.D_MENOS_2;
+      const pixD0 = form.modelosPix.D_ZERO;
       await whatsappService.salvarParametros({
         ativo: form.ativo,
         numerosAutorizados: form.numeros,
@@ -200,6 +239,13 @@ export function WhatsappConfigPage() {
         modeloD2Idioma: d2?.idioma,
         modeloD0Nome: d0?.nome,
         modeloD0Idioma: d0?.idioma,
+        modeloAtrasoNome: atraso?.nome,
+        modeloAtrasoIdioma: atraso?.idioma,
+        modeloPixD2Nome: pixD2?.nome,
+        modeloPixD0Nome: pixD0?.nome,
+        modeloPixIdioma: pixD2?.idioma,
+        pixNoLembrete: form.pixAtivo,
+        recebedorPix: form.recebedor,
       });
       toast.sucesso('Parâmetros do WhatsApp salvos em uma nova versão.');
       await qc.invalidateQueries({ queryKey: ['whatsapp-parametros'] });
@@ -270,9 +316,11 @@ export function WhatsappConfigPage() {
               {naoPodeLigar && <span className="text-[12px]" style={{ color: 'var(--danger-fg)' }}>Não é possível ligar sem a credencial da Meta.</span>}
             </div>
             <div className="text-[12px]" style={muted}>
-              Ligado, o sistema envia o lembrete 2 dias antes do vencimento e no dia do vencimento, todos os dias, das {p.janela.inicio}h às {p.janela.fim}h
-              (horário de Brasília), com o link da Fatura Azit. Só recebe o titular com o lembrete ligado na ficha e com fatura em aberto.
-              Desligado, nenhum lembrete é gerado. As respostas em Conversas não dependem desta chave.
+              Ligado, o sistema envia o lembrete 2 dias antes do vencimento e no dia do vencimento e, se a fatura continuar sem
+              pagamento, um aviso de atraso 2 dias depois — todos os dias, das {p.janela.inicio}h às {p.janela.fim}h (horário de Brasília),
+              com o link da Fatura Azit. Depois do aviso de atraso o sistema não manda mais nada: o caso é da cobrança. Só recebe o
+              titular com o lembrete ligado na ficha e com fatura em aberto. Desligado, nenhum lembrete é gerado. As respostas em
+              Conversas não dependem desta chave.
             </div>
           </div>
         </Secao>
@@ -320,6 +368,37 @@ export function WhatsappConfigPage() {
             {p.modelos.map((m) => (
               <CartaoModelo key={m.momento} modelo={m} valor={form.modelos[m.momento] ?? { nome: m.nome, idioma: m.idioma }}
                 onChange={(v) => setForm({ ...form, modelos: { ...form.modelos, [m.momento]: v } })} />
+            ))}
+          </div>
+        </Secao>
+      </div>
+
+      <div className={card} style={cardStyle}>
+        <Secao titulo="Pix copia e cola na mensagem">
+          <div className="flex flex-col gap-[12px]">
+            <div className="flex flex-wrap items-center gap-[10px]">
+              <Chips
+                todos={null}
+                itens={[{ chave: 'desligado', rotulo: 'Desligado' }, { chave: 'ligado', rotulo: 'Ligado' }]}
+                valor={form.pixAtivo ? 'ligado' : 'desligado'}
+                onChange={(k) => { if (k) setForm({ ...form, pixAtivo: k === 'ligado' }); }}
+              />
+            </div>
+            <div className="text-[12px]" style={muted}>
+              Ligado, quem tem <b>uma única fatura em aberto</b> recebe no lembrete de 2 dias antes e no do dia do vencimento um cartão com o
+              valor e o botão <b>Copiar código Pix</b>, além do link da fatura no texto. O código vale até 23h59 do dia do vencimento e é o
+              mesmo nos dois lembretes. Quem tem duas ou mais faturas recebe só o link e escolhe o que pagar na página. O aviso de atraso
+              nunca leva Pix. Se o modelo com Pix não estiver aprovado ou o Pix não puder ser gerado, o lembrete sai só com o link.
+            </div>
+            <label className="flex min-w-0 flex-col gap-[4px] text-[12px] sm:max-w-[420px]">
+              <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Nome de quem recebe, no cartão do Pix</span>
+              <input className={`${inputCls} w-full`} style={inputStyle} value={form.recebedor} maxLength={100}
+                onChange={(e) => setForm({ ...form, recebedor: e.target.value })} />
+              <span style={muted}>A razão social do cartão CNPJ. O app do banco do cliente mostra, de qualquer forma, o titular da conta que recebe a chave Pix.</span>
+            </label>
+            {p.pix.modelos.map((m) => (
+              <CartaoModeloPix key={m.momento} modelo={m} valor={form.modelosPix[m.momento] ?? { nome: m.nome, idioma: m.idioma }}
+                onChange={(v) => setForm({ ...form, modelosPix: { ...form.modelosPix, [m.momento]: v } })} />
             ))}
           </div>
         </Secao>

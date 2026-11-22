@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ContaFaturaPublica, FaturaContaPublica, FaturaPublica, PixSobDemandaPublico } from '@azit/types';
-import { formatCurrency, isoParaBR, minimoParcialFatura, projetarConta, regraParcial, type ContaProjetada, type FaturaProjetada, type RegraParcial } from '@azit/utils';
+import { dataHojeBrasil, diaBrasil, formatCurrency, isoParaBR, minimoParcialFatura, projetarConta, regraParcial, type ContaProjetada, type FaturaProjetada, type RegraParcial } from '@azit/utils';
 import { ErroFatura, faturaApi } from './api';
 import { diaSemana, linkWhatsapp, Marca, QrPix } from './comum';
 
@@ -26,6 +26,13 @@ import { diaSemana, linkWhatsapp, Marca, QrPix } from './comum';
 const brl = formatCurrency;
 const dataBr = isoParaBR;
 const dataCurta = (iso: string) => isoParaBR(iso).slice(0, 5);
+// Validade do código Pix (doc 02 §32.4-A): até 23h59 de hoje; o que veio no
+// lembrete do WhatsApp vale até o dia do vencimento (§28.6).
+function validadePix(validoAte: string | undefined): string {
+  const ate = validoAte ? diaBrasil(new Date(validoAte)) : null;
+  if (ate && ate > dataHojeBrasil()) return `O código vale até as 23h59 de ${isoParaBR(ate)}.`;
+  return 'O código vale até as 23h59 de hoje; ao reabrir a página, ele é gerado de novo com o saldo do dia.';
+}
 const plural = (n: number, um: string, varios: string) => (n === 1 ? um : varios);
 const pct = (n: number) => String(n).replace('.', ',');
 const STATUS_TXT: Record<FaturaProjetada['situacao'], string> = { aberta: 'Em aberto', hoje: 'Vence hoje', vencida: 'Vencida', parcial: 'Paga parcialmente', paga: 'Paga' };
@@ -376,7 +383,7 @@ export function ContaAzit({ f, token, avisar }: { f: FaturaPublica; token: strin
         </details>
         <div className="receb">
           <span>Recebedor: <b>{conta.recebedor.nome}</b>{conta.recebedor.cnpj ? ` · CNPJ ${conta.recebedor.cnpj}` : ''}</span>
-          <span>O código vale até as 23h59 de hoje; ao reabrir a página, ele é gerado de novo com o saldo do dia.</span>
+          <span>{validadePix(pixDoValor?.validoAte)}</span>
         </div>
         {extra}
       </section>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { OrigemIntencaoPagamento, OrigemPagamentoFatura } from '@azit/types';
-import { formatCurrency } from '@azit/utils';
+import { dataHojeBrasil, diaBrasil, formatCurrency } from '@azit/utils';
 import { faturaService, type FaturaDetalhe } from '../services/fatura.service';
 import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 import { dataBR, horaBR } from '../lib/datas';
@@ -28,6 +28,7 @@ const ORIGEM_PAGAMENTO: Record<OrigemPagamentoFatura, string> = {
 const ORIGEM_PIX: Record<OrigemIntencaoPagamento, string> = {
   [OrigemIntencaoPagamento.PAGINA_PUBLICA]: 'pedido pelo cliente na página da fatura',
   [OrigemIntencaoPagamento.OPERADOR]: 'gerado pelo operador',
+  [OrigemIntencaoPagamento.LEMBRETE]: 'enviado no lembrete do WhatsApp',
 };
 const SITUACAO: Record<string, string> = { paga: 'Paga', parcial: 'Paga parcialmente', vencida: 'Vencida', hoje: 'Vence hoje', aberta: 'Em aberto' };
 
@@ -129,14 +130,14 @@ export function FaturaAzitBloco({ fd, contaId, recarregar }: { fd: FaturaDetalhe
       </Secao>
 
       {!paga && (
-        <Secao titulo="Pix ativos da conta" tag={ativos.length > 1 ? `${ativos.length} valores gerados hoje` : undefined}>
+        <Secao titulo="Pix ativos da conta" tag={ativos.length > 1 ? `${ativos.length} códigos ativos` : undefined}>
           {ativos.length ? (
             <div className="flex flex-col gap-[8px]">
               {ativos.map((pix) => (
                 <div key={pix.id} className="flex flex-col gap-[2px] rounded-[10px] px-[10px] py-[8px] text-[12px]" style={{ ...corpo, background: 'var(--surface-input)' }}>
                   <div className="flex items-baseline justify-between gap-[8px]" style={{ color: 'var(--text-primary)' }}>
                     <b>{formatCurrency(pix.valor)}{pix.outroValor ? ' · outro valor' : ''}</b>
-                    <span>vale até {horaBR(pix.validoAte)} de hoje</span>
+                    <span>vale até {horaBR(pix.validoAte)} de {diaBrasil(new Date(pix.validoAte)) === dataHojeBrasil() ? 'hoje' : dataBR(diaBrasil(new Date(pix.validoAte)))}</span>
                   </div>
                   <span style={mudo}>Gerado às {horaBR(pix.criadaEm)}, {ORIGEM_PIX[pix.origem]}{pix.simulado ? ' · gateway simulado' : ''}.</span>
                   {pix.faturas.map((x) => (

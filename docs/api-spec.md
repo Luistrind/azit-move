@@ -1725,6 +1725,11 @@ têm esses campos (a tela trata como zero).
 - `PUT /whatsapp/parametros { ativo?, numerosAutorizados?, modeloD2Nome?, modeloD2Idioma?, modeloD0Nome?, modeloD0Idioma? }`
   → grava uma **versão nova** e devolve a tela. 422: `numeros_invalidos`, `modelo_invalido`, `idioma_invalido`,
   `sem_credencial` (produção não liga os envios sem credencial).
+- **22/11 (§28.6):** `modelos[]` ganha o momento `D_MAIS_2` (aviso de atraso; variáveis: nome, nº, vencimento,
+  valor de hoje) e a tela ganha `pix: { ativo, recebedor, modelos: [{ momento: D_MENOS_2 | D_ZERO, nome, idioma,
+  cadastro: { categoria, corpo, variaveis[], botaoTexto } }] }`. O `PUT` aceita também `modeloAtrasoNome?`,
+  `modeloAtrasoIdioma?`, `modeloPixD2Nome?`, `modeloPixD0Nome?`, `modeloPixIdioma?`, `pixNoLembrete?` (boolean) e
+  `recebedorPix?` (até 100 letras; 422 `recebedor_invalido`).
 - Credenciais: `GET/PUT /integracoes` ganham o bloco `whatsapp` (`phoneNumberId`, `wabaId` inteiros;
   `accessToken`, `appSecret`, `verifyToken` write-only, só o final); `POST /integracoes/whatsapp/testar`
   lê o próprio número na Meta, sem enviar mensagem.
@@ -1741,9 +1746,12 @@ têm esses campos (a tela trata como zero).
   mensagens, naoLidas } (atalho para a conversa), lembrete: { ativo,
   ligadoEm, ligadoPor, desligadoEm, desligadoPor }, avisoAsaas: { desligado, alteradoEm, alteradoPor, pendente,
   clienteNoAsaas }, semAvisoNenhum, canal: { enviosAutomaticos, producao, decisao: ENVIA | SIMULADO | RETIDO,
-  motivo, enviaDeVerdade }, lembretes: [{ id, faturaId, faturaNumero, vencimento, momento: D_MENOS_2 | D_ZERO,
+  motivo, enviaDeVerdade }, lembretes: [{ id, faturaId, faturaNumero, vencimento, momento: D_MENOS_2 | D_ZERO | D_MAIS_2,
   situacao: PREPARADO | ENVIADO | ENTREGUE | LIDO | FALHOU | SIMULADO | RETIDO, motivo, destino, texto, modelo,
-  registradoEm, enviadoEm, entregueEm, lidoEm, falhaEm }] }`.
+  comPix (levou o Pix copia e cola — §28.6), registradoEm, enviadoEm, entregueEm, lidoEm, falhaEm }] }`.
+- Pix no lembrete (§28.6): a intenção de pagamento nasce com `origem: LEMBRETE` e `ateDia` = dia do vencimento
+  (as demais: `ateDia` = dia em que nasceram). Reuso, virada do dia e "ativas da conta" leem `ateDia`; o teto
+  diário de valores distintos não conta as de origem LEMBRETE.
 - `POST /titulares/:id/lembretes/ligar` · `POST /titulares/:id/lembretes/desligar` (CARTEIRA_COBRANCA) →
   mesma resposta do GET. 422: `whatsapp_invalido`.
 - `POST /titulares/:id/lembretes/aviso-asaas { desligado: boolean }` (CARTEIRA_COBRANCA) → altera

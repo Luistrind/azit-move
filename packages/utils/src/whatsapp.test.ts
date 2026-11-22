@@ -3,6 +3,7 @@ import { DecisaoEnvioWhatsapp, MomentoLembrete, SituacaoLembrete } from '@azit/t
 import {
   BOTAO_MODELO_LEMBRETE,
   CORPO_MODELO_LEMBRETE,
+  CORPO_MODELO_LEMBRETE_PIX,
   decidirEnvioWhatsapp,
   dentroDaJanelaLembrete,
   faturaElegivelLembrete,
@@ -12,11 +13,14 @@ import {
   momentoLembreteDaFatura,
   normalizarNumerosAutorizados,
   normalizarWhatsapp,
+  pixCabeNoLembrete,
   situacaoLembreteAposStatusMeta,
   situacaoMensagemAposStatusMeta,
   textoLembrete,
+  textoLembretePix,
   variantesWhatsapp,
   variaveisLembrete,
+  variaveisLembretePix,
 } from './whatsapp';
 
 describe('número canônico (doc 02 §24 item 2)', () => {
@@ -100,7 +104,9 @@ describe('lembretes de pagamento (doc 02 §28)', () => {
     expect(momentoLembreteDaFatura('2026-11-16', '2026-11-14')).toBe(MomentoLembrete.D_MENOS_2);
     expect(momentoLembreteDaFatura('2026-11-16', '2026-11-16')).toBe(MomentoLembrete.D_ZERO);
     expect(momentoLembreteDaFatura('2026-11-16', '2026-11-15')).toBeNull(); // D-1
-    expect(momentoLembreteDaFatura('2026-11-16', '2026-11-17')).toBeNull(); // D+1: sem automático nesta fase
+    expect(momentoLembreteDaFatura('2026-11-16', '2026-11-17')).toBeNull(); // D+1: sem mensagem
+    expect(momentoLembreteDaFatura('2026-11-16', '2026-11-18')).toBe(MomentoLembrete.D_MAIS_2); // §28.6
+    expect(momentoLembreteDaFatura('2026-11-16', '2026-11-19')).toBeNull(); // depois do D+2, nada
     expect(momentoLembreteDaFatura('2026-11-16', '2026-11-13')).toBeNull();
     // virada de mês
     expect(momentoLembreteDaFatura('2026-12-01', '2026-11-29')).toBe(MomentoLembrete.D_MENOS_2);
@@ -166,5 +172,36 @@ describe('lembretes de pagamento (doc 02 §28)', () => {
     expect(situacaoMensagemAposStatusMeta('lida', 'delivered')).toBeNull();
     expect(situacaoMensagemAposStatusMeta('simulada', 'read')).toBeNull();
     expect(situacaoMensagemAposStatusMeta('enviada', 'failed')).toBe('falhou');
+  });
+});
+
+describe('Pix na mensagem e aviso de atraso (doc 02 §28.6, decisões Luís 22/11)', () => {
+  const dados = { nomeTitular: 'Tatiani Fernanda', numeroFatura: 1, valorCentavos: 174376, vencimentoISO: '2026-11-26' };
+  it('atraso: texto aprovado, com o vencimento antes do valor de hoje', () => {
+    expect(variaveisLembrete({ ...dados, valorCentavos: 177864 }, MomentoLembrete.D_MAIS_2)).toEqual(['Tatiani', '1', '26/11/2026', 'R$ 1.778,64']);
+    expect(textoLembrete(MomentoLembrete.D_MAIS_2, { ...dados, valorCentavos: 177864 })).toBe(
+      'Olá, Tatiani! Aqui é da Azit Move. Sua fatura nº 1, que venceu em 26/11/2026, ainda não foi paga. Hoje o valor é R$ 1.778,64. Pague pelo botão abaixo para evitar o bloqueio do seu veículo.',
+    );
+    expect(modeloPadraoLembrete(MomentoLembrete.D_MAIS_2, true)).toBe('azit_fatura_atraso');
+    expect(modeloPadraoLembrete(MomentoLembrete.D_MAIS_2, false)).toBe('azit_fatura_atraso_hml');
+  });
+  it('modelo com Pix leva o link inteiro como 5ª variável', () => {
+    const link = 'https://fatura.azitmove.com.br/abc123';
+    expect(variaveisLembretePix(dados, link)).toEqual(['Tatiani', '1', 'R$ 1.743,76', '26/11/2026', link]);
+    expect(textoLembretePix(MomentoLembrete.D_ZERO, dados, link)).toContain(`acesse ${link} e escolha como pagar.`);
+    expect(textoLembretePix(MomentoLembrete.D_MENOS_2, dados, link)).toContain('Toque em Copiar código Pix');
+    // A Meta não aceita corpo que comece ou termine em variável.
+    for (const corpo of Object.values(CORPO_MODELO_LEMBRETE_PIX)) {
+      expect(corpo.startsWith('{{')).toBe(false);
+      expect(corpo.endsWith('}}')).toBe(false);
+    }
+  });
+  it('Pix só para quem tem UMA fatura em aberto, do modelo novo, no D-2 ou D0', () => {
+    const base = { momento: MomentoLembrete.D_MENOS_2, faturaId: 'f1', modeloEncargo: 'AZIT', faturasEmAberto: ['f1'] };
+    expect(pixCabeNoLembrete(base)).toEqual({ cabe: true, motivo: null });
+    expect(pixCabeNoLembrete({ ...base, momento: MomentoLembrete.D_ZERO }).cabe).toBe(true);
+    expect(pixCabeNoLembrete({ ...base, momento: MomentoLembrete.D_MAIS_2 }).motivo).toMatch(/atraso/);
+    expect(pixCabeNoLembrete({ ...base, faturasEmAberto: ['f0', 'f1'] }).motivo).toMatch(/mais de uma/);
+    expect(pixCabeNoLembrete({ ...base, modeloEncargo: 'ASAAS_NATIVO' }).motivo).toMatch(/modelo antigo/);
   });
 });

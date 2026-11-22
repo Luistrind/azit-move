@@ -236,6 +236,7 @@ enum TipoEncargoFatura {
 enum OrigemIntencaoPagamento {
   PAGINA_PUBLICA
   OPERADOR
+  LEMBRETE // Pix que vai no lembrete do WhatsApp de quem tem uma fatura só (§28.6)
 }
 
 // Como o Pix sob demanda nasce no gateway (doc 02 §32.4-A, decisão 15/11):
@@ -1435,8 +1436,11 @@ model IntencaoPagamento {
   // valor pretendia cobrir. A baixa real segue a regra na data do pagamento.
   faturasPretendidas Json
   outroValor         Boolean                   @default(false)
-  dia                String // dia do Brasil em que vale (YYYY-MM-DD) — chave do reuso e do teto
-  validoAte          DateTime // 23h59 do dia, fuso do Brasil
+  dia                String // dia do Brasil em que NASCEU (YYYY-MM-DD) — chave do teto diário
+  // Último dia em que vale (YYYY-MM-DD, Brasil). = dia para todas, menos o Pix do
+  // lembrete (§28.6), que vale até o dia do vencimento. Reuso e virada do dia leem este.
+  ateDia             String
+  validoAte          DateTime // 23h59 de ateDia, fuso do Brasil
   origem             OrigemIntencaoPagamento
   usuarioId          String? // operador, quando origem = OPERADOR
   situacao           SituacaoIntencaoPagamento @default(ATIVA)
@@ -1456,6 +1460,7 @@ model IntencaoPagamento {
 
   @@index([contaId, situacao])
   @@index([contaId, dia])
+  @@index([contaId, ateDia])
   @@index([gatewayId])
   @@map("intencoes_pagamento")
 }
@@ -3043,6 +3048,15 @@ model ParametroWhatsapp {
   modeloD2Idioma     String   @default("pt_BR")
   modeloD0Nome       String   @default("azit_fatura_vence_hoje")
   modeloD0Idioma     String   @default("pt_BR")
+  // §28.6 (22/11). null = padrão do ambiente (o de atraso tem botão de domínio
+  // fixo: "_hml" fora de produção; os de Pix servem aos dois ambientes).
+  modeloAtrasoNome   String?
+  modeloAtrasoIdioma String?
+  modeloPixD2Nome    String?
+  modeloPixD0Nome    String?
+  modeloPixIdioma    String?
+  pixNoLembrete      Boolean  @default(true) // Pix copia e cola no D-2/D0 de quem tem uma fatura só
+  recebedorPix       String? // nome no cartão do Pix; null = razão social padrão
   usuarioId          String? // quem gravou esta versão
 
   createdAt DateTime @default(now())
@@ -3088,10 +3102,11 @@ model MensagemWhatsapp {
   @@map("mensagens_whatsapp")
 }
 
-// Momento do lembrete de pagamento (§28.1).
+// Momento do lembrete de pagamento (§28.1; D+2 desde 22/11 — §28.6).
 enum MomentoLembrete {
   D_MENOS_2 // 2 dias antes do vencimento: fatura disponível
   D_ZERO // dia do vencimento, se ainda em aberto
+  D_MAIS_2 // 2 dias de atraso: aviso único, depois só a cobrança humana
 }
 
 // Situação REAL do lembrete (gravada). SIMULADO só existe fora de produção;
@@ -3126,6 +3141,9 @@ model LembretePagamento {
   entregueEm    DateTime?
   lidoEm        DateTime?
   falhaEm       DateTime?
+  // Pix copia e cola na mensagem (§28.6): a intenção de pagamento que foi junto.
+  // null = lembrete só com o link.
+  intencaoId    String?
 
   fatura  Fatura  @relation(fields: [faturaId], references: [id])
   titular Titular @relation(fields: [titularId], references: [id])

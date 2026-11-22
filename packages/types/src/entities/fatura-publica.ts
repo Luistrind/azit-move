@@ -103,7 +103,7 @@ export interface PixSobDemandaPublico {
   valor: number;
   copiaECola: string;
   qrCodeImagem: string | null; // PNG em base64, quando o gateway devolve
-  validoAte: string; // ISO — 23h59 de hoje (Brasil)
+  validoAte: string; // ISO — 23h59 de hoje (Brasil); o Pix do lembrete vale até o vencimento (§28.6)
   simulado: boolean; // ambiente sem gateway real: o código não é pagável
   outroValor: boolean;
   faturas: { numero: number; vencimento: string; valor: number }[];

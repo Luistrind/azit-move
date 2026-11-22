@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { QUEUE_NAMES } from '../queues/queues.module';
+import { CobrancaModule } from '../cobranca/cobranca.module';
+import { FaturamentoModule } from '../faturamento/faturamento.module';
 import { WhatsappMetaService } from './whatsapp-meta.service';
 import { WhatsappParametrosService } from './whatsapp-parametros.service';
 import { WhatsappEnvioService } from './whatsapp-envio.service';
@@ -19,7 +21,9 @@ import { ConversaController } from './conversa.controller';
 // fila), os lembretes de pagamento e as Conversas. A notificação formal da POP
 // fica fora (§23.5).
 @Module({
-  imports: [BullModule.registerQueue({ name: QUEUE_NAMES.WHATSAPP })],
+  // Faturamento (Pix do lembrete) e Cobrança (valor de hoje da fatura no aviso
+  // de atraso) — §28.6. Nenhum dos dois importa este módulo: sem ciclo.
+  imports: [BullModule.registerQueue({ name: QUEUE_NAMES.WHATSAPP }), FaturamentoModule, CobrancaModule],
   controllers: [WhatsappWebhookController, WhatsappConfigController, LembreteController, ConversaController],
   providers: [
     WhatsappMetaService,

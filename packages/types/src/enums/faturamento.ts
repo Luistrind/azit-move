@@ -41,6 +41,7 @@ export const ROTULO_MODO_PIX: Record<ModoPixSobDemanda, string> = {
 export enum OrigemIntencaoPagamento {
   PAGINA_PUBLICA = 'PAGINA_PUBLICA',
   OPERADOR = 'OPERADOR',
+  LEMBRETE = 'LEMBRETE', // Pix que vai no lembrete do WhatsApp (doc 02 §28.6)
 }
 
 export enum SituacaoIntencaoPagamento {

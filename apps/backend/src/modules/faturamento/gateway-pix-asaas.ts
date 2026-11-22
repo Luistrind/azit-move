@@ -188,6 +188,16 @@ export class GatewayPixAsaas implements GatewayPix {
     return chave;
   }
 
+  async chavePix(): Promise<{ chave: string; tipo: string } | null> {
+    if (this.simulado) return { chave: 'pix-simulado@azitmove.com.br', tipo: 'EMAIL' };
+    try {
+      const c = await this.chaveAtiva();
+      return { chave: c.key, tipo: c.type ?? 'EVP' };
+    } catch {
+      return null;
+    }
+  }
+
   private async carregarChave(): Promise<ChavePixAsaas | null> {
     const pag = await this.leitura.requisicao<{ data: ChavePixAsaas[] }>('GET', '/pix/addressKeys?status=ACTIVE&limit=10', undefined, { semEspera: true });
     return pag.data?.find((k) => !!k.key) ?? null;

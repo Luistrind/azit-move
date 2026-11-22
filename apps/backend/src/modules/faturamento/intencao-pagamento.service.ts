@@ -156,11 +156,12 @@ export class IntencaoPagamentoService {
   }
 
   // Intenções que ainda valem AGORA para a conta, da mais recente para a mais
-  // antiga (o dia é o de hoje no Brasil — a que ficou de ontem está expirada
-  // mesmo antes de o job rodar, Regra 7). Pode haver várias: uma por valor.
+  // antiga (o dia é o de hoje no Brasil — a que valia só até ontem está
+  // expirada mesmo antes de o job rodar, Regra 7). Pode haver várias: uma por
+  // valor. O Pix do lembrete (§28.6) vale até o dia do vencimento (`ateDia`).
   async ativasDaConta(contaId: string) {
     return this.prisma.db.intencaoPagamento.findMany({
-      where: { contaId, situacao: 'ATIVA', dia: dataHojeBrasil() },
+      where: { contaId, situacao: 'ATIVA', ateDia: { gte: dataHojeBrasil() } },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -207,7 +208,8 @@ export class IntencaoPagamentoService {
 
     // 3) Teto de VALORES DISTINTOS por conta por dia (página pública não vira
     //    fábrica de cobranças). Valor que já foi pedido hoje não conta de novo.
-    const doDia = await this.prisma.db.intencaoPagamento.findMany({ where: { contaId: pedido.contaId, dia: hoje }, select: { valor: true } });
+    //    O Pix que o sistema mandou no lembrete não é pedido do cliente: não conta.
+    const doDia = await this.prisma.db.intencaoPagamento.findMany({ where: { contaId: pedido.contaId, dia: hoje, origem: { not: 'LEMBRETE' } }, select: { valor: true } });
     const distintos = new Set(doDia.map((l) => cent(l.valor)));
     if (!distintos.has(valor) && distintos.size >= conta.parametros.tetoIntencoesDia) {
       throw new HttpException(
@@ -247,7 +249,7 @@ export class IntencaoPagamentoService {
     //    já está gravado e o Pix recém-criado é descartado.
     const { criada, duplicada } = await this.prisma.db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM contas WHERE id = ${pedido.contaId} FOR UPDATE`;
-      const concorrente = mesmoValor(await tx.intencaoPagamento.findMany({ where: { contaId: pedido.contaId, situacao: 'ATIVA', dia: hoje } }));
+      const concorrente = mesmoValor(await tx.intencaoPagamento.findMany({ where: { contaId: pedido.contaId, situacao: 'ATIVA', ateDia: { gte: hoje } } }));
       if (concorrente) return { criada: concorrente as Prisma.IntencaoPagamentoGetPayload<object>, duplicada: true };
       const nova = await tx.intencaoPagamento.create({
         data: {
@@ -257,6 +259,7 @@ export class IntencaoPagamentoService {
           faturasPretendidas: faturas as unknown as Prisma.InputJsonValue,
           outroValor: !exato,
           dia: hoje,
+          ateDia: hoje,
           validoAte: fimDoDiaBrasil(hoje),
           origem: pedido.origem,
           usuarioId: pedido.usuarioId ?? null,
@@ -275,6 +278,81 @@ export class IntencaoPagamentoService {
     return this.mapear(criada, duplicada);
   }
 
+  // Pix que vai DENTRO do lembrete do WhatsApp (doc 02 §28.6, decisão Luís
+  // 22/11): só para conta com UMA fatura em aberto, do modelo AZIT, com o valor
+  // de hoje dessa fatura, válido até 23h59 do dia do vencimento (`ateDia`) —
+  // antes de vencer o valor não muda, então o D-2 e o D0 levam o MESMO Pix.
+  // Se ele deixou de valer (um pagamento entrou e cancelou as ativas), nasce um
+  // novo com o saldo. Nunca lança: quando não cabe ou o gateway falha, devolve
+  // o motivo e o lembrete sai só com o link (Regra 12 — o aviso não depende do Pix).
+  async pixParaLembrete(p: { contaId: string; faturaId: string; ateDia: string }): Promise<{ intencao: IntencaoCriada } | { motivo: string }> {
+    const hoje = dataHojeBrasil();
+    if (p.ateDia < hoje) return { motivo: 'o vencimento já passou' };
+    const conta = await this.contaFatura.carregar(p.contaId);
+    if (conta.abertasModeloAntigo.length > 0) return { motivo: 'conta com fatura do modelo antigo em aberto' };
+    const abertas = conta.faturas.filter((f) => f.status === 'FECHADA');
+    if (abertas.length !== 1 || abertas[0].id !== p.faturaId) return { motivo: 'conta com mais de uma fatura em aberto' };
+    const fatura = abertas[0];
+    const valor = this.contaFatura.projetar(conta, hoje).acumulado[0] ?? 0;
+    if (valor <= 0) return { motivo: 'fatura sem saldo em aberto' };
+
+    const consulta = {
+      where: { contaId: p.contaId, situacao: 'ATIVA', origem: 'LEMBRETE', ateDia: { gte: hoje }, valor: reais(valor), pixCopiaECola: { not: null } },
+      orderBy: { createdAt: 'desc' },
+    } satisfies Prisma.IntencaoPagamentoFindFirstArgs;
+    const jaExiste = await this.prisma.db.intencaoPagamento.findFirst(consulta);
+    if (jaExiste) return { intencao: this.mapear(jaExiste, true) };
+
+    const faturas: FaturaPretendida[] = [{ faturaId: fatura.id, numero: fatura.numero, vencimento: fatura.vencimento, valor }];
+    const id = `int_${randomBytes(12).toString('hex')}`;
+    let pix;
+    try {
+      pix = await this.gateway.criarPix({
+        referencia: referenciaIntencao(id),
+        valor,
+        dia: p.ateDia, // o QR vale até 23h59 do dia do vencimento
+        descricao: this.descricao(faturas, valor),
+        descricaoCurta: this.descricaoCurta(faturas),
+        titularId: conta.titular.id,
+      });
+    } catch (e) {
+      this.logger.warn(`Pix do lembrete da conta ${p.contaId} não foi gerado: ${(e as Error).message}`);
+      return { motivo: 'não foi possível gerar o Pix no gateway' };
+    }
+
+    const { criada, duplicada } = await this.prisma.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM contas WHERE id = ${p.contaId} FOR UPDATE`;
+      const concorrente = await tx.intencaoPagamento.findFirst(consulta);
+      if (concorrente) return { criada: concorrente, duplicada: true };
+      const nova = await tx.intencaoPagamento.create({
+        data: {
+          id,
+          contaId: p.contaId,
+          valor: reais(valor),
+          faturasPretendidas: faturas as unknown as Prisma.InputJsonValue,
+          outroValor: false,
+          dia: hoje,
+          ateDia: p.ateDia,
+          validoAte: fimDoDiaBrasil(p.ateDia),
+          origem: 'LEMBRETE',
+          situacao: 'ATIVA',
+          gatewayId: pix.gatewayId,
+          pixCopiaECola: pix.copiaECola,
+          pixQrCodeImagem: pix.qrCodeImagem,
+          simulado: pix.simulado,
+        },
+      });
+      return { criada: nova, duplicada: false };
+    }, { timeout: 20_000 });
+    if (duplicada) await this.enfileirarCancelamento(criada.id, pix.gatewayId);
+    return { intencao: this.mapear(criada, duplicada) };
+  }
+
+  // A chave Pix que recebe — o cartão de Pix do WhatsApp exige (§28.6).
+  chavePix() {
+    return this.gateway.chavePix();
+  }
+
   // Virada do dia (§32.4-A): expira as ativas de dias anteriores e cancela os
   // Pix. Enfileira (Regra 4 das filas: retry/backoff, jobId diário deduplica).
   @Cron('5 0 * * *', { timeZone: FUSO_NEGOCIO })
@@ -284,8 +362,9 @@ export class IntencaoPagamentoService {
   }
 
   async expirarVencidas(hoje: string = dataHojeBrasil()): Promise<{ expiradas: number; pagasEncontradas: number }> {
+    // Pelo último dia em que vale: o Pix do lembrete atravessa a virada até o vencimento.
     const vencidas = await this.prisma.db.intencaoPagamento.findMany({
-      where: { situacao: 'ATIVA', dia: { lt: hoje } },
+      where: { situacao: 'ATIVA', ateDia: { lt: hoje } },
       select: { id: true, gatewayId: true },
     });
     let pagasEncontradas = 0;

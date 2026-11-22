@@ -22,6 +22,69 @@ export class ErroMeta extends Error {
 
 type RespostaEnvio = { messages?: { id: string }[]; error?: { message?: string; code?: number; error_data?: { details?: string } } };
 
+// Pedido do cartão de Pix (§28.6).
+export interface PedidoPixWhatsapp {
+  referencia: string; // id da intenção de pagamento
+  itemNome: string; // "Fatura nº 12"
+  valorCentavos: number;
+  codigoPix: string; // copia e cola
+  recebedor: string; // nome no cartão
+  chave: string; // chave Pix de quem recebe (exigida pela Meta)
+  tipoChave: string; // CPF | CNPJ | EMAIL | PHONE | EVP
+  expiraEm: Date | null; // a Meta desliga o botão depois (mínimo 5 min à frente)
+}
+
+const TIPOS_CHAVE_META = ['CPF', 'CNPJ', 'EMAIL', 'PHONE', 'EVP'];
+
+// Componentes do modelo de pedido com Pix — função pura (o teste confere o
+// formato que a Meta espera sem precisar falar com ela).
+export function componentesPedidoPix(variaveisCorpo: string[], p: PedidoPixWhatsapp, agora: Date = new Date()): Record<string, unknown>[] {
+  const dinheiro = (v: number) => ({ value: Math.round(v), offset: 100 });
+  const expira = p.expiraEm && p.expiraEm.getTime() - agora.getTime() > 5 * 60_000
+    ? { expiration: { timestamp: String(Math.floor(p.expiraEm.getTime() / 1000)), description: 'O código Pix vale até 23h59 do dia do vencimento.' } }
+    : {};
+  return [
+    { type: 'body', parameters: variaveisCorpo.map((t) => ({ type: 'text', text: t.replace(/\s+/g, ' ').trim() })) },
+    {
+      type: 'button',
+      sub_type: 'order_details',
+      index: 0,
+      parameters: [
+        {
+          type: 'action',
+          action: {
+            order_details: {
+              reference_id: p.referencia.slice(0, 35),
+              type: 'digital-goods',
+              payment_type: 'br',
+              currency: 'BRL',
+              total_amount: dinheiro(p.valorCentavos),
+              order: {
+                status: 'pending',
+                ...expira,
+                items: [{ retailer_id: p.referencia.slice(0, 35), name: p.itemNome, amount: dinheiro(p.valorCentavos), quantity: 1 }],
+                subtotal: dinheiro(p.valorCentavos),
+                tax: dinheiro(0),
+              },
+              payment_settings: [
+                {
+                  type: 'pix_dynamic_code',
+                  pix_dynamic_code: {
+                    code: p.codigoPix,
+                    merchant_name: p.recebedor,
+                    key: p.chave,
+                    key_type: TIPOS_CHAVE_META.includes(p.tipoChave) ? p.tipoChave : 'EVP',
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
+  ];
+}
+
 // A Meta só aceita texto livre até 24 h depois da última mensagem do cliente;
 // fora disso responde com este código (ela é a fonte da verdade da janela).
 const CODIGO_FORA_DA_JANELA = 131047;
@@ -92,6 +155,26 @@ export class WhatsappMetaService {
       to: p.destino,
       type: 'template',
       template: { name: p.modelo, language: { code: p.idioma }, components },
+    });
+  }
+
+  // Modelo "detalhes do pedido" com Pix (doc 02 §28.6): cartão com o valor e o
+  // botão fixo da Meta "Copiar código Pix". O botão é do tipo order_details e
+  // leva o pedido (total, item) e o código Pix copia e cola com o recebedor e a
+  // chave. Valores em centavos (offset 100), moeda BRL.
+  async enviarModeloPedidoPix(p: {
+    destino: string;
+    destinoAutorizadoTeste: boolean;
+    modelo: string;
+    idioma: string;
+    variaveisCorpo: string[];
+    pedido: PedidoPixWhatsapp;
+  }): Promise<string> {
+    this.exigirAutorizacao(p.destino, p.destinoAutorizadoTeste);
+    return this.postarMensagem({
+      to: p.destino,
+      type: 'template',
+      template: { name: p.modelo, language: { code: p.idioma }, components: componentesPedidoPix(p.variaveisCorpo, p.pedido) },
     });
   }
 

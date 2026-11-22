@@ -9,15 +9,17 @@ export enum DecisaoEnvioWhatsapp {
   RETIDO = 'RETIDO', // produção sem credencial: nunca simula
 }
 
-// Momento do lembrete de pagamento (§28.1).
+// Momento do lembrete de pagamento (§28.1; D+2 desde 22/11 — §28.6).
 export enum MomentoLembrete {
   D_MENOS_2 = 'D_MENOS_2',
   D_ZERO = 'D_ZERO',
+  D_MAIS_2 = 'D_MAIS_2', // aviso de atraso, uma vez só
 }
 
 export const NOME_MOMENTO_LEMBRETE: Record<MomentoLembrete, string> = {
   [MomentoLembrete.D_MENOS_2]: '2 dias antes do vencimento',
   [MomentoLembrete.D_ZERO]: 'No dia do vencimento',
+  [MomentoLembrete.D_MAIS_2]: '2 dias de atraso',
 };
 
 // Situação REAL do lembrete (gravada — §28.4).

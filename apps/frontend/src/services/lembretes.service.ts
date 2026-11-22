@@ -8,12 +8,13 @@ export interface LembreteRegistrado {
   faturaId: string;
   faturaNumero: number;
   vencimento: string;
-  momento: string; // D_MENOS_2 | D_ZERO
+  momento: string; // D_MENOS_2 | D_ZERO | D_MAIS_2
   situacao: string; // PREPARADO | ENVIADO | ENTREGUE | LIDO | FALHOU | SIMULADO | RETIDO
   motivo: string | null;
   destino: string | null;
   texto: string;
   modelo: string;
+  comPix: boolean; // levou o Pix copia e cola (doc 02 §28.6)
   registradoEm: string;
   enviadoEm: string | null;
   entregueEm: string | null;

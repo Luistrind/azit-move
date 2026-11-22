@@ -5,7 +5,7 @@ import { api } from '../lib/api';
 // Nenhum segredo trafega aqui (credenciais ficam em Configuração › Integrações).
 
 export interface ModeloWhatsapp {
-  momento: string; // D_MENOS_2 | D_ZERO
+  momento: string; // D_MENOS_2 | D_ZERO | D_MAIS_2
   nome: string;
   idioma: string;
   // O que precisa existir na Meta para ESTE ambiente.
@@ -19,11 +19,21 @@ export interface ModeloWhatsapp {
   };
 }
 
+// Modelo "detalhes do pedido" com o Pix copia e cola (doc 02 §28.6): botão fixo
+// da Meta, link da fatura inteiro no texto — o mesmo modelo nos dois ambientes.
+export interface ModeloPixWhatsapp {
+  momento: string; // D_MENOS_2 | D_ZERO
+  nome: string;
+  idioma: string;
+  cadastro: { categoria: string; corpo: string; variaveis: string[]; botaoTexto: string };
+}
+
 export interface ParametrosWhatsapp {
   versao: number; // 0 = padrões, nunca salvo
   ativo: boolean;
   numerosAutorizados: string[];
-  modelos: ModeloWhatsapp[];
+  modelos: ModeloWhatsapp[]; // D-2, D0 e D+2 (atraso)
+  pix: { ativo: boolean; recebedor: string; modelos: ModeloPixWhatsapp[] };
   janela: { inicio: number; fim: number };
   alteradoEm: string | null;
   alteradoPor: string | null;
@@ -37,6 +47,13 @@ export interface SalvarParametrosWhatsapp {
   modeloD2Idioma?: string;
   modeloD0Nome?: string;
   modeloD0Idioma?: string;
+  modeloAtrasoNome?: string;
+  modeloAtrasoIdioma?: string;
+  modeloPixD2Nome?: string;
+  modeloPixD0Nome?: string;
+  modeloPixIdioma?: string;
+  pixNoLembrete?: boolean;
+  recebedorPix?: string;
 }
 
 export const whatsappService = {

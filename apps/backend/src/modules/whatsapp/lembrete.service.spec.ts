@@ -16,6 +16,7 @@ const dia = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 type Fatura = {
   id: string; numero: number; status: string; dataVencimento: Date; valorTotal: Prisma.Decimal; valorPago: Prisma.Decimal | null;
   acordoId: string | null; tokenPublico: string | null; parcelas: { acordoId: string | null }[];
+  contaId: string; modeloEncargo: string;
   conta: { titular: { id: string; nome: string; whatsapp: string } };
 };
 type Lembrete = Record<string, unknown> & { id: string; faturaId: string; momento: string; situacao: string; diaReferencia: string; mensagemId: string | null };
@@ -23,13 +24,23 @@ type Lembrete = Record<string, unknown> & { id: string; faturaId: string; moment
 function fatura(p: Partial<Fatura> & { id: string; vence: string }): Fatura {
   return {
     numero: 12, status: 'FECHADA', dataVencimento: dia(p.vence), valorTotal: new Prisma.Decimal('699.00'), valorPago: null,
-    acordoId: null, tokenPublico: TOKEN, parcelas: [{ acordoId: null }],
+    acordoId: null, tokenPublico: TOKEN, parcelas: [{ acordoId: null }], contaId: 'c1', modeloEncargo: 'AZIT',
     conta: { titular: { id: 't1', nome: 'joão pedro da silva', whatsapp: '(11) 98765-4321' } },
     ...p,
   };
 }
 
-function montar(opts: { faturas?: Fatura[]; ativo?: boolean; envio?: ResultadoEnvioWhatsapp | ((n: number) => ResultadoEnvioWhatsapp); titular?: { whatsapp: string; asaasCustomerId: string | null } | null } = {}) {
+function montar(opts: {
+  faturas?: Fatura[];
+  ativo?: boolean;
+  envio?: ResultadoEnvioWhatsapp | ((n: number) => ResultadoEnvioWhatsapp);
+  envioPix?: ResultadoEnvioWhatsapp;
+  titular?: { whatsapp: string; asaasCustomerId: string | null } | null;
+  decisao?: DecisaoEnvioWhatsapp;
+  pixNoLembrete?: boolean;
+  pix?: { intencao: Record<string, unknown> } | { motivo: string };
+  faltaHoje?: number | null;
+} = {}) {
   const lembretes: Lembrete[] = [];
   const cfgs = new Map<string, Record<string, unknown>>();
   const auditoria: { acao: string; depois: unknown }[] = [];
@@ -74,16 +85,31 @@ function montar(opts: { faturas?: Fatura[]; ativo?: boolean; envio?: ResultadoEn
       logAuditoria: { create: async ({ data }: { data: { acao: string; depois: unknown } }) => { auditoria.push(data); } },
     },
   };
-  const modelos = { D_MENOS_2: { nome: 'azit_fatura_disponivel_hml', idioma: 'pt_BR' }, D_ZERO: { nome: 'azit_fatura_vence_hoje_hml', idioma: 'pt_BR' } };
-  const parametros = { vigente: async () => ({ ativo: opts.ativo ?? true, numerosAutorizados: [], modelos }), producao: () => false };
+  const modelos = {
+    D_MENOS_2: { nome: 'azit_fatura_disponivel_hml', idioma: 'pt_BR' },
+    D_ZERO: { nome: 'azit_fatura_vence_hoje_hml', idioma: 'pt_BR' },
+    D_MAIS_2: { nome: 'azit_fatura_atraso_hml', idioma: 'pt_BR' },
+  };
+  const modelosPix = { D_MENOS_2: { nome: 'azit_fatura_pix_disponivel', idioma: 'pt_BR' }, D_ZERO: { nome: 'azit_fatura_pix_vence_hoje', idioma: 'pt_BR' } };
+  const parametros = {
+    vigente: async () => ({ ativo: opts.ativo ?? true, numerosAutorizados: [], modelos, modelosPix, pixNoLembrete: opts.pixNoLembrete ?? true, recebedorPix: 'AZIT COMERCIO DE VEICULOS LTDA' }),
+    producao: () => false,
+  };
   const envio = {
     enviarModelo: jest.fn(async (): Promise<ResultadoEnvioWhatsapp> => {
       envios += 1;
       const r = opts.envio ?? { resultado: 'SIMULADO', motivo: 'ambiente sem credencial do WhatsApp — nada foi enviado' };
       return typeof r === 'function' ? r(envios) : r;
     }),
-    decidir: jest.fn(async () => ({ decisao: DecisaoEnvioWhatsapp.SIMULADO, motivo: 'ambiente sem credencial', producao: false, autorizadoTeste: false })),
+    enviarModeloPedidoPix: jest.fn(async (): Promise<ResultadoEnvioWhatsapp> => opts.envioPix ?? { resultado: 'ENVIADO', mensagemId: 'wamid.PIX' }),
+    decidir: jest.fn(async () => ({ decisao: opts.decisao ?? DecisaoEnvioWhatsapp.SIMULADO, motivo: 'ambiente sem credencial', producao: false, autorizadoTeste: false })),
   };
+  const intencoes = {
+    pixParaLembrete: jest.fn(async () => opts.pix ?? { motivo: 'sem pix no teste' }),
+    chavePix: jest.fn(async () => ({ chave: 'financeiro@azitmove.com.br', tipo: 'EMAIL' })),
+  };
+  const faturasSvc = { faltaHojeDaFatura: jest.fn(async () => (opts.faltaHoje === undefined ? null : opts.faltaHoje)) };
+  const config = { get: (k: string) => (k === 'faturaPublicaUrl' ? 'https://fatura-hml.azitmove.com.br/' : undefined) };
   const eventos = { registrarReceptor: jest.fn() };
   const processor = { registrarTratador: jest.fn() };
   const asaas = {
@@ -92,9 +118,86 @@ function montar(opts: { faturas?: Fatura[]; ativo?: boolean; envio?: ResultadoEn
   };
   const alertas = { emitir: jest.fn(async () => undefined) };
   const fila = { add: jest.fn(async () => undefined) };
-  const service = new LembreteService(prisma as never, parametros as never, envio as never, eventos as never, processor as never, asaas as never, alertas as never, fila as never);
-  return { service, lembretes, cfgs, auditoria, envio, eventos, processor, asaas, alertas, fila };
+  const service = new LembreteService(
+    prisma as never, parametros as never, envio as never, eventos as never, processor as never, asaas as never, alertas as never, fila as never,
+    intencoes as never, faturasSvc as never, config as never,
+  );
+  return { service, lembretes, cfgs, auditoria, envio, eventos, processor, asaas, alertas, fila, intencoes, faturasSvc };
 }
+
+describe('LembreteService — Pix na mensagem e aviso de atraso (doc 02 §28.6)', () => {
+  const intencao = { id: 'int_abc', valor: 69900, pixCopiaECola: '000201PIXCOPIAECOLA', validoAte: new Date('2026-11-18T02:59:59.999Z') };
+
+  it('D+2: aviso de atraso com o valor de HOJE (com encargos), modelo próprio e botão com o código da fatura, sem Pix', async () => {
+    const m = montar({ faturas: [fatura({ id: 'fA', numero: 9, vence: '2026-11-13' })], decisao: DecisaoEnvioWhatsapp.ENVIA, envio: { resultado: 'ENVIADO', mensagemId: 'wamid.A' }, faltaHoje: 71498 });
+    const r = await m.service.varrer({ agora: MEIO_DIA });
+    expect(r.enviados).toBe(1);
+    const l = m.lembretes[0];
+    expect(l).toMatchObject({ momento: 'D_MAIS_2', modeloNome: 'azit_fatura_atraso_hml', situacao: 'ENVIADO', intencaoId: null });
+    expect(l.texto).toBe('Olá, João! Aqui é da Azit Move. Sua fatura nº 9, que venceu em 13/11/2026, ainda não foi paga. Hoje o valor é R$ 714,98. Pague pelo botão abaixo para evitar o bloqueio do seu veículo.');
+    expect(m.envio.enviarModelo).toHaveBeenCalledWith(expect.objectContaining({ variaveisCorpo: ['João', '9', '13/11/2026', 'R$ 714,98'], sufixoBotaoUrl: TOKEN }));
+    expect(m.intencoes.pixParaLembrete).not.toHaveBeenCalled();
+  });
+
+  it('D+1 e D+3 não geram nada (depois do D+2 é a cobrança humana)', async () => {
+    const m = montar({ faturas: [fatura({ id: 'f1', vence: '2026-11-14' }), fatura({ id: 'f3', vence: '2026-11-12' })] });
+    const r = await m.service.varrer({ agora: MEIO_DIA });
+    expect(r.ignoradas).toBe(2);
+    expect(m.lembretes).toHaveLength(0);
+  });
+
+  it('D-2 com uma fatura só e envio de verdade: vai o cartão com o Pix e o link inteiro no texto', async () => {
+    const m = montar({ faturas: [fatura({ id: 'f1', numero: 21, vence: '2026-11-17' })], decisao: DecisaoEnvioWhatsapp.ENVIA, pix: { intencao } });
+    const r = await m.service.varrer({ agora: MEIO_DIA });
+    expect(r.enviados).toBe(1);
+    expect(m.intencoes.pixParaLembrete).toHaveBeenCalledWith({ contaId: 'c1', faturaId: 'f1', ateDia: '2026-11-17' });
+    const l = m.lembretes[0];
+    expect(l).toMatchObject({ modeloNome: 'azit_fatura_pix_disponivel', intencaoId: 'int_abc', situacao: 'ENVIADO', mensagemId: 'wamid.PIX' });
+    expect(l.texto).toContain(`acesse https://fatura-hml.azitmove.com.br/${TOKEN} e escolha como pagar.`);
+    expect(m.envio.enviarModeloPedidoPix).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelo: 'azit_fatura_pix_disponivel',
+        pedido: expect.objectContaining({ codigoPix: '000201PIXCOPIAECOLA', valorCentavos: 69900, recebedor: 'AZIT COMERCIO DE VEICULOS LTDA', chave: 'financeiro@azitmove.com.br', tipoChave: 'EMAIL', itemNome: 'Fatura nº 21' }),
+      }),
+    );
+    expect(m.envio.enviarModelo).not.toHaveBeenCalled();
+  });
+
+  it('a Meta recusa o modelo com Pix: o aviso sai só com o link e o registro diz por quê', async () => {
+    const m = montar({
+      faturas: [fatura({ id: 'f1', vence: '2026-11-15' })],
+      decisao: DecisaoEnvioWhatsapp.ENVIA,
+      pix: { intencao },
+      envioPix: { resultado: 'FALHOU', motivo: 'envio recusado pela Meta (400): modelo em análise' },
+      envio: { resultado: 'ENVIADO', mensagemId: 'wamid.LINK' },
+    });
+    const r = await m.service.varrer({ agora: MEIO_DIA });
+    expect(r.enviados).toBe(1);
+    const l = m.lembretes[0];
+    expect(l).toMatchObject({ momento: 'D_ZERO', modeloNome: 'azit_fatura_vence_hoje_hml', intencaoId: null, situacao: 'ENVIADO', mensagemId: 'wamid.LINK' });
+    expect(l.motivo).toMatch(/Pix não foi na mensagem.*modelo em análise/);
+    expect(m.alertas.emitir).not.toHaveBeenCalled();
+  });
+
+  it('sem Pix quando a mensagem não sai de verdade, quando a chave está desligada ou quando não cabe', async () => {
+    const simulado = montar({ faturas: [fatura({ id: 'f1', vence: '2026-11-17' })], pix: { intencao } });
+    await simulado.service.varrer({ agora: MEIO_DIA });
+    expect(simulado.intencoes.pixParaLembrete).not.toHaveBeenCalled();
+
+    const desligado = montar({ faturas: [fatura({ id: 'f1', vence: '2026-11-17' })], decisao: DecisaoEnvioWhatsapp.ENVIA, pixNoLembrete: false, pix: { intencao } });
+    await desligado.service.varrer({ agora: MEIO_DIA });
+    expect(desligado.intencoes.pixParaLembrete).not.toHaveBeenCalled();
+
+    const antigo = montar({ faturas: [fatura({ id: 'f1', vence: '2026-11-17', modeloEncargo: 'ASAAS_NATIVO' })], decisao: DecisaoEnvioWhatsapp.ENVIA, envio: { resultado: 'ENVIADO', mensagemId: 'w' }, pix: { intencao } });
+    await antigo.service.varrer({ agora: MEIO_DIA });
+    expect(antigo.intencoes.pixParaLembrete).not.toHaveBeenCalled();
+    expect(antigo.lembretes[0]).toMatchObject({ modeloNome: 'azit_fatura_disponivel_hml', intencaoId: null });
+
+    const semPix = montar({ faturas: [fatura({ id: 'f1', vence: '2026-11-17' })], decisao: DecisaoEnvioWhatsapp.ENVIA, envio: { resultado: 'ENVIADO', mensagemId: 'w' }, pix: { motivo: 'não foi possível gerar o Pix no gateway' } });
+    await semPix.service.varrer({ agora: MEIO_DIA });
+    expect(semPix.lembretes[0]).toMatchObject({ modeloNome: 'azit_fatura_disponivel_hml', intencaoId: null, situacao: 'ENVIADO' });
+  });
+});
 
 describe('LembreteService — varredura (doc 02 §28.1)', () => {
   it('chave geral desligada: nada é gerado', async () => {

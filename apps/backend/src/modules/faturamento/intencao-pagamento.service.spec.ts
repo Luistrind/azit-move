@@ -1,24 +1,27 @@
 import { Prisma } from '@prisma/client';
 import { ContaFaturaService, type ContaCarregada } from './conta-fatura.service';
 import { IntencaoPagamentoService } from './intencao-pagamento.service';
-import { AGORA, contaFixture, F2, F3, F4, HOJE } from './conta.fixture-spec';
+import { AGORA, contaFixture, F2, F3, F4, faturaFixture, HOJE } from './conta.fixture-spec';
 
 // Intenção de pagamento (doc 02 §32.4-A): VÁRIAS ativas por conta no dia, uma
 // por valor (regra 15/11 — gerar um Pix novo não cancela os anteriores), reuso
 // por valor, teto diário de valores distintos, virada do dia e validação do
 // valor no servidor. Gateway e banco dublados.
 
-type Linha = { id: string; contaId: string; valor: Prisma.Decimal; dia: string; situacao: string; gatewayId: string | null; pixCopiaECola: string | null; pixQrCodeImagem: string | null; simulado: boolean; outroValor: boolean; faturasPretendidas: unknown; validoAte: Date; createdAt: Date };
+type Linha = { id: string; contaId: string; valor: Prisma.Decimal; dia: string; ateDia: string; origem?: string; situacao: string; gatewayId: string | null; pixCopiaECola: string | null; pixQrCodeImagem: string | null; simulado: boolean; outroValor: boolean; faturasPretendidas: unknown; validoAte: Date; createdAt: Date };
 
 function montar(conta: ContaCarregada, existentes: Partial<Linha>[] = []) {
   const tabela: Linha[] = existentes.map((e, i) => ({
     id: `int-${i}`, contaId: 'conta-1', valor: new Prisma.Decimal('0'), dia: HOJE, situacao: 'ATIVA', gatewayId: `pay-${i}`, pixCopiaECola: `codigo-${i}`,
-    pixQrCodeImagem: null, simulado: false, outroValor: false, faturasPretendidas: [], validoAte: new Date(), createdAt: new Date(2026, 10, 9, 8, i), ...e,
+    pixQrCodeImagem: null, simulado: false, outroValor: false, faturasPretendidas: [], validoAte: new Date(), createdAt: new Date(2026, 10, 9, 8, i),
+    ...e, ateDia: e.ateDia ?? e.dia ?? HOJE,
   }));
   const casa = (l: Linha, where: Record<string, unknown>) =>
     Object.entries(where).every(([k, v]) => {
       const atual = (l as unknown as Record<string, unknown>)[k];
+      if (atual instanceof Prisma.Decimal && typeof v === 'string') return atual.equals(new Prisma.Decimal(v));
       if (v && typeof v === 'object' && 'lt' in v) return (atual as string) < (v as { lt: string }).lt;
+      if (v && typeof v === 'object' && 'gte' in v) return (atual as string) >= (v as { gte: string }).gte;
       if (v && typeof v === 'object' && 'in' in v) return (v as { in: unknown[] }).in.includes(atual);
       if (v && typeof v === 'object' && 'not' in v) return atual !== (v as { not: unknown }).not;
       return atual === v;
@@ -123,7 +126,7 @@ describe('IntencaoPagamentoService', () => {
       // 1ª leitura (reuso) e 2ª (teto do dia) do 2º pedido ainda não enxergam a concorrente.
       return chamadas <= 2 ? [] : ativasAntes(args);
     });
-    tabela.push({ id: 'int-concorrente', contaId: 'conta-1', valor: new Prisma.Decimal('1072.43'), dia: HOJE, situacao: 'ATIVA', gatewayId: 'pay-concorrente', pixCopiaECola: 'codigo-concorrente', pixQrCodeImagem: null, simulado: false, outroValor: false, faturasPretendidas: [], validoAte: new Date(), createdAt: new Date() });
+    tabela.push({ id: 'int-concorrente', contaId: 'conta-1', valor: new Prisma.Decimal('1072.43'), dia: HOJE, ateDia: HOJE, situacao: 'ATIVA', gatewayId: 'pay-concorrente', pixCopiaECola: 'codigo-concorrente', pixQrCodeImagem: null, simulado: false, outroValor: false, faturasPretendidas: [], validoAte: new Date(), createdAt: new Date() });
     const r = await service.criar({ contaId: 'conta-1', valor: 107243, origem: 'PAGINA_PUBLICA' });
     expect(r).toMatchObject({ id: 'int-concorrente', pixCopiaECola: 'codigo-concorrente', reaproveitada: true });
     expect(tabela).toHaveLength(1); // não gravou uma 2ª ativa do mesmo valor
@@ -294,5 +297,51 @@ describe('IntencaoPagamentoService', () => {
     expect(r).toEqual({ conferidas: 2, enfileiradas: 1, simulado: false });
     expect(fila.add).toHaveBeenCalledTimes(1);
     expect(fila.add).toHaveBeenCalledWith('baixar', expect.objectContaining({ intencaoId: 'a', pagamentoId: 'pay-a', origem: 'CONFERENCIA' }), expect.anything());
+  });
+});
+
+describe('IntencaoPagamentoService — Pix do lembrete do WhatsApp (doc 02 §28.6)', () => {
+  beforeAll(() => jest.useFakeTimers().setSystemTime(AGORA));
+  afterAll(() => jest.useRealTimers());
+  const vence11 = () => faturaFixture('f5', 25, '2026-11-11');
+
+  it('uma fatura só: Pix do valor da fatura, válido até 23h59 do VENCIMENTO, origem LEMBRETE', async () => {
+    const { service, gateway, tabela } = montar(contaFixture([vence11()]));
+    const r = await service.pixParaLembrete({ contaId: 'conta-1', faturaId: 'f5', ateDia: '2026-11-11' });
+    if (!('intencao' in r)) throw new Error(`esperava Pix: ${r.motivo}`);
+    expect(gateway.criarPix).toHaveBeenCalledWith(expect.objectContaining({ dia: '2026-11-11', valor: r.intencao.valor, referencia: `intencao:${r.intencao.id}` }));
+    expect(r.intencao.validoAte.toISOString()).toBe('2026-11-12T02:59:59.999Z');
+    expect(tabela[0]).toMatchObject({ origem: 'LEMBRETE', dia: HOJE, ateDia: '2026-11-11', situacao: 'ATIVA' });
+  });
+
+  it('o D0 leva o MESMO Pix do D-2 (reuso), e a virada do dia não o expira antes do vencimento', async () => {
+    const { service, gateway } = montar(contaFixture([vence11()]));
+    const d2 = await service.pixParaLembrete({ contaId: 'conta-1', faturaId: 'f5', ateDia: '2026-11-11' });
+    const exp = await service.expirarVencidas('2026-11-10');
+    expect(exp.expiradas).toBe(0);
+    const d0 = await service.pixParaLembrete({ contaId: 'conta-1', faturaId: 'f5', ateDia: '2026-11-11' });
+    expect('intencao' in d0 && 'intencao' in d2 && d0.intencao.id === d2.intencao.id).toBe(true);
+    expect(gateway.criarPix).toHaveBeenCalledTimes(1);
+    expect((await service.expirarVencidas('2026-11-12')).expiradas).toBe(1);
+  });
+
+  it('a página reaproveita o Pix do lembrete quando o cliente escolhe o mesmo valor', async () => {
+    const { service, gateway } = montar(contaFixture([vence11()]));
+    const l = await service.pixParaLembrete({ contaId: 'conta-1', faturaId: 'f5', ateDia: '2026-11-11' });
+    if (!('intencao' in l)) throw new Error('esperava Pix');
+    const pagina = await service.criar({ contaId: 'conta-1', valor: l.intencao.valor, origem: 'PAGINA_PUBLICA' });
+    expect(pagina).toMatchObject({ id: l.intencao.id, reaproveitada: true });
+    expect(gateway.criarPix).toHaveBeenCalledTimes(1);
+  });
+
+  it('duas faturas em aberto, fatura do modelo antigo ou falha do gateway: devolve o motivo e não lança', async () => {
+    const duas = montar(contaFixture([F3(), vence11()]));
+    expect(await duas.service.pixParaLembrete({ contaId: 'conta-1', faturaId: 'f5', ateDia: '2026-11-11' })).toEqual({ motivo: 'conta com mais de uma fatura em aberto' });
+    const mista = montar(contaFixture([vence11()], { abertasModeloAntigo: [{ id: 'x', numero: 1, vencimento: '2026-11-11', valor: 1000, tokenPublico: null }] }));
+    expect(await mista.service.pixParaLembrete({ contaId: 'conta-1', faturaId: 'f5', ateDia: '2026-11-11' })).toEqual({ motivo: 'conta com fatura do modelo antigo em aberto' });
+    const falha = montar(contaFixture([vence11()]));
+    falha.gateway.criarPix.mockRejectedValueOnce(new Error('timeout'));
+    expect(await falha.service.pixParaLembrete({ contaId: 'conta-1', faturaId: 'f5', ateDia: '2026-11-11' })).toEqual({ motivo: 'não foi possível gerar o Pix no gateway' });
+    expect(falha.tabela).toHaveLength(0);
   });
 });

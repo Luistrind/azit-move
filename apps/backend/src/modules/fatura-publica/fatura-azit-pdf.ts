@@ -1,5 +1,5 @@
 import type { FaturaPublica } from '@azit/types';
-import { formatCurrency, isoParaBR, projetarConta } from '@azit/utils';
+import { diaBrasil, formatCurrency, isoParaBR, projetarConta } from '@azit/utils';
 
 // PDF do modelo AZIT (doc 02 §32.2, D-20 do Vicente): dois documentos pela
 // MESMA projeção da página — a FATURA (itens, o que falta pagar, encargos do
@@ -53,7 +53,7 @@ export function htmlFaturaAzitPdf(p: FaturaPublica, faturaId: string): { html: s
   const pix = paga
     ? ''
     : conta.pix
-      ? `<div class="pixf"><b>Pix copia e cola · ${brl(conta.pix.valor)} · válido até 23h59 de ${isoParaBR(conta.hoje)}${conta.pix.simulado ? ' · ambiente de teste, não pague' : ''}</b>${esc(conta.pix.copiaECola)}</div>`
+      ? `<div class="pixf"><b>Pix copia e cola · ${brl(conta.pix.valor)} · válido até 23h59 de ${isoParaBR(diaBrasil(new Date(conta.pix.validoAte)))}${conta.pix.simulado ? ' · ambiente de teste, não pague' : ''}</b>${esc(conta.pix.copiaECola)}</div>`
       : `<div class="pixf"><b>Como pagar</b>Abra o link da sua fatura e toque em "Copiar código Pix": o código é gerado na hora, com o valor do dia, e vale até as 23h59.</div>`;
   const geradoEm = new Date(p.geradoEm).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' });
   const corSelo = paga ? '#1f9d5b' : '#2456c7';

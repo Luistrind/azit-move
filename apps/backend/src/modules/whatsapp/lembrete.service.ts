@@ -13,23 +13,32 @@ import {
   FUSO_NEGOCIO,
   inicioDiaUTC,
   LEMBRETE_DIAS_ANTES,
+  LEMBRETE_DIAS_ATRASO,
   LEMBRETE_HORA_FIM,
   LEMBRETE_HORA_INICIO,
   momentoLembreteDaFatura,
+  MOMENTOS_LEMBRETE_PIX,
   normalizarWhatsapp,
   partesBrasil,
+  pixCabeNoLembrete,
   situacaoLembreteAposStatusMeta,
   somarDiasISO,
   textoLembrete,
+  textoLembretePix,
   variaveisLembrete,
+  variaveisLembretePix,
+  type MomentoLembretePix,
 } from '@azit/utils';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
+import { FaturaService } from '../cobranca/fatura.service';
+import { IntencaoPagamentoService } from '../faturamento/intencao-pagamento.service';
 import { NotificacaoService } from '../notificacao/notificacao.service';
 import { QUEUE_NAMES } from '../queues/queues.module';
 import { WhatsappEnvioService } from './whatsapp-envio.service';
 import { ReceptorStatusMeta, WhatsappEventosService } from './whatsapp-eventos.service';
-import { WhatsappParametrosService } from './whatsapp-parametros.service';
+import { WhatsappParametrosService, type ParametrosWhatsapp } from './whatsapp-parametros.service';
 import { JOB_EVENTO_META, WhatsappProcessor } from './whatsapp.processor';
 
 // ============================================================
@@ -77,6 +86,9 @@ export class LembreteService implements OnModuleInit, ReceptorStatusMeta {
     private readonly asaas: AsaasService,
     private readonly alertas: NotificacaoService,
     @InjectQueue(QUEUE_NAMES.WHATSAPP) private readonly fila: Queue,
+    private readonly intencoes: IntencaoPagamentoService,
+    private readonly faturas: FaturaService,
+    private readonly config: ConfigService,
   ) {}
 
   // A fila do WhatsApp tem UM consumidor; a situação de entrega chega por UM
@@ -112,13 +124,13 @@ export class LembreteService implements OnModuleInit, ReceptorStatusMeta {
     resumo.executada = true;
 
     // Vencimento é coluna de DATA (dia-calendário gravado em UTC): as faturas
-    // que vencem HOJE (D0) e as que vencem daqui a 2 dias (D-2), de titular com
-    // o lembrete ligado.
+    // que vencem HOJE (D0), as que vencem daqui a 2 dias (D-2) e as que
+    // venceram há 2 dias (D+2, §28.6), de titular com o lembrete ligado.
     const doDia = (d: string) => ({ dataVencimento: { gte: inicioDiaUTC(d), lt: inicioDiaUTC(somarDiasISO(d, 1)) } });
     const faturas = await this.prisma.db.fatura.findMany({
       where: {
         status: 'FECHADA',
-        OR: [doDia(hoje), doDia(somarDiasISO(hoje, LEMBRETE_DIAS_ANTES))],
+        OR: [doDia(hoje), doDia(somarDiasISO(hoje, LEMBRETE_DIAS_ANTES)), doDia(somarDiasISO(hoje, -LEMBRETE_DIAS_ATRASO))],
         conta: { titular: { lembrete: { ativo: true } } },
       },
       include: INCLUDE_FATURA,
@@ -146,7 +158,7 @@ export class LembreteService implements OnModuleInit, ReceptorStatusMeta {
         continue;
       }
       try {
-        const situacao = await this.enviar(f, momento, hoje, params.modelos[momento], existente?.id ?? null);
+        const situacao = await this.enviar(f, momento, hoje, params, existente?.id ?? null);
         if (situacao === 'ENVIADO') resumo.enviados += 1;
         else if (situacao === 'SIMULADO') resumo.simulados += 1;
         else if (situacao === 'RETIDO') resumo.retidos += 1;
@@ -168,18 +180,20 @@ export class LembreteService implements OnModuleInit, ReceptorStatusMeta {
     f: FaturaComTitular,
     momento: MomentoLembrete,
     hoje: string,
-    modelo: { nome: string; idioma: string },
+    params: ParametrosWhatsapp,
     retidoId: string | null,
   ): Promise<SituacaoLembrete | 'DUPLICADO'> {
     const titular = f.conta.titular;
-    const dados = {
-      nomeTitular: titular.nome,
-      numeroFatura: f.numero,
-      valorCentavos: Math.max(0, cent(f.valorTotal) - cent(f.valorPago)), // o SALDO, não o valor cheio
-      vencimentoISO: dataCalendarioUTC(f.dataVencimento),
-    };
+    const saldo = Math.max(0, cent(f.valorTotal) - cent(f.valorPago)); // o SALDO, não o valor cheio
+    const vencimentoISO = dataCalendarioUTC(f.dataVencimento);
+    // No D+2 o valor é o de HOJE, com multa e atualização — o mesmo da ficha e
+    // da página (§28.6). Antes de vencer não há encargo: vale o saldo.
+    const valorCentavos = momento === MomentoLembrete.D_MAIS_2 ? ((await this.faturas.faltaHojeDaFatura(f.id)) ?? saldo) : saldo;
+    const dados = { nomeTitular: titular.nome, numeroFatura: f.numero, valorCentavos, vencimentoISO };
     const destino = normalizarWhatsapp(titular.whatsapp);
-    const base = {
+    const link = `${(this.config.get<string>('faturaPublicaUrl') ?? '').replace(/\/+$/, '')}/${f.tokenPublico ?? ''}`;
+    const modelo = params.modelos[momento];
+    const baseLink = {
       faturaId: f.id,
       titularId: titular.id,
       momento,
@@ -188,7 +202,22 @@ export class LembreteService implements OnModuleInit, ReceptorStatusMeta {
       texto: textoLembrete(momento, dados),
       modeloNome: modelo.nome,
       modeloIdioma: modelo.idioma,
+      intencaoId: null as string | null,
     };
+
+    // Pix copia e cola na mensagem (§28.6): só D-2/D0, uma fatura em aberto do
+    // modelo novo, e só quando a mensagem vai sair DE VERDADE (simulado e
+    // retido não geram Pix no gateway). Qualquer impedimento = só o link.
+    const pix = destino ? await this.prepararPix(f, momento, params, destino) : null;
+    const base = pix
+      ? {
+          ...baseLink,
+          texto: textoLembretePix(momento as MomentoLembretePix, { ...dados, valorCentavos: pix.intencao.valor }, link),
+          modeloNome: params.modelosPix[momento as MomentoLembretePix].nome,
+          modeloIdioma: params.modelosPix[momento as MomentoLembretePix].idioma,
+          intencaoId: pix.intencao.id,
+        }
+      : baseLink;
 
     // Registra ANTES de falar com a Meta: se o processo cair no meio, o
     // lembrete fica "Enviando" e NÃO é mandado de novo (melhor faltar que dobrar).
@@ -211,13 +240,48 @@ export class LembreteService implements OnModuleInit, ReceptorStatusMeta {
       return 'FALHOU';
     }
 
-    const r = await this.envio.enviarModelo({
-      destino,
-      modelo: modelo.nome,
-      idioma: modelo.idioma,
-      variaveisCorpo: variaveisLembrete(dados),
-      sufixoBotaoUrl: f.tokenPublico ?? undefined,
-    });
+    const enviarSoLink = () =>
+      this.envio.enviarModelo({
+        destino,
+        modelo: modelo.nome,
+        idioma: modelo.idioma,
+        variaveisCorpo: variaveisLembrete(dados, momento),
+        sufixoBotaoUrl: f.tokenPublico ?? undefined,
+      });
+    let r;
+    if (pix) {
+      r = await this.envio.enviarModeloPedidoPix({
+        destino,
+        modelo: base.modeloNome,
+        idioma: base.modeloIdioma,
+        variaveisCorpo: variaveisLembretePix({ ...dados, valorCentavos: pix.intencao.valor }, link),
+        pedido: {
+          referencia: pix.intencao.id,
+          itemNome: `Fatura nº ${f.numero}`,
+          valorCentavos: pix.intencao.valor,
+          codigoPix: pix.intencao.pixCopiaECola,
+          recebedor: params.recebedorPix,
+          chave: pix.chave.chave,
+          tipoChave: pix.chave.tipo,
+          expiraEm: pix.intencao.validoAte,
+        },
+      });
+      // A Meta recusou o modelo com Pix (ainda em análise, pagamento não
+      // habilitado, formato): o aviso não pode deixar de sair por causa do Pix —
+      // vai só com o link, e o registro diz por quê (Regra 12).
+      if (r.resultado === 'FALHOU') {
+        const motivoPix = `o Pix não foi na mensagem (${r.motivo}); enviado só com o link`;
+        this.logger.warn(`lembrete da fatura ${f.id}: ${motivoPix}`);
+        await this.prisma.db.lembretePagamento.update({ where: { id }, data: { ...baseLink } });
+        r = await enviarSoLink();
+        if (r.resultado === 'ENVIADO') {
+          await this.prisma.db.lembretePagamento.update({ where: { id }, data: { situacao: 'ENVIADO', mensagemId: r.mensagemId, enviadoEm: new Date(), motivo: motivoPix.slice(0, 500) } });
+          return 'ENVIADO';
+        }
+      }
+    } else {
+      r = await enviarSoLink();
+    }
     if (r.resultado === 'ENVIADO') {
       await this.prisma.db.lembretePagamento.update({ where: { id }, data: { situacao: 'ENVIADO', mensagemId: r.mensagemId, enviadoEm: new Date(), motivo: null } });
       return 'ENVIADO';
@@ -245,6 +309,41 @@ export class LembreteService implements OnModuleInit, ReceptorStatusMeta {
     await this.prisma.db.lembretePagamento.update({ where: { id }, data: { situacao: 'FALHOU', motivo: r.motivo, falhaEm: new Date() } });
     await this.alertarFalha(titular, f.numero, r.motivo);
     return 'FALHOU';
+  }
+
+  // Pix que vai junto (§28.6) — ou null, com o motivo no log, quando o lembrete
+  // deve sair só com o link. Nunca lança.
+  private async prepararPix(f: FaturaComTitular, momento: MomentoLembrete, params: ParametrosWhatsapp, destino: string) {
+    try {
+      if (!params.pixNoLembrete || !(MOMENTOS_LEMBRETE_PIX as MomentoLembrete[]).includes(momento)) return null;
+      const decisao = await this.envio.decidir(destino);
+      if (decisao.decisao !== DecisaoEnvioWhatsapp.ENVIA) return null; // simulado/retido: sem Pix no gateway
+      const emAberto = await this.prisma.db.fatura.findMany({ where: { contaId: f.contaId, status: 'FECHADA' }, select: { id: true, valorTotal: true, valorPago: true } });
+      const cabe = pixCabeNoLembrete({
+        momento,
+        faturaId: f.id,
+        modeloEncargo: f.modeloEncargo,
+        faturasEmAberto: emAberto.filter((x) => cent(x.valorTotal) - cent(x.valorPago) > 0).map((x) => x.id),
+      });
+      if (!cabe.cabe) {
+        this.logger.debug(`lembrete da fatura ${f.id} sem Pix: ${cabe.motivo}`);
+        return null;
+      }
+      const r = await this.intencoes.pixParaLembrete({ contaId: f.contaId, faturaId: f.id, ateDia: dataCalendarioUTC(f.dataVencimento) });
+      if ('motivo' in r) {
+        this.logger.warn(`lembrete da fatura ${f.id} sem Pix: ${r.motivo}`);
+        return null;
+      }
+      const chave = await this.intencoes.chavePix();
+      if (!chave || !r.intencao.pixCopiaECola) {
+        this.logger.warn(`lembrete da fatura ${f.id} sem Pix: chave Pix de recebimento indisponível`);
+        return null;
+      }
+      return { intencao: r.intencao, chave };
+    } catch (e) {
+      this.logger.warn(`lembrete da fatura ${f.id} sem Pix: ${(e as Error).message}`);
+      return null;
+    }
   }
 
   private alertarFalha(titular: { id: string; nome: string }, numeroFatura: number, motivo: string) {
@@ -365,6 +464,7 @@ export class LembreteService implements OnModuleInit, ReceptorStatusMeta {
         destino: l.destino ? formatarWhatsapp(l.destino) : null,
         texto: l.texto,
         modelo: l.modeloNome,
+        comPix: !!l.intencaoId, // levou o Pix copia e cola (§28.6)
         registradoEm: l.createdAt.toISOString(),
         enviadoEm: l.enviadoEm?.toISOString() ?? null,
         entregueEm: l.entregueEm?.toISOString() ?? null,

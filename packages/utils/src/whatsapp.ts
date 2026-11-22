@@ -107,18 +107,22 @@ export function janelaRespostaWhatsapp(ultimaEntrada: Date | null | undefined, a
 export const LEMBRETE_HORA_INICIO = 9;
 export const LEMBRETE_HORA_FIM = 20; // exclusivo: a última rodada é a das 19h
 export const LEMBRETE_DIAS_ANTES = 2;
+// Aviso de atraso (§28.6, decisão Luís 22/11): uma vez só, 2 dias depois do
+// vencimento; dali em diante o caso é da cobrança humana.
+export const LEMBRETE_DIAS_ATRASO = 2;
 
 export function dentroDaJanelaLembrete(instante: Date): boolean {
   const { hora } = partesBrasil(instante);
   return hora >= LEMBRETE_HORA_INICIO && hora < LEMBRETE_HORA_FIM;
 }
 
-// Momento que a fatura vive HOJE: D-2 (vence daqui a 2 dias), D0 (vence hoje)
-// ou nenhum. Momento perdido não é enviado com atraso.
+// Momento que a fatura vive HOJE: D-2 (vence daqui a 2 dias), D0 (vence hoje),
+// D+2 (venceu há 2 dias) ou nenhum. Momento perdido não é enviado com atraso.
 export function momentoLembreteDaFatura(vencimentoISO: string, hojeISO: string): MomentoLembrete | null {
   const dias = diasCalendarioEntre(hojeISO, vencimentoISO);
   if (dias === LEMBRETE_DIAS_ANTES) return MomentoLembrete.D_MENOS_2;
   if (dias === 0) return MomentoLembrete.D_ZERO;
+  if (dias === -LEMBRETE_DIAS_ATRASO) return MomentoLembrete.D_MAIS_2;
   return null;
 }
 
@@ -154,6 +158,11 @@ export const CORPO_MODELO_LEMBRETE: Record<MomentoLembrete, string> = {
   [MomentoLembrete.D_ZERO]:
     'Olá, {{1}}! Aqui é da Azit Move. Sua fatura nº {{2}}, de {{3}}, vence hoje ({{4}}). ' +
     'Toque no botão abaixo para pagar com Pix. Se já pagou, desconsidere esta mensagem.',
+  // §28.6 — texto aprovado pelo Luís em 22/11. Ordem das variáveis DIFERENTE dos
+  // outros: {{3}} vencimento, {{4}} valor atualizado de hoje.
+  [MomentoLembrete.D_MAIS_2]:
+    'Olá, {{1}}! Aqui é da Azit Move. Sua fatura nº {{2}}, que venceu em {{3}}, ainda não foi paga. ' +
+    'Hoje o valor é {{4}}. Pague pelo botão abaixo para evitar o bloqueio do seu veículo.',
 };
 
 // Rótulo do botão de link do modelo (limite da Meta: 25 caracteres).
@@ -163,8 +172,55 @@ export const BOTAO_MODELO_LEMBRETE = 'Ver fatura';
 export const MODELO_PADRAO_LEMBRETE: Record<MomentoLembrete, string> = {
   [MomentoLembrete.D_MENOS_2]: 'azit_fatura_disponivel',
   [MomentoLembrete.D_ZERO]: 'azit_fatura_vence_hoje',
+  [MomentoLembrete.D_MAIS_2]: 'azit_fatura_atraso',
 };
 export const IDIOMA_PADRAO_MODELO = 'pt_BR';
+
+// ---------------- Pix copia e cola na mensagem (§28.6) ----------------
+
+// Momentos em que o Pix pode ir na mensagem. O D+2 não leva: o valor muda
+// todo dia com os encargos (decisão Luís 22/11).
+export type MomentoLembretePix = MomentoLembrete.D_MENOS_2 | MomentoLembrete.D_ZERO;
+export const MOMENTOS_LEMBRETE_PIX: MomentoLembretePix[] = [MomentoLembrete.D_MENOS_2, MomentoLembrete.D_ZERO];
+
+// Modelo "detalhes do pedido" da Meta: UM botão fixo ("Copiar código Pix") —
+// a Meta não aceita botão de link junto, então o link da fatura vai INTEIRO no
+// texto ({{5}}). Por isso os mesmos modelos servem aos dois ambientes (sem "_hml").
+export const CORPO_MODELO_LEMBRETE_PIX: Record<MomentoLembretePix, string> = {
+  [MomentoLembrete.D_MENOS_2]:
+    'Olá, {{1}}! Aqui é da Azit Move. Sua fatura nº {{2}}, de {{3}}, vence em {{4}}. ' +
+    'Toque em Copiar código Pix e pague no app do seu banco. Para ver os itens ou pagar outro valor, acesse {{5}} e escolha como pagar.',
+  [MomentoLembrete.D_ZERO]:
+    'Olá, {{1}}! Aqui é da Azit Move. Sua fatura nº {{2}}, de {{3}}, vence hoje ({{4}}). ' +
+    'Toque em Copiar código Pix e pague no app do seu banco. Se já pagou, desconsidere esta mensagem. ' +
+    'Para ver os itens ou pagar outro valor, acesse {{5}} e escolha como pagar.',
+};
+export const MODELO_PADRAO_LEMBRETE_PIX: Record<MomentoLembretePix, string> = {
+  [MomentoLembrete.D_MENOS_2]: 'azit_fatura_pix_disponivel',
+  [MomentoLembrete.D_ZERO]: 'azit_fatura_pix_vence_hoje',
+};
+// Nome do recebedor no cartão do Pix: a razão social do cartão CNPJ (decisão
+// Luís 22/11). Padrão provisório e parametrizável em Configuração › WhatsApp.
+export const RECEBEDOR_PIX_PADRAO = 'AZIT COMERCIO DE VEICULOS LTDA';
+
+export interface ContaParaPixNoLembrete {
+  momento: MomentoLembrete;
+  faturaId: string;
+  modeloEncargo: string; // da fatura do lembrete: só AZIT tem Pix sob demanda
+  faturasEmAberto: string[]; // ids das faturas fechadas com saldo na conta (todos os modelos)
+}
+
+// Quem recebe o Pix na mensagem: D-2 ou D0, fatura do modelo AZIT e UMA ÚNICA
+// fatura em aberto na conta (com duas ou mais o cliente escolhe na página).
+// Devolve o motivo quando não cabe — o lembrete sai só com o link.
+export function pixCabeNoLembrete(c: ContaParaPixNoLembrete): { cabe: boolean; motivo: string | null } {
+  if (!(MOMENTOS_LEMBRETE_PIX as string[]).includes(c.momento)) return { cabe: false, motivo: 'o aviso de atraso não leva Pix' };
+  if (c.modeloEncargo !== 'AZIT') return { cabe: false, motivo: 'fatura do modelo antigo (cobrança no Asaas)' };
+  if (c.faturasEmAberto.length !== 1 || c.faturasEmAberto[0] !== c.faturaId) {
+    return { cabe: false, motivo: 'conta com mais de uma fatura em aberto — o cliente escolhe na página' };
+  }
+  return { cabe: true, motivo: null };
+}
 
 // Fora de produção o padrão leva o sufixo: o botão do modelo aponta para o
 // domínio de homologação da Fatura Azit, e o modelo de produção não serve lá.
@@ -176,7 +232,7 @@ export function modeloPadraoLembrete(momento: MomentoLembrete, producao: boolean
 export interface DadosLembrete {
   nomeTitular: string;
   numeroFatura: number;
-  valorCentavos: number; // SALDO em aberto
+  valorCentavos: number; // SALDO em aberto (no D+2, o valor atualizado de hoje)
   vencimentoISO: string;
 }
 
@@ -186,17 +242,34 @@ function limparVariavel(t: string): string {
   return t.replace(/\s+/g, ' ').trim();
 }
 
-// Variáveis do corpo, NA ORDEM do modelo: {{1}} primeiro nome, {{2}} número
-// da fatura, {{3}} valor, {{4}} vencimento.
-export function variaveisLembrete(d: DadosLembrete): string[] {
-  return [primeiroNome(d.nomeTitular) || 'cliente', String(d.numeroFatura), formatCurrency(d.valorCentavos), isoParaBR(d.vencimentoISO)].map(limparVariavel);
+// Variáveis do corpo, NA ORDEM do modelo do momento: {{1}} primeiro nome, {{2}}
+// número da fatura e — no D-2/D0 — {{3}} valor, {{4}} vencimento; no D+2 o
+// contrário ({{3}} vencimento, {{4}} valor de hoje).
+export function variaveisLembrete(d: DadosLembrete, momento: MomentoLembrete = MomentoLembrete.D_MENOS_2): string[] {
+  const nome = primeiroNome(d.nomeTitular) || 'cliente';
+  const valor = formatCurrency(d.valorCentavos);
+  const venc = isoParaBR(d.vencimentoISO);
+  const vars = momento === MomentoLembrete.D_MAIS_2 ? [nome, String(d.numeroFatura), venc, valor] : [nome, String(d.numeroFatura), valor, venc];
+  return vars.map(limparVariavel);
+}
+
+function preencher(corpo: string, vars: string[]): string {
+  return corpo.replace(/\{\{(\d)\}\}/g, (_m, i: string) => vars[Number(i) - 1] ?? '');
 }
 
 // Texto que o cliente recebe (corpo do modelo com as variáveis preenchidas) —
 // é o que fica gravado no lembrete para o operador ver.
 export function textoLembrete(momento: MomentoLembrete, d: DadosLembrete): string {
-  const vars = variaveisLembrete(d);
-  return CORPO_MODELO_LEMBRETE[momento].replace(/\{\{(\d)\}\}/g, (_m, i: string) => vars[Number(i) - 1] ?? '');
+  return preencher(CORPO_MODELO_LEMBRETE[momento], variaveisLembrete(d, momento));
+}
+
+// Modelo com o Pix (§28.6): as quatro de sempre + {{5}} o link inteiro da fatura.
+export function variaveisLembretePix(d: DadosLembrete, linkFatura: string): string[] {
+  return [...variaveisLembrete(d, MomentoLembrete.D_MENOS_2), limparVariavel(linkFatura)];
+}
+
+export function textoLembretePix(momento: MomentoLembretePix, d: DadosLembrete, linkFatura: string): string {
+  return preencher(CORPO_MODELO_LEMBRETE_PIX[momento], variaveisLembretePix(d, linkFatura));
 }
 
 // Situação nova do lembrete ao chegar um status da Meta (sent | delivered |

@@ -79,6 +79,11 @@ export interface GatewayPix {
   pixDoPagamento(pagamentoId: string): Promise<string | null>;
 
   chaveRecebimento(): Promise<ChaveRecebimentoPix>;
+
+  // A chave Pix INTEIRA que recebe o QR (e o tipo: EVP, EMAIL, CPF, CNPJ,
+  // PHONE). Só para o cartão de Pix do WhatsApp (§28.6), que exige a chave;
+  // nunca vai para tela nem log. null = sem chave (ou modo em que o gateway escolhe).
+  chavePix(): Promise<{ chave: string; tipo: string } | null>;
 }
 
 export const PREFIXO_INTENCAO = 'intencao:';

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DecisaoEnvioWhatsapp } from '@azit/types';
 import { decidirEnvioWhatsapp } from '@azit/utils';
-import { WhatsappMetaService } from './whatsapp-meta.service';
+import { WhatsappMetaService, type PedidoPixWhatsapp } from './whatsapp-meta.service';
 import { WhatsappParametrosService } from './whatsapp-parametros.service';
 
 // REGRA ÚNICA DE ENVIO (doc 02 §23.1 e §23.2). Tudo o que sai pelo WhatsApp —
@@ -53,6 +53,10 @@ export class WhatsappEnvioService {
 
   enviarModelo(p: { destino: string; modelo: string; idioma: string; variaveisCorpo: string[]; sufixoBotaoUrl?: string }): Promise<ResultadoEnvioWhatsapp> {
     return this.executar(p.destino, (autorizadoTeste) => this.meta.enviarModelo({ ...p, destinoAutorizadoTeste: autorizadoTeste }));
+  }
+
+  enviarModeloPedidoPix(p: { destino: string; modelo: string; idioma: string; variaveisCorpo: string[]; pedido: PedidoPixWhatsapp }): Promise<ResultadoEnvioWhatsapp> {
+    return this.executar(p.destino, (autorizadoTeste) => this.meta.enviarModeloPedidoPix({ ...p, destinoAutorizadoTeste: autorizadoTeste }));
   }
 
   enviarTexto(p: { destino: string; texto: string }): Promise<ResultadoEnvioWhatsapp> {

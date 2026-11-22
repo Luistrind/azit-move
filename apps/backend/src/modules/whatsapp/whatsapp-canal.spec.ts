@@ -160,7 +160,7 @@ describe('WhatsappParametrosService (versionado — doc 02 §23.3)', () => {
 
   it('a tela mostra o que cadastrar na Meta com o endereço do botão DESTE ambiente, sem segredo', async () => {
     const tela = await parametrosDe('homologacao', true).servico.tela();
-    expect(tela.modelos.map((m) => m.cadastro.botaoUrl)).toEqual(['https://fatura-hml.azitmove.com.br/{{1}}', 'https://fatura-hml.azitmove.com.br/{{1}}']);
+    expect(tela.modelos.map((m) => m.cadastro.botaoUrl)).toEqual(['https://fatura-hml.azitmove.com.br/{{1}}', 'https://fatura-hml.azitmove.com.br/{{1}}', 'https://fatura-hml.azitmove.com.br/{{1}}']);
     expect(tela.ambiente).toEqual({ producao: false, credencialConfigurada: true });
     expect(JSON.stringify(tela)).not.toMatch(/token-de-teste|segredo-do-app/);
   });

@@ -138,6 +138,10 @@ Modelos de mensagem (WhatsApp Manager › Modelos de mensagem) — categoria **U
 | produção | dia do vencimento | `azit_fatura_vence_hoje` | `https://fatura.azitmove.com.br/{{1}}` |
 | homologação | 2 dias antes | `azit_fatura_disponivel_hml` | `https://fatura-hml.azitmove.com.br/{{1}}` |
 | homologação | dia do vencimento | `azit_fatura_vence_hoje_hml` | `https://fatura-hml.azitmove.com.br/{{1}}` |
+| produção | 2 dias de atraso | `azit_fatura_atraso` | `https://fatura.azitmove.com.br/{{1}}` |
+| homologação | 2 dias de atraso | `azit_fatura_atraso_hml` | `https://fatura-hml.azitmove.com.br/{{1}}` |
+
+Pix copia e cola na mensagem (doc 02 §28.6, 22/11) — tipo **Detalhes do pedido** (Utilidade), botão fixo da Meta "Copiar código Pix", **sem botão de link** (a Meta não aceita junto): o link da fatura vai inteiro no texto como `{{5}}`, então os MESMOS modelos servem aos dois ambientes — `azit_fatura_pix_disponivel` (2 dias antes) e `azit_fatura_pix_vence_hoje` (dia do vencimento). Só quem tem uma fatura em aberto recebe; os outros recebem o modelo de link. Se o modelo de Pix for recusado no envio, o lembrete sai pelo de link. O cartão mostra o recebedor de Configuração › WhatsApp (padrão: razão social).
 
 Corpo (variáveis: `{{1}}` primeiro nome, `{{2}}` número da fatura, `{{3}}` valor, `{{4}}` vencimento) — texto provisório, fonte única em `packages/utils/src/whatsapp.ts`:
 

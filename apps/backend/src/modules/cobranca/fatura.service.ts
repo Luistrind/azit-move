@@ -724,6 +724,21 @@ export class FaturaService {
     return e.multa + e.atualizacao;
   }
 
+  // O que falta pagar HOJE nesta fatura — o MESMO número da ficha e da página do
+  // cliente (aviso de atraso do WhatsApp, doc 02 §28.6). null = não está em aberto.
+  async faltaHojeDaFatura(faturaId: string): Promise<number | null> {
+    const f = await this.prisma.db.fatura.findFirst({
+      where: { id: faturaId },
+      include: {
+        itensFatura: { orderBy: { tipo: 'asc' } },
+        parcelas: { select: { valorNominal: true, dataVencimento: true, contrato: { select: { taxaMultaAtraso: true, taxaJurosAtraso: true } } } },
+      },
+    });
+    if (!f) return null;
+    const [linha] = await this.comFaltaHoje(f.contaId, [f]);
+    return linha.faltaHoje;
+  }
+
   // "Agora" vem inteira (é o que está na mesa, e a posição do topo soma sobre
   // ela); as demais chegam em blocos — a tela pede "carregar mais" com offset.
   async faturasDaConta(contaId: string, visao: VisaoFaturasConta = 'agora', offset = 0, limit = 10) {
