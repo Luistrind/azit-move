@@ -36,6 +36,13 @@ ANTHROPIC_API_KEY=
 # Entrar com Google (doc 06 v1.1 §2.2): o MESMO cliente OAuth serve homolog e produção
 # (origem https://hml.azitmove.com.br já autorizada — deploy/AMBIENTES.md §1.5). É público.
 GOOGLE_CLIENT_ID=43681993535-8orbgnirmtc7p3lbu5ov0f2hvfp46g58.apps.googleusercontent.com
+# WhatsApp — Cloud API da Meta (doc 02 §23). OPCIONAIS: o normal é cadastrar pela
+# tela Configuração › Integrações. Vazio = envios simulados.
+WHATSAPP_PHONE_NUMBER_ID=
+WHATSAPP_WABA_ID=
+WHATSAPP_ACCESS_TOKEN=
+WHATSAPP_APP_SECRET=
+WHATSAPP_VERIFY_TOKEN=
 EOF
 chmod 600 "$ARQ"
 

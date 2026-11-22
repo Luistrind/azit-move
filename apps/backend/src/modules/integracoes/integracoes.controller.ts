@@ -29,6 +29,11 @@ export class IntegracoesController {
       zapsignAmbiente?: string;
       zapsignApiToken?: string;
       zapsignWebhookSecret?: string;
+      whatsappPhoneNumberId?: string;
+      whatsappWabaId?: string;
+      whatsappAccessToken?: string;
+      whatsappAppSecret?: string;
+      whatsappVerifyToken?: string;
     },
     @CurrentUser() user: UsuarioAutenticado,
   ) {
@@ -39,6 +44,12 @@ export class IntegracoesController {
   @HttpCode(200)
   testarAsaas() {
     return this.service.testarAsaas();
+  }
+
+  @Post('whatsapp/testar')
+  @HttpCode(200)
+  testarWhatsapp() {
+    return this.service.testarWhatsapp();
   }
 
   // Sem endpoint de importação: as credenciais do ambiente são adotadas

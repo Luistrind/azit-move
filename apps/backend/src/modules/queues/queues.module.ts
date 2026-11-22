@@ -18,6 +18,7 @@ export const QUEUE_NAMES = {
   COLETA_LEGADO: 'coleta-legado', // leitura do Asaas para a migração do legado (doc 02 §26)
   INTENCAO_PAGAMENTO: 'intencao-pagamento', // Pix sob demanda: baixa pela conta e virada do dia (doc 02 §32.4-A)
   CONFERENCIA_ASAAS: 'conferencia-asaas', // conferência automática diária Asaas × sistema (doc 02 §27.9.1)
+  WHATSAPP: 'whatsapp', // webhook da Meta, mídia recebida e lembretes de pagamento (doc 02 §23, §28)
 } as const;
 
 // Parse de REDIS_URL em opções de conexão (host/port/senha/db). Evita instanciar o
@@ -69,6 +70,7 @@ function redisConnectionFromUrl(url: string) {
       { name: QUEUE_NAMES.COLETA_LEGADO },
       { name: QUEUE_NAMES.INTENCAO_PAGAMENTO },
       { name: QUEUE_NAMES.CONFERENCIA_ASAAS },
+      { name: QUEUE_NAMES.WHATSAPP },
     ),
   ],
   exports: [BullModule],

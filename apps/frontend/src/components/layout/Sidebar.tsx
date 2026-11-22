@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../stores/authStore';
 import { authService } from '../../services/auth.service';
 import { aprovacaoService } from '../../services/aprovacao.service';
+import { conversasService } from '../../services/conversas.service';
 import { queryClient } from '../../lib/queryClient';
 import { AreaSistema } from '@azit/types';
 import { temAlgumaArea, useMinhasAreas } from '../../lib/permissoes';
@@ -49,6 +50,7 @@ const GRUPOS_NAV: GrupoNav[] = [
       { to: '/acordos', label: 'Renegociações' },
       // Migração do legado saiu do menu (16/11, Luís: todas as migrações possíveis já
       // foram feitas). A rota continua: a bancada de um caso migrado segue acessível pelo link.
+      { to: '/conversas', label: 'Conversas do WhatsApp' },
     ],
   },
   {
@@ -107,6 +109,7 @@ const GRUPOS_NAV: GrupoNav[] = [
       { to: '/configuracoes/integracoes', label: 'Integrações' },
       { to: '/configuracoes/simulador', label: 'Simulador' },
       { to: '/configuracoes/usuarios', label: 'Usuários e permissões' },
+      { to: '/configuracoes/whatsapp', label: 'WhatsApp' },
     ],
   },
 ];
@@ -161,6 +164,15 @@ export function Sidebar() {
     enabled: temAlgumaArea(areas, AreaSistema.APROVACOES),
   });
   const pendentes = contagem.data ?? 0;
+  // Mensagens de clientes no WhatsApp ainda não abertas (doc 02 §24) — mesmo
+  // desenho do contador de aprovações; só para quem tem Carteira e cobrança.
+  const conversasNaoLidas = useQuery({
+    queryKey: ['conversas-nao-lidas'],
+    queryFn: () => conversasService.naoLidas(),
+    refetchInterval: 60_000,
+    enabled: temAlgumaArea(areas, AreaSistema.CARTEIRA_COBRANCA),
+  });
+  const contadores: Record<string, number> = { '/aprovacoes': pendentes, '/conversas': conversasNaoLidas.data ?? 0 };
   const grupos = GRUPOS_NAV.filter((g) => g.area === null || temAlgumaArea(areas, g.area));
 
   async function onLogout() {
@@ -224,12 +236,12 @@ export function Sidebar() {
                 }
               >
                 <span className="flex-1">{item.label}</span>
-                {item.to === '/aprovacoes' && pendentes > 0 && (
+                {(contadores[item.to] ?? 0) > 0 && (
                   <span
                     className="rounded-full px-[7px] py-[1px] text-[10.5px] font-bold"
                     style={{ background: 'var(--accent)', color: 'var(--text-primary)' }}
                   >
-                    {pendentes}
+                    {contadores[item.to]}
                   </span>
                 )}
               </NavLink>

@@ -27,6 +27,7 @@ import { Abas } from '../components/Abas';
 import { PosicaoHoje } from './titular/PosicaoHoje';
 import { FaturasDaConta } from './titular/FaturasDaConta';
 import { PagamentosDaConta } from './titular/PagamentosDaConta';
+import { LembretesPagamento } from '../components/LembretesPagamento';
 
 // Ficha do titular (doc 02 §33, redesenho de 18/11): a tela responde primeiro
 // "como está este cliente HOJE" — posição de hoje e cronograma no topo — e
@@ -322,6 +323,9 @@ export function TitularDetalhePage() {
       ) : (
         <div className="rounded-card p-[18px] text-[12.5px]" style={{ ...card, color: 'var(--text-muted)' }}>{posicao.isError ? 'Não foi possível carregar a posição da conta.' : 'Carregando a posição de hoje…'}</div>
       )}
+
+      {/* Lembretes de pagamento pelo WhatsApp (doc 02 §28.4) — logo abaixo da posição de hoje, antes das faturas. */}
+      {contaId && <LembretesPagamento titularId={id} />}
 
       {/* Abas: Faturas · Pagamentos · Contratos · Cadastro (doc 02 §33) */}
       <div className="rounded-card" style={card}>

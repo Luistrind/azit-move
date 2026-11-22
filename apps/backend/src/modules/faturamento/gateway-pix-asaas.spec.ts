@@ -15,7 +15,7 @@ type Resposta = unknown | Error;
 // `rotas`: resposta por "MÉTODO caminho" (prefixo). Função = resposta calculada a cada chamada.
 function montar(opts: { apiKey?: string; modo?: 'ESTATICO' | 'COBRANCA' | null; cobranca?: Record<string, unknown> | null; rotas?: Record<string, Resposta | (() => Resposta)> } = {}) {
   const integracoes = { asaas: () => ({ apiKey: opts.apiKey ?? '', apiUrl: 'https://asaas.teste/v3', webhookSecret: '', ambiente: 'sandbox', fonte: 'env' }) };
-  const asaas = new AsaasService(integracoes as never);
+  const asaas = new AsaasService(integracoes as never, {} as never);
   const rotas: Record<string, Resposta | (() => Resposta)> = {
     'GET /pix/addressKeys': { data: [CHAVE] },
     'POST /pix/qrCodes/static': { id: 'qr_abc123', payload: 'COPIA-E-COLA-ESTATICO', encodedImage: 'PNGBASE64' },

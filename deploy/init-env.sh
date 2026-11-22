@@ -23,6 +23,13 @@ ASAAS_WEBHOOK_SECRET=$WH
 # (projeto azit-hub — deploy/AMBIENTES.md §1.5). É PÚBLICO; não há client secret.
 # Vai para o backend (GOOGLE_CLIENT_ID) e para o build do frontend (VITE_GOOGLE_CLIENT_ID).
 GOOGLE_CLIENT_ID=43681993535-8orbgnirmtc7p3lbu5ov0f2hvfp46g58.apps.googleusercontent.com
+# WhatsApp — Cloud API da Meta (doc 02 §23). OPCIONAIS: o normal é cadastrar pela
+# tela Configuração › Integrações. Vazio em produção = envios retidos.
+WHATSAPP_PHONE_NUMBER_ID=
+WHATSAPP_WABA_ID=
+WHATSAPP_ACCESS_TOKEN=
+WHATSAPP_APP_SECRET=
+WHATSAPP_VERIFY_TOKEN=
 EOF
 
 echo "=================================================================="

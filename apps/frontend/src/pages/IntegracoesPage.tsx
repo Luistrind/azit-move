@@ -6,6 +6,9 @@ import { mensagemErro } from '../lib/permissoes';
 import { Botao } from '../components/Botao';
 import { Chips } from '../components/Chips';
 import { Secao } from '../components/Secao';
+import { AMBIENTE } from '../lib/ambiente';
+import { LinkArea } from '../components/LinkArea';
+import { AreaSistema } from '@azit/types';
 
 // Central de integrações (decisão Luís 15/09): credenciais do Asaas e da
 // ZapSign configuráveis SEM SSH e SEM redeploy — write-only (a tela nunca
@@ -69,6 +72,14 @@ export function IntegracoesPage() {
   const [zsToken, setZsToken] = useState('');
   const [zsSecret, setZsSecret] = useState('');
   const [teste, setTeste] = useState<string | null>(null);
+  // WhatsApp (Meta) — doc 02 §22 item 7. Os dois ids não são segredo (campo comum);
+  // token, chave secreta e token de verificação são write-only como os demais.
+  const [waPhone, setWaPhone] = useState('');
+  const [waWaba, setWaWaba] = useState('');
+  const [waToken, setWaToken] = useState('');
+  const [waSecret, setWaSecret] = useState('');
+  const [waVerify, setWaVerify] = useState('');
+  const [testeWa, setTesteWa] = useState<string | null>(null);
 
   async function salvar() {
     setOcupado(true);
@@ -80,8 +91,14 @@ export function IntegracoesPage() {
         ...(zsAmbiente !== null ? { zapsignAmbiente: zsAmbiente } : {}),
         ...(zsToken !== '' ? { zapsignApiToken: zsToken } : {}),
         ...(zsSecret !== '' ? { zapsignWebhookSecret: zsSecret } : {}),
+        ...(waPhone !== '' ? { whatsappPhoneNumberId: waPhone } : {}),
+        ...(waWaba !== '' ? { whatsappWabaId: waWaba } : {}),
+        ...(waToken !== '' ? { whatsappAccessToken: waToken } : {}),
+        ...(waSecret !== '' ? { whatsappAppSecret: waSecret } : {}),
+        ...(waVerify !== '' ? { whatsappVerifyToken: waVerify } : {}),
       });
       setAsaasApiKey(''); setAsaasSecret(''); setZsToken(''); setZsSecret('');
+      setWaPhone(''); setWaWaba(''); setWaToken(''); setWaSecret(''); setWaVerify('');
       setAsaasAmbiente(null); setZsAmbiente(null);
       toast.sucesso('Integrações salvas — valem em segundos, sem redeploy.');
       await qc.invalidateQueries({ queryKey: ['integracoes'] });
@@ -103,6 +120,27 @@ export function IntegracoesPage() {
     } finally {
       setOcupado(false);
     }
+  }
+
+  async function testarWhatsapp() {
+    setOcupado(true);
+    setTesteWa(null);
+    try {
+      const r = await integracoesService.testarWhatsapp();
+      setTesteWa(`${r.ok ? '✓' : '✗'} ${r.mensagem}`);
+    } catch (e) {
+      setTesteWa(`✗ ${mensagemErro(e)}`);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  // Token de verificação: você inventa e repete no painel da Meta. Gerado aqui
+  // para ser forte; fica visível só até salvar.
+  function gerarTokenVerificacao() {
+    const bytes = new Uint8Array(24);
+    crypto.getRandomValues(bytes);
+    setWaVerify(Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(''));
   }
 
   const chip = (fonte: string, simulado: boolean, ambiente: string) => (
@@ -172,6 +210,82 @@ export function IntegracoesPage() {
             <UrlWebhook path={s.zapsign.webhookPath} />
             <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
               Sem token, o provedor fica em modo simulado (o botão de assinatura mock continua valendo em dev).
+            </div>
+          </div>
+        </Secao>
+      </div>
+
+      <div className={card} style={cardStyle}>
+        <Secao
+          titulo="WhatsApp (Meta) — lembretes de pagamento e conversas"
+          acao={
+            <span className="flex flex-wrap gap-[6px]">
+              {s.whatsapp.simulado ? (
+                <span className={pilula} style={AMBIENTE === 'producao' ? { background: 'var(--danger-bg)', color: 'var(--danger-fg)' } : { background: 'var(--info-bg)', color: 'var(--info-fg)' }}>
+                  {AMBIENTE === 'producao' ? 'SEM CREDENCIAL — envios retidos' : 'SIMULADO — sem credencial'}
+                </span>
+              ) : (
+                <span className={pilula} style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>CONFIGURADO</span>
+              )}
+              <span className={`${pilula} font-normal`} style={{ background: 'var(--surface-input)', color: 'var(--text-muted)' }}>
+                {s.whatsapp.fonte === 'banco' ? 'cadastrada no sistema' : 'herdada do servidor'}
+              </span>
+            </span>
+          }
+        >
+          <div className="flex flex-col gap-[12px]">
+            <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+              API oficial da Meta (WhatsApp Business Platform) do número dedicado. Os dados estão no painel Meta for
+              Developers → seu aplicativo → WhatsApp → Configuração da API. O número fica só na API: as respostas dos
+              clientes são atendidas em Carteira › Conversas do WhatsApp.
+            </div>
+            <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-2">
+              <label className="flex min-w-0 flex-col gap-[4px] text-[12px]">
+                <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Identificação do número de telefone</span>
+                <input value={waPhone} onChange={(e) => setWaPhone(e.target.value.trim())} inputMode="numeric"
+                  placeholder={s.whatsapp.phoneNumberId ? `configurada · ${s.whatsapp.phoneNumberId}` : 'ex.: 123456789012345'} className={`${inputCls} w-full`} style={inputStyle} />
+              </label>
+              <label className="flex min-w-0 flex-col gap-[4px] text-[12px]">
+                <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Identificação da conta do WhatsApp Business</span>
+                <input value={waWaba} onChange={(e) => setWaWaba(e.target.value.trim())} inputMode="numeric"
+                  placeholder={s.whatsapp.wabaId ? `configurada · ${s.whatsapp.wabaId}` : 'ex.: 109876543210987'} className={`${inputCls} w-full`} style={inputStyle} />
+              </label>
+              <CampoSegredo rotulo="Token de acesso (permanente, do usuário do sistema)"
+                placeholder={s.whatsapp.accessTokenConfigurado ? `configurado · final ${s.whatsapp.accessTokenFinal}` : 'cole o token permanente'}
+                valor={waToken} onChange={setWaToken} />
+              <CampoSegredo rotulo="Chave secreta do aplicativo (assina o webhook)"
+                placeholder={s.whatsapp.appSecretConfigurado ? `configurada · final ${s.whatsapp.appSecretFinal}` : 'Configurações do aplicativo → Básico → Chave secreta'}
+                valor={waSecret} onChange={setWaSecret} />
+              <label className="flex min-w-0 flex-col gap-[4px] text-[12px] sm:col-span-2">
+                <span className="font-semibold" style={{ color: 'var(--text-label)' }}>Token de verificação do webhook (você inventa e repete no painel da Meta)</span>
+                <span className="flex flex-wrap gap-[8px]">
+                  <input value={waVerify} onChange={(e) => setWaVerify(e.target.value.trim())} autoComplete="off"
+                    placeholder={s.whatsapp.verifyTokenConfigurado ? `configurado · final ${s.whatsapp.verifyTokenFinal}` : 'gere um e cole o mesmo no painel da Meta'}
+                    className={`${inputCls} min-w-0 flex-1`} style={inputStyle} />
+                  <Botao tamanho="sm" variante="secundaria" onClick={gerarTokenVerificacao}>Gerar</Botao>
+                  {waVerify && (
+                    <Botao tamanho="sm" variante="fantasma" onClick={() => { void navigator.clipboard.writeText(waVerify).then(() => toast.sucesso('Token copiado — cole no painel da Meta e salve aqui.')); }}>copiar</Botao>
+                  )}
+                </span>
+              </label>
+            </div>
+            <UrlWebhook path={s.whatsapp.webhookPath} />
+            <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+              No painel da Meta (WhatsApp → Configuração → Webhook), cadastre esta URL com o mesmo token de verificação e
+              assine o campo <b>messages</b>. Salve aqui <b>antes</b> de verificar lá. O aplicativo aponta para uma URL só:
+              durante a homologação fica no homolog; na entrada em produção, passa para a produção.
+              {AMBIENTE === 'producao'
+                ? ' Em produção, sem o id do número e o token os lembretes ficam retidos — nada é simulado.'
+                : ' Neste ambiente de teste o número é o mesmo da produção: só recebem de verdade os números autorizados em Configuração › WhatsApp.'}
+            </div>
+            <div className="flex flex-wrap items-center gap-[10px]">
+              <Botao variante="secundaria" disabled={ocupado} onClick={() => void testarWhatsapp()}>
+                Testar conexão
+              </Botao>
+              <LinkArea to="/configuracoes/whatsapp" area={AreaSistema.CONFIGURACOES} className="text-[12px] font-semibold underline">
+                Chave geral, números autorizados e modelos →
+              </LinkArea>
+              {testeWa && <span className="text-[12px]" style={{ color: testeWa.startsWith('✓') ? 'var(--ok-fg)' : 'var(--danger-fg)' }}>{testeWa}</span>}
             </div>
           </div>
         </Secao>

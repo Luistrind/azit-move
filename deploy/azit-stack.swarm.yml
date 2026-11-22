@@ -71,6 +71,15 @@ services:
       # Entrar com Google (doc 06 v1.1 §2.2): client id público do cliente OAuth
       # "Azit Hub Web" (stack.env). Vazio = botão do Google não aparece no login.
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      # WhatsApp — Cloud API da Meta (doc 02 §22 item 7, §23). Opcionais: o caminho
+      # normal é cadastrar pela tela Configuração › Integrações (banco > env).
+      # Vazio em PRODUÇÃO = envios RETIDOS (produção nunca simula).
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_WABA_ID: ${WHATSAPP_WABA_ID:-}
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+      WHATSAPP_GRAPH_VERSION: ${WHATSAPP_GRAPH_VERSION:-v23.0}
     # Uploads PERSISTENTES (correção 14/09): documentos anexados (CNH,
     # extratos, embasamento) eram gravados no filesystem do container e
     # SUMIAM a cada deploy — caso real do Lourenço. Volume nomeado resolve.
