@@ -3255,7 +3255,7 @@ formal da POP, que fica adiada (§28.5).
 |---|---|---|
 | **D-2** | fatura disponível: valor, vencimento e **link da Fatura Azit** | sai qualquer dia da semana, das 9h às 20h |
 | **D0** (vence hoje) | lembrete curto com o mesmo link | só se a fatura ainda estiver em aberto no dia |
-| **D+1 em diante** | sem mensagem automática nesta fase | cobrança humana pela régua; a notificação formal da POP volta depois (§23.5) |
+| **D+1 em diante** | sem mensagem automática nesta fase | cobrança humana pela régua; a notificação formal da POP volta depois (§23.5). **Revisto em 22/11 (§28.6): um aviso de atraso no D+2**, depois nada |
 
 - **Unidade é a fatura, não o contrato.** A fatura já consolida os itens da conta (veículo +
   proteção + reembolso parcelado…): o cliente recebe UMA mensagem com UM link por vencimento.
@@ -3345,6 +3345,60 @@ como segundo canal dos mesmos momentos (§32.7) fica para depois.
 Nada sai de verdade antes de: a conta da Meta concluir a configuração da plataforma WhatsApp
 (pendência desde 06/10), o número dedicado estar registrado na API, os modelos serem aprovados
 e o jurídico confirmar o consentimento.
+
+### 28.6 Pix na mensagem e aviso de atraso (decisão Luís, 2026-11-22)
+
+**Contexto.** Em 22/11 o WhatsApp entrou em produção (v1.12.0), com a chave geral ligada, o
+lembrete ligado para os 90 titulares com conta ativa (em lote, decisão do Luís, que dispensou
+esperar o jurídico) e o Pix sob demanda ligado no Faturamento. O número dedicado fica no
+sistema; a divisão com o CRM da V4 é decidida depois. No mesmo dia o Luís pediu duas mudanças.
+
+**(a) O Pix vai dentro da mensagem — só para quem tem UMA fatura em aberto.**
+
+- Quem tem **uma única fatura em aberto** na conta recebe, no **D-2**, a mensagem com o **código
+  Pix copia e cola** do valor da fatura, no formato de pedido da Meta (cartão com o valor e o
+  botão **"Copiar código Pix"**, modelo de "detalhes do pedido" do Brasil). O **link da Fatura
+  Azit continua na mensagem**, no texto, para ver os itens ou pagar outro valor.
+- O Pix desse lembrete é uma **intenção de pagamento** (§32.4-A) de origem **lembrete**, com o
+  valor da fatura, e vale **até as 23h59 do dia do vencimento** (fuso do Brasil, Regra 15) — é a
+  única intenção que atravessa a virada do dia; as outras continuam valendo só até 23h59 do dia
+  em que nascem. Antes de vencer o valor não muda (não há encargo), então o mesmo código serve
+  para os dois momentos.
+- No **D0** a mensagem leva **o mesmo Pix** do D-2, se ele ainda estiver ativo. Se deixou de
+  valer (o cliente pagou uma parte pela página e o pagamento cancelou as outras intenções, ou
+  qualquer outra baixa), o D0 gera um Pix novo com o **saldo** do dia, válido até 23h59.
+- Quem tem **duas ou mais faturas em aberto** não recebe Pix na mensagem: segue com o lembrete
+  só com o link (§28.1–28.2), e o Pix nasce sob demanda na página, como hoje.
+- O cartão de pedido some com a validade (a Meta desliga o botão depois dela). O cliente que já
+  copiou o código ainda pode pagá-lo depois; o Pix expirado também é apagado no gateway, e
+  "o dinheiro manda" (§32.4-A) continua valendo se ele entrar mesmo assim.
+- **Padrão provisório (Regra 12):** se o modelo de pedido não estiver aprovado na Meta, se o
+  Pix não puder ser gerado (gateway fora, sem chave Pix ativa) ou se a fatura for do modelo
+  antigo (cobrança no Asaas), o lembrete sai no formato de hoje, só com o link — o aviso nunca
+  deixa de sair por causa do Pix.
+- Fica a confirmar na criação do modelo: se a Meta aceita o botão do link junto do botão do
+  Pix (a documentação só mostra o botão do Pix) e o **nome do recebedor** que o cartão mostra
+  (titular da conta do Asaas que recebe a chave Pix).
+
+**(b) Aviso de atraso no D+2 — uma vez só.**
+
+| Momento | Mensagem | Regra |
+|---|---|---|
+| **D+2** | "Sua fatura nº X, que venceu em DD/MM, ainda não foi paga. Hoje o valor é R$ Y. Pague pelo botão abaixo para evitar o bloqueio do seu veículo." — com o **link da fatura**, sem Pix | mesma janela (9h–20h, todos os dias) e os mesmos filtros do §28.1: só fatura fechada, com saldo, sem acordo, de titular com o lembrete ligado |
+
+- **R$ Y é o valor atualizado do dia** (com multa e atualização, §32.6), o mesmo que a página
+  mostra. Pago em parte, sai o saldo atualizado.
+- **Uma vez por fatura** (chave única fatura + momento). Depois do D+2 **o sistema não manda mais
+  nada** sobre aquela fatura até ela ser paga: o caso passa para o time de cobrança, pela régua
+  (§7). A notificação formal da POP (§23.5) continua adiada e **o D+2 não é etapa da POP** nem
+  prova.
+- **"Evitar o bloqueio" é aviso, não gatilho.** O bloqueio só fica disponível a partir da raia
+  "Vencida até 14 dias" (Regra 6, `DIAS_BLOQUEIO_DISPONIVEL`); a mensagem não muda a regra.
+- O "D+1 em diante: sem mensagem automática" do §28.1 passa a ser "D+1 sem mensagem; **D+2 um
+  aviso**; depois, só a cobrança humana".
+- Modelos novos na Meta (Utilidade, pt_BR): o de atraso (produção e homolog) e o de pedido com
+  Pix para o D-2 e o D0 (produção e homolog). Os nomes ficam em Configuração › WhatsApp de cada
+  ambiente, como os atuais.
 
 ---
 
@@ -3809,7 +3863,9 @@ Fatura de contrato migrado do legado (§26) segue a mesma regra sobre os itens q
 fatura = cobrança real" (decisão 20/10). Para as faturas do modelo **AZIT** isso deixa de valer:
 a fatura fecha e fica disponível **sem cobrança no gateway**. O Pix é criado **no momento em que o
 cliente vai pagar**, com o valor exato escolhido (uma fatura, várias "da mais antiga até…", ou
-outro valor), válido **até as 23h59 do dia** (fuso do Brasil, Regra 15). Origem: o Vicente apontou
+outro valor), válido **até as 23h59 do dia** (fuso do Brasil, Regra 15) — exceção desde 22/11: o
+Pix que vai no lembrete de quem tem uma fatura só vale até 23h59 do **dia do vencimento**
+(§28.6). Origem: o Vicente apontou
 que pagar duas faturas exigia uma terceira cobrança e a conciliação das duas originais; o Pix
 dinâmico torna a cobrança descartável.
 
