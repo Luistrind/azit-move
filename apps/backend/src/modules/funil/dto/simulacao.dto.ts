@@ -12,9 +12,6 @@ export const criarSimulacaoSchema = z.object({
     .optional(),
   valorAvista: z.coerce.number().int().min(1).optional(), // obrigatório sem ativo e sem referência
   observacoes: z.string().trim().optional(),
-  // Conversas (doc 02 §34.5): simulação feita para um número ainda sem lead —
-  // guarda o número da conversa e passa para o lead quando ele nascer.
-  numeroWhatsapp: z.string().trim().min(8).optional(),
 });
 export type CriarSimulacaoDto = z.infer<typeof criarSimulacaoSchema>;
 

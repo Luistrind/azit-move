@@ -65,6 +65,12 @@ export class FunilController {
     return this.lead.criar(dto);
   }
 
+  // CPF do lead registrado sem ele (Conversas, doc 02 §34.5) — exigido para simular.
+  @Patch('leads/:id/cpf')
+  informarCpfLead(@Param('id') id: string, @Body() body: { cpf: string }) {
+    return this.lead.informarCpf(id, body?.cpf);
+  }
+
   // --- 7.3 Simulação / ofertas ---
   @Get('simulacoes')
   listarSimulacoes() {

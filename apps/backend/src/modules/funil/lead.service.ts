@@ -1,21 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { CanalOrigem } from '@prisma/client';
-import { limparDocumento, normalizarWhatsapp } from '@azit/utils';
+import { limparDocumento, validarCPF } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { CriarLeadDto } from './dto/lead.dto';
 
 // 7.2 — Lead e pré-cadastro (Doc 2 §4-A.1). Reconciliação por CPF: se o CPF já
 // pertence a um Titular, NÃO cria Lead — devolve o Titular. Senão cria o Lead.
-// Desde 25/11 (§34.5) o CPF é opcional: o lead que nasce pelas Conversas do
-// WhatsApp só tem nome e número, e recebe as simulações feitas para aquele
-// número antes de existir.
+// Desde 25/11 (§34.5) o lead que nasce pelas Conversas do WhatsApp pode ser
+// registrado sem CPF; o CPF é exigido para SIMULAR (SimulacaoService) e pode
+// ser informado depois (informarCpf).
 @Injectable()
 export class LeadService {
   constructor(private readonly prisma: PrismaService) {}
 
   async criar(dto: CriarLeadDto) {
     const cpf = dto.cpf ? limparDocumento(dto.cpf) : null;
-    const numero = normalizarWhatsapp(dto.telefone);
 
     const titular = cpf
       ? await this.prisma.db.titular.findFirst({
@@ -25,7 +24,6 @@ export class LeadService {
       : null;
     if (titular) {
       // CPF conhecido → recupera o Titular (não duplica em Lead).
-      await this.adotarSimulacoesDoNumero(numero, { titularId: titular.id });
       return { tipo: 'titular' as const, titular };
     }
 
@@ -38,21 +36,23 @@ export class LeadService {
         canalOrigem: dto.canalOrigem.toUpperCase() as CanalOrigem,
       },
     });
-    await this.adotarSimulacoesDoNumero(numero, { leadId: lead.id });
     return {
       tipo: 'lead' as const,
       lead: { id: lead.id, nome: lead.nome, cpf: lead.cpf, telefone: lead.telefone },
     };
   }
 
-  // Simulação feita pelas Conversas antes do lead existir (§34.5) passa a ser
-  // do lead (ou do titular) que nasce daquele número. Só as sem dono.
-  private async adotarSimulacoesDoNumero(numero: string | null, dono: { leadId: string } | { titularId: string }) {
-    if (!numero) return;
-    await this.prisma.db.simulacao.updateMany({
-      where: { numeroWhatsapp: numero, leadId: null, titularId: null },
-      data: dono,
-    });
+  // CPF do lead que nasceu sem ele (§34.5), antes de simular. CPF de titular
+  // não é gravado no lead: devolve o titular para o operador acertar o cadastro.
+  async informarCpf(leadId: string, cpfBruto: string) {
+    const cpf = limparDocumento(cpfBruto ?? '');
+    if (!validarCPF(cpf)) throw new UnprocessableEntityException({ erro: 'cpf_invalido', mensagem: 'CPF inválido' });
+    const lead = await this.prisma.db.lead.findFirst({ where: { id: leadId }, select: { id: true } });
+    if (!lead) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Lead não encontrado' });
+    const titular = await this.prisma.db.titular.findFirst({ where: { cpfCnpj: cpf }, select: { id: true, nome: true } });
+    if (titular) return { tipo: 'titular' as const, titular };
+    const atualizado = await this.prisma.db.lead.update({ where: { id: leadId }, data: { cpf } });
+    return { tipo: 'lead' as const, lead: { id: atualizado.id, nome: atualizado.nome, cpf: atualizado.cpf, telefone: atualizado.telefone } };
   }
 
   async listar() {

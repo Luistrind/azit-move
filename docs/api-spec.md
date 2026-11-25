@@ -1782,8 +1782,10 @@ têm esses campos (a tela trata como zero).
 - `GET /conversas-whatsapp/midia/:id` → arquivo recebido do cliente ou enviado pela tela.
 - Fora de produção: `POST /dev/conversas-whatsapp/simular-entrada { numero, texto }`.
 - O painel de atendimento usa as rotas que já existem: `POST /leads` (COMERCIAL; `cpf` opcional desde 25/11, canal
-  `whatsapp`), `GET /ativos?status=disponivel`, `POST /simulacoes` (novo campo opcional `numeroWhatsapp`: simulação sem
-  lead nem titular guarda o número e passa para o lead criado depois), `POST /simulacoes/:id/opcoes`,
+  `whatsapp`), `PATCH /leads/:id/cpf { cpf }` (COMERCIAL, nova: grava o CPF do lead registrado sem ele →
+  `{ tipo: lead, lead }`, ou `{ tipo: titular, titular: { id, nome } }` sem gravar quando o CPF já é de um titular;
+  422 `cpf_invalido`), `GET /ativos?status=disponivel`, `POST /simulacoes` (**CPF obrigatório para simular**:
+  `leadId` de lead sem CPF → 422 `lead_sem_cpf`), `POST /simulacoes/:id/opcoes`,
   `GET /contas/:id/posicao`, `GET /contas/:id/faturas?visao=agora`, `POST /faturas/:id/envios-link`,
   `GET /contas/:id/renegociacao/elegivel`, `POST /contas/:id/renegociacao/simular`, `POST /contas/:id/novacao/simular`
   e `POST /contratos/:id/quitacao/simular`.

@@ -166,7 +166,7 @@ Registro **leve** de uma pessoa que iniciou um atendimento mas ainda não tem ca
 **Campos:**
 - `id`
 - `nome`
-- `cpf` — **opcional desde 2026-11-25** (§34.5: lead nascido no WhatsApp); obrigatório no "Enviar proposta"
+- `cpf` — **pode faltar no cadastro desde 2026-11-25** (§34.5: lead nascido no WhatsApp); obrigatório para simular
 - `data_nascimento`
 - `canal_origem` — ex: operador interno, landing page, WhatsApp
 - `data_criacao`
@@ -4440,8 +4440,8 @@ para o mais antigo, e a fatura que ele quitou. Três origens na mesma linha do t
 
 Ideia dele em 25/11: dividir a página, com a conversa de um lado e, do outro, as informações e as simulações. O
 protótipo publicado em 25/11 foi **aprovado** ("Protótipo aprovado"; "Quero que todo cliente que recebeu lembrete
-entre na lista"). As perguntas que ele não respondeu uma a uma seguem a sugestão do protótipo. Onde o protótipo não
-sugeria nada, vale o padrão mais conservador. Esses padrões estão listados no §34.9 para ele trocar no homolog.
+entre na lista"). Depois ele respondeu às perguntas do protótipo, também em 25/11, e mudou uma delas: o CPF passa a ser exigido para simular.
+As duas que ficaram sem resposta seguem o padrão mais conservador, a confirmar. Tudo está no §34.9.
 
 **O que muda no §24.** A tela deixa de servir só à cobrança e passa a ser **o atendimento do número oficial**:
 clientes, ex-clientes, leads e números desconhecidos. Ela continua sendo da **área Carteira e cobrança**.
@@ -4490,7 +4490,7 @@ respondeu a pergunta 2.
 | Ex-cliente | **Histórico** · **Simular compra** | contratos do titular; simulação com o `titularId` |
 
 - **Simular compra** é a simulação do funil (§4-A.2), com o mesmo motor e os mesmos parâmetros, e **fica gravada**
-  como qualquer simulação do funil. O operador escolhe um carro **disponível** do estoque ou informa o valor à vista.
+  como qualquer simulação do funil, no lead ou no titular. **Exige CPF** (§34.5). O operador escolhe um carro **disponível** do estoque ou informa o valor à vista.
   Daqui, "Seguir no atendimento" abre a tela do funil já nessa simulação (`/atendimento?simulacao=`).
 - **Carro em preparação** aparece com alerta quando existir o estado de preparação do veículo. Esse bloco **não está
   na main** em 25/11: até lá, só aparecem os carros DISPONÍVEIS.
@@ -4503,13 +4503,15 @@ respondeu a pergunta 2.
 ### 34.5 Lead nascido no WhatsApp (muda o §4-A.1)
 
 - O lead nasce **pelo painel**, com o nome (o do perfil, editável), o número da conversa e o canal **WhatsApp**.
-- **CPF passa a ser opcional na criação do lead** (pergunta 4, opção A, sugestão do protótipo). Do WhatsApp só vêm
-  o nome e o número. O CPF continua **obrigatório no "Enviar proposta"** (§20, passo 6), onde roda a consulta da
-  Camada 1, e a tela do funil o pede ali quando o lead chegou sem ele. Se o CPF informado já for de um titular,
-  vale a regra de sempre: não nasce lead, e a conversa passa a ser do titular.
-- **Simulação antes do lead**: a simulação feita para um número não cadastrado guarda o número da conversa
-  (`Simulacao.numeroWhatsapp`, canônico) e passa para o lead quando ele nasce pelo painel. É a mesma simulação; não
-  há registro paralelo.
+- **O CPF pode faltar no cadastro do lead, mas é obrigatório para SIMULAR** (decisão Luís, 25/11; substitui o padrão
+  "CPF só no Enviar proposta" da primeira versão). Do WhatsApp só vêm o nome e o número. O lead pode ser registrado
+  sem CPF, para a conversa ganhar a etiqueta Lead. A aba **Simular compra**, porém, só mostra o simulador quando o
+  contato tem CPF: titular, ou lead com CPF. Sem CPF, ela pede o CPF primeiro. Se o número ainda não é lead, ela pede
+  nome e CPF e cria o lead. Se o lead já existe, grava o CPF nele.
+- O backend garante a regra: `POST /simulacoes` com `leadId` de lead sem CPF responde 422 `lead_sem_cpf`. As simulações
+  ficam sempre no lead ou no titular, como no funil, e não há simulação "do número".
+- **CPF de titular**: se o CPF informado já for de um titular, não nasce lead e o CPF não é gravado no lead. A tela
+  avisa de quem é o CPF, para o operador acertar o WhatsApp do cadastro e a conversa passar ao titular (§24 item 2).
 
 ### 34.6 Mídia pela tela
 
@@ -4540,14 +4542,14 @@ dois últimos já estavam fora no §24). Também fica fora mandar **modelo** for
 tela: para falar antes de o cliente escrever, continua o "Enviar pelo WhatsApp" da ficha, que sai do aparelho do
 operador (§32.7).
 
-### 34.9 Padrões assumidos sem resposta explícita (o Luís pode trocar no homolog)
+### 34.9 Respostas do Luís às perguntas do protótipo (25/11) e padrões a confirmar
 
-| # | Pergunta do protótipo | Padrão aplicado |
+| # | Pergunta do protótipo | Decisão |
 |---|---|---|
-| 1 | Mandar simulação: texto, PDF ou os dois? | texto sempre e PDF como opção marcável (sugestão) |
-| 2 | Etiquetas livres? | **não** nesta fase (conservador) |
-| 3 | Abrir a tela para a área Comercial? | **não**: continua só Carteira e cobrança, e as abas de lead e compra exigem também a área Comercial (conservador) |
-| 4 | Lead sem CPF? | **sim**: CPF exigido só no "Enviar proposta" (opção A, sugestão) |
-| 5 | Acordo e novação pelo painel? | só simulam e mandam; o registro continua no fluxo de hoje (sugestão) |
-| 6 | Limite do áudio gravado | 5 minutos (sugestão) |
-| 7 | Lembrete na lista | todos entram e o lembrete sobe a conversa, com o filtro "Só quem respondeu" (**decidido** pelo Luís) |
+| 1 | Mandar simulação: texto, PDF ou os dois? | texto sempre, PDF como opção marcável (**decidido**, como sugerido) |
+| 2 | Etiquetas livres? | **não** nesta fase. Padrão conservador, **a confirmar** (sem resposta) |
+| 3 | Abrir a tela para a área Comercial? | **não**: continua só Carteira e cobrança, e as abas de lead e compra exigem também a área Comercial. Padrão conservador, **a confirmar** (sem resposta) |
+| 4 | Lead sem CPF? | lead pode ser registrado sem CPF, mas **o CPF é obrigatório para simular** (**decidido**, mudou a sugestão; §34.5) |
+| 5 | Acordo e novação pelo painel? | só simulam e mandam; a efetivação continua no fluxo atual, com aprovação (**decidido**, como sugerido) |
+| 6 | Limite do áudio gravado | 5 minutos (**decidido**, como sugerido) |
+| 7 | Lembrete na lista | todos entram e o lembrete sobe a conversa, com o filtro "Só quem respondeu" (**decidido**) |

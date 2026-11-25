@@ -540,7 +540,6 @@ model Simulacao {
   validaAte         DateTime? // conversão de expirada exige recálculo
   parametroVersaoId String? // versão dos parâmetros usada no cálculo (rastreabilidade)
   observacoes       String?
-  numeroWhatsapp    String? // número canônico da conversa quando simulada antes do lead (doc 02 §34.5)
 
   lead            Lead?                      @relation(fields: [leadId], references: [id])
   titular         Titular?                   @relation(fields: [titularId], references: [id])
@@ -555,7 +554,6 @@ model Simulacao {
   @@index([ativoId])
   @@index([leadId])
   @@index([status])
-  @@index([numeroWhatsapp])
   @@map("simulacoes")
 }
 

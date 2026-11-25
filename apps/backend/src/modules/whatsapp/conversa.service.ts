@@ -179,7 +179,7 @@ export class ConversaService {
           })
         : [],
     ]);
-    const simulacoes = await this.simulacoesDoContato(numero, titular?.id ?? null, lead?.id ?? null);
+    const simulacoes = await this.simulacoesDoContato(titular?.id ?? null, lead?.id ?? null);
     const idsOperadores = [...new Set(mensagens.map((m) => m.usuarioId).filter((i): i is string => !!i))];
     const operadores = new Map(
       (idsOperadores.length ? await this.prisma.db.usuario.findMany({ where: { id: { in: idsOperadores } }, select: { id: true, nome: true } }) : []).map((u) => [u.id, u.nome]),
@@ -252,10 +252,11 @@ export class ConversaService {
     };
   }
 
-  // Simulações do funil deste contato (§34.4/§34.5): do titular, do lead, ou
-  // feitas para o número antes do lead existir. As mais recentes primeiro.
-  private async simulacoesDoContato(numero: string, titularId: string | null, leadId: string | null) {
-    const onde = [{ numeroWhatsapp: numero }, ...(titularId ? [{ titularId }] : []), ...(leadId ? [{ leadId }] : [])];
+  // Simulações do funil deste contato (§34.4/§34.5): do titular ou do lead —
+  // simular exige CPF, então não há simulação sem dono. As mais recentes primeiro.
+  private async simulacoesDoContato(titularId: string | null, leadId: string | null) {
+    const onde = [...(titularId ? [{ titularId }] : []), ...(leadId ? [{ leadId }] : [])];
+    if (!onde.length) return [];
     const lista = await this.prisma.db.simulacao.findMany({
       where: { OR: onde },
       orderBy: { createdAt: 'desc' },

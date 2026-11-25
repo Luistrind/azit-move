@@ -83,7 +83,7 @@ export interface SimulacaoResultado {
   status: string;
   validaAte: string | null;
   leadId?: string | null;
-  cliente?: { nome: string; cpf: string | null; telefone: string | null; titularId: string | null } | null; // cpf null: lead do WhatsApp (doc 02 §34.5)
+  cliente?: { nome: string; cpf: string | null; telefone: string | null; titularId: string | null } | null; // cpf null: lead do WhatsApp sem CPF (doc 02 §34.5)
   propostaId?: string | null;
   ativo: { id: string; descricao: string; placa: string | null } | null;
   referencia?: ReferenciaVeiculo | null;
@@ -210,11 +210,16 @@ export const originacaoService = {
     const { data } = await api.post('/api/v1/leads', body);
     return data;
   },
+  // CPF do lead registrado sem ele (Conversas, doc 02 §34.5): exigido para simular.
+  async informarCpfLead(leadId: string, cpf: string): Promise<{ tipo: 'lead' | 'titular'; lead?: { id: string }; titular?: { id: string; nome: string } }> {
+    const { data } = await api.patch(`/api/v1/leads/${leadId}/cpf`, { cpf });
+    return data;
+  },
   async detalheSimulacao(id: string): Promise<SimulacaoResultado> {
     const { data } = await api.get<SimulacaoResultado>(`/api/v1/simulacoes/${id}`);
     return data;
   },
-  async simular(body: { ativoId?: string; referencia?: { codigoMarca: string; codigoModelo: string; ano: string }; valorAvista?: number; leadId?: string; titularId?: string; numeroWhatsapp?: string }): Promise<SimulacaoResultado> {
+  async simular(body: { ativoId?: string; referencia?: { codigoMarca: string; codigoModelo: string; ano: string }; valorAvista?: number; leadId?: string; titularId?: string }): Promise<SimulacaoResultado> {
     const { data } = await api.post('/api/v1/simulacoes', body);
     return data;
   },

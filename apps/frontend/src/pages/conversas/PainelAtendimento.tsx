@@ -127,7 +127,7 @@ function AbaQuemE({ c }: { c: Conversa }) {
     setOcupado(true);
     try {
       const r = await originacaoService.criarLead({ nome: nome.trim(), cpf: cpf.replace(/\D/g, '') || undefined, telefone: c.numero, canalOrigem: 'whatsapp' });
-      toast.sucesso(r.tipo === 'titular' ? `O CPF já é de ${r.titular?.nome}: a conversa passa a ser dele quando o WhatsApp do cadastro for este número.` : 'Lead criado no funil. As simulações deste número passaram para ele.');
+      toast.sucesso(r.tipo === 'titular' ? `O CPF já é de ${r.titular?.nome}: a conversa passa a ser dele quando o WhatsApp do cadastro for este número.` : 'Lead criado no funil.');
       await qc.invalidateQueries({ queryKey: ['conversa', c.numero] });
       await qc.invalidateQueries({ queryKey: ['conversas'] });
     } catch (e) {
@@ -149,12 +149,12 @@ function AbaQuemE({ c }: { c: Conversa }) {
           <input value={formatarWhatsapp(c.numero)} disabled className={inputCls} style={{ ...campo, opacity: 0.6 }} />
         </label>
         <label className="flex flex-col gap-[3px] text-[11px] font-semibold" style={{ color: 'var(--text-body)' }}>
-          CPF (opcional agora)
+          CPF (necessário para simular)
           <input value={cpf} onChange={(e) => setCpf(e.target.value)} inputMode="numeric" placeholder="000.000.000-00" className={inputCls} style={campo} />
         </label>
       </div>
       <Botao variante="primaria" className="self-start" carregando={ocupado} disabled={nome.trim().length < 2} onClick={() => void criar()}>Criar lead no funil</Botao>
-      <div className="text-[11px]" style={muted}>O lead nasce com o canal WhatsApp. O CPF é pedido no "Enviar proposta", como no atendimento.</div>
+      <div className="text-[11px]" style={muted}>O lead nasce com o canal WhatsApp. Pode ser registrado sem CPF, mas a simulação só abre com o CPF.</div>
     </div>
   );
 }
@@ -196,7 +196,7 @@ function AbaLead({ c }: { c: Conversa }) {
 
 // ---------------- Simular compra (funil, §34.4) ----------------
 
-function AbaCompra({ c, onMandar }: { c: Conversa; onMandar: (m: Mensagem) => void }) {
+function SimuladorCompra({ c, onMandar }: { c: Conversa; onMandar: (m: Mensagem) => void }) {
   const qc = useQueryClient();
   const ativos = useQuery({ queryKey: ['atendimento-ativos'], queryFn: () => originacaoService.ativosDisponiveis(), staleTime: 60_000 });
   const [ativoId, setAtivoId] = useState<string | null>(null);
@@ -218,7 +218,6 @@ function AbaCompra({ c, onMandar }: { c: Conversa; onMandar: (m: Mensagem) => vo
         valorAvista,
         leadId: c.lead?.id,
         titularId: c.titular?.id,
-        numeroWhatsapp: !c.lead && !c.titular ? c.numero : undefined,
       });
       setSim(r);
       setOfertaId(r.ofertas[0]?.id ?? null);
@@ -313,7 +312,7 @@ function AbaCompra({ c, onMandar }: { c: Conversa; onMandar: (m: Mensagem) => vo
             </select>
           </div>
           <Botao tamanho="sm" className="self-start" carregando={ocupado} disabled={!entrada.trim()} onClick={() => void outraCondicao()}>Simular esta condição</Botao>
-          <div className="text-[11px]" style={muted}>Motor da simulação do funil. Válida até {sim.validaAte ? dataBR(sim.validaAte) : '—'}. Fica gravada {c.lead ? 'no lead' : c.titular ? 'no titular' : 'neste número e passa para o lead quando ele for criado'}.</div>
+          <div className="text-[11px]" style={muted}>Motor da simulação do funil. Válida até {sim.validaAte ? dataBR(sim.validaAte) : '—'}. Fica gravada {c.lead ? 'no lead' : 'no titular'}.</div>
           <div className="flex flex-wrap gap-[6px]">
             {c.janela.aberta && <Botao
               variante="primaria"
@@ -329,6 +328,57 @@ function AbaCompra({ c, onMandar }: { c: Conversa; onMandar: (m: Mensagem) => vo
       <ListaSimulacoes c={c} />
     </div>
   );
+}
+
+// Simular exige CPF (decisão Luís 25/11, doc 02 §34.5): sem CPF, a aba pede o CPF
+// primeiro e não mostra o simulador.
+function PedirCpf({ c }: { c: Conversa }) {
+  const qc = useQueryClient();
+  const [nome, setNome] = useState(c.lead?.nome ?? c.nomePerfil ?? '');
+  const [cpf, setCpf] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+  const digitos = cpf.replace(/\D/g, '');
+  async function salvar() {
+    setOcupado(true);
+    try {
+      const r = c.lead
+        ? await originacaoService.informarCpfLead(c.lead.id, digitos)
+        : await originacaoService.criarLead({ nome: nome.trim(), cpf: digitos, telefone: c.numero, canalOrigem: 'whatsapp' });
+      if (r.tipo === 'titular') {
+        toast.erro(`Este CPF já é de ${r.titular?.nome}. Acerte o WhatsApp no cadastro dele para a conversa passar ao titular.`);
+        return;
+      }
+      toast.sucesso(c.lead ? 'CPF gravado no lead.' : 'Lead criado no funil.');
+      await qc.invalidateQueries({ queryKey: ['conversa', c.numero] });
+      await qc.invalidateQueries({ queryKey: ['conversas'] });
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+    } finally {
+      setOcupado(false);
+    }
+  }
+  return (
+    <div className="flex flex-col gap-[10px]">
+      <Aviso>Para simular, informe o CPF{c.lead ? ' do lead' : ' e o nome. O lead nasce no funil com o canal WhatsApp'}.</Aviso>
+      {!c.lead && (
+        <label className="flex flex-col gap-[3px] text-[11px] font-semibold" style={{ color: 'var(--text-body)' }}>
+          Nome
+          <input value={nome} onChange={(e) => setNome(e.target.value)} className={inputCls} style={campo} />
+        </label>
+      )}
+      <label className="flex flex-col gap-[3px] text-[11px] font-semibold" style={{ color: 'var(--text-body)' }}>
+        CPF
+        <input value={cpf} onChange={(e) => setCpf(e.target.value)} inputMode="numeric" placeholder="000.000.000-00" className={inputCls} style={campo} />
+      </label>
+      <Botao variante="primaria" className="self-start" carregando={ocupado} disabled={digitos.length !== 11 || (!c.lead && nome.trim().length < 2)} onClick={() => void salvar()}>
+        {c.lead ? 'Gravar CPF e simular' : 'Criar lead e simular'}
+      </Botao>
+    </div>
+  );
+}
+
+function AbaCompra({ c, onMandar }: { c: Conversa; onMandar: (m: Mensagem) => void }) {
+  return c.titular || c.lead?.cpf ? <SimuladorCompra c={c} onMandar={onMandar} /> : <PedirCpf c={c} />;
 }
 
 // ---------------- Cliente: posição, acordo, novação, quitação ----------------
