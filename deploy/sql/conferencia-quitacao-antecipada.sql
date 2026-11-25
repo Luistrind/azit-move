@@ -32,7 +32,7 @@ SELECT c.id, c.numero, t.nome AS cliente, c.status::text AS status, c.periodicid
 
 \echo ''
 \echo '== 1. Quitações antecipadas JÁ FEITAS em produção (valores em R$) =='
-SELECT to_char(l."createdAt" AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI') AS quando,
+SELECT to_char((l."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI') AS quando,
        q.cliente, q.numero AS contrato, q.caminho,
        (l.depois->>'quitadas')::int AS parcelas,
        round((l.depois->>'valorNominalTotal')::numeric / 100, 2) AS nominal,

@@ -27,8 +27,8 @@ SELECT t.nome AS cliente,
        f.status::text AS status_fatura,
        f."valorTotal" - COALESCE(f."valorPago", 0) AS saldo,
        COALESCE(l.situacao::text, '—') AS lembrete,
-       COALESCE(to_char(l."enviadoEm" AT TIME ZONE 'America/Sao_Paulo', 'DD/MM HH24:MI'), '') AS enviado,
-       COALESCE(to_char(l."entregueEm" AT TIME ZONE 'America/Sao_Paulo', 'DD/MM HH24:MI'), '') AS entregue,
+       COALESCE(to_char((l."enviadoEm" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo', 'DD/MM HH24:MI'), '') AS enviado,
+       COALESCE(to_char((l."entregueEm" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo', 'DD/MM HH24:MI'), '') AS entregue,
        CASE
          WHEN l.id IS NOT NULL AND l.situacao::text IN ('ENVIADO', 'ENTREGUE', 'LIDO') THEN 'saiu'
          WHEN l.id IS NOT NULL THEN 'tentou: ' || COALESCE(l.motivo, l.situacao::text)
