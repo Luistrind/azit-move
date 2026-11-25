@@ -4,7 +4,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, Periodicidade as PeriodicidadePrisma } from '@prisma/client';
-import { rotuloAtivo, rotuloReferencia, precificarSimulacao, FrequenciaSimulacao, DIA_MS } from '@azit/utils';
+import { rotuloAtivo, rotuloReferencia, precificarSimulacao, FrequenciaSimulacao, DIA_MS, normalizarWhatsapp, formatarWhatsapp } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { ParametrosService, ParametrosVigentes } from '../simulador/parametros.service';
 import { OfertaFixaService } from '../simulador/oferta-fixa.service';
@@ -266,6 +266,8 @@ export class SimulacaoService {
         // Rastreabilidade do legado só quando ele foi consultado/existia.
         parametroVersaoId: params?.id ?? null,
         observacoes: dto.observacoes,
+        // Só para simulação sem dono (doc 02 §34.5): o lead que nascer deste número a recebe.
+        numeroWhatsapp: !dto.leadId && !dto.titularId && dto.numeroWhatsapp ? normalizarWhatsapp(dto.numeroWhatsapp) : null,
       },
     });
 
@@ -474,7 +476,9 @@ export class SimulacaoService {
       ? { nome: s.titular.nome, cpf: s.titular.cpfCnpj, telefone: null as string | null, titularId: s.titular.id }
       : s.lead
         ? { nome: s.lead.nome, cpf: s.lead.cpf, telefone: s.lead.telefone, titularId: null }
-        : null;
+        : s.numeroWhatsapp
+          ? { nome: '', cpf: null, telefone: s.numeroWhatsapp, titularId: null } // feita pelas Conversas, antes do lead (§34.5)
+          : null;
     return {
       id: s.id,
       status: this.expirada(s) ? 'expirada' : s.status.toLowerCase(),
@@ -521,7 +525,7 @@ export class SimulacaoService {
       const sel = s.ofertas[0];
       return {
         id: s.id,
-        cliente: s.titular?.nome ?? s.lead?.nome ?? '—',
+        cliente: s.titular?.nome ?? s.lead?.nome ?? (s.numeroWhatsapp ? `WhatsApp ${formatarWhatsapp(s.numeroWhatsapp)}` : '—'),
         ativo: s.ativo ? rotuloAtivo(s.ativo) : s.referencia ? rotuloReferencia(s.referencia) : 'Valor manual',
         valorAvista: cent(s.valorAvista),
         valorEntrada: cent(s.valorEntrada),

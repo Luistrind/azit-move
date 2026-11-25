@@ -59,6 +59,11 @@ export class WhatsappEnvioService {
     return this.executar(p.destino, (autorizadoTeste) => this.meta.enviarTexto({ ...p, destinoAutorizadoTeste: autorizadoTeste }));
   }
 
+  // Imagem, documento ou áudio pela tela Conversas (doc 02 §34.6) — mesma regra.
+  enviarMidia(p: { destino: string; tipo: 'image' | 'document' | 'audio'; arquivo: Buffer; mime: string; nomeArquivo: string; legenda?: string | null }): Promise<ResultadoEnvioWhatsapp> {
+    return this.executar(p.destino, (autorizadoTeste) => this.meta.enviarMidia({ ...p, destinoAutorizadoTeste: autorizadoTeste }));
+  }
+
   // Visto azul para o cliente: só quando um envio real para ele seria permitido
   // (fora de produção, nada sai para número não autorizado — nem o visto).
   async confirmarLeitura(destino: string, mensagemId: string): Promise<void> {

@@ -505,7 +505,7 @@ model Conta {
 model Lead {
   id             String      @id @default(cuid())
   nome           String
-  cpf            String
+  cpf            String? // opcional desde 25/11 (doc 02 §34.5): lead do WhatsApp nasce sem CPF
   telefone       String? // fase 1 do atendimento (Doc 2 §4-A.1)
   dataNascimento DateTime?
   canalOrigem    CanalOrigem @default(OPERADOR_INTERNO)
@@ -540,6 +540,7 @@ model Simulacao {
   validaAte         DateTime? // conversão de expirada exige recálculo
   parametroVersaoId String? // versão dos parâmetros usada no cálculo (rastreabilidade)
   observacoes       String?
+  numeroWhatsapp    String? // número canônico da conversa quando simulada antes do lead (doc 02 §34.5)
 
   lead            Lead?                      @relation(fields: [leadId], references: [id])
   titular         Titular?                   @relation(fields: [titularId], references: [id])
@@ -554,6 +555,7 @@ model Simulacao {
   @@index([ativoId])
   @@index([leadId])
   @@index([status])
+  @@index([numeroWhatsapp])
   @@map("simulacoes")
 }
 
