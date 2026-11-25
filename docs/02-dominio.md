@@ -166,9 +166,9 @@ Registro **leve** de uma pessoa que iniciou um atendimento mas ainda não tem ca
 **Campos:**
 - `id`
 - `nome`
-- `cpf`
+- `cpf` — **opcional desde 2026-11-25** (§34.5: lead nascido no WhatsApp); obrigatório no "Enviar proposta"
 - `data_nascimento`
-- `canal_origem` — ex: operador interno, landing page
+- `canal_origem` — ex: operador interno, landing page, WhatsApp
 - `data_criacao`
 
 > **Lead vs Titular.** O Lead é só para quem **ainda não existe** no sistema. Se o CPF já pertence a um Titular, não se cria Lead — recupera-se o Titular. Quando a proposta avança e o cadastro completo é coletado, o Lead é **promovido a Titular**, com **reconciliação por CPF** (se já houver Titular com aquele CPF, reaproveita; leads anteriores do mesmo CPF são reconciliados, não duplicados).
@@ -2245,6 +2245,10 @@ de atendimento geral: serve à cobrança.
    conversa a um operador, indicador de mensagem nova no card da régua e a entrada das
    mensagens no dossiê do contrato como prova (POP §17) — os dois últimos voltam junto com a
    notificação formal (§23.5).
+
+> **Revisão 2026-11-25 (Luís) — ver §34.** A tela passa a ser o atendimento do número oficial: painel ao lado
+> (lead, simulação de compra, posição, acordo, novação e quitação), envio de imagem, documento e áudio, lista
+> ordenada pela última atividade (o lembrete conta) e etiquetas automáticas.
 
 ## 25. Controle de frota (decisão Luís, 2026-09-20)
 
@@ -4422,3 +4426,128 @@ para o mais antigo, e a fatura que ele quitou. Três origens na mesma linha do t
 - O link da fatura para o cliente (copiar / WhatsApp do operador, §32.7) fica no topo e dentro da
   fatura aberta, não mais em cada linha.
 
+
+## 34. Conversas como atendimento — painel ao lado, mídia, lista e etiquetas (decisão Luís, 2026-11-25)
+
+**Origem.** O número oficial está na Cloud API desde a v1.12.0 (22/11) e só é atendido pela tela
+**Conversas do WhatsApp** (§24). Na produção, o Luís apontou quatro problemas:
+
+1. ele não consegue mandar áudio nem imagem, então descreve a proposta à mão;
+2. a lista fixa as não lidas no topo;
+3. chegam leads que não são clientes, e ele não consegue separá-los;
+4. quem só recebeu lembrete não aparece na lista. O caso foi um cliente com D0 em 25/11: lembrete lido, nenhuma
+   resposta, nenhuma conversa na lista.
+
+Ideia dele em 25/11: dividir a página, com a conversa de um lado e, do outro, as informações e as simulações. O
+protótipo publicado em 25/11 foi **aprovado** ("Protótipo aprovado"; "Quero que todo cliente que recebeu lembrete
+entre na lista"). As perguntas que ele não respondeu uma a uma seguem a sugestão do protótipo. Onde o protótipo não
+sugeria nada, vale o padrão mais conservador. Esses padrões estão listados no §34.9 para ele trocar no homolog.
+
+**O que muda no §24.** A tela deixa de servir só à cobrança e passa a ser **o atendimento do número oficial**:
+clientes, ex-clientes, leads e números desconhecidos. Ela continua sendo da **área Carteira e cobrança**.
+
+### 34.1 A tela em três partes
+
+Lista à esquerda, conversa no meio e **painel de atendimento** à direita. Em tela estreita, o painel abre por
+cima, pelo botão "Atendimento". No celular, a conversa ocupa a tela. O painel **não tem conta própria** (Regra 16):
+chama os mesmos serviços do funil, da ficha e da carteira.
+
+### 34.2 A lista
+
+- **Entra todo número com atividade na conversa**: mensagem trocada, em qualquer direção, ou lembrete de pagamento
+  enviado (situações ENVIADO, ENTREGUE, LIDO e SIMULADO, as mesmas que a conversa já mostrava, §24 item 4). Quem só
+  recebeu lembrete aparece com o aviso "só lembrete, nunca respondeu".
+- **Ordem: a última atividade primeiro**, como no WhatsApp. O lembrete conta como atividade e sobe a conversa
+  (opção (a), decisão do Luís). Mensagem não lida **não fixa** a conversa no topo. O contador de não lidas continua no
+  item e no menu.
+- **Filtros**: *Todas*, *Não lidas* e *Só quem respondeu* (quem mandou ao menos uma mensagem), mais o filtro por
+  etiqueta (§34.3) e a **busca** por nome (titular, lead ou perfil do WhatsApp) ou por número.
+
+### 34.3 Etiquetas automáticas (derivadas, nunca gravadas — Regras 7 e 8)
+
+Calculadas na leitura, pelo cadastro de agora, por uma função única (`etiquetaDoContato`, `packages/utils`):
+
+| Etiqueta | Quando |
+|---|---|
+| **Cliente** | o número é de um titular que tem contrato de crédito **ATIVO** |
+| **Ex-cliente** | titular com contratos, **todos ENCERRADO** (quitação, novação, rescisão ou cancelamento) |
+| **Lead** | titular sem contrato ativo e sem histórico encerrado, incluindo quem tem contrato em rascunho, em assinatura ou aguardando a entrada; ou número de um lead do funil ainda não promovido |
+| **Não cadastrado** | o número não bate com nenhum titular nem com nenhum lead |
+
+Na precedência vem primeiro o titular: se o número bate com um titular, a etiqueta sai dos contratos dele, e o
+lead só é olhado quando não há titular. O número do lead é comparado em todas as formas, como no §24 item 2.
+
+**Etiquetas livres** (criadas pelo operador): **fora desta fase**. É o padrão conservador, porque o Luís não
+respondeu a pergunta 2.
+
+### 34.4 O painel, por etiqueta
+
+| Etiqueta | Abas | De onde vem |
+|---|---|---|
+| Não cadastrado | **Quem é** (criar lead) · **Simular compra** | `POST /leads`; `GET /ativos?status=disponivel`; `POST /simulacoes` e `/simulacoes/:id/opcoes` |
+| Lead | **Lead** (dados, simulações, abrir no atendimento) · **Simular compra** | idem, com o `leadId` |
+| Cliente | **Posição de hoje** · **Acordo** · **Novação** · **Quitação** | `GET /contas/:id/posicao` e `/faturas?visao=agora` (§33); `POST /contas/:id/renegociacao/simular`; `POST /contas/:id/novacao/simular`; `POST /contratos/:id/quitacao/simular` |
+| Ex-cliente | **Histórico** · **Simular compra** | contratos do titular; simulação com o `titularId` |
+
+- **Simular compra** é a simulação do funil (§4-A.2), com o mesmo motor e os mesmos parâmetros, e **fica gravada**
+  como qualquer simulação do funil. O operador escolhe um carro **disponível** do estoque ou informa o valor à vista.
+  Daqui, "Seguir no atendimento" abre a tela do funil já nessa simulação (`/atendimento?simulacao=`).
+- **Carro em preparação** aparece com alerta quando existir o estado de preparação do veículo. Esse bloco **não está
+  na main** em 25/11: até lá, só aparecem os carros DISPONÍVEIS.
+- **Acordo, novação e quitação no painel só simulam e mandam ao cliente** (pergunta 5, sugestão do protótipo).
+  Registrar o acordo, pedir a novação ou executar a quitação continua na ficha e no contrato, com a aprovação de
+  sempre; o painel leva até lá.
+- **Regra "não mostrar o que não pode"**: as abas de lead e de compra aparecem só para quem tem também a **área
+  Comercial**, porque o funil é dela. Acordo, novação e quitação seguem as áreas que esses serviços já exigem.
+
+### 34.5 Lead nascido no WhatsApp (muda o §4-A.1)
+
+- O lead nasce **pelo painel**, com o nome (o do perfil, editável), o número da conversa e o canal **WhatsApp**.
+- **CPF passa a ser opcional na criação do lead** (pergunta 4, opção A, sugestão do protótipo). Do WhatsApp só vêm
+  o nome e o número. O CPF continua **obrigatório no "Enviar proposta"** (§20, passo 6), onde roda a consulta da
+  Camada 1, e a tela do funil o pede ali quando o lead chegou sem ele. Se o CPF informado já for de um titular,
+  vale a regra de sempre: não nasce lead, e a conversa passa a ser do titular.
+- **Simulação antes do lead**: a simulação feita para um número não cadastrado guarda o número da conversa
+  (`Simulacao.numeroWhatsapp`, canônico) e passa para o lead quando ele nasce pelo painel. É a mesma simulação; não
+  há registro paralelo.
+
+### 34.6 Mídia pela tela
+
+- **Imagem** (JPEG ou PNG, até 5 MB, limite da Meta), **documento** (PDF, Word ou Excel, até 25 MB, abaixo do limite
+  de envio do sistema) e **áudio gravado na tela**, até **5 minutos** por áudio (pergunta 6, sugestão do protótipo).
+- O navegador grava em webm/opus, formato que a Meta não aceita. O servidor converte para **ogg/opus** (ffmpeg na
+  imagem do backend), e o áudio chega ao cliente **como mensagem de voz**.
+- O arquivo sobe para a Meta (`/media`) e a mensagem sai pela **regra única de envio** (§23): fora de produção, só
+  para número autorizado, e o resto fica SIMULADO. Vale a **mesma janela de 24 horas** do texto: fora dela, nem o
+  campo nem o clipe nem o microfone aparecem.
+- O arquivo enviado fica guardado com a conversa, como a mídia recebida (§24 item 1), e abre pela mesma rota.
+
+### 34.7 Mandar ao cliente
+
+O resultado de qualquer simulação do painel vira mensagem na conversa: **texto formatado sempre** e, se o operador
+marcar, **também o PDF** (pergunta 1, sugestão do protótipo). O texto é montado pela tela com os valores que o
+serviço devolveu, e o operador pode editá-lo antes de mandar. O PDF leva os mesmos valores, nunca outra conta,
+gerado pelo mesmo gerador do dossiê e da fatura (Playwright). A linguagem segue o vocabulário do produto: compra
+parcelada, entrada, parcela, desconto por antecipar. Nunca "financiamento", "taxa" ou "juros".
+
+Na conversa do cliente, a fatura em aberto ganha **"Mandar link"**: o link da Fatura Azit (§32.7) vai como texto. Esse
+botão só aparece dentro da janela de 24 horas.
+
+### 34.8 O que fica fora
+
+Etiquetas livres, respostas prontas, atribuir a conversa a um operador, a mensagem na régua e a prova no dossiê (os
+dois últimos já estavam fora no §24). Também fica fora mandar **modelo** fora da janela de 24 horas a partir desta
+tela: para falar antes de o cliente escrever, continua o "Enviar pelo WhatsApp" da ficha, que sai do aparelho do
+operador (§32.7).
+
+### 34.9 Padrões assumidos sem resposta explícita (o Luís pode trocar no homolog)
+
+| # | Pergunta do protótipo | Padrão aplicado |
+|---|---|---|
+| 1 | Mandar simulação: texto, PDF ou os dois? | texto sempre e PDF como opção marcável (sugestão) |
+| 2 | Etiquetas livres? | **não** nesta fase (conservador) |
+| 3 | Abrir a tela para a área Comercial? | **não**: continua só Carteira e cobrança, e as abas de lead e compra exigem também a área Comercial (conservador) |
+| 4 | Lead sem CPF? | **sim**: CPF exigido só no "Enviar proposta" (opção A, sugestão) |
+| 5 | Acordo e novação pelo painel? | só simulam e mandam; o registro continua no fluxo de hoje (sugestão) |
+| 6 | Limite do áudio gravado | 5 minutos (sugestão) |
+| 7 | Lembrete na lista | todos entram e o lembrete sobe a conversa, com o filtro "Só quem respondeu" (**decidido** pelo Luís) |
