@@ -1755,15 +1755,35 @@ têm esses campos (a tela trata como zero).
   `{ dia, executada, motivo, candidatas, enviados, simulados, retidos, falhas, ignoradas }`) e
   `POST /dev/whatsapp/lembretes/:id/simular-status { status: delivered | read | failed }`.
 
-**Conversas (área CARTEIRA_COBRANCA)**
-- `GET /conversas-whatsapp` → `[{ numero (canônico), titular, nomePerfil, ultimaEm, ultimaDirecao, ultimaPrevia, naoLidas }]`,
-  com não lidas primeiro.
+**Conversas (área CARTEIRA_COBRANCA) — doc 02 §24 e §34 (atendimento, 25/11/2026)**
+- `GET /conversas-whatsapp` → `[{ numero (canônico), titular, lead, nomePerfil, etiqueta: CLIENTE | EX_CLIENTE | LEAD |
+  NAO_CADASTRADO, ultimaEm, ultimaOrigem: mensagem | lembrete, ultimaDirecao, ultimaPrevia, naoLidas, respondeu }]`.
+  Entra todo número com mensagem **ou** lembrete enviado (ENVIADO/ENTREGUE/LIDO/SIMULADO); ordem pela **última
+  atividade** (o lembrete conta), sem fixar as não lidas. Etiqueta derivada na leitura (`etiquetaDoContato`).
 - `GET /conversas-whatsapp/nao-lidas` → `{ total }` (contador do menu).
-- `GET /conversas-whatsapp/:numero` → `{ numero, titular, nomePerfil, contratos[], janela: { aberta, ate, horas },
-  envio: { producao, decisao, motivo, enviaDeVerdade }, itens: [{ id, origem: mensagem | lembrete, direcao:
-  ENTRADA | SAIDA, momento, tipo, texto, temMidia, midiaDisponivel, midiaNome, situacao, motivo, autor, lida }] }`.
+- `GET /conversas-whatsapp/:numero` → `{ numero, titular, contaId, lead: { id, nome, cpf, canalOrigem, criadoEm } | null,
+  nomePerfil, etiqueta, respondeu, contratos[] (ativos), historico: [{ id, numero, status, motivoEncerramento,
+  dataEncerramento, ativo }], simulacoes: [{ id, criadaEm, validaAte, veiculo, valorAvista, oferta: { valorEntrada,
+  prazoMeses, frequencia, valorParcela } | null, propostaId }], janela: { aberta, ate, horas }, envio: { producao,
+  decisao, motivo, enviaDeVerdade }, itens: [{ id, origem: mensagem | lembrete, direcao: ENTRADA | SAIDA, momento,
+  tipo, texto, temMidia, midiaDisponivel, midiaNome, situacao, motivo, autor, lida }] }`.
 - `POST /conversas-whatsapp/:numero/lida` → `{ marcadas }` (manda o visto azul pela regra de envio).
 - `POST /conversas-whatsapp/:numero/responder { texto }` → `{ resultado: enviada | simulada | retida | falhou, motivo? }`.
   422: `janela_fechada`, `texto_invalido`, `numero_invalido`.
-- `GET /conversas-whatsapp/midia/:id` → arquivo recebido do cliente.
+- `POST /conversas-whatsapp/:numero/anexo { tipo: IMAGEM | DOCUMENTO | AUDIO, nome, mime, conteudoBase64, legenda? }` →
+  `{ resultado, motivo? }`. Imagem JPG/PNG até 5 MB; documento PDF/Word/Excel/texto até 20 MB; áudio até 5 MB
+  (gravação de até 5 min), convertido no servidor para ogg/opus (ffmpeg) e enviado como voz, sem legenda. Sobe para
+  a Meta em `/{phone-number-id}/media` e sai pela regra única de envio. 422: `janela_fechada`, `anexo_invalido`,
+  `audio_sem_conversao` (só quando o envio seria real; simulado guarda o original).
+- `POST /conversas-whatsapp/:numero/simulacao { texto, pdf?: { titulo, destaque?: { rotulo, valor }, linhas: [{ rotulo,
+  valor }], observacoes?: string[] } }` → `{ pdf: { resultado, motivo? } | null, texto: { resultado, motivo? } }`.
+  O PDF (opcional) leva só as linhas que a tela recebeu do serviço da simulação; sai antes do texto. 422: `janela_fechada`,
+  `texto_invalido`.
+- `GET /conversas-whatsapp/midia/:id` → arquivo recebido do cliente ou enviado pela tela.
 - Fora de produção: `POST /dev/conversas-whatsapp/simular-entrada { numero, texto }`.
+- O painel de atendimento usa as rotas que já existem: `POST /leads` (COMERCIAL; `cpf` opcional desde 25/11, canal
+  `whatsapp`), `GET /ativos?status=disponivel`, `POST /simulacoes` (novo campo opcional `numeroWhatsapp`: simulação sem
+  lead nem titular guarda o número e passa para o lead criado depois), `POST /simulacoes/:id/opcoes`,
+  `GET /contas/:id/posicao`, `GET /contas/:id/faturas?visao=agora`, `POST /faturas/:id/envios-link`,
+  `GET /contas/:id/renegociacao/elegivel`, `POST /contas/:id/renegociacao/simular`, `POST /contas/:id/novacao/simular`
+  e `POST /contratos/:id/quitacao/simular`.

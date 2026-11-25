@@ -83,7 +83,7 @@ export interface SimulacaoResultado {
   status: string;
   validaAte: string | null;
   leadId?: string | null;
-  cliente?: { nome: string; cpf: string; telefone: string | null; titularId: string | null } | null;
+  cliente?: { nome: string; cpf: string | null; telefone: string | null; titularId: string | null } | null; // cpf null: lead do WhatsApp (doc 02 §34.5)
   propostaId?: string | null;
   ativo: { id: string; descricao: string; placa: string | null } | null;
   referencia?: ReferenciaVeiculo | null;
@@ -206,7 +206,7 @@ export const originacaoService = {
     const { data } = await api.get('/api/v1/ativos', { params: { status: 'disponivel', limit: 100 } });
     return data.data;
   },
-  async criarLead(body: { nome: string; cpf: string; telefone: string; canalOrigem: string }): Promise<{ tipo: string; lead?: { id: string }; titular?: { nome: string } }> {
+  async criarLead(body: { nome: string; cpf?: string; telefone: string; canalOrigem: string }): Promise<{ tipo: string; lead?: { id: string }; titular?: { nome: string } }> {
     const { data } = await api.post('/api/v1/leads', body);
     return data;
   },
@@ -214,7 +214,7 @@ export const originacaoService = {
     const { data } = await api.get<SimulacaoResultado>(`/api/v1/simulacoes/${id}`);
     return data;
   },
-  async simular(body: { ativoId?: string; referencia?: { codigoMarca: string; codigoModelo: string; ano: string }; valorAvista?: number; leadId?: string; titularId?: string }): Promise<SimulacaoResultado> {
+  async simular(body: { ativoId?: string; referencia?: { codigoMarca: string; codigoModelo: string; ano: string }; valorAvista?: number; leadId?: string; titularId?: string; numeroWhatsapp?: string }): Promise<SimulacaoResultado> {
     const { data } = await api.post('/api/v1/simulacoes', body);
     return data;
   },

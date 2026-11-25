@@ -4513,7 +4513,7 @@ respondeu a pergunta 2.
 
 ### 34.6 Mídia pela tela
 
-- **Imagem** (JPEG ou PNG, até 5 MB, limite da Meta), **documento** (PDF, Word ou Excel, até 25 MB, abaixo do limite
+- **Imagem** (JPEG ou PNG, até 5 MB, limite da Meta), **documento** (PDF, Word ou Excel, até 20 MB, o que cabe no limite
   de envio do sistema) e **áudio gravado na tela**, até **5 minutos** por áudio (pergunta 6, sugestão do protótipo).
 - O navegador grava em webm/opus, formato que a Meta não aceita. O servidor converte para **ogg/opus** (ffmpeg na
   imagem do backend), e o áudio chega ao cliente **como mensagem de voz**.

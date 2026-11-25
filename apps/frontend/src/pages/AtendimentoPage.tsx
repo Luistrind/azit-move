@@ -131,6 +131,7 @@ export function AtendimentoPage() {
   const [descComplementar, setDescComplementar] = useState('');
   const [rendaTexto, setRendaTexto] = useState('');
   const [parecerTexto, setParecerTexto] = useState('');
+  const [pedirIdentificacao, setPedirIdentificacao] = useState(false);
 
   // Retomada de simulação pela LISTA (?simulacao=<id> — correção 14/09: a
   // lista apontava para /originacao, rota que nunca existiu, e o router caía
@@ -147,6 +148,8 @@ export function AtendimentoPage() {
         if (s.cliente) {
           setNome(s.cliente.nome ?? '');
           setCpf(s.cliente.cpf ?? '');
+          // Lead do WhatsApp (doc 02 §34.5): sem CPF, a tela pede antes do Enviar proposta.
+          if (!s.cliente.cpf && !s.cliente.titularId) setPedirIdentificacao(true);
           setTelefone(s.cliente.telefone ?? '');
           if (s.cliente.titularId) {
             const det = await titularService.detalhe(s.cliente.titularId);
@@ -931,9 +934,30 @@ export function AtendimentoPage() {
           >
             Apresentar ao cliente
           </button>
+          {/* Lead nascido no WhatsApp chega sem CPF (doc 02 §34.5): o CPF é pedido aqui,
+              antes da verificação cadastral do "Enviar proposta". */}
+          {!titular && pedirIdentificacao && (
+            <label className="flex flex-col gap-[4px] text-[12.5px] font-semibold" style={{ color: 'var(--text-body)' }}>
+              CPF do cliente (obrigatório para enviar a proposta)
+              <input
+                value={cpf}
+                onChange={(e) => setCpf(mascararCpf(e.target.value))}
+                inputMode="numeric"
+                placeholder="000.000.000-00"
+                className="h-[44px] rounded-[10px] px-[12px] text-[14px]"
+                style={{ background: 'var(--surface-input)', border: '1.5px solid var(--border)', color: 'var(--text-primary)' }}
+              />
+            </label>
+          )}
+          {!titular && pedirIdentificacao && (
+            <label className="flex flex-col gap-[4px] text-[12.5px] font-semibold" style={{ color: 'var(--text-body)' }}>
+              Nome do cliente
+              <input value={nome} onChange={(e) => setNome(e.target.value)} className="h-[44px] rounded-[10px] px-[12px] text-[14px]" style={{ background: 'var(--surface-input)', border: '1.5px solid var(--border)', color: 'var(--text-primary)' }} />
+            </label>
+          )}
           <button
             onClick={enviarProposta}
-            disabled={!selecionada || ocupado}
+            disabled={!selecionada || ocupado || (!titular && (somenteDigitos(cpf).length !== 11 || !nome.trim()))}
             className="h-[54px] rounded-[12px] text-[16px] font-bold disabled:opacity-40"
             style={{ background: 'var(--navy)', color: '#fff' }}
           >
