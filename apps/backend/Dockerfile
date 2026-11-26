@@ -5,8 +5,10 @@
 FROM node:20-slim
 
 # openssl/ca-certificates são exigidos pelos engines do Prisma no Debian slim.
+# ffmpeg: o áudio gravado na tela Conversas (webm/opus) vira ogg/opus, o formato
+# de voz que a Meta aceita (doc 02 §34.6).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && apt-get install -y --no-install-recommends openssl ca-certificates ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 

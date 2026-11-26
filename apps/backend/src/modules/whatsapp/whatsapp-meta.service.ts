@@ -101,6 +101,43 @@ export class WhatsappMetaService {
     return this.postarMensagem({ to: p.destino, type: 'text', text: { body: p.texto, preview_url: false } });
   }
 
+  // Mídia pela tela (doc 02 §34.6): sobe o arquivo para a Meta (/media) e manda
+  // a mensagem com o id devolvido. Imagem e documento levam legenda; documento
+  // leva o nome do arquivo; áudio ogg/opus chega ao cliente como mensagem de voz.
+  async enviarMidia(p: {
+    destino: string;
+    destinoAutorizadoTeste: boolean;
+    tipo: 'image' | 'document' | 'audio';
+    arquivo: Buffer;
+    mime: string;
+    nomeArquivo: string;
+    legenda?: string | null;
+  }): Promise<string> {
+    this.exigirAutorizacao(p.destino, p.destinoAutorizadoTeste);
+    const w = this.integracoes.whatsapp();
+    const form = new FormData();
+    form.append('messaging_product', 'whatsapp');
+    form.append('type', p.mime);
+    form.append('file', new Blob([new Uint8Array(p.arquivo)], { type: p.mime }), p.nomeArquivo);
+    const resp = await fetch(`${w.graphUrl}/${w.phoneNumberId}/media`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${w.accessToken}` },
+      body: form,
+    });
+    const up = (await resp.json().catch(() => ({}))) as { id?: string; error?: { message?: string; code?: number } };
+    if (!resp.ok || !up.id) {
+      throw new ErroMeta(`envio do arquivo recusado pela Meta (${resp.status}): ${up.error?.message ?? 'sem detalhe'}`, up.error?.code);
+    }
+    const legenda = p.legenda?.trim() || undefined;
+    const conteudo =
+      p.tipo === 'image'
+        ? { id: up.id, caption: legenda }
+        : p.tipo === 'document'
+          ? { id: up.id, caption: legenda, filename: p.nomeArquivo }
+          : { id: up.id };
+    return this.postarMensagem({ to: p.destino, type: p.tipo, [p.tipo]: conteudo });
+  }
+
   // Mídia recebida: o link da Meta expira, então baixa na hora (§24 item 1).
   async baixarMidia(mediaId: string): Promise<{ buffer: Buffer; mime: string }> {
     const w = this.integracoes.whatsapp();

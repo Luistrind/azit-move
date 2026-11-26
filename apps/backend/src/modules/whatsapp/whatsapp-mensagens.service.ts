@@ -61,6 +61,16 @@ export class WhatsappMensagensService {
     return rows[0] ?? null;
   }
 
+  // Lead do funil, ainda não promovido a titular, dono do número (doc 02 §34.3):
+  // mesma comparação por variantes; o mais recente vale (lead pode duplicar).
+  async leadDoNumero(numero: string): Promise<{ id: string; nome: string } | null> {
+    const variantes = variantesWhatsapp(numero);
+    const rows = await this.prisma.db.$queryRaw<{ id: string; nome: string }[]>(
+      Prisma.sql`select id, nome from leads where "titularId" is null and regexp_replace(coalesce(telefone, ''), '\\D', '', 'g') in (${Prisma.join(variantes)}) order by "createdAt" desc limit 1`,
+    );
+    return rows[0] ?? null;
+  }
+
   private textoDe(m: MensagemMeta): string | null {
     const loc = m.location;
     return (

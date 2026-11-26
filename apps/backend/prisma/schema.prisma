@@ -506,7 +506,7 @@ model Conta {
 model Lead {
   id             String      @id @default(cuid())
   nome           String
-  cpf            String
+  cpf            String? // opcional desde 25/11 (doc 02 §34.5): lead do WhatsApp nasce sem CPF
   telefone       String? // fase 1 do atendimento (Doc 2 §4-A.1)
   dataNascimento DateTime?
   canalOrigem    CanalOrigem @default(OPERADOR_INTERNO)

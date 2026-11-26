@@ -467,3 +467,12 @@ export const MENSAGEM_WHATSAPP_COLORS: Record<string, StatusColor> = {
   'Simulada — não enviada': { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' },
   'Retida — não enviada': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
 };
+
+// Etiqueta automática do contato nas Conversas (doc 02 §34.3) — chaves são os
+// rótulos de @azit/types (NOME_ETIQUETA_CONTATO). Derivada, nunca gravada.
+export const ETIQUETA_CONTATO_COLORS: Record<string, StatusColor> = {
+  Cliente: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  'Ex-cliente': { bg: 'var(--surface-input)', fg: 'var(--text-label)' },
+  Lead: { bg: 'var(--violet-bg)', fg: 'var(--violet-fg)' },
+  'Não cadastrado': { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' },
+};

@@ -1,4 +1,4 @@
-import { DecisaoEnvioWhatsapp, MomentoLembrete, SituacaoLembrete } from '@azit/types';
+import { DecisaoEnvioWhatsapp, EtiquetaContato, MomentoLembrete, SituacaoLembrete, TipoMidiaSaidaWhatsapp } from '@azit/types';
 import { diasCalendarioEntre, isoParaBR, partesBrasil } from './datas';
 import { formatCurrency, primeiroNome } from './formatters';
 
@@ -226,4 +226,65 @@ export function situacaoMensagemAposStatusMeta(atual: string | null, statusMeta:
   if (alvo === 'falhou') return atual === 'lida' || atual === 'entregue' ? null : 'falhou';
   if (atual === 'falhou' || atual === null) return alvo;
   return ordem.indexOf(alvo) > ordem.indexOf(atual) ? alvo : null;
+}
+
+// ---------------- Conversas como atendimento (§34) ----------------
+
+// Etiqueta automática do contato (§34.3). Precedência: o titular primeiro; o
+// lead só conta quando o número não é de nenhum titular. `statusContratos` são
+// os status REAIS dos contratos de crédito do titular (enum do Prisma).
+export function etiquetaDoContato(c: { titular: { statusContratos: string[] } | null; temLead: boolean }): EtiquetaContato {
+  if (c.titular) {
+    const s = c.titular.statusContratos.map((x) => x.toUpperCase());
+    if (s.includes('ATIVO')) return EtiquetaContato.CLIENTE;
+    if (s.length > 0 && s.every((x) => x === 'ENCERRADO')) return EtiquetaContato.EX_CLIENTE;
+    return EtiquetaContato.LEAD; // sem contrato, ou só contratos antes do dia zero
+  }
+  return c.temLead ? EtiquetaContato.LEAD : EtiquetaContato.NAO_CADASTRADO;
+}
+
+// Limites da mídia que sai pela tela (§34.6). Imagem: limite da Meta. Documento:
+// o que cabe no limite de envio do sistema (30 MB de corpo, em base64).
+// Áudio: 5 minutos por gravação (decisão §34.9 item 6).
+const MB = 1024 * 1024;
+export const LIMITE_MIDIA_WHATSAPP: Record<TipoMidiaSaidaWhatsapp, { bytes: number; tipos: string[] }> = {
+  [TipoMidiaSaidaWhatsapp.IMAGEM]: { bytes: 5 * MB, tipos: ['image/jpeg', 'image/png'] },
+  [TipoMidiaSaidaWhatsapp.DOCUMENTO]: {
+    bytes: 20 * MB,
+    tipos: [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain',
+    ],
+  },
+  [TipoMidiaSaidaWhatsapp.AUDIO]: { bytes: 5 * MB, tipos: ['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg'] },
+};
+export const AUDIO_MAX_SEGUNDOS_WHATSAPP = 300;
+
+// O arquivo cabe no tipo e no tamanho? Devolve o motivo legível quando não.
+export function validarMidiaSaidaWhatsapp(tipo: TipoMidiaSaidaWhatsapp, mime: string, bytes: number): string | null {
+  const regra = LIMITE_MIDIA_WHATSAPP[tipo];
+  if (!regra) return 'Tipo de anexo desconhecido';
+  const base = (mime || '').split(';')[0].trim().toLowerCase();
+  if (!regra.tipos.includes(base)) {
+    return tipo === TipoMidiaSaidaWhatsapp.IMAGEM
+      ? 'A imagem precisa ser JPG ou PNG'
+      : tipo === TipoMidiaSaidaWhatsapp.DOCUMENTO
+        ? 'Formato não aceito. Use PDF, Word, Excel ou texto'
+        : 'Formato de áudio não aceito';
+  }
+  if (bytes <= 0) return 'Arquivo vazio';
+  if (bytes > regra.bytes) return `O arquivo passa de ${Math.round(regra.bytes / MB)} MB`;
+  return null;
+}
+
+// Última atividade da conversa (§34.2): mensagem em qualquer direção OU lembrete
+// enviado — o lembrete conta (decisão Luís, opção (a)). ISO para ISO.
+export function ultimaAtividadeConversa(ultimaMensagem: string | null, ultimoLembrete: string | null): { em: string | null; origem: 'mensagem' | 'lembrete' | null } {
+  if (!ultimaMensagem && !ultimoLembrete) return { em: null, origem: null };
+  if (!ultimoLembrete || (ultimaMensagem && ultimaMensagem >= ultimoLembrete)) return { em: ultimaMensagem, origem: 'mensagem' };
+  return { em: ultimoLembrete, origem: 'lembrete' };
 }
