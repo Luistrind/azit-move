@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
-import { StatusContratoCredito } from '@azit/types';
+import { rotuloStatusAtivo, StatusContratoCredito } from '@azit/types';
 import { ativoService, type FichaVeiculo } from '../../services/ativo.service';
 import { centroCustoService } from '../../services/centro-custo.service';
 import { frotaService, type Ocorrencia } from '../../services/frota.service';
@@ -20,15 +20,13 @@ import { AREAS_ROTA_CONTRATO, AREAS_ROTA_FICHA_TITULAR, mensagemErro, ROLE_OPERA
 import { dataBR, dataMistaBR, instanteBR } from '../../lib/datas';
 import { reaisParaCentavos } from '../../lib/valor';
 import { FormularioAtivo } from './FormularioAtivo';
+import { PreparacaoVeiculo } from './PreparacaoVeiculo';
 import { BarraRetorno, Chip, ChipSituacao, COR_TOM, Placa, prazoDaPendencia } from './frota-ui';
 
 // Ficha do veículo (doc 02 §25.7, protótipo aprovado em 19/11/2026): com quem
 // está, pendências abertas e retornos gerados no topo; multas, custos,
 // contratos e cadastro em abas. Tudo calculado — nada aqui grava status.
 
-const STATUS_LABEL: Record<string, string> = {
-  disponivel: 'Disponível', reservado: 'Reservado', em_contrato: 'Em contrato', transferido: 'Transferido', recuperado: 'Recuperado', sinistrado: 'Sinistrado',
-};
 const TIPO_CUSTO: Record<string, string> = {
   manutencao: 'Manutenção', documentacao: 'Documentação', preparacao: 'Preparação', seguro: 'Seguro', franquia: 'Franquia', multa: 'Multa', ipva: 'IPVA', licenciamento: 'Licenciamento', outro: 'Outro',
 };
@@ -98,7 +96,7 @@ function Hoje({ f }: { f: FichaVeiculo }) {
         ) : f.ativo.reserva ? (
           <span>reservado pela lista de espera desde {dataMistaBR(f.ativo.reserva.em)}</span>
         ) : (
-          <span>{f.ativo.status === 'disponivel' ? 'Disponível para venda.' : `Status: ${STATUS_LABEL[f.ativo.status] ?? f.ativo.status}.`}</span>
+          <span>{f.ativo.status === 'disponivel' ? 'Disponível para venda.' : `Status: ${rotuloStatusAtivo(f.ativo.status)}.`}</span>
         )}
       </Coluna>
 
@@ -439,8 +437,8 @@ function AbaCadastro({ f, podeOperar, onEditar }: { f: FichaVeiculo; podeOperar:
           <Dado rotulo="Dono">{a.estruturaJuridica?.nome ?? 'sem estrutura — vincular'}</Dado>
           <div className="col-span-2 md:col-span-3">
             <Dado rotulo="Status">
-              {STATUS_LABEL[a.status] ?? a.status}{' '}
-              <span className="font-normal" style={{ color: 'var(--text-muted)' }}>— automático: muda com o contrato, a reserva e o sinistro; ninguém altera à mão</span>
+              {rotuloStatusAtivo(a.status)}{' '}
+              <span className="font-normal" style={{ color: 'var(--text-muted)' }}>— automático: muda com o contrato, a reserva e o sinistro; só a preparação para venda (acima) entra e sai por ação</span>
             </Dado>
           </div>
         </div>
@@ -576,7 +574,7 @@ export function FichaVeiculoPage() {
         <Botao variante="secundaria" tamanho="sm" onClick={() => navigate('/ativos')}>← Frota</Botao>
         <div className="min-w-0 flex-[1_1_280px]">
           <h1 className="flex flex-wrap items-center gap-[8px] font-display text-[20px] font-bold" style={{ color: 'var(--text-primary)', textWrap: 'balance' }}>
-            {a.descricao} <Placa placa={a.placa} /> <StatusBadge label={STATUS_LABEL[a.status] ?? a.status} colors={ATIVO_STATUS_COLORS} />
+            {a.descricao} <Placa placa={a.placa} /> <StatusBadge label={rotuloStatusAtivo(a.status)} colors={ATIVO_STATUS_COLORS} />
           </h1>
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
             {[a.cor, a.combustivel, a.quilometragemEntrada ? `entrou com ${a.quilometragemEntrada.toLocaleString('pt-BR')} km` : null, a.estruturaJuridica ? `dono: ${a.estruturaJuridica.nome}` : null].filter(Boolean).join(' · ')}
@@ -592,6 +590,8 @@ export function FichaVeiculoPage() {
         <Hoje f={f} />
         <Observacao f={f} podeEditar={podeOperar} onSalvo={recarregar} />
       </section>
+
+      <PreparacaoVeiculo ativoId={a.id} status={a.status} ehVeiculo={a.tipo === 'veiculo'} preparacao={f.preparacao} podeOperar={podeOperar} onMudou={recarregar} />
 
       <section className="overflow-hidden rounded-card" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <Abas itens={abas} valor={aba} onChange={setAba} />

@@ -10,6 +10,7 @@ import { ETIQUETA_CONTATO_COLORS } from '../../config/statusColors';
 import { AREAS_ROTA_CONTRATO, AREAS_ROTA_FICHA_TITULAR, mensagemErro, useTemArea } from '../../lib/permissoes';
 import { dataBR, hojeBrasilISO } from '../../lib/datas';
 import { Abas } from '../../components/Abas';
+import { AlertaPreparacao } from '../../components/AlertaPreparacao';
 import { Botao } from '../../components/Botao';
 import { LinkArea } from '../../components/LinkArea';
 import { Modal } from '../../components/Modal';
@@ -198,7 +199,7 @@ function AbaLead({ c }: { c: Conversa }) {
 
 function SimuladorCompra({ c, onMandar }: { c: Conversa; onMandar: (m: Mensagem) => void }) {
   const qc = useQueryClient();
-  const ativos = useQuery({ queryKey: ['atendimento-ativos'], queryFn: () => originacaoService.ativosDisponiveis(), staleTime: 60_000 });
+  const ativos = useQuery({ queryKey: ['atendimento-ativos'], queryFn: () => originacaoService.ativosOfereciveis(), staleTime: 60_000 });
   const [ativoId, setAtivoId] = useState<string | null>(null);
   const [valorManual, setValorManual] = useState('');
   const [sim, setSim] = useState<SimulacaoResultado | null>(null);
@@ -250,7 +251,7 @@ function SimuladorCompra({ c, onMandar }: { c: Conversa; onMandar: (m: Mensagem)
   return (
     <div className="flex flex-col gap-[12px]">
       <div className="flex flex-col gap-[6px]">
-        <Rotulo>Carros disponíveis</Rotulo>
+        <Rotulo>Carros para oferecer</Rotulo>
         {ativos.isLoading && <div className="text-[11.5px]" style={muted}>Carregando…</div>}
         {ativos.data?.length === 0 && <div className="text-[11.5px]" style={muted}>Nenhum carro disponível no estoque. Simule pelo valor à vista.</div>}
         <div className="flex max-h-[220px] flex-col gap-[5px] overflow-y-auto">
@@ -266,6 +267,7 @@ function SimuladorCompra({ c, onMandar }: { c: Conversa; onMandar: (m: Mensagem)
               <b className="text-[12.5px]">{a.descricao}</b>
               <span className="text-right text-[12.5px] font-bold tabular-nums">{a.valorVenda ? formatCurrency(a.valorVenda) : '—'}</span>
               <span className="text-[11px]" style={muted}>{a.placa ?? 'sem placa'}{a.pacoteOfertaId ? ' · tem oferta fixa' : ''}</span>
+              {a.preparacao && <span className="col-span-2"><AlertaPreparacao alerta={a.preparacao} compacto /></span>}
             </button>
           ))}
         </div>
@@ -274,6 +276,7 @@ function SimuladorCompra({ c, onMandar }: { c: Conversa; onMandar: (m: Mensagem)
           Sem carro definido: valor à vista
           <input value={valorManual} onChange={(e) => setValorManual(e.target.value)} disabled={ativoId !== null} inputMode="decimal" placeholder="R$" aria-label="Valor à vista" className="h-[30px] w-[110px] rounded-[8px] px-[8px] text-[12.5px] disabled:opacity-50" style={campo} />
         </label>
+        <AlertaPreparacao alerta={ativos.data?.find((x) => x.id === ativoId)?.preparacao} />
         <Botao variante="secundaria" className="self-start" carregando={ocupado && !sim} disabled={!ativoId && !lerReais(valorManual)} onClick={() => void simular()}>Simular</Botao>
       </div>
 

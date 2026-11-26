@@ -20,6 +20,7 @@ import { toast } from '../components/Toast';
 import { ROTULO_SITUACAO_PROPOSTA as LABEL_STATUS } from '../lib/rotulos';
 import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 import { BotaoArea } from '../components/BotaoArea';
+import { AlertaPreparacao } from '../components/AlertaPreparacao';
 import { AreaSistema } from '@azit/types';
 const PAPEL_LABEL: Record<string, string> = {
   comprador_principal: 'Comprador principal', comprador_secundario: 'Comprador secundário', garantidor: 'Garantidor',
@@ -199,6 +200,8 @@ export function PropostaDetalhePage() {
           Proposta por <b>modelo de referência</b>: ainda não há veículo do estoque vinculado. {p.status === 'aprovada' ? <>Atribua um carro pela <Link to="/lista-espera" className="font-semibold underline">Lista de espera</Link> para seguir ao contrato.</> : 'Depois da aprovação ela entra na Lista de espera.'}
         </div>
       )}
+      {/* Carro em preparação (doc 02 §25.8): segue no funil com o alerta; contrato só depois de pronto. */}
+      {!p.contratoGeradoId && <AlertaPreparacao alerta={p.preparacaoVeiculo} mostrarMotivo />}
       {p.ativo && p.veiculoAtribuidoEm && !p.veiculoConferidoEm && (
         <div className="flex flex-col gap-[8px] rounded-[12px] p-[12px] text-[12.5px]" style={{ background: 'var(--warn-bg)', border: '1px solid var(--warn-fg)', color: 'var(--text-primary)' }}>
           <div>
@@ -672,9 +675,21 @@ export function PropostaDetalhePage() {
               <span className="basis-full text-[11.5px] sm:basis-auto sm:pb-[8px]" style={{ color: 'var(--text-muted)' }}>
                 {p.numeroParcelas} parcelas de {formatCurrency(p.valorParcela)} · a assinatura é imediata; a cobrança da entrada vence na previsão de ativação
               </span>
-              <Botao variante="primaria" disabled={ocupado} onClick={() => run(async () => { const r = await originacaoService.formalizar(id, dataPrimeira || undefined, dataAtivacao || undefined); setDocumento(r.documento); })}>
+              <Botao
+                variante="primaria"
+                disabled={ocupado || !!p.preparacaoVeiculo}
+                title={p.preparacaoVeiculo?.motivo}
+                onClick={() => run(async () => { const r = await originacaoService.formalizar(id, dataPrimeira || undefined, dataAtivacao || undefined); setDocumento(r.documento); })}
+              >
                 Formalizar (gerar contrato)
               </Botao>
+              {/* Carro em preparação (doc 02 §25.8): o contrato só sai depois de pronto. */}
+              {p.preparacaoVeiculo && (
+                <span className="basis-full text-[12px] font-semibold" style={{ color: 'var(--info-fg)' }}>
+                  {p.preparacaoVeiculo.motivo}{' '}
+                  <Link to={`/ativos/${p.ativo?.id ?? ''}`} className="underline">Abrir a ficha do veículo</Link>
+                </span>
+              )}
             </div>
           )}
 

@@ -91,6 +91,7 @@ export const NOVACAO_STATUS_COLORS: Record<string, StatusColor> = {
 // Status de Ativo (estoque, Bloco 7) — Doc 2 §4.4.
 export const ATIVO_STATUS_COLORS: Record<string, StatusColor> = {
   Disponível: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
+  'Em preparação': { bg: 'var(--info-bg)', fg: 'var(--info-fg)' }, // doc 02 §25.8: checklist antes da venda
   Reservado: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)' }, // doc 02 §31.4: preso a uma proposta da lista de espera
   'Em contrato': { bg: 'var(--surface-muted)', fg: 'var(--text-body)' },
   Transferido: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' }, // Vocabulário 07/09: era Quitado

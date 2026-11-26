@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { formatCurrency } from '@azit/utils';
-import { AreaSistema } from '@azit/types';
+import { AreaSistema, rotuloStatusAtivo } from '@azit/types';
 import { ativoService, type FiltroFrota, type LinhaFrota } from '../services/ativo.service';
 import { StatusBadge } from '../components/StatusBadge';
 import { ATIVO_STATUS_COLORS } from '../config/statusColors';
@@ -13,6 +13,7 @@ import { Botao } from '../components/Botao';
 import { CartaoIndicador } from '../components/CartaoIndicador';
 import { LinkArea } from '../components/LinkArea';
 import { FormularioAtivo } from './ativo/FormularioAtivo';
+import { AlertaPreparacao } from '../components/AlertaPreparacao';
 import { BarraRetorno, ChipSituacao, COR_TOM, Placa, prazoDaPendencia } from './ativo/frota-ui';
 
 // Frota e estoque (doc 02 §25.1 e §25.7, protótipo aprovado em 19/11/2026):
@@ -20,9 +21,6 @@ import { BarraRetorno, ChipSituacao, COR_TOM, Placa, prazoDaPendencia } from './
 // abertas e retornos gerados. Clicar na linha abre a ficha do veículo; a
 // observação continua editável na própria linha (e agora fica auditada).
 
-const STATUS_LABEL: Record<string, string> = {
-  disponivel: 'Disponível', reservado: 'Reservado', em_contrato: 'Em contrato', transferido: 'Transferido', recuperado: 'Recuperado', sinistrado: 'Sinistrado',
-};
 const POR_PAGINA = 20;
 const inStyle = { background: 'var(--surface-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' };
 const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
@@ -69,6 +67,7 @@ export function AtivoPage() {
         { chave: null, rotulo: 'Todos', valor: r.total, detalhe: 'veículos na frota' },
         { chave: 'em_contrato', rotulo: 'Em contrato', valor: n('em_contrato'), detalhe: 'com cliente ativo' },
         { chave: 'disponivel', rotulo: 'Disponível', valor: n('disponivel'), detalhe: 'prontos para venda', tom: 'good' },
+        ...(n('em_preparacao') ? [{ chave: 'em_preparacao' as const, rotulo: 'Em preparação', valor: n('em_preparacao'), detalhe: 'checklist antes da venda', tom: 'warn' as const }] : []),
         ...(n('reservado') ? [{ chave: 'reservado' as const, rotulo: 'Reservado', valor: n('reservado'), detalhe: 'lista de espera', tom: 'warn' as const }] : []),
         ...(n('sinistrado') ? [{ chave: 'sinistrado' as const, rotulo: 'Sinistrado', valor: n('sinistrado'), detalhe: 'sinistro registrado', tom: 'bad' as const }] : []),
         ...(n('transferido') ? [{ chave: 'transferido' as const, rotulo: 'Transferido', valor: n('transferido'), detalhe: 'quitado e transferido' }] : []),
@@ -147,7 +146,12 @@ export function AtivoPage() {
               </span>
             ),
           },
-          { chave: 'status', titulo: 'Status', celular: 'subtitulo', render: (a) => <StatusBadge label={STATUS_LABEL[a.status] ?? a.status} colors={ATIVO_STATUS_COLORS} /> },
+          { chave: 'status', titulo: 'Status', celular: 'subtitulo', render: (a) => (
+              <span className="flex flex-col items-start gap-[3px]">
+                <StatusBadge label={rotuloStatusAtivo(a.status)} colors={ATIVO_STATUS_COLORS} />
+                <AlertaPreparacao alerta={a.preparacao} compacto />
+              </span>
+            ) },
           {
             chave: 'cliente',
             titulo: 'Com quem está',

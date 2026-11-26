@@ -14,6 +14,20 @@ export enum StatusAtivo {
   SINISTRADO    = 'sinistrado',
 }
 
+// Rótulo único do status do ativo — estoque, ficha, alertas (Regra 9).
+export const STATUS_ATIVO_LABEL: Record<StatusAtivo, string> = {
+  [StatusAtivo.DISPONIVEL]: 'Disponível',
+  [StatusAtivo.EM_PREPARACAO]: 'Em preparação',
+  [StatusAtivo.RESERVADO]: 'Reservado',
+  [StatusAtivo.EM_CONTRATO]: 'Em contrato',
+  [StatusAtivo.TRANSFERIDO]: 'Transferido',
+  [StatusAtivo.RECUPERADO]: 'Recuperado',
+  [StatusAtivo.SINISTRADO]: 'Sinistrado',
+};
+export function rotuloStatusAtivo(status: string): string {
+  return (STATUS_ATIVO_LABEL as Record<string, string>)[status] ?? status;
+}
+
 // Preparação do veículo (doc 02 §25.8).
 export enum MotivoPreparacao {
   ENTRADA     = 'entrada',
@@ -31,6 +45,11 @@ export enum SituacaoItemPreparacao {
   FEITO         = 'feito',
   NAO_SE_APLICA = 'nao_se_aplica',
 }
+
+export const SITUACAO_ITEM_PREPARACAO_LABEL: Record<SituacaoItemPreparacao, string> = {
+  [SituacaoItemPreparacao.FEITO]: 'Feito',
+  [SituacaoItemPreparacao.NAO_SE_APLICA]: 'Não se aplica',
+};
 
 export enum TipoCombustivel {
   FLEX     = 'flex',

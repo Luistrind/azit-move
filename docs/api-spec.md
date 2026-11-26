@@ -845,10 +845,17 @@ Visão consolidada da conta — agrega os dois lados: saldo devedor total e cont
 #### GET `/api/v1/ativos`
 Lista ativos com filtros.
 
-**Query params:** `status`, `placa`, `chassi`, `page`, `limit`
+**Query params:** `status`, `oferecivel` (`true` = Disponível + Em preparação, doc 02 §25.8 — usado pela vitrine
+da simulação, pelo painel das Conversas e pela atribuição da lista de espera), `tipo` (`veiculo` | `outro`), `placa`,
+`chassi`, `busca`, `page`, `limit`.
+
+Todo ativo devolvido (lista, detalhe, frota, ficha) traz `preparacao`: `null` ou o alerta da preparação aberta
+`{ preparacaoId, oQueFalta, pendentes: ["Instalação do rastreador"], totalItens, abertaEm }`. `status` pode ser
+`em_preparacao` (doc 02 §25.8).
 
 #### POST `/api/v1/ativos`
-Cadastra um novo ativo no sistema.
+Cadastra um novo ativo no sistema. **Veículo novo nasce `em_preparacao`** com a cópia do checklist (motivo
+`entrada`, auditoria `ativo_preparacao_aberta`); ativo do tipo `outro` não muda.
 
 #### GET `/api/v1/ativos/:id`
 Detalhes do ativo.
@@ -859,7 +866,7 @@ muda sozinho com o contrato, a reserva e o sinistro. Mudança de `observacao` gr
 `logs_auditoria` (`ativo_observacao_alterada`).
 
 #### GET `/api/v1/ativos/frota` *(doc 02 §25.7)*
-Lista da frota (só veículos), paginada. **Query:** `filtro` (`disponivel` | `reservado` |
+Lista da frota (só veículos), paginada. **Query:** `filtro` (`disponivel` | `em_preparacao` | `reservado` |
 `em_contrato` | `transferido` | `recuperado` | `sinistrado` | `com_pendencia`), `busca` (placa,
 chassi, modelo, cliente ou número do contrato), `offset` (padrão 0), `limit` (padrão 20, máx. 100).
 Cada linha é o ativo de `GET /ativos` mais:
@@ -877,7 +884,35 @@ Indicadores do topo: `{ total, porStatus: { em_contrato: 66, … }, comPendencia
 Ficha do veículo: `ativo` (com `ofertaFixa` e `fipe`), `comQuemEsta` (titular, contrato e desde
 quando, mais a situação acima; `null` sem contrato ativo), `pendencias`, `retorno`, `observacao`
 (`texto`, `alteradaEm`, `alteradaPor`), `custos` (aquisição, lançamentos com `origem`: manual ou
-ocorrência assumida) e `contratos` (todos os do veículo, com recebido e em aberto).
+ocorrência assumida), `contratos` (todos os do veículo, com recebido e em aberto) e `preparacao`
+(`{ aberta, anteriores }`, o mesmo de `GET /ativos/:id/preparacao`).
+
+#### Preparação do veículo *(doc 02 §25.8, decisão Luís 24/11/2026)*
+Única exceção ao status automático: o carro entra e sai de `em_preparacao` só por estas ações, auditadas. Escrita:
+**ADMIN e OPERADOR** (o modelo do checklist: só ADMIN). Todas as escritas devolvem `{ aberta, anteriores }`.
+
+- `GET /ativos/:id/preparacao` → `{ aberta: Preparacao | null, anteriores: Preparacao[] }`. `Preparacao` =
+  `{ id, motivo: entrada|recuperacao|manutencao, oQueFalta, abertaEm, abertaPor, concluidaEm, concluidaPor,
+  itens: [{ id, descricao, avulso, situacao: feito|nao_se_aplica|null, marcadoEm, marcadoPor }], pendentes }`.
+- `POST /ativos/:id/liberar-para-venda` `{ oQueFalta? }` — Recuperado → Em preparação (motivo `recuperacao`).
+  422 `status_invalido` fora de Recuperado; 422 `ja_em_preparacao`; 422 `nao_e_veiculo`.
+- `POST /ativos/:id/preparacao` `{ oQueFalta? }` — Disponível → Em preparação (motivo `manutencao`). Mesmos 422.
+- `POST /ativos/:id/preparacao/itens` `{ descricao }` — item só deste carro (`avulso: true`). 422 `sem_preparacao`.
+- `PATCH /ativos/preparacao/itens/:itemId` `{ situacao: "feito" | "nao_se_aplica" | null }` — marca ou desmarca
+  (auditoria `ativo_preparacao_item`). 422 `preparacao_concluida`.
+- `DELETE /ativos/preparacao/itens/:itemId` — só item avulso (422 `item_do_modelo`: marque "não se aplica").
+- `POST /ativos/:id/preparacao/concluir` — **Marcar como pronto**: exige todos os itens resolvidos (422
+  `checklist_incompleto`); o carro vira Disponível (ou continua Reservado, se preso à lista de espera). Auditoria
+  `ativo_preparacao_concluida`.
+- `GET /ativos/preparacao/modelo` → `[{ id, descricao }]` (Configuração › Checklist de preparação).
+- `PUT /ativos/preparacao/modelo` `{ itens: [{ id?, descricao }] }` (ADMIN) — salva a lista inteira na ordem dada;
+  itens que saíram são desativados; preparações já abertas não mudam; lista vazia → 422 `modelo_vazio`. Auditoria `checklist_preparacao_alterado`.
+
+**No funil:** `POST /simulacoes` e a atribuição da lista de espera aceitam carro Disponível ou Em preparação;
+`GET /propostas/:id` traz `preparacaoVeiculo` (alerta + `motivo`, o texto da trava) e `GET /propostas/lista-espera` traz
+`preparacaoVeiculo` por proposta; o dossiê da análise traz `veiculo.preparacao`. A **formalização** com preparação
+aberta responde 422 `veiculo_em_preparacao` (mensagem = `motivo`). A troca de veículo da novação continua exigindo
+Disponível. Se a reserva da lista de espera cai, o carro volta para Em preparação quando o checklist ainda está aberto.
 
 ---
 
@@ -1784,7 +1819,7 @@ têm esses campos (a tela trata como zero).
 - O painel de atendimento usa as rotas que já existem: `POST /leads` (COMERCIAL; `cpf` opcional desde 25/11, canal
   `whatsapp`), `PATCH /leads/:id/cpf { cpf }` (COMERCIAL, nova: grava o CPF do lead registrado sem ele →
   `{ tipo: lead, lead }`, ou `{ tipo: titular, titular: { id, nome } }` sem gravar quando o CPF já é de um titular;
-  422 `cpf_invalido`), `GET /ativos?status=disponivel`, `POST /simulacoes` (**CPF obrigatório para simular**:
+  422 `cpf_invalido`), `GET /ativos?oferecivel=true` (Disponível + Em preparação, com o alerta — doc 02 §25.8), `POST /simulacoes` (**CPF obrigatório para simular**:
   `leadId` de lead sem CPF → 422 `lead_sem_cpf`), `POST /simulacoes/:id/opcoes`,
   `GET /contas/:id/posicao`, `GET /contas/:id/faturas?visao=agora`, `POST /faturas/:id/envios-link`,
   `GET /contas/:id/renegociacao/elegivel`, `POST /contas/:id/renegociacao/simular`, `POST /contas/:id/novacao/simular`

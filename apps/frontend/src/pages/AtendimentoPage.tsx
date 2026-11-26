@@ -14,6 +14,7 @@ import { buscarCep } from '../lib/cep';
 import { mascararCpf, mascararTelefone, mascararDinheiro, dinheiroParaCentavos, somenteDigitos } from '../lib/mascaras';
 import { mensagemErro, useIrParaArea } from '../lib/permissoes';
 import { Botao } from '../components/Botao';
+import { AlertaPreparacao } from '../components/AlertaPreparacao';
 import { AreaSistema } from '@azit/types';
 
 // UX-2 — Modo balcão (proposta UX §4.1): atendimento + simulação mobile-primeiro,
@@ -164,7 +165,7 @@ export function AtendimentoPage() {
 
   const ativos = useQuery({
     queryKey: ['atendimento-ativos'],
-    queryFn: () => originacaoService.ativosDisponiveis(),
+    queryFn: () => originacaoService.ativosOfereciveis(),
     enabled: passo === 2,
   });
   const modelosTrabalho = useQuery({ queryKey: ['fipe-modelos-trabalho'], queryFn: () => originacaoService.fipeModelosTrabalho(), enabled: passo === 2 && modoReferencia && !listaCompleta, staleTime: 3_600_000 });
@@ -678,7 +679,7 @@ export function AtendimentoPage() {
             <div className="text-[14px]" style={{ color: 'var(--text-muted)' }}>Carregando a vitrine…</div>
           ) : ativosFiltrados.length === 0 ? (
             <div className="rounded-[12px] p-[16px] text-[14px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-              {buscaAtivo ? 'Nenhum ativo disponível com esse termo.' : 'Nenhum ativo disponível para venda agora.'}
+              {buscaAtivo ? 'Nenhum ativo disponível ou em preparação com esse termo.' : 'Nenhum ativo disponível ou em preparação agora.'}
             </div>
           ) : (
             ativosFiltrados.map((a) => (
@@ -694,6 +695,7 @@ export function AtendimentoPage() {
                   <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
                     {a.placa ?? 'Sem placa'}
                   </div>
+                  <AlertaPreparacao alerta={a.preparacao} compacto />
                 </div>
                 {a.valorVenda != null && (
                   <div className="whitespace-nowrap text-right text-[15px] font-bold">{reais(a.valorVenda)}</div>
@@ -846,6 +848,8 @@ export function AtendimentoPage() {
             {simulacao.referencia && <span className="ml-[6px] rounded-full px-[8px] py-[2px] text-[11px] font-bold" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}>lista de espera</span>}
             <span style={{ color: 'var(--text-muted)' }}> · à vista {reais(simulacao.valorAvista)}</span>
           </div>
+          {/* Carro em preparação (doc 02 §25.8): só para quem atende — não vai na tela do cliente. */}
+          <AlertaPreparacao alerta={simulacao.ativo ? ativos.data?.find((x) => x.id === simulacao.ativo?.id)?.preparacao : null} mostrarMotivo />
 
           {(() => {
             let padrao = 0;
