@@ -23,6 +23,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../database/prisma.service';
+import { motivoPreparacaoPendente, preparacaoAbertaDo } from '../ativo/preparacao.regras';
 import { PropostaStatusService } from '../funil/proposta-status.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
 import { Camada1Service, SITUACOES_CPF_ACEITAS } from '../bureau/camada1.service';
@@ -786,7 +787,7 @@ export class AnaliseService implements OnModuleInit {
       // antes ficava só na proposta e o analista não a via (Luís 28/10).
       observacaoVendedor: a.proposta.parecerOperador?.trim() || null,
       // Veículo da proposta (doc 02 §31.2): ativo real ou referência FIPE.
-      veiculo: this.blocoVeiculo(a.proposta),
+      veiculo: await this.blocoVeiculoComPreparacao(a.proposta),
       // Conferência do carro real atribuído a uma proposta da lista de espera
       // (doc 02 §31.4 passo 4) — o analista confirma ou devolve aqui mesmo.
       conferenciaVeiculo: this.blocoConferencia(a.proposta),
@@ -1344,6 +1345,15 @@ export class AnaliseService implements OnModuleInit {
   }
 
   // --- internos --------------------------------------------------------------
+
+  // Bloco Veículo + o alerta de preparação (doc 02 §25.8): o analista sabe que o
+  // carro ainda não está pronto e que o contrato só sai depois.
+  private async blocoVeiculoComPreparacao(p: Parameters<AnaliseService['blocoVeiculo']>[0]) {
+    const bloco = this.blocoVeiculo(p);
+    if (!bloco || bloco.tipo !== 'ativo') return bloco;
+    const prep = await preparacaoAbertaDo(this.prisma.db, bloco.id);
+    return { ...bloco, preparacao: prep ? { ...prep, motivo: motivoPreparacaoPendente(prep) } : null };
+  }
 
   // Doc 02 §29.2 — bloco Veículo do dossiê.
   private blocoVeiculo(p: {

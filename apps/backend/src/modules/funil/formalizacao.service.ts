@@ -19,6 +19,7 @@ import {
   entradaAVista,
 } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
+import { motivoPreparacaoPendente, preparacaoAbertaDo } from '../ativo/preparacao.regras';
 import { ContratoService } from '../contrato/contrato.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { PropostaService } from './proposta.service';
@@ -177,6 +178,11 @@ export class FormalizacaoService {
       });
     }
     const ativo = proposta.ativo;
+    // Carro ainda em preparação não gera contrato (doc 02 §25.8, decisão Luís 24/11).
+    const preparacao = await preparacaoAbertaDo(this.prisma.db, ativo.id);
+    if (preparacao) {
+      throw new UnprocessableEntityException({ erro: 'veiculo_em_preparacao', mensagem: motivoPreparacaoPendente(preparacao) });
+    }
     // Ressalva do parecer: exige garantidor → precisa do papel.
     if (proposta.parecer?.exigeGarantidor && !proposta.vinculos.some((v) => v.papel === 'GARANTIDOR')) {
       throw new UnprocessableEntityException({

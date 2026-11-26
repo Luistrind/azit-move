@@ -5,11 +5,31 @@ export enum TipoAtivo {
 }
 
 export enum StatusAtivo {
-  DISPONIVEL  = 'disponivel',
-  EM_CONTRATO = 'em_contrato',
-  QUITADO     = 'quitado',
-  RECUPERADO  = 'recuperado',
-  SINISTRADO  = 'sinistrado',
+  DISPONIVEL    = 'disponivel',
+  EM_PREPARACAO = 'em_preparacao', // checklist antes da venda (doc 02 §25.8)
+  RESERVADO     = 'reservado', // preso a uma proposta da lista de espera (doc 02 §31.4)
+  EM_CONTRATO   = 'em_contrato',
+  TRANSFERIDO   = 'transferido', // era 'quitado' (vocabulário 07/09)
+  RECUPERADO    = 'recuperado',
+  SINISTRADO    = 'sinistrado',
+}
+
+// Preparação do veículo (doc 02 §25.8).
+export enum MotivoPreparacao {
+  ENTRADA     = 'entrada',
+  RECUPERACAO = 'recuperacao',
+  MANUTENCAO  = 'manutencao',
+}
+
+export const MOTIVO_PREPARACAO_LABEL: Record<MotivoPreparacao, string> = {
+  [MotivoPreparacao.ENTRADA]: 'Entrada no estoque',
+  [MotivoPreparacao.RECUPERACAO]: 'Carro recuperado',
+  [MotivoPreparacao.MANUTENCAO]: 'Manutenção',
+};
+
+export enum SituacaoItemPreparacao {
+  FEITO         = 'feito',
+  NAO_SE_APLICA = 'nao_se_aplica',
 }
 
 export enum TipoCombustivel {

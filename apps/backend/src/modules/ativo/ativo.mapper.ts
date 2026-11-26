@@ -6,6 +6,7 @@ import {
   TipoCombustivel,
 } from '@prisma/client';
 import { reaisParaCentavos, centavosParaReaisString } from '@azit/utils';
+import type { AlertaPreparacao } from './preparacao.regras';
 
 // Mapeamento na borda: enums Prisma UPPERCASE <-> API lowercase; dinheiro
 // Decimal(reais) <-> centavos inteiros (convenção do money.ts / Regra 10).
@@ -13,6 +14,7 @@ import { reaisParaCentavos, centavosParaReaisString } from '@azit/utils';
 type TipoApi = 'veiculo' | 'outro';
 type StatusApi =
   | 'disponivel'
+  | 'em_preparacao' // doc 02 §25.8: checklist antes da venda
   | 'reservado' // doc 02 §31.4: preso a uma proposta aprovada da lista de espera
   | 'em_contrato'
   | 'transferido' // Vocabulário 07/09: era 'quitado' — veículo não se quita, é transferido
@@ -29,6 +31,7 @@ const tipo = {
 const status = {
   paraApi: {
     DISPONIVEL: 'disponivel',
+    EM_PREPARACAO: 'em_preparacao',
     RESERVADO: 'reservado',
     EM_CONTRATO: 'em_contrato',
     TRANSFERIDO: 'transferido',
@@ -37,6 +40,7 @@ const status = {
   } as Record<StatusAtivo, StatusApi>,
   paraPrisma: {
     disponivel: 'DISPONIVEL',
+    em_preparacao: 'EM_PREPARACAO',
     reservado: 'RESERVADO',
     em_contrato: 'EM_CONTRATO',
     transferido: 'TRANSFERIDO',
@@ -115,6 +119,8 @@ export interface AtivoApi {
   cliente: { id: string; nome: string; contratoId: string; contratoNumero: string } | null;
   // Reserva (doc 02 §31.4): para quem o carro está preso enquanto a análise confere.
   reserva: { propostaId: string; titularNome: string; em: string } | null;
+  // Preparação aberta (doc 02 §25.8): o que falta — alimenta o alerta de quem usa o carro.
+  preparacao: AlertaPreparacao | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -131,6 +137,7 @@ export function ativoParaApi(
     contratosCredito?: ContratoDoAtivo[];
     reservadoProposta?: { id: string; titular: { nome: string } } | null;
   },
+  preparacao: AlertaPreparacao | null = null,
 ): AtivoApi {
   const contrato = a.contratosCredito?.[0];
   return {
@@ -139,6 +146,7 @@ export function ativoParaApi(
         ? { propostaId: a.reservadoProposta.id, titularNome: a.reservadoProposta.titular.nome, em: (a.reservadoEm ?? a.updatedAt).toISOString() }
         : null,
     observacao: a.observacao,
+    preparacao,
     cliente: contrato
       ? { id: contrato.conta.titular.id, nome: contrato.conta.titular.nome, contratoId: contrato.id, contratoNumero: contrato.numero }
       : null,

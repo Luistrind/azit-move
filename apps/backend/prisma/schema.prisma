@@ -41,6 +41,7 @@ enum TipoAtivo {
 
 enum StatusAtivo {
   DISPONIVEL
+  EM_PREPARACAO // checklist antes da venda — carro novo, recuperado ou em manutenção (doc 02 §25.8)
   RESERVADO // preso a uma proposta aprovada da lista de espera (doc 02 §31.4)
   EM_CONTRATO
   TRANSFERIDO // reserva de domínio transferida ao cliente (Gatilho 9; Vocabulário 07/09 — era QUITADO)
@@ -877,6 +878,7 @@ model Ativo {
   reservadoProposta Proposta?            @relation("ReservaAtivo", fields: [reservadoPropostaId], references: [id])
   lancamentosCusto LancamentoCustoAtivo[]
   documentos       AtivoDocumento[]
+  preparacoes      PreparacaoAtivo[] // checklist antes da venda (doc 02 §25.8)
   ocorrencias        OcorrenciaVeiculo[] // multas, IPVA, licenciamento (doc 02 sec.25.2)
   // 1 ativo pode ter vários contratos no tempo (ex: novação gera um novo);
   // a regra "1 ativo = 1 contrato ATIVO" é garantida em runtime (Doc 2 §4.4).
@@ -3164,4 +3166,64 @@ model LembreteTitular {
   updatedAt DateTime @updatedAt
 
   @@map("lembretes_titular")
+}
+
+// Preparação do veículo para venda (doc 02 §25.8, decisão Luís 24/11/2026): o
+// carro novo, o recuperado ou o que foi para manutenção passa por um checklist
+// antes de ficar Disponível. Uma preparação ABERTA (concluidaEm nulo) por ativo,
+// garantida em runtime. Os itens são cópia do modelo no momento da abertura.
+enum MotivoPreparacao {
+  ENTRADA // carro novo cadastrado no estoque
+  RECUPERACAO // carro recuperado liberado para venda
+  MANUTENCAO // carro disponível enviado para oficina/documento
+}
+
+enum SituacaoItemPreparacao {
+  FEITO
+  NAO_SE_APLICA
+}
+
+model PreparacaoAtivo {
+  id           String           @id @default(cuid())
+  ativoId      String
+  motivo       MotivoPreparacao
+  oQueFalta    String? // texto livre do operador — aparece no alerta
+  abertaEm     DateTime         @default(now())
+  abertaPor    String?
+  concluidaEm  DateTime?
+  concluidaPor String?
+
+  ativo Ativo            @relation(fields: [ativoId], references: [id])
+  itens PreparacaoItem[]
+
+  @@index([ativoId])
+  @@map("preparacoes_ativo")
+}
+
+model PreparacaoItem {
+  id           String                  @id @default(cuid())
+  preparacaoId String
+  descricao    String
+  ordem        Int
+  avulso       Boolean                 @default(false) // incluído só para este carro
+  situacao     SituacaoItemPreparacao? // nulo = pendente
+  marcadoEm    DateTime?
+  marcadoPor   String?
+
+  preparacao PreparacaoAtivo @relation(fields: [preparacaoId], references: [id], onDelete: Cascade)
+
+  @@index([preparacaoId])
+  @@map("preparacao_itens")
+}
+
+// Modelo do checklist (Configuração › Checklist de preparação) — editável,
+// nada chumbado (padrão provisório semeado na migração).
+model ChecklistPreparacaoModelo {
+  id        String    @id @default(cuid())
+  descricao String
+  ordem     Int
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  @@map("checklist_preparacao_modelo")
 }

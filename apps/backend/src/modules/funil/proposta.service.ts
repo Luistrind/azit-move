@@ -15,6 +15,7 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { rotuloAtivo, rotuloVeiculoProposta, limparDocumento, reaisParaCentavos, centavosParaReaisString, formatCurrency, fatorValorDesdeSemanal, situacaoListaEspera, validadeAprovacaoEspera, aprovacaoExpirada, diasRestantesAprovacao, ROTULO_SITUACAO_ESPERA, type FrequenciaSimulacao } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
+import { ativoOferecivel, motivoPreparacaoPendente, preparacaoAbertaDo, preparacoesAbertas, statusAoSoltarReserva } from '../ativo/preparacao.regras';
 import { TitularService } from '../titular/titular.service';
 import { ContaService } from '../conta/conta.service';
 import { AprovacaoService } from '../aprovacao/aprovacao.service';
@@ -721,9 +722,12 @@ export class PropostaService {
         })
       : null;
     const pendencias = this.calcPendencias(p.vinculos, p.documentos);
+    // Carro ainda em preparação (doc 02 §25.8): alerta e trava da formalização.
+    const preparacaoVeiculo = p.ativo ? await preparacaoAbertaDo(this.prisma.db, p.ativo.id) : null;
     return {
       id: p.id,
       status: p.status.toLowerCase(),
+      preparacaoVeiculo: preparacaoVeiculo ? { ...preparacaoVeiculo, motivo: motivoPreparacaoPendente(preparacaoVeiculo) } : null,
       modalidade: p.modalidade.toLowerCase(),
       // Doc 02 §31: ativo OU referência; `veiculo` é o rótulo único para as telas.
       ativo: p.ativo ? { id: p.ativo.id, descricao: p.ativo.descricao, placa: p.ativo.placa, rotulo: rotuloAtivo(p.ativo) } : null,
@@ -842,6 +846,7 @@ export class PropostaService {
       },
     });
     const agora = new Date();
+    const preps = await preparacoesAbertas(this.prisma.db, propostas.map((p) => p.ativo?.id).filter((x): x is string => !!x));
     const itens = propostas.map((p) => {
       const aprovadaEm = this.aprovadaEmDe(p);
       const situacao = situacaoListaEspera({ aprovadaEm, veiculoAtribuidoEm: p.veiculoAtribuidoEm, veiculoConferidoEm: p.veiculoConferidoEm }, agora);
@@ -865,6 +870,7 @@ export class PropostaService {
         veiculoAtribuidoEm: p.veiculoAtribuidoEm?.toISOString() ?? null,
         veiculoConferidoEm: p.veiculoConferidoEm?.toISOString() ?? null,
         ajuste: (p.conferenciaVeiculo ?? null) as Record<string, unknown> | null,
+        preparacaoVeiculo: (p.ativo && preps.get(p.ativo.id)) || null,
       };
     });
     // Mais antiga primeiro (sugestão — o operador escolhe quem atende).
@@ -896,7 +902,9 @@ export class PropostaService {
     }
     const ativo = await this.prisma.db.ativo.findFirst({ where: { id: ativoId, deletedAt: null }, select: { id: true, status: true, descricao: true, placa: true, varianteCatalogo: true } });
     if (!ativo) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Ativo não encontrado' });
-    if (ativo.status !== 'DISPONIVEL') {
+    // Em preparação também pode ser atribuído (doc 02 §25.8), com o alerta; a
+    // formalização só sai depois de o carro ser marcado como pronto.
+    if (!ativoOferecivel(ativo.status)) {
       throw new UnprocessableEntityException({ erro: 'ativo_indisponivel', mensagem: 'O ativo não está disponível (em contrato, reservado ou fora do estoque)' });
     }
 
@@ -1042,7 +1050,9 @@ export class PropostaService {
     // os da aprovação por referência voltam (a aprovação continua valendo).
     const jaConferido = !!p.veiculoConferidoEm;
     await this.prisma.db.$transaction(async (tx) => {
-      await tx.ativo.updateMany({ where: { id: p.ativoId!, reservadoPropostaId: propostaId }, data: { status: 'DISPONIVEL', reservadoPropostaId: null, reservadoEm: null } });
+      // Volta para Em preparação se o checklist ainda está aberto (§25.8 item 6).
+      const statusVolta = await statusAoSoltarReserva(tx, p.ativoId!);
+      await tx.ativo.updateMany({ where: { id: p.ativoId!, reservadoPropostaId: propostaId }, data: { status: statusVolta, reservadoPropostaId: null, reservadoEm: null } });
       await tx.proposta.update({
         where: { id: propostaId },
         data: {
@@ -1077,10 +1087,14 @@ export class PropostaService {
 
   // Reserva cai sozinha ao cancelar a proposta (§31.4 passo 5).
   private async liberarReserva(propostaId: string) {
-    await this.prisma.db.ativo.updateMany({
-      where: { reservadoPropostaId: propostaId, status: 'RESERVADO' },
-      data: { status: 'DISPONIVEL', reservadoPropostaId: null, reservadoEm: null },
-    });
+    const reservados = await this.prisma.db.ativo.findMany({ where: { reservadoPropostaId: propostaId, status: 'RESERVADO' }, select: { id: true } });
+    for (const a of reservados) {
+      // Volta para Em preparação se o checklist ainda está aberto (§25.8 item 6).
+      await this.prisma.db.ativo.updateMany({
+        where: { id: a.id, reservadoPropostaId: propostaId, status: 'RESERVADO' },
+        data: { status: await statusAoSoltarReserva(this.prisma.db, a.id), reservadoPropostaId: null, reservadoEm: null },
+      });
+    }
   }
 
 

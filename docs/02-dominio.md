@@ -350,7 +350,7 @@ O bem objeto do contrato — hoje predominantemente veículos.
 - `valor_aquisicao` — custo de aquisição (quanto a Azit pagou pelo veículo)
 - `valor_venda` — valor de venda do ativo, cadastrado manualmente; **base da precificação individualizada** na simulação
 - `pacote_oferta_id` — vínculo opcional a um pacote/oferta genérica (legado PopHub); quando presente, o pacote aparece como opção na simulação
-- `status` — disponivel | **reservado** (§31.4: preso a uma proposta aprovada da lista de espera) | em_contrato | quitado | recuperado | sinistrado
+- `status` — disponivel | **em_preparacao** (§25.8: checklist antes da venda) | **reservado** (§31.4: preso a uma proposta aprovada da lista de espera) | em_contrato | transferido | recuperado | sinistrado
 
 **Relacionamentos:**
 - tem uma `OrigemCapital`
@@ -2274,7 +2274,8 @@ Decisões:
   **Cliente** (titular do contrato ativo, quando houver) e **Observação** (texto livre,
   editável na própria linha e auditado);
 - o **status continua automático** (Disponível, Em contrato, Transferido, Recuperado,
-  Sinistrado) — ninguém muda na mão;
+  Sinistrado) — ninguém muda na mão; a única exceção é a **preparação** (§25.8, 24/11), que
+  entra e sai por ação explícita e auditada;
 - nada de enum de situação: obrigar a operação a classificar o que hoje ela escreve livremente
   seria trabalho novo sem ganho.
 
@@ -2395,6 +2396,53 @@ ele e por enquanto continua onde está, na tela de custo por ativo). Só a frota
    ela não contar duas vezes se depois for cobrada do cliente.
 6. A entrada parcelada (60% à vista) estava escrita em cinco serviços; virou uma função só
    (`entradaAVista`, Regra 16), sem mudança de resultado.
+
+### 25.8 Preparação do veículo — status Em preparação e checklist (decisão Luís, 2026-11-24)
+
+**Problema.** O carro retomado na rescisão (§29.3) ficava **Recuperado** para sempre: nenhum
+evento o levava de volta a Disponível, e simulação e proposta só aceitam carro Disponível. Ao
+discutir a saída, o Luís lembrou que o carro **novo** também passa por um checklist antes de ir
+para venda (troca de óleo e filtro, instalação de rastreador, VIP etc.), hoje controlado na
+observação livre.
+
+**Decisões:**
+1. **Novo status `EM_PREPARACAO`** ("Em preparação"): o carro está sendo preparado para venda.
+   É a **única exceção** ao "ninguém muda o status na mão" do §25.1, e entra e sai só por ação
+   explícita, com quem e quando auditados — nunca por um seletor de status.
+2. **Como entra:**
+   - **carro novo** cadastrado na tela de estoque (tipo veículo) **nasce Em preparação**, com o
+     checklist (ativo do tipo "outro", do crédito avulso, e o legado migrado não mudam);
+   - **carro Recuperado** → ação **Liberar para venda** na ficha do veículo;
+   - **carro Disponível** → ação **Enviar para preparação** (oficina, documento, manutenção).
+   Em todos os casos o operador pode escrever o que falta (texto livre, opcional).
+3. **Checklist.** Ao abrir a preparação, o carro recebe uma cópia dos itens do **modelo de
+   checklist** (Configuração › Checklist de preparação — lista editável, nada chumbado; padrão
+   provisório: troca de óleo e filtro, instalação do rastreador, VIP). Cada item é marcado como
+   **feito** ou **não se aplica**, com quem e quando; dá para incluir um item só para aquele carro.
+   Mudar o modelo não altera preparações já abertas.
+4. **Como sai — Marcar como pronto:** só quando todos os itens estão feitos ou "não se aplica". O
+   carro vira **Disponível** (ou continua **Reservado**, ver item 6) e a preparação fica no
+   histórico da ficha.
+5. **Em preparação já trabalha** (pedido Luís): o carro aparece na simulação, pode virar proposta
+   e pode ser atribuído a um aprovado da lista de espera — sempre com o **alerta "Veículo em
+   preparação"** e o que falta, na simulação, na proposta, na lista de espera e no bloco Veículo da
+   análise, para o analista saber que o carro ainda não está pronto.
+6. **Formalização só depois de pronto** (decisão Luís 24/11): enquanto houver preparação aberta,
+   **o contrato não é gerado** — a ação aparece desabilitada com o motivo. A troca de veículo da
+   novação continua exigindo carro Disponível. Carro Reservado com preparação aberta segue
+   Reservado (preso à proposta) e a preparação continua visível; se a reserva cai, ele volta para
+   **Em preparação**, não para Disponível.
+7. Papéis: Admin e Operador (os mesmos da edição do estoque). Auditoria:
+   `ativo_preparacao_aberta`, `ativo_preparacao_item`, `ativo_preparacao_concluida`.
+
+**Acerto do contrato anterior não passa para o novo** (conferido no código em 24/11, pergunta do
+Luís): saldo da rescisão e boleto do saldo ficam no registro da rescisão (contrato e conta
+antigos); parcelas e faturas são do contrato antigo, encerrado; régua, bloqueio e recuperação são
+marcas do **contrato**, não do carro, e a régua só lê contratos ativos; custos da recuperação são
+lançamentos ligados ao contrato rescindido e só entram no acerto dele; multas seguem a data do
+fato (§25.2) — até a data-base da rescisão é do cliente antigo, entre a retomada e a posse do novo
+cliente é da Azit, depois é do novo cliente. O gasto total na ficha do veículo soma todos os
+contratos, porque é a visão do carro, não um acerto.
 
 ## 26. Migração do legado — contratos ativos no Asaas antes do sistema (decisão Luís, 2026-09-21)
 
@@ -3417,7 +3465,7 @@ reprovada ou cancelada, pode-se pedir outra.
   no Asaas sai do ar (como na novação). Fatura **mista** (itens de outro contrato da mesma conta):
   os itens deste contrato saem dela, o total é recalculado; se já tinha cobrança, a cobrança sai do
   ar e a fatura volta a `ABERTA` para a emissão normal reemitir com o valor certo — o acerto avisa.
-- Ativo → **`RECUPERADO`** (volta à frota pelo fluxo do §25; a data do fato para responsabilidade de
+- Ativo → **`RECUPERADO`** (volta à venda por **Liberar para venda** → Em preparação → pronto, §25.8; a data do fato para responsabilidade de
   multas, §25.2, passa a ser a data-base).
 - Registro `RescisaoContrato` guarda o snapshot do acerto (entrada, principal das parcelas, crédito,
   parcelas vencidas com encargo, compensado, a devolver, saldo remanescente, memória), quem pediu,
