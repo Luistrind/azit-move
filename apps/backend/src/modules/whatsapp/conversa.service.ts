@@ -210,7 +210,7 @@ export class ConversaService {
         origem: 'lembrete' as const,
         direcao: 'SAIDA' as const,
         momento: (l.enviadoEm ?? l.createdAt).toISOString(),
-        tipo: l.momento, // D_MENOS_2 | D_ZERO
+        tipo: l.momento, // D_MENOS_2 | D_ZERO | D_MAIS_2
         texto: l.texto,
         temMidia: false,
         midiaDisponivel: false,

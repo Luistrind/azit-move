@@ -23,7 +23,7 @@ export interface ItemConversa {
   origem: 'mensagem' | 'lembrete';
   direcao: 'ENTRADA' | 'SAIDA';
   momento: string;
-  tipo: string; // mensagem: text | image | audio | document …; lembrete: D_MENOS_2 | D_ZERO
+  tipo: string; // mensagem: text | image | audio | document …; lembrete: D_MENOS_2 | D_ZERO | D_MAIS_2
   texto: string | null;
   temMidia: boolean;
   midiaDisponivel: boolean;
