@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   StreamableFile,
 } from '@nestjs/common';
@@ -22,6 +23,7 @@ import { atualizarAtivoSchema, AtualizarAtivoDto } from './dto/atualizar-ativo.d
 import { listarAtivosSchema, ListarAtivosDto } from './dto/listar-ativos.dto';
 import { Area } from '../../common/decorators/area.decorator';
 import { FILTROS_FROTA, FrotaVisaoService } from './frota-visao.service';
+import { PreparacaoService } from './preparacao.service';
 
 const listarFrotaSchema = z.object({
   filtro: z.enum(FILTROS_FROTA).optional(),
@@ -38,6 +40,14 @@ const anexarDocSchema = z.object({
 });
 type AnexarDocBody = z.infer<typeof anexarDocSchema>;
 
+// Preparação do veículo (doc 02 §25.8).
+const abrirPreparacaoSchema = z.object({ oQueFalta: z.string().trim().max(500).optional() });
+const marcarItemSchema = z.object({ situacao: z.enum(['feito', 'nao_se_aplica']).nullable() });
+const novoItemSchema = z.object({ descricao: z.string().trim().min(1).max(120) });
+const modeloChecklistSchema = z.object({
+  itens: z.array(z.object({ id: z.string().optional(), descricao: z.string().trim().min(1).max(120) })).min(1).max(40),
+});
+
 @Area(AreaSistema.ATIVOS_FROTA)
 @Controller('ativos')
 export class AtivoController {
@@ -45,13 +55,93 @@ export class AtivoController {
     private readonly ativoService: AtivoService,
     private readonly documentos: AtivoDocumentoService,
     private readonly frotaVisao: FrotaVisaoService,
+    private readonly preparacao: PreparacaoService,
   ) {}
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
   @Post()
   @HttpCode(201)
-  criar(@Body(new ZodValidationPipe(criarAtivoSchema)) dto: CriarAtivoDto) {
-    return this.ativoService.criar(dto);
+  criar(@Body(new ZodValidationPipe(criarAtivoSchema)) dto: CriarAtivoDto, @CurrentUser() user: UsuarioAutenticado) {
+    return this.ativoService.criar(dto, user.id);
+  }
+
+  // --- Preparação do veículo (doc 02 §25.8) — rotas fixas antes de :id ---
+  @Get('preparacao/modelo')
+  modeloChecklist() {
+    return this.preparacao.modelo();
+  }
+
+  @Roles(RoleUsuario.ADMIN)
+  @Put('preparacao/modelo')
+  salvarModeloChecklist(
+    @Body(new ZodValidationPipe(modeloChecklistSchema)) body: z.infer<typeof modeloChecklistSchema>,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.preparacao.salvarModelo(body.itens, user.id);
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Patch('preparacao/itens/:itemId')
+  marcarItemPreparacao(
+    @Param('itemId') itemId: string,
+    @Body(new ZodValidationPipe(marcarItemSchema)) body: z.infer<typeof marcarItemSchema>,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.preparacao.marcarItem(itemId, body.situacao, user.id);
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Delete('preparacao/itens/:itemId')
+  removerItemPreparacao(@Param('itemId') itemId: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.preparacao.removerItem(itemId, user.id);
+  }
+
+  @Get(':id/preparacao')
+  preparacaoDoAtivo(@Param('id') id: string) {
+    return this.preparacao.doAtivo(id);
+  }
+
+  // "Liberar para venda" (Recuperado) — abre a preparação com o checklist.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post(':id/liberar-para-venda')
+  @HttpCode(200)
+  liberarParaVenda(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(abrirPreparacaoSchema)) body: z.infer<typeof abrirPreparacaoSchema>,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.preparacao.abrir(id, 'RECUPERACAO', body.oQueFalta, user.id);
+  }
+
+  // "Enviar para preparação" (Disponível → oficina, documento, manutenção).
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post(':id/preparacao')
+  @HttpCode(200)
+  enviarParaPreparacao(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(abrirPreparacaoSchema)) body: z.infer<typeof abrirPreparacaoSchema>,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.preparacao.abrir(id, 'MANUTENCAO', body.oQueFalta, user.id);
+  }
+
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post(':id/preparacao/itens')
+  @HttpCode(201)
+  incluirItemPreparacao(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(novoItemSchema)) body: z.infer<typeof novoItemSchema>,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.preparacao.adicionarItem(id, body.descricao, user.id);
+  }
+
+  // "Marcar como pronto" — checklist completo, o carro vira Disponível.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
+  @Post(':id/preparacao/concluir')
+  @HttpCode(200)
+  concluirPreparacao(@Param('id') id: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.preparacao.concluir(id, user.id);
   }
 
   @Area(AreaSistema.ATIVOS_FROTA, AreaSistema.COMERCIAL, AreaSistema.CAPITAL_INVESTIMENTO)

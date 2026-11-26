@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { PreparacaoService } from './preparacao.service';
+import { preparacaoAbertaDo, preparacoesAbertas, STATUS_OFERECIVEIS } from './preparacao.regras';
 import { CriarAtivoDto } from './dto/criar-ativo.dto';
 import { AtualizarAtivoDto } from './dto/atualizar-ativo.dto';
 import { ListarAtivosDto } from './dto/listar-ativos.dto';
@@ -36,57 +38,70 @@ export interface ListaPaginada<T> {
 
 @Injectable()
 export class AtivoService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly preparacao: PreparacaoService,
+  ) {}
 
-  async criar(dto: CriarAtivoDto): Promise<AtivoApi> {
+  async criar(dto: CriarAtivoDto, usuarioId?: string): Promise<AtivoApi> {
     if (dto.placa) await this.garantirPlacaLivre(dto.placa);
     if (dto.chassi) await this.garantirChassiLivre(dto.chassi);
     if (dto.estruturaJuridicaId) await this.garantirEstrutura(dto.estruturaJuridicaId);
 
-    const ativo = await this.prisma.db.ativo.create({
-      data: {
-        tipo: mapearAtivoEnums.tipoParaPrisma(dto.tipo),
-        estruturaJuridicaId: dto.estruturaJuridicaId,
-        descricao: dto.descricao,
-        varianteCatalogo: dto.varianteCatalogo ?? 'carro',
-        marca: dto.marca,
-        modelo: dto.modelo,
-        anoFabricacao: dto.anoFabricacao,
-        anoModelo: dto.anoModelo,
-        cor: dto.cor,
-        placa: dto.placa,
-        chassi: dto.chassi,
-        renavam: dto.renavam,
-        origem: dto.origem
-          ? mapearAtivoEnums.origemParaPrisma(dto.origem)
-          : undefined,
-        combustivel: dto.combustivel
-          ? mapearAtivoEnums.combustivelParaPrisma(dto.combustivel)
-          : undefined,
-        quilometragemEntrada: dto.quilometragemEntrada,
-        valorAquisicao:
-          dto.valorAquisicao !== undefined
-            ? valorAquisicaoParaPrisma(dto.valorAquisicao)
+    // Veículo novo nasce EM PREPARAÇÃO com o checklist (doc 02 §25.8, decisão
+    // Luís 24/11): troca de óleo, rastreador etc. antes de ir para venda.
+    const ativo = await this.prisma.db.$transaction(async (tx) => {
+      const criado = await tx.ativo.create({
+        data: {
+          tipo: mapearAtivoEnums.tipoParaPrisma(dto.tipo),
+          estruturaJuridicaId: dto.estruturaJuridicaId,
+          descricao: dto.descricao,
+          varianteCatalogo: dto.varianteCatalogo ?? 'carro',
+          marca: dto.marca,
+          modelo: dto.modelo,
+          anoFabricacao: dto.anoFabricacao,
+          anoModelo: dto.anoModelo,
+          cor: dto.cor,
+          placa: dto.placa,
+          chassi: dto.chassi,
+          renavam: dto.renavam,
+          origem: dto.origem
+            ? mapearAtivoEnums.origemParaPrisma(dto.origem)
             : undefined,
-        valorVenda:
-          dto.valorVenda !== undefined
-            ? valorAquisicaoParaPrisma(dto.valorVenda)
+          combustivel: dto.combustivel
+            ? mapearAtivoEnums.combustivelParaPrisma(dto.combustivel)
             : undefined,
-        pacoteOfertaId: dto.pacoteOfertaId,
-        ofertaFixaId: dto.ofertaFixaId ?? undefined,
-      },
-      include: { estruturaJuridica: { select: { id: true, nome: true } } },
+          quilometragemEntrada: dto.quilometragemEntrada,
+          valorAquisicao:
+            dto.valorAquisicao !== undefined
+              ? valorAquisicaoParaPrisma(dto.valorAquisicao)
+              : undefined,
+          valorVenda:
+            dto.valorVenda !== undefined
+              ? valorAquisicaoParaPrisma(dto.valorVenda)
+              : undefined,
+          pacoteOfertaId: dto.pacoteOfertaId,
+          ofertaFixaId: dto.ofertaFixaId ?? undefined,
+        },
+        include: { estruturaJuridica: { select: { id: true, nome: true } } },
+      });
+      if (criado.tipo === 'VEICULO') {
+        await this.preparacao.abrirNaTransacao(tx, criado.id, 'ENTRADA', null, usuarioId);
+        criado.status = 'EM_PREPARACAO';
+      }
+      return criado;
     });
 
     // Aporte SAIU do cadastro de ativo (doc 02 §19, decisão Luís 20/09): aqui se
     // declara apenas a estrutura jurídica dona. Valor aportado e taxa de retorno
     // são assunto da estrutura e serão discutidos adiante.
-    return ativoParaApi(ativo);
+    return ativoParaApi(ativo, await preparacaoAbertaDo(this.prisma.db, ativo.id));
   }
 
   async listar(filtros: ListarAtivosDto): Promise<ListaPaginada<AtivoApi>> {
     const where: Prisma.AtivoWhereInput = {};
     if (filtros.status) where.status = mapearAtivoEnums.statusParaPrisma(filtros.status);
+    else if (filtros.oferecivel === 'true') where.status = { in: STATUS_OFERECIVEIS };
     if (filtros.tipo) where.tipo = filtros.tipo === 'veiculo' ? 'VEICULO' : 'OUTRO';
     if (filtros.placa) where.placa = { contains: filtros.placa, mode: 'insensitive' };
     if (filtros.chassi) where.chassi = { contains: filtros.chassi, mode: 'insensitive' };
@@ -117,7 +132,7 @@ export class AtivoService {
       total,
       page: filtros.page,
       limit: filtros.limit,
-      data: registros.map(ativoParaApi),
+      data: await this.comPreparacao(registros),
     };
   }
 
@@ -127,7 +142,13 @@ export class AtivoService {
       include: { estruturaJuridica: { select: { id: true, nome: true } }, ...INCLUDE_CLIENTE },
     });
     if (!ativo) throw this.naoEncontrado();
-    return ativoParaApi(ativo);
+    return ativoParaApi(ativo, await preparacaoAbertaDo(this.prisma.db, ativo.id));
+  }
+
+  // Lista com o alerta de preparação de cada carro (doc 02 §25.8).
+  private async comPreparacao<T extends Parameters<typeof ativoParaApi>[0]>(registros: T[]): Promise<AtivoApi[]> {
+    const preps = await preparacoesAbertas(this.prisma.db, registros.map((r) => r.id));
+    return registros.map((r) => ativoParaApi(r, preps.get(r.id) ?? null));
   }
 
   // Busca por chassi ou placa exatos (item 2.3). Um dos dois é obrigatório.

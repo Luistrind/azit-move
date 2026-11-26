@@ -135,9 +135,15 @@ export function FormularioAtivo({ ativo, onFechar, onSalvo }: { ativo?: Ativo | 
           <Link to="/configuracoes/simulador" className="text-[10.5px] font-semibold" style={{ color: 'var(--accent)' }}>Cadastrar ou gerenciar ofertas fixas →</Link>
         </div>
       </div>
-      {ativo && (
+      {ativo ? (
         <p className="mt-[12px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
-          O status do veículo não se edita aqui: ele muda sozinho com o contrato, a reserva da lista de espera e o sinistro.
+          O status do veículo não se edita aqui: ele muda sozinho com o contrato, a reserva da lista de espera e o sinistro. A preparação para venda
+          (Em preparação → Disponível) é feita na ficha do veículo.
+        </p>
+      ) : (
+        <p className="mt-[12px] text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+          O veículo novo entra como <b>Em preparação</b>, com o checklist de Configuração › Checklist de preparação (troca de óleo, rastreador…).
+          Ele já pode ser simulado e proposto, com o alerta; fica Disponível e pode gerar contrato quando for marcado como pronto na ficha.
         </p>
       )}
       <div className="mt-[14px] flex flex-wrap justify-end gap-[8px]">

@@ -104,6 +104,7 @@ const GRUPOS_NAV: GrupoNav[] = [
     itens: [
       { to: '/configuracoes/alcadas', label: 'Alçadas' },
       { to: '/configuracoes/assinatura', label: 'Assinatura digital' },
+      { to: '/configuracoes/checklist-preparacao', label: 'Checklist de preparação' },
       { to: '/configuracoes/documentos-empresa', label: 'Documentos da empresa' },
       { to: '/configuracoes/faturamento', label: 'Faturamento' },
       { to: '/configuracoes/integracoes', label: 'Integrações' },

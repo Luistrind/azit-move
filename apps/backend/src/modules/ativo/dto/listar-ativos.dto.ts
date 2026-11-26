@@ -3,8 +3,10 @@ import { z } from 'zod';
 // Filtros de listagem de ativos (api-spec §4.9: status, placa, chassi, page, limit).
 export const listarAtivosSchema = z.object({
   status: z
-    .enum(['disponivel', 'reservado', 'em_contrato', 'transferido', 'recuperado', 'sinistrado'])
+    .enum(['disponivel', 'em_preparacao', 'reservado', 'em_contrato', 'transferido', 'recuperado', 'sinistrado'])
     .optional(),
+  // Carros que podem ser oferecidos (doc 02 §25.8): Disponível + Em preparação.
+  oferecivel: z.enum(['true', 'false']).optional(),
   // Estoque/frota lista só veículos (08/09): o ativo SINTÉTICO do crédito avulso
   // (tipo 'outro') é âncora de recebível, não item de estoque.
   tipo: z.enum(['veiculo', 'outro']).optional(),

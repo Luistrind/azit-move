@@ -62,9 +62,10 @@ function montar(p: {
     acordo: { findMany: jest.fn(async () => p.acordos ?? []) },
     parcela: { groupBy: jest.fn(async () => p.vencidas ?? []) },
     ocorrenciaVeiculo: { findMany: jest.fn(async () => p.ocorrencias ?? []) },
+    preparacaoAtivo: { findMany: jest.fn(async () => []) },
   };
   const centroCusto = { posicaoDosAtivos: jest.fn(async () => p.posicoes ?? []) };
-  const svc = new FrotaVisaoService({ db } as never, centroCusto as never);
+  const svc = new FrotaVisaoService({ db } as never, centroCusto as never, {} as never);
   return { svc, db };
 }
 

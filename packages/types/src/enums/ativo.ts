@@ -5,12 +5,51 @@ export enum TipoAtivo {
 }
 
 export enum StatusAtivo {
-  DISPONIVEL  = 'disponivel',
-  EM_CONTRATO = 'em_contrato',
-  QUITADO     = 'quitado',
-  RECUPERADO  = 'recuperado',
-  SINISTRADO  = 'sinistrado',
+  DISPONIVEL    = 'disponivel',
+  EM_PREPARACAO = 'em_preparacao', // checklist antes da venda (doc 02 §25.8)
+  RESERVADO     = 'reservado', // preso a uma proposta da lista de espera (doc 02 §31.4)
+  EM_CONTRATO   = 'em_contrato',
+  TRANSFERIDO   = 'transferido', // era 'quitado' (vocabulário 07/09)
+  RECUPERADO    = 'recuperado',
+  SINISTRADO    = 'sinistrado',
 }
+
+// Rótulo único do status do ativo — estoque, ficha, alertas (Regra 9).
+export const STATUS_ATIVO_LABEL: Record<StatusAtivo, string> = {
+  [StatusAtivo.DISPONIVEL]: 'Disponível',
+  [StatusAtivo.EM_PREPARACAO]: 'Em preparação',
+  [StatusAtivo.RESERVADO]: 'Reservado',
+  [StatusAtivo.EM_CONTRATO]: 'Em contrato',
+  [StatusAtivo.TRANSFERIDO]: 'Transferido',
+  [StatusAtivo.RECUPERADO]: 'Recuperado',
+  [StatusAtivo.SINISTRADO]: 'Sinistrado',
+};
+export function rotuloStatusAtivo(status: string): string {
+  return (STATUS_ATIVO_LABEL as Record<string, string>)[status] ?? status;
+}
+
+// Preparação do veículo (doc 02 §25.8).
+export enum MotivoPreparacao {
+  ENTRADA     = 'entrada',
+  RECUPERACAO = 'recuperacao',
+  MANUTENCAO  = 'manutencao',
+}
+
+export const MOTIVO_PREPARACAO_LABEL: Record<MotivoPreparacao, string> = {
+  [MotivoPreparacao.ENTRADA]: 'Entrada no estoque',
+  [MotivoPreparacao.RECUPERACAO]: 'Carro recuperado',
+  [MotivoPreparacao.MANUTENCAO]: 'Manutenção',
+};
+
+export enum SituacaoItemPreparacao {
+  FEITO         = 'feito',
+  NAO_SE_APLICA = 'nao_se_aplica',
+}
+
+export const SITUACAO_ITEM_PREPARACAO_LABEL: Record<SituacaoItemPreparacao, string> = {
+  [SituacaoItemPreparacao.FEITO]: 'Feito',
+  [SituacaoItemPreparacao.NAO_SE_APLICA]: 'Não se aplica',
+};
 
 export enum TipoCombustivel {
   FLEX     = 'flex',

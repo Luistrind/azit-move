@@ -30,6 +30,7 @@ import { FornecedoresPage } from './pages/FornecedoresPage';
 import { FinanceiroConfigPage } from './pages/FinanceiroConfigPage';
 import { AssinaturaConfigPage } from './pages/AssinaturaConfigPage';
 import { DocumentosEmpresaPage } from './pages/DocumentosEmpresaPage';
+import { ChecklistPreparacaoPage } from './pages/ChecklistPreparacaoPage';
 import { TitularPage } from './pages/TitularPage';
 import { TitularDetalhePage } from './pages/TitularDetalhePage';
 import { AprovacoesPage } from './pages/AprovacoesPage';
@@ -134,6 +135,7 @@ export const router = createBrowserRouter([
           // Configurações
           rota('configuracoes/alcadas', <AlcadasPage />, CONFIGURACOES),
           rota('configuracoes/assinatura', <AssinaturaConfigPage />, CONFIGURACOES),
+          rota('configuracoes/checklist-preparacao', <ChecklistPreparacaoPage />, CONFIGURACOES),
           rota('configuracoes/documentos-empresa', <DocumentosEmpresaPage />, CONFIGURACOES),
           rota('configuracoes/faturamento', <FaturamentoConfigPage />, CONFIGURACOES),
           rota('configuracoes/simulador', <SimuladorConfigPage />, CONFIGURACOES),

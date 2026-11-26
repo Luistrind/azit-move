@@ -1,4 +1,5 @@
 import { api } from '../lib/api';
+import type { AlertaPreparacao } from './ativo.service';
 
 // Bloco 7 — funil de originação nativa. Valores em centavos.
 export interface AtivoDisponivel {
@@ -7,6 +8,9 @@ export interface AtivoDisponivel {
   placa: string | null;
   valorVenda: number | null;
   pacoteOfertaId: string | null;
+  status?: string;
+  // Em preparação (doc 02 §25.8): o que falta — o carro já simula, com o alerta.
+  preparacao?: AlertaPreparacao | null;
 }
 
 // Simulação V3 (Doc 2 §4-A.2): prazo em MESES + frequência; ofertas fixas/padrão/
@@ -61,6 +65,8 @@ export interface PropostaEspera {
   veiculoAtribuidoEm: string | null;
   veiculoConferidoEm: string | null;
   ajuste: AjusteVeiculo | null;
+  // Carro atribuído ainda em preparação (doc 02 §25.8).
+  preparacaoVeiculo?: AlertaPreparacao | null;
 }
 export interface AjusteVeiculo {
   ativoId: string;
@@ -119,6 +125,8 @@ export interface PropostaDetalhe {
   veiculoAtribuidoEm?: string | null;
   veiculoConferidoEm?: string | null;
   ajusteVeiculo?: AjusteVeiculo | null;
+  // Carro ainda em preparação (doc 02 §25.8): alerta e trava da formalização (motivo).
+  preparacaoVeiculo?: AlertaPreparacao | null;
   titular: { id: string; nome: string; cpfCnpj: string; whatsapp: string };
   valorEntrada: number;
   valorParcela: number;
@@ -202,6 +210,13 @@ export interface AssinaturaDigitalStatus {
 }
 
 export const originacaoService = {
+  // Carros que podem ser oferecidos na simulação/proposta (doc 02 §25.8):
+  // Disponível + Em preparação (este com o alerta). A troca de veículo da
+  // novação continua em ativosDisponiveis (só Disponível).
+  async ativosOfereciveis(): Promise<AtivoDisponivel[]> {
+    const { data } = await api.get('/api/v1/ativos', { params: { oferecivel: 'true', limit: 100 } });
+    return data.data;
+  },
   async ativosDisponiveis(): Promise<AtivoDisponivel[]> {
     const { data } = await api.get('/api/v1/ativos', { params: { status: 'disponivel', limit: 100 } });
     return data.data;

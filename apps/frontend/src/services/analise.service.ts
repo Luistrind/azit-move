@@ -1,4 +1,5 @@
 import { api } from '../lib/api';
+import type { AlertaPreparacao } from './ativo.service';
 
 // Análise de Cadastro F1 (Requisitos v0.2). Valores em centavos.
 export interface ParticipanteAnalise {
@@ -40,6 +41,8 @@ export type VeiculoDossie =
       placa: string | null; quilometragemEntrada: number | null; origem: string | null; valorVenda: number | null; fipeModelo: string | null; fipeReferencia: string | null;
       status: string; novoNaOperacao: boolean; jaRecuperado: boolean;
       contratosAnteriores: { id: string; numero: string; status: string; motivoEncerramento: string | null; recuperado: boolean; cliente: string; inicio: string }[];
+      // Carro ainda em preparação (doc 02 §25.8): o contrato só sai depois de pronto.
+      preparacao?: AlertaPreparacao | null;
     }
   | { tipo: 'referencia'; marca: string; modelo: string; anoModelo: number; valorFipe: number; fipeReferencia: string; consultadoEm: string };
 

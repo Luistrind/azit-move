@@ -9,6 +9,7 @@ import { dataBR } from '../lib/datas';
 import { reaisParaCentavos } from '../lib/valor';
 import { rotuloStatus } from '../lib/rotulos';
 import { Modal } from '../components/Modal';
+import { AlertaPreparacao } from '../components/AlertaPreparacao';
 import { BotaoVerRetorno } from '../components/RetornoBiro';
 import { toast } from '../components/Toast';
 import { DocumentoViewer, useDocumentoViewer } from '../components/DocumentoViewer';
@@ -303,6 +304,7 @@ export function AnalisePage() {
           </div>
         ) : (
           <div className="flex flex-col gap-[10px]">
+            <AlertaPreparacao alerta={d.veiculo.preparacao} mostrarMotivo />
             <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-4">
               <Metrica label="Veículo" valor={d.veiculo.descricao} detalhe={`${d.veiculo.placa ?? 'sem placa'}${d.veiculo.anoModelo ? ` · ${d.veiculo.anoFabricacao ?? '—'}/${d.veiculo.anoModelo}` : ''}`} />
               <Metrica label="Quilometragem de entrada" valor={d.veiculo.quilometragemEntrada != null ? `${d.veiculo.quilometragemEntrada.toLocaleString('pt-BR')} km` : '—'} detalhe={d.veiculo.idadeAnos != null ? `${d.veiculo.idadeAnos} ano(s) de idade` : undefined} />

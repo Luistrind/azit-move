@@ -6,6 +6,7 @@ import {
 import { Prisma, Periodicidade as PeriodicidadePrisma } from '@prisma/client';
 import { rotuloAtivo, rotuloReferencia, precificarSimulacao, FrequenciaSimulacao, DIA_MS } from '@azit/utils';
 import { PrismaService } from '../../database/prisma.service';
+import { ativoOferecivel } from '../ativo/preparacao.regras';
 import { ParametrosService, ParametrosVigentes } from '../simulador/parametros.service';
 import { OfertaFixaService } from '../simulador/oferta-fixa.service';
 import {
@@ -197,7 +198,8 @@ export class SimulacaoService {
       if (!ativo) {
         throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Ativo não encontrado' });
       }
-      if (ativo.status !== 'DISPONIVEL') {
+      // Em preparação também simula (doc 02 §25.8) — a tela mostra o alerta.
+      if (!ativoOferecivel(ativo.status)) {
         throw new UnprocessableEntityException({
           erro: 'ativo_indisponivel',
           mensagem: 'O ativo não está disponível para simulação',

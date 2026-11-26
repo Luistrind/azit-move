@@ -15,6 +15,7 @@ import { usePodeRole, ROLE_OPERACAO, mensagemErro } from '../lib/permissoes';
 import { dataBR } from '../lib/datas';
 import type { StatusColor } from '../config/statusColors';
 import { LinkArea } from '../components/LinkArea';
+import { AlertaPreparacao } from '../components/AlertaPreparacao';
 import { AreaSistema } from '@azit/types';
 
 // Lista de espera (doc 02 §31.3–29.4, decisão Luís 03/11): propostas APROVADAS
@@ -45,8 +46,8 @@ export function ListaEsperaPage() {
 
   const fila = useQuery({ queryKey: ['lista-espera'], queryFn: () => originacaoService.listaEspera() });
   const ativos = useQuery({
-    queryKey: ['ativos-disponiveis-espera'],
-    queryFn: () => ativoService.listar({ status: 'disponivel', tipo: 'veiculo' }),
+    queryKey: ['ativos-ofereciveis-espera'],
+    queryFn: () => ativoService.listar({ oferecivel: 'true', tipo: 'veiculo' }),
     enabled: alvo !== null,
   });
 
@@ -57,7 +58,8 @@ export function ListaEsperaPage() {
 
   // Sugestão de casamento: ativos do mesmo modelo da referência primeiro.
   const ativosOrdenados = useMemo(() => {
-    const lista = (ativos.data?.data ?? []).filter((a) => a.status === 'disponivel');
+    // Disponível ou Em preparação (doc 02 §25.8) — este último com o alerta.
+    const lista = (ativos.data?.data ?? []).filter((a) => a.status === 'disponivel' || a.status === 'em_preparacao');
     const t = buscaAtivo.trim().toLowerCase();
     const filtrada = t ? lista.filter((a) => `${a.descricao} ${a.placa ?? ''} ${a.marca ?? ''} ${a.modelo ?? ''}`.toLowerCase().includes(t)) : lista;
     const ref = alvo?.referencia;
@@ -147,6 +149,7 @@ export function ListaEsperaPage() {
         <div className="flex flex-col gap-[3px]">
           <StatusBadge label={ROTULO[p.situacao] ?? p.situacaoRotulo} colors={SITUACAO_COLORS} />
           {p.ativo && <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{p.ativo.rotulo}</span>}
+          <AlertaPreparacao alerta={p.preparacaoVeiculo} compacto />
           {p.ajuste && p.situacao !== 'na_fila' && (
             <span className="text-[11px] tabular-nums" style={{ color: 'var(--text-muted)' }}>parcela com o carro real {formatCurrency(p.ajuste.valorParcela)}</span>
           )}
@@ -228,7 +231,7 @@ export function ListaEsperaPage() {
                 <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Carregando o estoque…</div>
               ) : ativosOrdenados.length === 0 ? (
                 <div className="rounded-[10px] p-[12px] text-[13px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-                  Nenhum veículo disponível{buscaAtivo ? ' com esse termo' : ' no estoque'}.
+                  Nenhum veículo disponível ou em preparação{buscaAtivo ? ' com esse termo' : ' no estoque'}.
                 </div>
               ) : (
                 ativosOrdenados.map((a) => (
@@ -246,6 +249,7 @@ export function ListaEsperaPage() {
                       <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
                         {a.placa ?? 'Sem placa'}{a.anoModelo ? ` · ${a.anoModelo}` : ''}{a.quilometragemEntrada != null ? ` · ${a.quilometragemEntrada.toLocaleString('pt-BR')} km` : ''}
                       </div>
+                      <AlertaPreparacao alerta={a.preparacao} compacto />
                     </div>
                     <div className="whitespace-nowrap text-right text-[14px] font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>
                       {a.valorVenda ? formatCurrency(a.valorVenda) : 'sem valor'}

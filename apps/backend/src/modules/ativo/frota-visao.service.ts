@@ -12,6 +12,8 @@ import {
 import { PrismaService } from '../../database/prisma.service';
 import { CentroCustoService } from '../centro-custo/centro-custo.service';
 import { ativoParaApi, mapearAtivoEnums, type AtivoApi } from './ativo.mapper';
+import { PreparacaoService } from './preparacao.service';
+import { preparacoesAbertas } from './preparacao.regras';
 
 // ============================================================
 // Frota e ficha do veículo (doc 02 §25.7, decisão Luís 19/11/2026 sobre o
@@ -21,7 +23,7 @@ import { ativoParaApi, mapearAtivoEnums, type AtivoApi } from './ativo.mapper';
 
 const cent = (d: Prisma.Decimal | null | undefined): number => Math.round(Number(d?.toString() ?? '0') * 100);
 const OCORRENCIAS_ABERTAS: StatusOcorrenciaVeiculo[] = ['REGISTRADA', 'EM_RECURSO', 'AGUARDANDO_COMPROVANTE'];
-const STATUS_FILTRAVEIS = ['disponivel', 'reservado', 'em_contrato', 'transferido', 'recuperado', 'sinistrado'] as const;
+const STATUS_FILTRAVEIS = ['disponivel', 'em_preparacao', 'reservado', 'em_contrato', 'transferido', 'recuperado', 'sinistrado'] as const;
 export const FILTROS_FROTA = [...STATUS_FILTRAVEIS, 'com_pendencia'] as const;
 export type FiltroFrota = (typeof FILTROS_FROTA)[number];
 
@@ -68,6 +70,7 @@ export class FrotaVisaoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly centroCusto: CentroCustoService,
+    private readonly preparacao: PreparacaoService,
   ) {}
 
   private whereLista(f: { filtro?: FiltroFrota; busca?: string }): Prisma.AtivoWhereInput {
@@ -109,13 +112,14 @@ export class FrotaVisaoService {
       }),
     ]);
     const ids = ativos.map((a) => a.id);
-    const [situacoes, pendencias, retornos] = await Promise.all([
+    const [situacoes, pendencias, retornos, preps] = await Promise.all([
       this.situacoesDosContratos(ids),
       this.pendenciasDosAtivos(ids),
       this.retornosDosAtivos(ids),
+      preparacoesAbertas(this.prisma.db, ids),
     ]);
     const linhas: LinhaFrota[] = ativos.map((a) => ({
-      ...ativoParaApi(a),
+      ...ativoParaApi(a, preps.get(a.id) ?? null),
       contrato: situacoes.get(a.id) ?? null,
       pendencias: pendencias.get(a.id) ?? { quantidade: 0, valor: 0, proximoPrazo: null },
       retorno: retornos.get(a.id) ?? { investido: 0, recebido: 0, aReceber: 0, percentual: null },
@@ -160,7 +164,7 @@ export class FrotaVisaoService {
     });
     if (!ativo) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Veículo não encontrado' });
 
-    const [situacoes, pendencias, retornos, custos, ultimaObs] = await Promise.all([
+    const [situacoes, pendencias, retornos, custos, ultimaObs, preparacao] = await Promise.all([
       this.situacoesDosContratos([id]),
       this.pendenciasDosAtivos([id]),
       this.retornosDosAtivos([id]),
@@ -170,6 +174,7 @@ export class FrotaVisaoService {
         orderBy: { createdAt: 'desc' },
         select: { usuarioId: true, createdAt: true },
       }),
+      this.preparacao.doAtivo(id),
     ]);
 
     // "De onde veio" de cada custo: quem lançou, ou a multa que a Azit assumiu.
@@ -195,9 +200,14 @@ export class FrotaVisaoService {
     const contratoAtivo = ativo.contratosCredito[0] ?? null;
     const detalheContratoAtivo = contratoAtivo ? custos.contratos.find((c) => c.contratoId === contratoAtivo.id) : null;
 
+    const alerta = preparacao.aberta
+      ? { preparacaoId: preparacao.aberta.id, oQueFalta: preparacao.aberta.oQueFalta, pendentes: preparacao.aberta.itens.filter((i) => !i.situacao).map((i) => i.descricao), totalItens: preparacao.aberta.itens.length, abertaEm: preparacao.aberta.abertaEm }
+      : null;
     return {
+      // Preparação para venda (doc 02 §25.8): a aberta com o checklist e o histórico.
+      preparacao,
       ativo: {
-        ...ativoParaApi(ativo),
+        ...ativoParaApi(ativo, alerta),
         ofertaFixa: ativo.ofertaFixa ? { id: ativo.ofertaFixa.id, nome: ativo.ofertaFixa.nome } : null,
         fipe: ativo.fipeModelo || ativo.fipeReferencia
           ? { modelo: ativo.fipeModelo, referencia: ativo.fipeReferencia, consultadaEm: ativo.fipeConsultadaEm?.toISOString() ?? null }
