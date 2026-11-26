@@ -23,7 +23,7 @@ import { comNavegador, htmlParaPdf } from '../dossie/pdf';
 import { converterParaVoz, MIME_VOZ } from './audio-voz';
 import { htmlSimulacaoPdf, nomeArquivoSimulacao } from './simulacao-pdf';
 import { ResultadoEnvioWhatsapp, WhatsappEnvioService } from './whatsapp-envio.service';
-import { UPLOADS_WHATSAPP, WhatsappMensagensService } from './whatsapp-mensagens.service';
+import { textoExibidoMensagem, UPLOADS_WHATSAPP, WhatsappMensagensService } from './whatsapp-mensagens.service';
 import { JOB_EVENTO_META } from './whatsapp.processor';
 import { EnviarAnexoDto, EnviarSimulacaoDto } from './dto/conversa.dto';
 
@@ -133,7 +133,7 @@ export class ConversaService {
     const itens = base.map(({ numero, ultima, lembrete, comPerfil, titular, lead }) => {
       const atividade = ultimaAtividadeConversa(ultimaMsg.get(numero) ?? null, ultimoLem.get(numero) ?? null);
       const previaLembrete = lembrete ? `Lembrete automático · ${nomeMomentoLembrete(lembrete.momento).toLowerCase()} · fatura nº ${lembrete.fatura.numero}` : '';
-      const previaMensagem = ultima ? (ultima.texto ?? `(${ultima.tipo})`) : '';
+      const previaMensagem = ultima ? (textoExibidoMensagem(ultima) ?? `(${ultima.tipo})`) : '';
       return {
         numero,
         titular,
@@ -195,7 +195,7 @@ export class ConversaService {
         direcao: m.direcao,
         momento: m.momento.toISOString(),
         tipo: m.tipo,
-        texto: m.texto,
+        texto: textoExibidoMensagem(m),
         // Mídia recebida tem id na Meta; a enviada pela tela tem só o arquivo guardado (§34.6).
         temMidia: !!m.midiaId || !!m.midiaRef,
         midiaDisponivel: !!m.midiaRef,

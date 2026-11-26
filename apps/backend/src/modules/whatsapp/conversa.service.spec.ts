@@ -174,6 +174,19 @@ describe('Conversas do WhatsApp — tela (doc 02 §24 itens 3, 4 e 5)', () => {
     await expect(m.service.marcarLida('5511987654321', 'u1')).resolves.toEqual({ marcadas: 0 });
   });
 
+  it('mensagem que a Meta não repassa (unsupported) diz o que foi e o que fazer — também nas já gravadas', async () => {
+    const m = montar();
+    const quando = String(Math.floor(Date.now() / 1000) - 60);
+    await m.mensagens.registrarEntradas({ messages: [{ from: '551187654321', id: 'wamid.E', timestamp: quando, type: 'unsupported', unsupported: { type: 'edit' } }] });
+    await m.mensagens.registrarEntradas({ messages: [{ from: '551187654321', id: 'wamid.U', timestamp: String(Number(quando) + 1), type: 'unsupported' }] });
+    // Gravada antes da correção, com o texto antigo: a tela troca pela explicação.
+    m.msgs[1].texto = '(tipo de mensagem não suportado pela API)';
+    const c = await m.service.conversa('5511987654321');
+    expect(c.itens[0].texto).toMatch(/^O cliente editou uma mensagem/);
+    expect(c.itens[1].texto).toMatch(/não repassa para sistemas.*peça para ele reenviar como mensagem normal/);
+    expect((await m.service.listar())[0].ultimaPrevia).toMatch(/^O cliente mandou algo que o WhatsApp não repassa/);
+  });
+
   it('marcar como não lida volta só a última recebida, conta no menu e não manda nada ao cliente (§34.2)', async () => {
     const m = montar();
     await m.mensagens.registrarEntradas(entrada('wamid.1', 'oi', new Date(Date.now() - 7_200_000)));

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { IntegracoesService } from '../integracoes/integracoes.service';
+import { MIME_VOZ, MIME_VOZ_UPLOAD } from './audio-voz';
 
 // Cliente da WhatsApp Business Platform — Cloud API oficial da Meta (doc 02
 // §11.3 e §23). Só fala HTTP com a Meta: QUEM decide se uma mensagem sai de
@@ -200,8 +201,10 @@ export class WhatsappMetaService {
     const w = this.integracoes.whatsapp();
     const form = new FormData();
     form.append('messaging_product', 'whatsapp');
-    form.append('type', p.mime);
-    form.append('file', new Blob([new Uint8Array(p.arquivo)], { type: p.mime }), p.nomeArquivo);
+    // Voz: o tipo com o codec, como a documentação da Meta pede para ogg ("OPUS codecs only").
+    const tipoUpload = p.tipo === 'audio' && p.mime === MIME_VOZ ? MIME_VOZ_UPLOAD : p.mime;
+    form.append('type', tipoUpload);
+    form.append('file', new Blob([new Uint8Array(p.arquivo)], { type: tipoUpload }), p.nomeArquivo);
     const resp = await fetch(`${w.graphUrl}/${w.phoneNumberId}/media`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${w.accessToken}` },

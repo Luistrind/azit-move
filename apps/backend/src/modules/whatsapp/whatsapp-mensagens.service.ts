@@ -36,7 +36,29 @@ export type MensagemMeta = {
   video?: { id: string; mime_type?: string; caption?: string };
   document?: { id: string; mime_type?: string; caption?: string; filename?: string };
   sticker?: { id: string; mime_type?: string };
+  unsupported?: { type?: string };
 };
+
+// Mensagem que a Meta NÃO repassa para sistemas (type "unsupported", erro
+// 131051): o conteúdo nunca chega — nem no webhook, nem por outra chamada. O
+// que dá é dizer ao operador o que foi (quando a Meta informa) e o que fazer
+// (doc 02 §34.6). Vale para as gravadas antes desta correção (lê o bruto).
+const NAO_SUPORTADA: Record<string, string> = {
+  edit: 'O cliente editou uma mensagem. O WhatsApp não repassa a edição para sistemas: vale a mensagem original; se precisar, peça para ele reenviar.',
+  poll_creation: 'O cliente mandou uma enquete. O WhatsApp não repassa enquetes para sistemas: peça para ele responder por texto.',
+  pin: 'O cliente fixou uma mensagem na conversa (sem conteúdo novo).',
+};
+export function textoMensagemNaoSuportada(bruto: unknown): string {
+  const tipo = (bruto as MensagemMeta | null)?.unsupported?.type;
+  return (
+    (tipo && NAO_SUPORTADA[tipo]) ??
+    'O cliente mandou algo que o WhatsApp não repassa para sistemas (por exemplo foto, vídeo ou áudio de visualização única, enquete ou mensagem editada). O conteúdo não chega aqui: peça para ele reenviar como mensagem normal.'
+  );
+}
+// Texto que a tela mostra de uma mensagem gravada.
+export function textoExibidoMensagem(m: { tipo: string | null; texto: string | null; bruto?: unknown }): string | null {
+  return m.tipo === 'unsupported' ? textoMensagemNaoSuportada(m.bruto) : m.texto;
+}
 
 export type ValorMensagensMeta = { messages?: MensagemMeta[]; contacts?: { wa_id?: string; profile?: { name?: string } }[] };
 
@@ -83,7 +105,7 @@ export class WhatsappMensagensService {
       m.image?.caption ??
       m.video?.caption ??
       m.document?.caption ??
-      (m.type === 'unsupported' ? '(tipo de mensagem não suportado pela API)' : null)
+      (m.type === 'unsupported' ? textoMensagemNaoSuportada(m) : null)
     );
   }
 

@@ -4177,6 +4177,10 @@ gatewayId — identificador do QR estático ou da cobrança, conforme o modo —
 9. **Transição das faturas já emitidas** (§32.4-A): ficam no modelo antigo até liquidar (padrão
    provisório) ou o operador converte a conta, apagando as cobranças antigas? Contas em atraso
    ficam mistas por mais tempo.
+   **DECIDIDO (Luís, 26/11): ficam no modelo antigo até liquidar, sem conversão.** Caso que levou à
+   decisão: fatura que fechou no D-5 (21/11) antes de a chave ser ligada (22/11) saiu no modelo
+   antigo, sem "Pagar outro valor". Conta com fatura antiga **fechada** em aberto é mista: nem as do
+   modelo novo oferecem parcial até a antiga ser paga.
 10. Teto de intenções de pagamento por conta por dia (provisório: 10).
 
 ### 32.11 Ordem de construção e homologação
@@ -4642,6 +4646,13 @@ respondeu a pergunta 2.
   para número autorizado, e o resto fica SIMULADO. Vale a **mesma janela de 24 horas** do texto: fora dela, nem o
   campo nem o clipe nem o microfone aparecem.
 - O arquivo enviado fica guardado com a conversa, como a mídia recebida (§24 item 1), e abre pela mesma rota.
+- **Correção 26/11 (produção):** quase metade dos áudios voltava "131053 Media upload error · Media file scrutiny
+  failed". A conversão passou a gerar um ogg limpo (só a trilha de áudio, sem metadados do navegador, tempo começando
+  em zero, opus mono 48 kHz em perfil de voz) e o envio declara `audio/ogg; codecs=opus`, como a documentação da Meta
+  pede. Se ainda falhar, a mensagem mostra "Falhou" com o motivo e o operador grava de novo.
+- **Mensagem que a Meta não repassa** (tipo `unsupported`, erro 131051): enquete, mensagem editada, visualização
+  única e outros. O conteúdo **nunca chega** ao sistema, por nenhum caminho. A conversa mostra o que foi, quando a
+  Meta informa (edição, enquete, mensagem fixada), e orienta a pedir ao cliente para reenviar como mensagem normal.
 
 ### 34.7 Mandar ao cliente
 
