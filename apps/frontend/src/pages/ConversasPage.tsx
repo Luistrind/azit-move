@@ -310,6 +310,25 @@ function Conversa_({ numero, onVoltar }: { numero: string; onVoltar: () => void 
     fim.current?.scrollIntoView({ block: 'end' });
   }, [c?.itens.length]);
 
+  // "Marcar como não lida" (§34.2): volta a última recebida e FECHA a conversa,
+  // para o efeito acima não ler de novo na hora. Só no sistema — o visto do cliente fica.
+  const [marcando, setMarcando] = useState(false);
+  const temRecebida = !!c?.itens.some((i) => i.origem === 'mensagem' && i.direcao === 'ENTRADA');
+  async function marcarNaoLida() {
+    setMarcando(true);
+    try {
+      await svc.marcarNaoLida(numero);
+      qc.removeQueries({ queryKey: ['conversa', numero] });
+      void qc.invalidateQueries({ queryKey: ['conversas'] });
+      void qc.invalidateQueries({ queryKey: ['conversas-nao-lidas'] });
+      toast.sucesso('Conversa marcada como não lida');
+      onVoltar();
+    } catch (e) {
+      toast.erro(mensagemErro(e));
+      setMarcando(false);
+    }
+  }
+
   if (!c) return <div className="p-[16px] text-[13px]" style={muted}>{q.isLoading ? 'Carregando…' : mensagemErro(q.error)}</div>;
 
   return (
@@ -337,6 +356,11 @@ function Conversa_({ numero, onVoltar }: { numero: string; onVoltar: () => void 
                 {k.numero}{k.ativo?.placa ? ` · ${k.ativo.placa}` : ''}
               </LinkArea>
             ))}
+            {temRecebida && (
+              <Botao tamanho="sm" carregando={marcando} onClick={() => void marcarNaoLida()} title="Volta a contar como não lida só no sistema; o visto do cliente continua">
+                Marcar como não lida
+              </Botao>
+            )}
             <Botao tamanho="sm" className="xl:hidden" onClick={() => setPainel(true)}>Atendimento</Botao>
           </div>
         </div>

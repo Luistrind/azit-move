@@ -4573,6 +4573,11 @@ chama os mesmos serviços do funil, da ficha e da carteira.
   item e no menu.
 - **Filtros**: *Todas*, *Não lidas* e *Só quem respondeu* (quem mandou ao menos uma mensagem), mais o filtro por
   etiqueta (§34.3) e a **busca** por nome (titular, lead ou perfil do WhatsApp) ou por número.
+- **Marcar como não lida** (pedido do Luís, 26/11): abrir a conversa marca como lida; quem abriu e precisou sair usa
+  "Marcar como não lida" no topo da conversa. A **última mensagem recebida** volta a contar como não lida (no item, no
+  filtro e no contador do menu) e a conversa fecha, para não ser lida de novo na hora. A marca é **só interna**: o visto
+  azul que o cliente já recebeu não volta atrás. Aparece só em conversa com mensagem recebida (quem só recebeu
+  lembrete não tem o que marcar).
 
 ### 34.3 Etiquetas automáticas (derivadas, nunca gravadas — Regras 7 e 8)
 
@@ -4602,6 +4607,9 @@ respondeu a pergunta 2.
 
 - **Simular compra** é a simulação do funil (§4-A.2), com o mesmo motor e os mesmos parâmetros, e **fica gravada**
   como qualquer simulação do funil, no lead ou no titular. **Exige CPF** (§34.5). O operador escolhe um carro **disponível** do estoque ou informa o valor à vista.
+  **Prazos: 36, 48 e 60 meses**, o padrão da Azit (decisão Luís, 26/11), começando em 36 como na tela do funil. A
+  lista é uma constante única (`PRAZOS_PADRAO_COMPRA_MESES`, `packages/utils`, Regra 16). A novação no painel oferece
+  12, 24, 36, 48 e 60 meses (60 é o máximo do produto novação).
   Daqui, "Seguir no atendimento" abre a tela do funil já nessa simulação (`/atendimento?simulacao=`).
 - **Carro em preparação** aparece com alerta quando existir o estado de preparação do veículo. Esse bloco **não está
   na main** em 25/11: até lá, só aparecem os carros DISPONÍVEIS.
@@ -4664,3 +4672,5 @@ operador (§32.7).
 | 5 | Acordo e novação pelo painel? | só simulam e mandam; a efetivação continua no fluxo atual, com aprovação (**decidido**, como sugerido) |
 | 6 | Limite do áudio gravado | 5 minutos (**decidido**, como sugerido) |
 | 7 | Lembrete na lista | todos entram e o lembrete sobe a conversa, com o filtro "Só quem respondeu" (**decidido**) |
+| 8 | Prazos da simulação de compra (26/11, pós-produção) | 36, 48 e 60 meses; o painel saía com 6 a 48 e não deixava 60 (**decidido**, §34.4) |
+| 9 | Marcar conversa como não lida (26/11) | sim, no topo da conversa; a última recebida volta a não lida, só no sistema (**decidido**, §34.2) |

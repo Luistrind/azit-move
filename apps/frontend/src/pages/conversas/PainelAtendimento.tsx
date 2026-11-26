@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AreaSistema, EtiquetaContato, NOME_ETIQUETA_CONTATO } from '@azit/types';
-import { formatCurrency, formatarWhatsapp, isoParaBR, reaisParaCentavos } from '@azit/utils';
+import { PRAZOS_PADRAO_COMPRA_MESES, formatCurrency, formatarWhatsapp, isoParaBR, reaisParaCentavos } from '@azit/utils';
 import { conversasService as svc, type Conversa } from '../../services/conversas.service';
 import { originacaoService, type SimulacaoResultado } from '../../services/originacao.service';
 import { operacoesService, type PreviaAcordo, type SimulacaoNovacao, type SimulacaoQuitacao } from '../../services/operacoes.service';
@@ -29,7 +29,8 @@ const borda = '1px solid var(--border)';
 const campo = { background: 'var(--surface-input)', border: borda, color: 'var(--text-primary)' } as const;
 const inputCls = 'h-[32px] w-full rounded-[8px] px-[9px] text-[12.5px]';
 const rotulo = 'text-[10.5px] font-semibold uppercase tracking-[0.08em]';
-const PRAZOS = [6, 12, 24, 36, 48];
+// Compra: PRAZOS_PADRAO_COMPRA_MESES (36/48/60, doc 02 §34.4). Novação vai até 60, o máximo do produto.
+const PRAZOS_NOVACAO = [12, 24, 36, 48, 60];
 
 // "1.234,56" ou "1234" → centavos (entrada de valor pelo operador).
 function lerReais(v: string): number | null {
@@ -205,7 +206,7 @@ function SimuladorCompra({ c, onMandar }: { c: Conversa; onMandar: (m: Mensagem)
   const [sim, setSim] = useState<SimulacaoResultado | null>(null);
   const [ofertaId, setOfertaId] = useState<string | null>(null);
   const [entrada, setEntrada] = useState('');
-  const [prazo, setPrazo] = useState(48);
+  const [prazo, setPrazo] = useState<number>(PRAZOS_PADRAO_COMPRA_MESES[0]);
   const [freq, setFreq] = useState<'semanal' | 'quinzenal' | 'mensal'>('semanal');
   const [ocupado, setOcupado] = useState(false);
   const nome = c.titular?.nome ?? c.lead?.nome ?? c.nomePerfil;
@@ -306,7 +307,7 @@ function SimuladorCompra({ c, onMandar }: { c: Conversa; onMandar: (m: Mensagem)
           <div className="grid grid-cols-3 gap-[6px]">
             <input value={entrada} onChange={(e) => setEntrada(e.target.value)} inputMode="decimal" placeholder="Entrada R$" aria-label="Entrada" className={inputCls} style={campo} />
             <select value={prazo} onChange={(e) => setPrazo(Number(e.target.value))} aria-label="Prazo" className={inputCls} style={campo}>
-              {PRAZOS.map((p) => <option key={p} value={p}>{p} meses</option>)}
+              {PRAZOS_PADRAO_COMPRA_MESES.map((p) => <option key={p} value={p}>{p} meses</option>)}
             </select>
             <select value={freq} onChange={(e) => setFreq(e.target.value as typeof freq)} aria-label="Frequência" className={inputCls} style={campo}>
               <option value="semanal">semanal</option>
@@ -556,7 +557,7 @@ function AbaNovacao({ c, onMandar }: { c: Conversa; onMandar: (m: Mensagem) => v
         <label className="flex flex-1 flex-col gap-[3px] text-[11px] font-semibold" style={{ color: 'var(--text-body)' }}>
           Prazo do contrato novo
           <select value={prazo} onChange={(e) => setPrazo(Number(e.target.value))} className={inputCls} style={campo}>
-            {[12, 24, 36, 48].map((p) => <option key={p} value={p}>{p} meses</option>)}
+            {PRAZOS_NOVACAO.map((p) => <option key={p} value={p}>{p} meses</option>)}
           </select>
         </label>
         <Botao carregando={ocupado} onClick={() => void simular()}>Simular novação</Botao>

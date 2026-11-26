@@ -1811,6 +1811,7 @@ têm esses campos (a tela trata como zero).
   decisao, motivo, enviaDeVerdade }, itens: [{ id, origem: mensagem | lembrete, direcao: ENTRADA | SAIDA, momento,
   tipo, texto, temMidia, midiaDisponivel, midiaNome, situacao, motivo, autor, lida }] }`.
 - `POST /conversas-whatsapp/:numero/lida` → `{ marcadas }` (manda o visto azul pela regra de envio).
+- `POST /conversas-whatsapp/:numero/nao-lida` → `{ naoLidas: 1 }`: a última mensagem recebida volta a não lida, só no sistema (doc 02 §34.2). 422 `sem_mensagem_recebida` se o cliente nunca escreveu.
 - `POST /conversas-whatsapp/:numero/responder { texto }` → `{ resultado: enviada | simulada | retida | falhou, motivo? }`.
   422: `janela_fechada`, `texto_invalido`, `numero_invalido`.
 - `POST /conversas-whatsapp/:numero/anexo { tipo: IMAGEM | DOCUMENTO | AUDIO, nome, mime, conteudoBase64, legenda? }` →

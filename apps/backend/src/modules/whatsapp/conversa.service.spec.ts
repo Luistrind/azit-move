@@ -174,6 +174,24 @@ describe('Conversas do WhatsApp — tela (doc 02 §24 itens 3, 4 e 5)', () => {
     await expect(m.service.marcarLida('5511987654321', 'u1')).resolves.toEqual({ marcadas: 0 });
   });
 
+  it('marcar como não lida volta só a última recebida, conta no menu e não manda nada ao cliente (§34.2)', async () => {
+    const m = montar();
+    await m.mensagens.registrarEntradas(entrada('wamid.1', 'oi', new Date(Date.now() - 7_200_000)));
+    await m.mensagens.registrarEntradas(entrada('wamid.2', 'tudo bem?', new Date(Date.now() - 3_600_000)));
+    await m.service.marcarLida('5511987654321', 'u1');
+    m.envio.confirmarLeitura.mockClear();
+    await expect(m.service.marcarNaoLida('11987654321', 'u1')).resolves.toEqual({ naoLidas: 1 });
+    expect(m.msgs.find((x) => x.mensagemId === 'wamid.2')?.lidaEm).toBeNull();
+    expect(m.msgs.find((x) => x.mensagemId === 'wamid.1')?.lidaEm).toBeInstanceOf(Date);
+    await expect(m.service.naoLidas()).resolves.toEqual({ total: 1 });
+    expect((await m.service.listar()).find((c) => c.numero === '5511987654321')?.naoLidas).toBe(1);
+    expect(m.envio.confirmarLeitura).not.toHaveBeenCalled();
+    // Reabrir lê de novo, como qualquer mensagem não lida.
+    await expect(m.service.marcarLida('5511987654321', 'u1')).resolves.toEqual({ marcadas: 1 });
+    // Conversa sem mensagem do cliente (só lembrete ou só saída) não tem o que marcar.
+    await expect(montar().service.marcarNaoLida('5511987654321', 'u1')).rejects.toMatchObject({ response: { erro: 'sem_mensagem_recebida' } });
+  });
+
   it('resposta dentro da janela sai pela regra de envio e fica registrada com o operador', async () => {
     const m = montar();
     await m.mensagens.registrarEntradas(entrada('wamid.1', 'pago amanhã', new Date(Date.now() - 3_600_000)));

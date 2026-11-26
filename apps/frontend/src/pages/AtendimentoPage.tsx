@@ -1,4 +1,4 @@
-import { rotuloAtivo } from '@azit/utils';
+import { PRAZOS_PADRAO_COMPRA_MESES, rotuloAtivo } from '@azit/utils';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -120,7 +120,7 @@ export function AtendimentoPage() {
 
   // Personalizada
   const [entradaTexto, setEntradaTexto] = useState('');
-  const [prazoMeses, setPrazoMeses] = useState('36');
+  const [prazoMeses, setPrazoMeses] = useState(String(PRAZOS_PADRAO_COMPRA_MESES[0]));
   const [frequencia, setFrequencia] = useState<'semanal' | 'quinzenal' | 'mensal'>('semanal');
 
   // Passos 4–7 — proposta criada (camada 1 já rodou de forma transparente)

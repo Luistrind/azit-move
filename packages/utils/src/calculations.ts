@@ -83,6 +83,10 @@ export function fatorValorDesdeSemanal(f: FrequenciaPeriodo | string): number {
 // ------------------------------------------------------------
 export const FRACAO_ENTRADA_A_VISTA = 0.6;
 
+// Prazos padrão da compra parcelada, em meses (doc 02 §34.4, decisão Luís 26/11):
+// a lista oferecida na simulação do painel das Conversas; o primeiro é o prazo inicial.
+export const PRAZOS_PADRAO_COMPRA_MESES = [36, 48, 60] as const;
+
 /** Parte da entrada paga à vista (centavos): tudo, ou 60% quando a entrada é parcelada. */
 export function entradaAVista(valorEntrada: number, parcelada: boolean): number {
   return parcelada ? Math.round(valorEntrada * FRACAO_ENTRADA_A_VISTA) : valorEntrada;

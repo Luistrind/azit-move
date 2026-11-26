@@ -302,6 +302,20 @@ export class ConversaService {
     return { marcadas: pendentes.length };
   }
 
+  // "Marcar como não lida" (doc 02 §34.2): a última mensagem RECEBIDA volta a
+  // contar como não lida — no item, no filtro e no contador do menu. Só no
+  // sistema: o visto azul que o cliente já recebeu não volta atrás.
+  async marcarNaoLida(numeroBruto: string, usuarioId?: string) {
+    const numero = this.canonico(numeroBruto);
+    const ultima = await this.prisma.db.mensagemWhatsapp.findFirst({ where: { numero, direcao: 'ENTRADA' }, orderBy: { momento: 'desc' } });
+    if (!ultima) {
+      throw new UnprocessableEntityException({ erro: 'sem_mensagem_recebida', mensagem: 'Esta conversa não tem mensagem do cliente para marcar como não lida' });
+    }
+    if (ultima.lidaEm) await this.prisma.db.mensagemWhatsapp.update({ where: { id: ultima.id }, data: { lidaEm: null } });
+    this.logger.log(`conversa ${numero.slice(0, 4)}…${numero.slice(-2)}: marcada como não lida por ${usuarioId ?? '?'}`);
+    return { naoLidas: 1 };
+  }
+
   // ---------------- Saída (texto, mídia, simulação) ----------------
 
   // Número válido E janela de 24 h aberta (§24 item 3; vale para mídia, §34.6).

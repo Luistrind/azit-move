@@ -89,6 +89,9 @@ export const conversasService = {
   async marcarLida(numero: string): Promise<void> {
     await api.post(`/api/v1/conversas-whatsapp/${numero}/lida`);
   },
+  async marcarNaoLida(numero: string): Promise<void> {
+    await api.post(`/api/v1/conversas-whatsapp/${numero}/nao-lida`);
+  },
   async responder(numero: string, texto: string): Promise<ResultadoSaida> {
     const { data } = await api.post(`/api/v1/conversas-whatsapp/${numero}/responder`, { texto });
     return data;

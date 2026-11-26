@@ -48,6 +48,13 @@ export class ConversaController {
     return this.service.marcarLida(numero, user.id);
   }
 
+  // "Marcar como não lida" (doc 02 §34.2) — só no sistema.
+  @Post('conversas-whatsapp/:numero/nao-lida')
+  @HttpCode(200)
+  naoLida(@Param('numero') numero: string, @CurrentUser() user: UsuarioAutenticado) {
+    return this.service.marcarNaoLida(numero, user.id);
+  }
+
   @Post('conversas-whatsapp/:numero/responder')
   @HttpCode(200)
   responder(@Param('numero') numero: string, @Body() body: { texto: string }, @CurrentUser() user: UsuarioAutenticado) {
