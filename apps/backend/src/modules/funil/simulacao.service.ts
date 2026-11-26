@@ -173,6 +173,15 @@ export class SimulacaoService {
   // Tela 1→2: cria a simulação (ativo OU valor manual) e calcula as ofertas
   // padrão + a oferta fixa vinculada ao ativo. Status: CALCULADA.
   async criar(dto: CriarSimulacaoDto) {
+    // CPF é obrigatório para simular (decisão Luís 25/11, doc 02 §34.5): o lead
+    // do WhatsApp pode ser registrado sem CPF, mas não simula sem ele.
+    if (dto.leadId) {
+      const lead = await this.prisma.db.lead.findFirst({ where: { id: dto.leadId }, select: { cpf: true } });
+      if (!lead) throw new NotFoundException({ erro: 'nao_encontrado', mensagem: 'Lead não encontrado' });
+      if (!lead.cpf) {
+        throw new UnprocessableEntityException({ erro: 'lead_sem_cpf', mensagem: 'Informe o CPF do lead antes de simular' });
+      }
+    }
     let ativo: {
       id: string;
       descricao: string;

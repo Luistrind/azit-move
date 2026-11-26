@@ -62,3 +62,26 @@ export const NOME_SITUACAO_MENSAGEM_WHATSAPP: Record<string, string> = {
   simulada: 'Simulada — não enviada',
   retida: 'Retida — não enviada',
 };
+
+// Etiqueta automática do contato na tela Conversas (doc 02 §34.3). DERIVADA na
+// leitura, pelo cadastro de agora — nunca gravada (Regras 7 e 8).
+export enum EtiquetaContato {
+  CLIENTE = 'CLIENTE',
+  EX_CLIENTE = 'EX_CLIENTE',
+  LEAD = 'LEAD',
+  NAO_CADASTRADO = 'NAO_CADASTRADO',
+}
+
+export const NOME_ETIQUETA_CONTATO: Record<EtiquetaContato, string> = {
+  [EtiquetaContato.CLIENTE]: 'Cliente',
+  [EtiquetaContato.EX_CLIENTE]: 'Ex-cliente',
+  [EtiquetaContato.LEAD]: 'Lead',
+  [EtiquetaContato.NAO_CADASTRADO]: 'Não cadastrado',
+};
+
+// Tipo da mídia que o operador manda pela tela (§34.6).
+export enum TipoMidiaSaidaWhatsapp {
+  IMAGEM = 'IMAGEM',
+  DOCUMENTO = 'DOCUMENTO',
+  AUDIO = 'AUDIO',
+}

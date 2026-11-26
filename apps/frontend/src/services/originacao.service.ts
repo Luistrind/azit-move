@@ -83,7 +83,7 @@ export interface SimulacaoResultado {
   status: string;
   validaAte: string | null;
   leadId?: string | null;
-  cliente?: { nome: string; cpf: string; telefone: string | null; titularId: string | null } | null;
+  cliente?: { nome: string; cpf: string | null; telefone: string | null; titularId: string | null } | null; // cpf null: lead do WhatsApp sem CPF (doc 02 §34.5)
   propostaId?: string | null;
   ativo: { id: string; descricao: string; placa: string | null } | null;
   referencia?: ReferenciaVeiculo | null;
@@ -206,8 +206,13 @@ export const originacaoService = {
     const { data } = await api.get('/api/v1/ativos', { params: { status: 'disponivel', limit: 100 } });
     return data.data;
   },
-  async criarLead(body: { nome: string; cpf: string; telefone: string; canalOrigem: string }): Promise<{ tipo: string; lead?: { id: string }; titular?: { nome: string } }> {
+  async criarLead(body: { nome: string; cpf?: string; telefone: string; canalOrigem: string }): Promise<{ tipo: string; lead?: { id: string }; titular?: { nome: string } }> {
     const { data } = await api.post('/api/v1/leads', body);
+    return data;
+  },
+  // CPF do lead registrado sem ele (Conversas, doc 02 §34.5): exigido para simular.
+  async informarCpfLead(leadId: string, cpf: string): Promise<{ tipo: 'lead' | 'titular'; lead?: { id: string }; titular?: { id: string; nome: string } }> {
+    const { data } = await api.patch(`/api/v1/leads/${leadId}/cpf`, { cpf });
     return data;
   },
   async detalheSimulacao(id: string): Promise<SimulacaoResultado> {
