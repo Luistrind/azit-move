@@ -138,8 +138,13 @@ export function adicionarDiasUteis(inicio: Date, diasUteis: number): Date {
 // vencimento carrega hora (ex.: venc ontem 14:02 → "0,4 dia" → 0) — caso real:
 // contrato com fatura vencida ONTEM sumia da régua. Referência default: hoje
 // no fuso do negócio; passar a data de pagamento para conciliar atrasos.
+// Correção 27/11 (Regra 15, caso Danilo): a referência pode ser um INSTANTE
+// (`new Date()` na página da fatura e na ficha) — lida em UTC, das 21h à
+// meia-noite de Brasília já era "amanhã", e a fatura que vence hoje ganhava
+// 1 dia de atraso, multa e atualização. Agora: meia-noite UTC exata é dia de
+// calendário (coluna de data); qualquer outro horário, o dia em Brasília.
 export function diasAtrasoCalendario(vencimento: Date, referencia?: Date): number {
-  const ref = referencia ? dataCalendarioUTC(referencia) : dataHojeBrasil();
+  const ref = referencia ? diaDeColunaMista(referencia) : dataHojeBrasil();
   return Math.max(0, diasCalendarioEntre(dataCalendarioUTC(vencimento), ref));
 }
 

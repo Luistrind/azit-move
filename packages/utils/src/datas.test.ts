@@ -56,6 +56,14 @@ describe('datas — fuso do negócio (Regra 15)', () => {
     expect(diasAtrasoCalendario(venc, new Date('2026-10-04T00:00:00.000Z'))).toBe(3);
     expect(diasAtrasoCalendario(venc, new Date('2026-09-30T00:00:00.000Z'))).toBe(0);
   });
+
+  it('diasAtrasoCalendario com o AGORA à noite: vence hoje não tem atraso (caso Danilo, 26/11 22:16)', () => {
+    const venc = new Date('2026-11-26T00:00:00.000Z');
+    const as2216 = new Date('2026-11-27T01:16:00.000Z'); // 26/11 22:16 em Brasília
+    expect(diasAtrasoCalendario(venc, as2216)).toBe(0);
+    expect(diasAtrasoCalendario(venc, new Date('2026-11-27T03:00:00.000Z'))).toBe(1); // 27/11 00:00 em Brasília
+    expect(diasAtrasoCalendario(venc, new Date('2026-11-27T00:00:00.000Z'))).toBe(1); // dia de calendário 27/11
+  });
 });
 
 describe('fimDoDiaBrasil / horaBrasil (validade do Pix sob demanda, doc 02 §32.4-A)', () => {
