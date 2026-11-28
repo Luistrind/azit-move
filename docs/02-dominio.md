@@ -4541,6 +4541,21 @@ para o mais antigo, e a fatura que ele quitou. Três origens na mesma linha do t
 - O link da fatura para o cliente (copiar / WhatsApp do operador, §32.7) fica no topo e dentro da
   fatura aberta, não mais em cada linha.
 
+### 33.5 Editar o cadastro pela ficha (pedido Luís, 2026-11-27)
+
+Caso: lembrete do João Rios Neto voltando "131026 Message undeliverable" — número errado no
+cadastro, e a ficha nova não deixava corrigir. Agora a aba **Cadastro e documentos** tem
+**Editar cadastro** (Admin e Operador, como antes na lista de titulares; o mesmo formulário nos dois
+lugares).
+
+- Vale para o **cadastro vivo**, daqui para frente: lembretes, Conversas, cobranças novas e a página
+  da fatura leem o cadastro **na hora** de usar. **Contrato assinado é snapshot e não muda**
+  (Regra 8 / formalização).
+- WhatsApp é validado (DDD + número) antes de gravar; campo opcional apagado fica vazio.
+- **Nome, e-mail e WhatsApp vão também para o cliente no Asaas** (`PUT /customers/{id}`), para o
+  aviso do próprio Asaas usar o dado novo. Se o Asaas recusar, a edição no sistema vale e a tela diz
+  o que faltou. Toda alteração fica na auditoria (`titular_alterado`, antes e depois).
+
 
 ## 34. Conversas como atendimento — painel ao lado, mídia, lista e etiquetas (decisão Luís, 2026-11-25)
 

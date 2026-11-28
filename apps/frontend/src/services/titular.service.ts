@@ -50,17 +50,20 @@ export interface DetalheTitular {
 // Campos editáveis do cadastro VIVO (nunca tocam contratos assinados — imutabilidade).
 export interface AtualizarTitularBody {
   nome?: string;
-  rg?: string;
-  estadoCivil?: string;
-  profissao?: string;
+  rg?: string | null;
+  estadoCivil?: string | null;
+  profissao?: string | null;
   whatsapp?: string;
-  email?: string;
-  endereco?: string;
-  bairro?: string;
-  cidade?: string;
-  estado?: string;
-  cep?: string;
+  email?: string | null;
+  endereco?: string | null;
+  bairro?: string | null;
+  cidade?: string | null;
+  estado?: string | null;
+  cep?: string | null;
 }
+
+// Repasse do contato (nome, e-mail, WhatsApp) ao cliente no Asaas.
+export type SincronizacaoAsaas = { situacao: 'atualizado' | 'sem_cliente' | 'sem_mudanca' } | { situacao: 'falhou'; motivo: string };
 
 export const titularService = {
   // Cadastro direto (ex.: pessoa investidora — homologação 04/08); o cliente do
@@ -90,7 +93,7 @@ export const titularService = {
     const { data } = await api.get(`/api/v1/titulares/${id}/detalhe`);
     return data;
   },
-  async atualizar(id: string, body: AtualizarTitularBody): Promise<Titular> {
+  async atualizar(id: string, body: AtualizarTitularBody): Promise<Titular & { asaas?: SincronizacaoAsaas }> {
     const { data } = await api.patch(`/api/v1/titulares/${id}`, body);
     return data;
   },

@@ -1,15 +1,18 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ConflictException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { inicioHojeBrasilUTC, limparDocumento, reaisParaCentavos, situacaoDaConta, entradaAVista } from '@azit/utils';
+import { inicioHojeBrasilUTC, limparDocumento, normalizarWhatsapp, reaisParaCentavos, situacaoDaConta, entradaAVista } from '@azit/utils';
 import {
   StatusContratoCredito,
   StatusContratoInvestimento,
 } from '@azit/types';
 import { PrismaService } from '../../database/prisma.service';
+import { AsaasService } from '../asaas/asaas.service';
 import { CriarTitularDto } from './dto/criar-titular.dto';
 import { AtualizarTitularDto } from './dto/atualizar-titular.dto';
 import { ListarTitularesDto } from './dto/listar-titulares.dto';
@@ -20,6 +23,9 @@ import {
   mapearStatusTitular,
 } from './titular.mapper';
 
+// Resultado do repasse do contato ao cliente no Asaas (edição do cadastro).
+export type SincronizacaoAsaas = { situacao: 'atualizado' | 'sem_cliente' | 'sem_mudanca' } | { situacao: 'falhou'; motivo: string };
+
 export interface ListaPaginada<T> {
   total: number;
   page: number;
@@ -29,7 +35,12 @@ export interface ListaPaginada<T> {
 
 @Injectable()
 export class TitularService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(TitularService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly asaas: AsaasService,
+  ) {}
 
   async criar(dto: CriarTitularDto): Promise<TitularApi> {
     const cpfCnpj = limparDocumento(dto.cpfCnpj);
@@ -288,9 +299,17 @@ export class TitularService {
     return titular ? titularParaApi(titular) : null;
   }
 
-  async atualizar(id: string, dto: AtualizarTitularDto, usuarioId?: string): Promise<TitularApi> {
+  // Edição do cadastro vivo (ficha do titular, 27/11): vale daqui para frente —
+  // lembretes, Conversas e cobranças novas leem o cadastro na hora de usar;
+  // contrato assinado é snapshot e NÃO muda. Nome, e-mail e WhatsApp também
+  // vão para o cliente no Asaas (o aviso do próprio Asaas usa o de lá); se o
+  // Asaas recusar, a edição no sistema vale e a resposta diz o que faltou.
+  async atualizar(id: string, dto: AtualizarTitularDto, usuarioId?: string): Promise<TitularApi & { asaas: SincronizacaoAsaas }> {
     await this.garantirExiste(id);
     const anterior = await this.prisma.db.titular.findFirst({ where: { id } });
+    if (dto.whatsapp !== undefined && !normalizarWhatsapp(dto.whatsapp)) {
+      throw new UnprocessableEntityException({ erro: 'whatsapp_invalido', mensagem: 'WhatsApp inválido: informe DDD + número (ex.: 27 99471-1501)' });
+    }
 
     const data: Prisma.TitularUpdateInput = {
       nome: dto.nome,
@@ -325,7 +344,27 @@ export class TitularService {
         depois: JSON.parse(JSON.stringify(titularParaApi(titular))),
       },
     });
-    return titularParaApi(titular);
+    return { ...titularParaApi(titular), asaas: await this.sincronizarContatoAsaas(anterior, titular) };
+  }
+
+  private async sincronizarContatoAsaas(
+    antes: { nome: string; email: string | null; whatsapp: string } | null,
+    depois: { id: string; nome: string; email: string | null; whatsapp: string; asaasCustomerId: string | null },
+  ): Promise<SincronizacaoAsaas> {
+    const contato: { nome?: string; email?: string | null; telefone?: string | null } = {};
+    if (antes?.nome !== depois.nome) contato.nome = depois.nome;
+    if ((antes?.email ?? null) !== (depois.email ?? null)) contato.email = depois.email;
+    if (antes?.whatsapp !== depois.whatsapp) contato.telefone = depois.whatsapp;
+    if (!Object.keys(contato).length) return { situacao: 'sem_mudanca' };
+    const cliente = this.asaas.clienteReutilizavel(depois.asaasCustomerId);
+    if (!cliente) return { situacao: 'sem_cliente' };
+    try {
+      await this.asaas.atualizarContatoCliente(cliente, contato);
+      return { situacao: 'atualizado' };
+    } catch (e) {
+      this.logger.warn(`titular ${depois.id}: contato NÃO atualizado no Asaas — ${(e as Error).message}`);
+      return { situacao: 'falhou', motivo: (e as Error).message.slice(0, 200) };
+    }
   }
 
   async remover(id: string, usuarioId?: string): Promise<void> {

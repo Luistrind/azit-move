@@ -827,6 +827,12 @@ Lista titulares com filtros.
 #### GET `/api/v1/titulares/:id`
 Perfil completo do titular.
 
+#### PATCH `/api/v1/titulares/:id` — editar o cadastro vivo (doc 02 §33.5, 27/11/2026)
+Admin/Operador. Campos opcionais (`nome`, `whatsapp`, `email`, `rg`, `estadoCivil`, `profissao`,
+`endereco`, `bairro`, `cidade`, `estado`, `cep`; `null` limpa). 422 `whatsapp_invalido`. Resposta: o
+titular + `asaas: { situacao: atualizado | sem_cliente | sem_mudanca } | { situacao: falhou, motivo }`
+— nome, e-mail e WhatsApp são repassados ao cliente no Asaas; contrato assinado não muda.
+
 #### GET `/api/v1/titulares/:id/contratos-credito`
 Todos os contratos de crédito do titular (o que ele deve).
 

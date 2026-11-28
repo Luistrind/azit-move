@@ -23,6 +23,7 @@ import { DocumentoViewer, useDocumentoViewer } from '../components/DocumentoView
 import { Tabela } from '../components/Tabela';
 import { Botao } from '../components/Botao';
 import { Secao } from '../components/Secao';
+import { FormularioTitular } from '../components/FormularioTitular';
 import { Abas } from '../components/Abas';
 import { PosicaoHoje } from './titular/PosicaoHoje';
 import { FaturasDaConta } from './titular/FaturasDaConta';
@@ -69,6 +70,8 @@ export function TitularDetalhePage() {
   // do catálogo (ex.: Reembolso Parcelado) segue para o formulário próprio,
   // SEM entrada e sem a palavra "crédito" na tela.
   const [creditoOpen, setCreditoOpen] = useState(false);
+  // Edição do cadastro vivo (27/11): WhatsApp, e-mail, endereço… — contrato não muda.
+  const [editandoCadastro, setEditandoCadastro] = useState(false);
   const [creditoBusy, setCreditoBusy] = useState(false);
   const [cProdutoId, setCProdutoId] = useState('');
   const [produtoDefinido, setProdutoDefinido] = useState(false);
@@ -410,7 +413,20 @@ export function TitularDetalhePage() {
           )}
           {aba === 'cadastro' && (
             <div className="grid grid-cols-1 gap-[22px] lg:grid-cols-[1.2fr_1fr]">
-              <Secao titulo="Dados pessoais">
+              {editandoCadastro && (
+                <FormularioTitular
+                  titular={t}
+                  onFechar={() => setEditandoCadastro(false)}
+                  onSalvo={async () => {
+                    await Promise.all([
+                      queryClient.invalidateQueries({ queryKey: ['titular-detalhe', id] }),
+                      queryClient.invalidateQueries({ queryKey: ['lembretes-titular', id] }),
+                      queryClient.invalidateQueries({ queryKey: ['conversas'] }),
+                    ]);
+                  }}
+                />
+              )}
+              <Secao titulo="Dados pessoais" acao={pode(ROLE_OPERACAO) ? <Botao variante="secundaria" tamanho="sm" onClick={() => setEditandoCadastro(true)}>Editar cadastro</Botao> : undefined}>
                 <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2">
                   <Campo label="Nome" valor={t.nome} />
                   <Campo label="CPF/CNPJ" valor={t.cpfCnpj} />
