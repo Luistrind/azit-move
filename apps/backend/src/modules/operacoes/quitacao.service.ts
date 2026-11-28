@@ -30,7 +30,9 @@ export class QuitacaoService {
     return inicioHojeBrasilUTC();
   }
 
-  private async carregar(contratoId: string, parcelaIds?: string[]) {
+  // `avaliacao`: só para AVALIAR o contrato (valor presente da carteira, doc 02 §27.8),
+  // sem a trava da fatura Pix — ela protege a EXECUÇÃO da quitação, não a conta.
+  private async carregar(contratoId: string, parcelaIds?: string[], opts?: { avaliacao?: boolean }) {
     const contrato = await this.prisma.db.contratoCredito.findFirst({
       where: { id: contratoId },
       select: {
@@ -60,7 +62,7 @@ export class QuitacaoService {
     const faturasPix = faturaIds.length
       ? await this.prisma.db.fatura.findMany({ where: { id: { in: faturaIds }, modeloEncargo: 'AZIT', status: 'FECHADA' }, orderBy: { dataVencimento: 'asc' }, select: { id: true, numero: true } })
       : [];
-    if (faturasPix.length) {
+    if (faturasPix.length && !opts?.avaliacao) {
       const idsPix = new Set(faturasPix.map((f) => f.id));
       const presas = parcelas.filter((p) => p.faturaId && idsPix.has(p.faturaId)).map((p) => p.display);
       throw new UnprocessableEntityException({
@@ -136,8 +138,8 @@ export class QuitacaoService {
     return { contrato, parcelas, taxaCR, taxaPS, crPorParcela, cat };
   }
 
-  async simular(contratoId: string, parcelaIds?: string[]) {
-    const { contrato, parcelas, taxaCR, taxaPS, crPorParcela, cat } = await this.carregar(contratoId, parcelaIds);
+  async simular(contratoId: string, parcelaIds?: string[], opts?: { avaliacao?: boolean }) {
+    const { contrato, parcelas, taxaCR, taxaPS, crPorParcela, cat } = await this.carregar(contratoId, parcelaIds, opts);
     const hoje = this.hojeUTC();
 
     // Liquidação TOTAL = todas as parcelas em aberto do contrato estão na seleção.

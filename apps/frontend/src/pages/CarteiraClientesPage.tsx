@@ -39,7 +39,7 @@ export function CarteiraClientesPage() {
           rotulo="Valor sob gestão"
           tom="neutro"
           valor={r ? formatCurrency(r.valorSobGestaoPresente) : '—'}
-          detalhe={r ? `a valor presente · ${formatCurrency(r.valorSobGestaoNominal)} nominal` : 'a valor presente'}
+          detalhe={r ? `a valor presente · ${formatCurrency(r.valorSobGestaoNominal)} nominal${r.contratosSemValorPresente ? ` · ${r.contratosSemValorPresente} contrato${r.contratosSemValorPresente === 1 ? '' : 's'} pelo nominal` : ''}` : 'a valor presente'}
         />
         <CartaoIndicador rotulo="Contratos ativos" tom="neutro" valor={r ? String(r.contratosAtivos) : '—'} detalhe={r ? `em ${r.contas} cliente${r.contas === 1 ? '' : 's'} ativo${r.contas === 1 ? '' : 's'}${r.contasSemContratoAtivo ? ` · ${r.contasSemContratoAtivo} conta${r.contasSemContratoAtivo === 1 ? '' : 's'} sem contrato ativo` : ''}` : undefined}
           onClick={r?.contasSemContratoAtivo ? () => setParams({ situacao: 'sem_contrato_ativo' }) : undefined}

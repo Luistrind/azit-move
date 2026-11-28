@@ -27,6 +27,8 @@ export interface ResumoCarteira {
   valorSobGestaoPresente: number; // centavos
   valorSobGestaoNominal: number; // centavos
   valorEmAtraso: number; // centavos
+  // Contratos que não se deixaram avaliar e entraram pelo nominal em aberto.
+  contratosSemValorPresente?: number;
 }
 
 export const contaService = {

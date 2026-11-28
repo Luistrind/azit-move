@@ -184,6 +184,13 @@ describe('QUITAÇÃO ANTECIPADA — parcela em fatura AZIT já disponível', () 
     expect(chamadas.parcela?.update).toBeUndefined();
   });
 
+  it('AVALIAR o contrato (valor presente da carteira, §27.8) não esbarra na trava — produção 27/11: os cartões da carteira de clientes ficavam vazios', async () => {
+    const { service } = montar([{ id: 'f2', numero: 22 }]);
+    const sim = await service.simular('c-veiculo', undefined, { avaliacao: true });
+    expect(sim.valorNominalTotal).toBe(74900);
+    await expect(service.quitar('c-veiculo', undefined, 'u-luis')).rejects.toMatchObject({ response: { erro: 'parcela_em_fatura_pix_sob_demanda' } }); // executar continua travado
+  });
+
   it('parcela fora de fatura AZIT em aberto continua antecipável como sempre', async () => {
     const { service } = montar([]);
     const sim = await service.simular('c-veiculo');

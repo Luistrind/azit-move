@@ -1,4 +1,5 @@
 import {
+  Logger,
   Injectable,
   NotFoundException,
   ConflictException,
@@ -16,6 +17,7 @@ import { ContaApi, contaParaApi, mapearStatusConta } from './conta.mapper';
 
 @Injectable()
 export class ContaService {
+  private readonly logger = new Logger(ContaService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly quitacao: QuitacaoService,
@@ -116,10 +118,24 @@ export class ContaService {
     });
     let valorPresente = 0;
     let valorNominal = 0;
+    // Um contrato que não se deixa avaliar não apaga os cartões da tela inteira
+    // (produção 27/11: desde que o Pix sob demanda foi ligado, a trava da
+    // quitação derrubava o resumo e os quatro cartões ficavam em "—"). O que
+    // falhar entra no nominal pelo que está em aberto e é contado à parte.
+    const semCalculo: string[] = [];
     for (const c of contratos) {
-      const sim = await this.quitacao.simular(c.id);
-      valorPresente += sim.valorQuitacao;
-      valorNominal += sim.valorNominalTotal;
+      try {
+        const sim = await this.quitacao.simular(c.id, undefined, { avaliacao: true });
+        valorPresente += sim.valorQuitacao;
+        valorNominal += sim.valorNominalTotal;
+      } catch (e) {
+        semCalculo.push(c.id);
+        this.logger.warn(`resumo da carteira: contrato ${c.id} sem valor presente — ${(e as Error).message}`);
+        const aberto = await this.prisma.db.parcela.aggregate({ where: { contratoId: c.id, status: null, acordoId: null, deletedAt: null }, _sum: { valorNominal: true } });
+        const nominal = this.cent(aberto._sum.valorNominal);
+        valorPresente += nominal;
+        valorNominal += nominal;
+      }
     }
     return {
       // `contas` = clientes ATIVOS (conta com contrato ATIVO) — o mesmo número da visão geral
@@ -132,6 +148,8 @@ export class ContaService {
       valorSobGestaoPresente: valorPresente,
       valorSobGestaoNominal: valorNominal,
       valorEmAtraso: posicoes.reduce((t, p) => t + p.valorEmAtraso, 0),
+      // Contratos que entraram pelo nominal (a tela avisa quando > 0).
+      contratosSemValorPresente: semCalculo.length,
     };
   }
 
