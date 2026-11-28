@@ -156,6 +156,33 @@ export class AsaasService {
     this.logger.log(`Cliente Asaas ${customerId}: aviso ${desligado ? 'desligado' : 'religado'}`);
   }
 
+  // Contato do cliente no Asaas acompanha o cadastro do titular (edição na ficha,
+  // 27/11): nome, e-mail e celular — para o aviso do próprio Asaas (SMS/e-mail)
+  // ir para o dado novo. Só é chamado pela edição explícita do operador.
+  // Falha PROPAGA: quem chama decide (a edição no sistema já valeu).
+  async atualizarContatoCliente(customerId: string, contato: { nome?: string; email?: string | null; telefone?: string | null }): Promise<void> {
+    const corpo: Record<string, string> = {};
+    if (contato.nome) corpo.name = contato.nome;
+    if (contato.email !== undefined) corpo.email = contato.email ?? '';
+    if (contato.telefone !== undefined) corpo.mobilePhone = (contato.telefone ?? '').replace(/\D/g, '');
+    if (!Object.keys(corpo).length) return;
+    if (this.simulado) {
+      this.logger.log(`[simulado] cliente ${customerId}: contato atualizado (${Object.keys(corpo).join(', ')})`);
+      return;
+    }
+    const cred = this.integracoes.asaas();
+    const resp = await fetchAsaas(
+      `${cred.apiUrl}/customers/${customerId}`,
+      { method: 'PUT', headers: { 'Content-Type': 'application/json', access_token: cred.apiKey }, body: JSON.stringify(corpo) },
+      'PUT /customers/{id}',
+    );
+    if (!resp.ok) {
+      const txt = await resp.text().catch(() => '');
+      throw new Error(`Asaas PUT /customers/${customerId} retornou ${resp.status}: ${txt.slice(0, 300)}`);
+    }
+    this.logger.log(`Cliente Asaas ${customerId}: contato atualizado (${Object.keys(corpo).join(', ')})`);
+  }
+
   // Id de cliente gravado em modo SIMULADO não existe no Asaas real (correção
   // 08/09: cus_sim_ reaproveitado em modo real gerava "Customer inválido" e a
   // cobrança morria em silêncio). Descarta para forçar a recriação.
