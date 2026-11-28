@@ -7,17 +7,23 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { AreaSistema, RoleUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ContaService } from './conta.service';
 import { CarteiraVisaoService } from './carteira-visao.service';
+import { FotoCarteiraService } from './foto-carteira.service';
+import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
+import { dataHojeBrasil } from '@azit/utils';
 import {
   visaoPeriodoSchema,
   visaoMensalSchema,
   visaoClientesSchema,
   visaoVariacaoSchema,
+  fotoCarteiraSchema,
+  FotoCarteiraQuery,
   VisaoVariacaoQuery,
   VisaoPeriodoQuery,
   VisaoMensalQuery,
@@ -36,6 +42,7 @@ export class ContaController {
   constructor(
     private readonly contaService: ContaService,
     private readonly visaoService: CarteiraVisaoService,
+    private readonly fotoService: FotoCarteiraService,
   ) {}
 
   @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR)
@@ -88,6 +95,23 @@ export class ContaController {
   @Get('carteira/visao/clientes')
   visaoClientes(@Query(new ZodValidationPipe(visaoClientesSchema)) q: VisaoClientesQuery) {
     return this.visaoService.clientes(q.de, q.ate, q.estado);
+  }
+
+  // Foto do início do mês (doc 02 §27.12): início × agora e a ponte do que mudou.
+  // { mes, foto: null } enquanto o mês não tem foto (novembro/2026 nunca terá).
+  @Get('carteira/foto')
+  fotoDoMes(@Query(new ZodValidationPipe(fotoCarteiraSchema)) q: FotoCarteiraQuery) {
+    return this.fotoService.comparar(q.mes);
+  }
+
+  // Só fora de produção: tira (ou refaz) agora a foto do mês corrente, para
+  // homologar sem esperar o dia 1.
+  @Roles(RoleUsuario.ADMIN, RoleUsuario.OPERADOR, RoleUsuario.DIRETOR)
+  @UseGuards(DevOnlyGuard)
+  @Post('carteira/foto/teste')
+  @HttpCode(200)
+  tirarFotoTeste() {
+    return this.fotoService.tirarFoto(dataHojeBrasil().slice(0, 7), { refazer: true });
   }
 
   // Conta de um titular (1:1). Declarada antes de :id para não colidir.

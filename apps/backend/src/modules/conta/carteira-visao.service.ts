@@ -74,7 +74,8 @@ interface Conta {
   bloqueada: boolean;
 }
 
-type FaturaCarregada = FaturaVisao & Conta & { dataPagamento: string | null };
+// `id` e `criadaEm` servem à foto do início do mês (doc 02 §27.12).
+export type FaturaCarregada = FaturaVisao & Conta & { id: string; criadaEm: string; dataPagamento: string | null };
 type RecebimentoCarregado = RecebimentoVisao & Conta;
 
 const SELECT_CONTA = {
@@ -87,6 +88,7 @@ const SELECT_CONTA = {
 
 const SELECT_FATURA = {
   id: true,
+  createdAt: true,
   contaId: true,
   status: true,
   dataVencimento: true,
@@ -283,7 +285,24 @@ export class CarteiraVisaoService {
     return recs;
   }
 
-  private async mapearFaturas(rows: FaturaRow[]): Promise<FaturaCarregada[]> {
+  // Foto do início do mês (doc 02 §27.12): o MESMO carregamento da visão, com a
+  // marca de item de contrato nascido de novação (a ponte separa a novação).
+  async faturasDoPeriodo(de: string, ate: string): Promise<FaturaCarregada[]> {
+    const rows = await this.prisma.db.fatura.findMany({
+      where: { deletedAt: null, dataVencimento: this.janela(de, ate) },
+      select: SELECT_FATURA,
+    });
+    return this.mapearFaturas(rows, { comNovacao: true });
+  }
+
+  // Faturas pelo id, como estão AGORA (as da foto que saíram do mês). Apagadas não vêm.
+  async faturasPorIds(ids: string[]): Promise<FaturaCarregada[]> {
+    if (!ids.length) return [];
+    const rows = await this.prisma.db.fatura.findMany({ where: { id: { in: ids }, deletedAt: null }, select: SELECT_FATURA });
+    return this.mapearFaturas(rows, { comNovacao: true });
+  }
+
+  private async mapearFaturas(rows: FaturaRow[], opts: { comNovacao?: boolean } = {}): Promise<FaturaCarregada[]> {
     // Tipo de cada contrato envolvido — uma classificação por contrato, não por item.
     const contratos = new Map<string, Parameters<typeof tiposDosContratos>[1][number]>();
     for (const f of rows) for (const it of f.itensFatura) {
@@ -291,8 +310,19 @@ export class CarteiraVisaoService {
       if (c && !contratos.has(c.id)) contratos.set(c.id, c);
     }
     const tipos: Map<string, TipoContrato> = await tiposDosContratos(this.prisma.db, [...contratos.values()]);
+    const idsContratos = [...contratos.keys()];
+    const deNovacao = new Set<string>();
+    if (opts.comNovacao && idsContratos.length) {
+      const nv = await this.prisma.db.novacao.findMany({
+        where: { OR: [{ contratoVeiculoId: { in: idsContratos } }, { contratoTermoId: { in: idsContratos } }] },
+        select: { contratoVeiculoId: true, contratoTermoId: true },
+      });
+      for (const n of nv) for (const id of [n.contratoVeiculoId, n.contratoTermoId]) if (id) deNovacao.add(id);
+    }
 
     return rows.map((f) => ({
+      id: f.id,
+      criadaEm: f.createdAt.toISOString(),
       contaId: f.contaId,
       titularId: f.conta.titularId,
       titular: f.conta.titular.nome,
@@ -308,6 +338,7 @@ export class CarteiraVisaoService {
         valor: this.cent(it.valor),
         origemItem: it.parcela?.itemContratado.origem ?? null,
         tipoContrato: it.parcela ? (tipos.get(it.parcela.itemContratado.contrato.id) ?? null) : null,
+        ...(opts.comNovacao && it.parcela && deNovacao.has(it.parcela.itemContratado.contrato.id) ? { deNovacao: true } : {}),
       })),
     }));
   }

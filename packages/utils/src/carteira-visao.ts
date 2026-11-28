@@ -42,6 +42,8 @@ export interface ItemFaturaVisao {
   // Contexto que só o service conhece (parcela → item contratado → contrato).
   origemItem?: string | null; // VENDA | ACORDO
   tipoContrato?: TipoContrato | null;
+  // Item de contrato nascido de NOVAÇÃO (foto do início do mês, §27.12) — só a ponte usa.
+  deNovacao?: boolean;
 }
 
 export interface FaturaVisao {
@@ -504,4 +506,127 @@ export function explicarVariacaoTeto(faturasDe: FaturaVisao[], faturasPara: Fatu
     g.contas.sort((x, y) => Math.abs(y.valor) - Math.abs(x.valor));
   }
   return { de: meses.de, para: meses.para, tetoDe, tetoPara, diferenca: tetoPara - tetoDe, grupos: lista };
+}
+
+// ------------------------------------------------------------
+// FOTO DO INÍCIO DO MÊS — o que mudou desde a foto (doc 02 §27.12, decisão Luís
+// 27/11/2026). A foto guarda, fatura a fatura, o que vencia no mês no dia 1 à 0h;
+// esta função compara com as faturas de AGORA e decompõe a diferença do teto em
+// motivos que SOMAM exatamente tetoAgora − tetoFoto:
+//   · contrato_novo — fatura criada depois da foto (o que não é novação/acordo);
+//   · novacao       — sai: fatura da foto que agora está NOVADA; entra: itens de
+//                     contrato nascido de novação em fatura nova;
+//   · acordo        — sai: fatura da foto agora RENEGOCIADA; entra/muda: itens de
+//                     origem ACORDO (em fatura nova ou já existente);
+//   · rescisao      — sai: fatura da foto agora RESCINDIDA;
+//   · data          — sai: o vencimento foi para outro mês; entra: fatura que já
+//                     existia na hora da foto e agora vence no mês;
+//   · removida      — fatura da foto que não existe mais;
+//   · valor         — mesma fatura, valor diferente, fora de acordo.
+// Quitação antecipada não aparece: a fatura do mês fica PAGA e continua no teto.
+// ------------------------------------------------------------
+export type MotivoMudancaFoto = 'contrato_novo' | 'novacao' | 'acordo' | 'rescisao' | 'data' | 'removida' | 'valor';
+
+export interface FaturaFoto extends FaturaVisao {
+  id: string;
+}
+
+export interface FaturaAgora extends FaturaVisao {
+  id: string;
+  criadaEm: string; // ISO (instante) — antes ou depois da foto
+  noMes: boolean; // o vencimento de AGORA cai no mês da foto
+  removida?: boolean;
+}
+
+export interface GrupoMudancaFoto {
+  motivo: MotivoMudancaFoto;
+  sentido: 'mais' | 'menos';
+  valor: number; // centavos, com sinal
+  faturas: number; // diferença de quantidade, com sinal
+  clientes: number;
+  contas: ContaVariacaoTeto[]; // maior impacto primeiro
+}
+
+export interface MudancaDesdeFoto {
+  tetoFoto: number;
+  tetoAgora: number;
+  diferenca: number; // tetoAgora − tetoFoto = soma dos grupos
+  grupos: GrupoMudancaFoto[];
+}
+
+const ORDEM_MOTIVOS_FOTO: MotivoMudancaFoto[] = ['contrato_novo', 'novacao', 'acordo', 'rescisao', 'data', 'removida', 'valor'];
+const MOTIVO_DO_STATUS_FORA: Record<string, MotivoMudancaFoto> = { NOVADA: 'novacao', RENEGOCIADA: 'acordo', RESCINDIDA: 'rescisao' };
+
+const somaItens = (f: FaturaVisao, filtro: (it: ItemFaturaVisao) => boolean) => f.itens.filter(filtro).reduce((s, it) => s + it.valor, 0);
+const ehAcordo = (it: ItemFaturaVisao) => !it.deNovacao && String(it.origemItem ?? '').toUpperCase() === 'ACORDO';
+
+// `diaFoto`: o dia da foto (YYYY-MM-01); `hoje`: o dia de agora — os dois no fuso do negócio.
+export function explicarMudancaDesdeFoto(foto: FaturaFoto[], agora: FaturaAgora[], fotoEm: string, diaFoto: string, hoje: string): MudancaDesdeFoto {
+  const contaFoto = (f: FaturaFoto) => estadoFaturaVisao(f.status, f.vencimento, diaFoto) !== 'fora';
+  const contaAgora = (a: FaturaAgora) => !a.removida && a.noMes && estadoFaturaVisao(a.status, a.vencimento, hoje) !== 'fora';
+  const instanteFoto = new Date(fotoEm).getTime();
+
+  const grupos = new Map<string, GrupoMudancaFoto & { porConta: Map<string, ContaVariacaoTeto> }>();
+  const lancar = (motivo: MotivoMudancaFoto, contaId: string, valor: number, faturas: number) => {
+    if (!valor && !faturas) return;
+    const sentido = (faturas || valor) > 0 ? 'mais' : 'menos';
+    const chave = `${motivo}:${sentido}`;
+    let g = grupos.get(chave);
+    if (!g) { g = { motivo, sentido, valor: 0, faturas: 0, clientes: 0, contas: [], porConta: new Map() }; grupos.set(chave, g); }
+    g.valor += valor;
+    g.faturas += faturas;
+    const c = g.porConta.get(contaId) ?? { contaId, valor: 0, faturas: 0 };
+    c.valor += valor;
+    c.faturas += faturas;
+    g.porConta.set(contaId, c);
+  };
+
+  const agoraPorId = new Map(agora.map((a) => [a.id, a]));
+  const naFoto = new Set<string>();
+  let tetoFoto = 0;
+  let tetoAgora = 0;
+
+  for (const f of foto) {
+    if (!contaFoto(f)) continue;
+    naFoto.add(f.id);
+    tetoFoto += f.valorTotal;
+    const a = agoraPorId.get(f.id);
+    if (!a || a.removida) { lancar('removida', f.contaId, -f.valorTotal, -1); continue; }
+    if (!contaAgora(a)) {
+      const porStatus = MOTIVO_DO_STATUS_FORA[String(a.status).toUpperCase()];
+      lancar(porStatus ?? (a.noMes ? 'removida' : 'data'), f.contaId, -f.valorTotal, -1);
+      continue;
+    }
+    const dif = a.valorTotal - f.valorTotal;
+    if (dif) {
+      const difAcordo = somaItens(a, ehAcordo) - somaItens(f, ehAcordo);
+      lancar('acordo', f.contaId, difAcordo, 0);
+      lancar('valor', f.contaId, dif - difAcordo, 0);
+    }
+  }
+
+  for (const a of agora) {
+    if (!contaAgora(a)) continue;
+    tetoAgora += a.valorTotal;
+    if (naFoto.has(a.id)) continue;
+    if (new Date(a.criadaEm).getTime() <= instanteFoto) { lancar('data', a.contaId, a.valorTotal, 1); continue; }
+    // Fatura nova: novação, acordo e o resto (contrato novo) pelos itens; a
+    // fatura conta uma vez, no motivo que mais pesa nela.
+    const partes: [MotivoMudancaFoto, number][] = [
+      ['novacao', somaItens(a, (it) => !!it.deNovacao)],
+      ['acordo', somaItens(a, ehAcordo)],
+    ];
+    partes.push(['contrato_novo', a.valorTotal - partes[0][1] - partes[1][1]]);
+    const principal = partes.reduce((m, p) => (p[1] > m[1] ? p : m))[0];
+    for (const [motivo, valor] of partes) lancar(motivo, a.contaId, valor, motivo === principal ? 1 : 0);
+  }
+
+  const lista = ORDEM_MOTIVOS_FOTO.flatMap((m) => [grupos.get(`${m}:menos`), grupos.get(`${m}:mais`)])
+    .filter((g): g is GrupoMudancaFoto & { porConta: Map<string, ContaVariacaoTeto> } => !!g)
+    .map(({ porConta, ...g }) => {
+      const contas = [...porConta.values()].filter((c) => c.valor || c.faturas).sort((x, y) => Math.abs(y.valor) - Math.abs(x.valor));
+      return { ...g, contas, clientes: contas.length };
+    })
+    .filter((g) => g.valor || g.faturas);
+  return { tetoFoto, tetoAgora, diferenca: tetoAgora - tetoFoto, grupos: lista };
 }

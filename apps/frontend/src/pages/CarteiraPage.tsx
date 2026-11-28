@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   diasCalendarioEntre,
@@ -14,13 +14,14 @@ import {
   type VisaoCarteira,
   type VisaoMensal,
 } from '@azit/utils';
-import { carteiraVisaoService, type ClienteSemFatura, type EstadoVisao, type VariacaoTetoNomeada } from '../services/carteira-visao.service';
+import { carteiraVisaoService, type ClienteSemFatura, type ComparacaoFoto, type EstadoVisao, type VariacaoTetoNomeada } from '../services/carteira-visao.service';
 import { Bloco } from '../components/Bloco';
 import { CartaoIndicador } from '../components/CartaoIndicador';
 import { SeletorPeriodo, intervaloDoPeriodo, rotuloDoPeriodo, type PeriodoSelecionado } from '../components/SeletorPeriodo';
 import { CarteiraNoTempo } from './carteira/CarteiraNoTempo';
 import { PRODUTO_SLOT_COLORS, VISAO_ESTADO_COLORS, VIZ_NEUTRAL } from '../config/statusColors';
-import { hojeBrasilISO } from '../lib/datas';
+import { hojeBrasilISO, instanteCurtoBR } from '../lib/datas';
+import { FERRAMENTAS_TESTE } from '../lib/ambiente';
 import { ConferenciaAsaasModal } from './CarteiraConferenciaAsaas';
 import { LinkArea } from '../components/LinkArea';
 import { AREAS_ROTA_FICHA_TITULAR } from '../lib/permissoes';
@@ -281,6 +282,8 @@ export function CarteiraPage() {
           ) : (
             <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
           )}
+          {/* Foto do início do mês (doc 02 §27.12): só no período "Mês". */}
+          {sel.modo === 'mes' ? <FotoDoMes mes={sel.anoMes} agora={v} /> : null}
         </Bloco>
 
         {/* D — Por produto */}
@@ -526,6 +529,143 @@ function VariacaoEntreMeses({ de, para }: { de: string; para: string }) {
           })}
         </>
       )}
+    </div>
+  );
+}
+
+// ---------- Foto do início do mês (doc 02 §27.12, decisão Luís 27/11) ----------
+// Teto no início × agora, por produto, e a ponte do que mudou — a conta é a
+// função única `explicarMudancaDesdeFoto` (backend); aqui só exibe.
+type GrupoFoto = NonNullable<ComparacaoFoto['foto']>['ponte']['grupos'][number];
+
+function rotuloFoto(g: GrupoFoto): { titulo: string; nota: string } {
+  const mais = g.sentido === 'mais';
+  const quem = `${g.clientes} cliente${g.clientes === 1 ? '' : 's'}`;
+  const fat = g.faturas ? ` · ${Math.abs(g.faturas)} fatura${Math.abs(g.faturas) === 1 ? '' : 's'}` : '';
+  const porMotivo: Record<GrupoFoto['motivo'], { titulo: string; nota: string }> = {
+    contrato_novo: { titulo: 'Contratos novos', nota: 'faturas de contrato que começou depois da foto' },
+    novacao: mais
+      ? { titulo: 'Entrou pela novação', nota: 'faturas do contrato nascido da novação' }
+      : { titulo: 'Saiu na novação', nota: 'faturas da foto trocadas pela novação' },
+    acordo: mais
+      ? { titulo: 'Parcelas de acordo', nota: 'parcelas de acordo que passaram a vencer no mês' }
+      : { titulo: 'Saiu para acordo', nota: 'faturas da foto cobertas por acordo' },
+    rescisao: { titulo: 'Saiu na rescisão', nota: 'faturas extintas pela rescisão' },
+    data: mais
+      ? { titulo: 'Mudou de data: entrou no mês', nota: 'fatura que vencia em outro mês' }
+      : { titulo: 'Mudou de data: saiu do mês', nota: 'o vencimento foi para outro mês' },
+    removida: { titulo: 'Fatura removida', nota: 'fatura da foto que não existe mais' },
+    valor: mais
+      ? { titulo: 'Valor maior na mesma fatura', nota: 'item que começou a ser cobrado' }
+      : { titulo: 'Valor menor na mesma fatura', nota: 'item que deixou de ser cobrado' },
+  };
+  const r = porMotivo[g.motivo];
+  return { titulo: r.titulo, nota: `${quem}${fat} · ${r.nota}` };
+}
+
+function FotoDoMes({ mes, agora }: { mes: string; agora: VisaoCarteira | undefined }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['carteira-foto', mes], queryFn: () => carteiraVisaoService.foto(mes) });
+  const [aberto, setAberto] = useState<string | null>(null);
+  const [tirando, setTirando] = useState(false);
+  const foto = q.data?.foto ?? null;
+  const mesHoje = hojeBrasilISO().slice(0, 7);
+
+  async function tirarTeste() {
+    setTirando(true);
+    try {
+      await carteiraVisaoService.tirarFotoTeste();
+      await qc.invalidateQueries({ queryKey: ['carteira-foto'] });
+    } finally {
+      setTirando(false);
+    }
+  }
+
+  const produtosAgora = new Map((agora?.porProduto ?? []).map((p) => [p.chave, p]));
+  const produtos = foto
+    ? [...new Set([...foto.inicio.porProduto.map((p) => p.chave), ...(agora?.porProduto ?? []).filter((p) => p.teto).map((p) => p.chave)])].map((chave) => {
+        const ini = foto.inicio.porProduto.find((p) => p.chave === chave);
+        const ag = produtosAgora.get(chave);
+        return { chave, rotulo: ini?.rotulo ?? ag?.rotulo ?? chave, inicio: ini?.teto ?? 0, agora: ag?.teto ?? 0 };
+      })
+    : [];
+
+  return (
+    <div className="mt-[12px] flex flex-col gap-[4px] pt-[12px]" style={{ borderTop: '1px solid var(--border-light)' }}>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-[8px]">
+        <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={{ color: 'var(--text-muted)' }}>No início do mês</span>
+        {foto ? <span className="text-[11px] tabular-nums" style={{ color: 'var(--text-muted)' }}>foto de {instanteCurtoBR(foto.tiradaEm)}</span> : null}
+      </div>
+      {q.isLoading ? (
+        <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Carregando…</div>
+      ) : q.isError ? (
+        <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Não foi possível carregar a foto.</div>
+      ) : !foto ? (
+        <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+          {mes > mesHoje
+            ? `A foto de ${mesNome(mes)} é tirada em 01/${mes.slice(5, 7)} à 0h.`
+            : `Sem foto do início de ${mesNome(mes)}. A foto é tirada no dia 1 de cada mês à 0h; a primeira é a de dezembro/2026.`}
+        </div>
+      ) : (
+        <>
+          <div className="text-[12.5px]" style={{ color: 'var(--text-body)' }}>
+            Teto de <b className="tabular-nums" style={{ color: 'var(--text-primary)' }}>{formatCurrency(foto.ponte.tetoFoto)}</b> no início ({foto.inicio.teto.faturas} faturas · {foto.inicio.teto.clientes} clientes); agora {formatCurrency(foto.ponte.tetoAgora)}:{' '}
+            <b className="tabular-nums" style={{ color: 'var(--text-primary)' }}>{foto.ponte.diferenca === 0 ? 'igual' : sinal(foto.ponte.diferenca)}</b>.
+            {foto.ponte.grupos.length === 0 ? ' Nada mudou desde a foto.' : ''}
+          </div>
+          {foto.ponte.grupos.map((g) => {
+            const chave = `${g.motivo}:${g.sentido}`;
+            const t = rotuloFoto(g);
+            return (
+              <div key={chave} className="py-[7px]" style={{ borderTop: '1px solid var(--border-light)' }}>
+                <div className="grid grid-cols-[1fr_auto] items-baseline gap-x-[10px] text-[12.5px]">
+                  <div className="min-w-0">
+                    <span style={{ color: 'var(--text-primary)' }}>{t.titulo}</span>
+                    <button type="button" onClick={() => setAberto((a) => (a === chave ? null : chave))} className="ml-[8px] text-[11.5px] font-semibold" style={{ color: 'var(--accent)' }} aria-expanded={aberto === chave}>
+                      {aberto === chave ? 'ocultar' : 'ver quem'}
+                    </button>
+                    <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{t.nota}</div>
+                  </div>
+                  <span className="whitespace-nowrap font-display font-semibold tabular-nums" style={{ color: 'var(--text-primary)' }}>{sinal(g.valor)}</span>
+                </div>
+                {aberto === chave ? (
+                  <div className="mt-[4px] flex flex-col">
+                    {g.contas.map((c) => (
+                      <div key={c.contaId} className="grid grid-cols-[1fr_auto] gap-x-[10px] py-[3px] text-[12px]">
+                        {c.titularId ? (
+                          <LinkArea area={AREAS_ROTA_FICHA_TITULAR} to={`/titulares/${c.titularId}`} className="truncate" style={{ color: 'var(--text-body)' }}>{c.titular}</LinkArea>
+                        ) : (
+                          <span className="truncate" style={{ color: 'var(--text-body)' }}>{c.titular}</span>
+                        )}
+                        <span className="whitespace-nowrap tabular-nums" style={{ color: 'var(--text-body)' }}>{sinal(c.valor)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+          {produtos.length ? (
+            <div className="mt-[6px] flex flex-col">
+              <div className="grid grid-cols-[1fr_auto_auto] gap-x-[12px] pb-[3px] text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={{ color: 'var(--text-muted)' }}>
+                <span>Por produto</span><span className="text-right">início</span><span className="text-right">agora</span>
+              </div>
+              {produtos.map((p) => (
+                <div key={p.chave} className="grid grid-cols-[1fr_auto_auto] gap-x-[12px] py-[3px] text-[12px]" style={{ borderTop: '1px solid var(--border-light)' }}>
+                  <span className="truncate" style={{ color: 'var(--text-body)' }}>{p.rotulo}</span>
+                  <span className="text-right tabular-nums" style={{ color: 'var(--text-body)' }}>{semCentavos(p.inicio)}</span>
+                  <span className="text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>{semCentavos(p.agora)}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </>
+      )}
+      {FERRAMENTAS_TESTE && mes === mesHoje ? (
+        <button type="button" disabled={tirando} onClick={() => void tirarTeste()} className="mt-[6px] self-start rounded-full border px-[10px] py-[3px] text-[11.5px] font-semibold" style={{ color: 'var(--text-body)', borderColor: 'var(--border)' }}>
+          {tirando ? 'Tirando a foto…' : foto ? 'Refazer a foto agora (teste)' : 'Tirar foto agora (teste)'}
+        </button>
+      ) : null}
     </div>
   );
 }

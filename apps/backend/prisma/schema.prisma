@@ -3245,3 +3245,34 @@ model ChecklistPreparacaoModelo {
 
   @@map("checklist_preparacao_modelo")
 }
+
+// Foto do início do mês da Carteira (doc 02 §27.12, decisão Luís 2026-11-27):
+// uma por mês, tirada no dia 1 à 0h (America/Sao_Paulo). Guarda fatura a fatura
+// as que vencem no mês, como estavam naquele momento — nunca é recalculada.
+// faturaId/contaId sem chave estrangeira de propósito: a foto sobrevive à
+// fatura (removida, novada) e é ela que explica a diferença depois.
+model FotoCarteira {
+  id       String               @id @default(cuid())
+  mes      String               @unique // YYYY-MM
+  tiradaEm DateTime             @default(now())
+  faturas  FotoCarteiraFatura[]
+
+  @@map("fotos_carteira")
+}
+
+model FotoCarteiraFatura {
+  id         String   @id @default(cuid())
+  fotoId     String
+  faturaId   String
+  contaId    String
+  status     String // StatusFatura no momento da foto
+  vencimento DateTime @db.Date
+  valorTotal Decimal  @db.Decimal(12, 2)
+  valorPago  Decimal? @db.Decimal(12, 2)
+  itens      Json // ItemFaturaVisao[] (valores em centavos inteiros) no momento da foto
+
+  foto FotoCarteira @relation(fields: [fotoId], references: [id], onDelete: Cascade)
+
+  @@index([fotoId])
+  @@map("fotos_carteira_faturas")
+}

@@ -1441,6 +1441,16 @@ para o outro (doc 02 §27.10): `{ "de", "para", "tetoDe", "tetoPara", "diferenca
 o que entrou, `faturas` = recebimentos (faturas + entradas), `maisAntiga` = primeiro pagamento,
 `ultimoPagamento` = último.
 
+`GET /api/v1/contas/carteira/foto?mes=2026-12` → foto do início do mês (doc 02 §27.12): `{ "mes", "foto": null }`
+quando o mês não tem foto (novembro/2026 nunca terá); senão `{ "mes", "foto": { "tiradaEm", "inicio": { "teto":
+{ "valor", "faturas", "clientes" }, "porProduto": [{ "chave", "rotulo", "teto" }] }, "ponte": { "tetoFoto",
+"tetoAgora", "diferenca", "grupos": [{ "motivo": "contrato_novo|novacao|acordo|rescisao|data|removida|valor",
+"sentido": "mais|menos", "valor", "faturas", "clientes", "contas": [{ "contaId", "titularId", "titular", "valor",
+"faturas" }] }] } } }`. Centavos com sinal; a soma de `grupos[].valor` é `diferenca`. A foto é tirada pelo
+sistema no dia 1 à 0h05 (America/Sao_Paulo), com nova tentativa às 6h; uma por mês, nunca recalculada.
+Fora de produção: `POST /api/v1/contas/carteira/foto/teste` tira (ou refaz) a foto do mês corrente →
+`{ "criada", "faturas", "tiradaEm" }`.
+
 ### 4.2-A Conferência Asaas × sistema (doc 02 §27.9, 12/11/2026)
 
 Faturas ABERTA/FECHADA com `asaasChargeId` e vencimento em `[de, ate]`, lidas uma a uma no Asaas.

@@ -24,3 +24,7 @@ export type EstadoVisaoQuery = (typeof ESTADOS_VISAO)[number];
 
 export const visaoClientesSchema = visaoPeriodoSchema.and(z.object({ estado: z.enum(ESTADOS_VISAO) }));
 export type VisaoClientesQuery = z.infer<typeof visaoClientesSchema>;
+
+// Foto do início do mês (doc 02 §27.12).
+export const fotoCarteiraSchema = z.object({ mes: MES });
+export type FotoCarteiraQuery = z.infer<typeof fotoCarteiraSchema>;

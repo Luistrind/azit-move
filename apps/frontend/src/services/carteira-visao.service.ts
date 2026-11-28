@@ -1,5 +1,5 @@
 import { api } from '../lib/api';
-import type { GrupoVariacaoTeto, VariacaoTeto, VisaoCarteira, VisaoMensal } from '@azit/utils';
+import type { GrupoMudancaFoto, GrupoVariacaoTeto, ResumoEstado, VariacaoTeto, VisaoCarteira, VisaoMensal } from '@azit/utils';
 
 // Visão da carteira por período (doc 02 §27) — três rotas, uma agregação.
 // Teto/pagas/vencidas/a vencer por VENCIMENTO; `recebido` é CAIXA (data de pagamento).
@@ -32,6 +32,21 @@ export interface ClienteVisao {
   bloqueada: boolean;
 }
 
+// Foto do início do mês (doc 02 §27.12): início × agora e a ponte do que mudou.
+export interface ComparacaoFoto {
+  mes: string;
+  foto: null | {
+    tiradaEm: string; // ISO
+    inicio: { teto: ResumoEstado; porProduto: { chave: string; rotulo: string; teto: number }[] };
+    ponte: {
+      tetoFoto: number;
+      tetoAgora: number;
+      diferenca: number;
+      grupos: (Omit<GrupoMudancaFoto, 'contas'> & { contas: { contaId: string; titularId: string; titular: string; valor: number; faturas: number }[] })[];
+    };
+  };
+}
+
 export const carteiraVisaoService = {
   async periodo(de: string, ate: string): Promise<VisaoPeriodo> {
     const { data } = await api.get<VisaoPeriodo>('/api/v1/contas/carteira/visao', { params: { de, ate } });
@@ -48,6 +63,15 @@ export const carteiraVisaoService = {
   },
   async variacao(de: string, para: string): Promise<VariacaoTetoNomeada> {
     const { data } = await api.get<VariacaoTetoNomeada>('/api/v1/contas/carteira/visao/variacao', { params: { de, para } });
+    return data;
+  },
+  async foto(mes: string): Promise<ComparacaoFoto> {
+    const { data } = await api.get<ComparacaoFoto>('/api/v1/contas/carteira/foto', { params: { mes } });
+    return data;
+  },
+  // Só fora de produção (ferramenta de teste): tira ou refaz agora a foto do mês corrente.
+  async tirarFotoTeste(): Promise<{ criada: boolean; faturas: number; tiradaEm: string }> {
+    const { data } = await api.post('/api/v1/contas/carteira/foto/teste');
     return data;
   },
   async clientes(de: string, ate: string, estado: EstadoVisao): Promise<ClienteVisao[]> {

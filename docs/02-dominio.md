@@ -3262,6 +3262,38 @@ Cobranças, Por produto e O que vem aí ficam como estavam.
 linha de **vencido acumulado** dos meses passados — o sistema sabe o que está vencido hoje, não a
 foto de cada fim de mês; reconstituir pelos pagamentos tem ressalva nos meses da migração.
 
+### 27.12 Foto do início do mês (decisão Luís, 2026-11-27)
+
+**Origem.** O teto da Carteira é calculado a cada abertura da tela, então muda o mês inteiro:
+entra contrato novo, saem faturas por novação, acordo ou rescisão, vencimentos mudam de data. O
+Luís não conseguia comparar "como comecei o mês" com "como terminei". Pedido: manter a visão
+dinâmica e ganhar a foto do início.
+
+- **Uma foto por mês**, tirada **no dia 1 à 0h** (America/Sao_Paulo, Regra 15), com nova
+  tentativa às 6h do mesmo dia se a primeira não rodou. A foto guarda **fatura a fatura** as
+  faturas que vencem no mês, com status, vencimento, valor e itens daquele momento
+  (`fotos_carteira` / `fotos_carteira_faturas`). É foto: nunca é recalculada nem corrigida depois.
+- **Começa agora**: novembro/2026 fica **sem foto do início** (o sistema não sabe como as faturas
+  estavam no dia 1); dezembro/2026 é o primeiro mês completo. Não há reconstrução aproximada.
+- **Na tela** (bloco de comparação, período "Mês"): teto, faturas e clientes **no início do mês**
+  × **agora**, a diferença, o mesmo por produto, e a **ponte** — o que explica a diferença.
+- **Ponte** (soma exata da diferença, `explicarMudancaDesdeFoto` em `packages/utils`, Regra 16),
+  fatura a fatura entre a foto e agora:
+  - **Contrato novo** — fatura criada depois da foto, de contrato que não nasceu de novação nem
+    de acordo;
+  - **Novação** — sai: fatura da foto que agora está NOVADA; entra: fatura do contrato nascido da
+    novação;
+  - **Acordo** — sai: fatura da foto que agora está RENEGOCIADA; entra ou muda: parcelas de acordo
+    (item de origem ACORDO) em fatura nova ou já existente;
+  - **Rescisão** — sai: fatura da foto que agora está RESCINDIDA;
+  - **Mudou de data** — sai: o vencimento foi para outro mês; entra: fatura que já existia na foto
+    em outro mês e agora vence neste;
+  - **Removida** — fatura da foto que não existe mais;
+  - **Valor** — mesma fatura, valor diferente, fora de acordo.
+- **Quitação antecipada não move o teto do mês**: a fatura do mês paga na quitação continua no
+  teto, como paga. Não é motivo da ponte.
+- Fora de produção há o botão "Tirar foto agora (teste)", para homologar sem esperar o dia 1.
+
 ---
 
 ## 28. Lembretes de pagamento pelo WhatsApp (decisão Luís, 2026-10-30; revisto em 2026-11-15)
